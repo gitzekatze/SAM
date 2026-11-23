@@ -103,7 +103,7 @@ pasta --splice-only creates a network namespace with only loopback, forwards onl
 - **SAM functions that rely on it:** [12](functions.md#12)
 - **Quick check:** `pasta-splice-only`
 - **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox`, `with_this_computer_only_the_sandbox_dies_with_its_launcher`, `the_apps_ports_are_offered_on_this_computer_only` (fully)
-- **Checked first by:** `local_network.rs`, `matrix.rs` (a broken contract stops these tests with its name)
+- **Checked first by:** `local_network.rs`, `matrix.rs`, `teardown.rs` (a broken contract stops these tests with its name)
 - **Covers:** `program:pasta`, `option:--splice-only`, `option:-t`, `option:-T`, `option:-u`, `option:-U`, `option:--quiet`
 - **If it breaks:** A pasta without --splice-only is never used: the app starts with no network at all and a warning says why (tested in the matrix). If options change, adapt netns.rs and check that an unlisted host port stays unreachable.
 
@@ -248,10 +248,10 @@ The baseline syscall filter loads, and the syscalls it blocks have the numbers l
 
 - **Component:** Linux kernel ([releases](https://kernelnewbies.org/LinuxVersions))
 - **When it breaks:** the start goes ahead with a visible warning.
-- **SAM functions that rely on it:** [20](functions.md#20), [33](functions.md#33)
+- **SAM functions that rely on it:** [16](functions.md#16), [20](functions.md#20), [33](functions.md#33)
 - **Quick check:** none (only the tests below)
-- **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox` (partly: Checked only indirectly, through the sandbox check in the matrix test.)
-- **Covers:** `path:/proc`, `path:/proc/`, `path:/proc/self/status`, `path:/proc/net/*`, `path:/proc/sys/kernel/hostname`, `path:/proc/sys/kernel/osrelease`
+- **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox`, `a_start_file_left_by_a_killed_launcher_is_still_moved_aside` (partly: Checked only indirectly, through the sandbox check in the matrix test.)
+- **Covers:** `path:/proc`, `path:/proc/`, `path:/proc/self/status`, `path:/proc/net/*`, `path:/proc/sys/kernel/hostname`, `path:/proc/sys/kernel/osrelease`, `path:/proc/sys/kernel/random/boot_id`
 - **If it breaks:** The sandbox check then reports the setting as unknown instead of passed.
 
 ## fs-layout

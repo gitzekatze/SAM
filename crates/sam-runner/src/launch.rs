@@ -51,6 +51,10 @@ pub struct LaunchOptions {
 /// Everything needed to start a sandbox, plus the explanation for the user.
 /// Left in a launch's runtime folder by `Sam::stop` before it signals the app.
 pub const STOP_MARKER: &str = "stop-requested";
+/// In a launch's runtime folder: the process id of the program the launcher
+/// started (Bubblewrap, or pasta with "This computer only"). `Sam::stop`
+/// asks only the processes below it to quit (`ops::ask_to_quit`).
+pub const SANDBOX_PID: &str = "sandbox-pid";
 
 pub struct Prepared {
     pub sandbox: SandboxInfo,
@@ -76,6 +80,13 @@ pub struct Prepared {
     /// The writable home's protected places before the start (full home
     /// read/write); looked at again when the app has ended.
     pub home_watch: Option<sam_sandbox::HomeWatch>,
+    /// The same, kept on disk while the launch runs (`home_shared`).
+    home_record: Option<crate::home_shared::Registration>,
+    /// Where what the app leaves in those places is moved.
+    home_aside: PathBuf,
+    /// What another running app had left in those places, moved aside
+    /// before this start.
+    moved_at_start: Vec<sam_sandbox::MovedAside>,
     wayland: Option<crate::wayland_ctx::WaylandContext>,
     _runtime: RuntimeDir,
 }
@@ -385,15 +396,49 @@ pub fn prepare(
     let mut wayland = None;
     let mut wayland_context_failed = false;
     let home_watch;
+    let mut home_record = None;
+    let mut moved_at_start = Vec::new();
+    let home_aside = paths
+        .data_dir
+        .join("moved-aside")
+        .join(&app.id)
+        .join(now().to_string());
     let mut landlock = false;
     let mut seccomp = false;
     let wanted_landlock: bool;
     let wanted_seccomp: bool;
     {
         sam_sandbox::write_identity_files(&ctx)?;
+        // Launches that can write start places take turns here: each takes
+        // over what the running ones saw at their start and keeps its own
+        // record on disk (`home_shared`, review 2026-11-23 F1 and F2).
+        let shared = if sam_sandbox::writes_start_places(&ctx) {
+            Some(crate::home_shared::Shared::open(paths)?)
+        } else {
+            None
+        };
+        let others = shared
+            .as_ref()
+            .map(crate::home_shared::Shared::running)
+            .unwrap_or_default();
         sam_sandbox::prepare_home_protection(&ctx);
         // After the folders above are made, so they do not count as new.
-        home_watch = sam_sandbox::HomeWatch::before(&ctx);
+        home_watch = sam_sandbox::HomeWatch::before_alongside(&ctx, &others);
+        if let (Some(s), Some(w)) = (&shared, &home_watch) {
+            let name = format!(
+                "{}-{}",
+                runtime_dir
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default(),
+                app.id
+            );
+            home_record = Some(s.register(&name, w, &home_aside)?);
+            // What a running app planted in a place this launch takes over
+            // as empty, or in place of a link, goes before this one starts.
+            moved_at_start = w.settle(&home_aside);
+        }
+        drop(shared);
         if perms.dbus.session.mode == DbusMode::Filtered
             && host.tools.xdg_dbus_proxy.is_some()
             && host.sockets.dbus_session.is_some()
@@ -543,6 +588,9 @@ pub fn prepare(
         wayland_context,
         wayland_context_failed,
         home_watch,
+        home_record,
+        home_aside,
+        moved_at_start,
         wayland,
         _runtime: runtime_guard,
     })
@@ -684,7 +732,7 @@ fn run_once(
         format_ts(started_at)
     )?;
 
-    let prepared = match prepare(app, opts, cfg, paths, host) {
+    let mut prepared = match prepare(app, opts, cfg, paths, host) {
         Ok(p) => p,
         Err(e) => {
             writeln!(log, "# preparation failed: {e:#}")?;
@@ -781,11 +829,10 @@ fn run_once(
     // What the app leaves in places that make the computer run something is
     // moved aside while it runs (Linux reports each change), and once more
     // after it ends.
-    let aside = paths
-        .data_dir
-        .join("moved-aside")
-        .join(&app.id)
-        .join(started_at.to_string());
+    let aside = prepared.home_aside.clone();
+    if let Some(r) = prepared.home_record.as_mut() {
+        r.arm(&log_path);
+    }
     let (live_watch, watch_warning) = match prepared.home_watch.as_ref() {
         Some(w) => crate::home_live::LiveWatch::start(w, aside.clone()),
         None => (None, None),
@@ -812,6 +859,10 @@ fn run_once(
         unsafe { libc::close(*fd) };
     }
     let mut child = spawned?;
+    let _ = fs::write(
+        prepared.context.runtime_dir.join(SANDBOX_PID),
+        child.id().to_string(),
+    );
     // `cmd` holds copies of the app's terminal: without them, the relay
     // sees when the app's side is closed.
     drop(cmd);
@@ -871,7 +922,8 @@ fn run_once(
     let (status, timed_out) = wait_until(
         &mut child,
         opts.timeout_secs,
-        (mode == TerminalMode::None).then_some(prepared.context.runtime_dir.as_path()),
+        &prepared.context.runtime_dir,
+        mode,
     )?;
     child_done.store(true, std::sync::atomic::Ordering::SeqCst);
     for t in pumps {
@@ -919,31 +971,15 @@ fn run_once(
     // What the app left in places that make the computer run something:
     // moved aside before anything can act on it. The live watch caught what
     // appeared while it ran; one last look now catches the rest.
-    let mut found = live_watch.map(|l| l.finish()).unwrap_or_default();
+    let mut found = std::mem::take(&mut prepared.moved_at_start);
+    found.extend(live_watch.map(|l| l.finish()).unwrap_or_default());
     if let Some(w) = &prepared.home_watch {
         found.extend(w.settle(&aside));
     }
-    let moved: Vec<String> = found
-        .into_iter()
-        .map(|m| {
-            let to = sam_core::util::tildify(&m.to);
-            match m.how {
-                sam_sandbox::Aside::Moved => format!("~/{} → {to}", m.place),
-                sam_sandbox::Aside::Renamed => sam_core::i18n::trf(
-                    "~/{place} → {to} (renamed in place: SAM's folder could not take it)",
-                    &[("place", &m.place), ("to", &to)],
-                ),
-                sam_sandbox::Aside::Deleted => sam_core::i18n::trf(
-                    "~/{place}: deleted (it could not be moved)",
-                    &[("place", &m.place)],
-                ),
-                sam_sandbox::Aside::Failed => sam_core::i18n::trf(
-                    "~/{place}: COULD NOT BE REMOVED; it may run outside the sandbox: remove it yourself",
-                    &[("place", &m.place)],
-                ),
-            }
-        })
-        .collect();
+    if let Some(r) = prepared.home_record.take() {
+        r.finish();
+    }
+    let moved: Vec<String> = found.iter().map(describe_moved).collect();
     // Best effort: a full disk (which the app may have caused on purpose)
     // must not stop the record below, with what the start was missing and
     // what was moved aside, from being saved (regression, audit L-F5).
@@ -1449,20 +1485,48 @@ fn for_terminal(filter: Option<&mut pty::OutputFilter>, piece: &[u8]) -> Vec<u8>
     }
 }
 
-/// Waits for the child; with a time limit, ends it when the time is up
-/// (a test start or diagnostic run). Returns whether SAM ended it.
+/// One line for something moved out of a start place: where it went, or
+/// that it could not be removed.
+pub(crate) fn describe_moved(m: &sam_sandbox::MovedAside) -> String {
+    let to = sam_core::util::tildify(&m.to);
+    match m.how {
+        sam_sandbox::Aside::Moved => format!("~/{} → {to}", m.place),
+        sam_sandbox::Aside::Renamed => sam_core::i18n::trf(
+            "~/{place} → {to} (renamed in place: SAM's folder could not take it)",
+            &[("place", &m.place), ("to", &to)],
+        ),
+        sam_sandbox::Aside::Deleted => sam_core::i18n::trf(
+            "~/{place}: deleted (it could not be moved)",
+            &[("place", &m.place)],
+        ),
+        sam_sandbox::Aside::Failed => sam_core::i18n::trf(
+            "~/{place}: COULD NOT BE REMOVED; it may run outside the sandbox: remove it yourself",
+            &[("place", &m.place)],
+        ),
+    }
+}
+
 /// How long an app asked to quit (SIGTERM) may take before its sandbox is
 /// ended.
-const QUIT_GRACE: std::time::Duration = std::time::Duration::from_secs(10);
+pub const QUIT_GRACE: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// Waits for the sandbox to end. After `timeout_secs` it is ended and
-/// reported as timed out. With `runtime_dir` (a launch without SAM's
-/// terminal relay), SIGTERM or SIGHUP to SAM asks the app to quit, marks the
-/// launch as closed and ends the sandbox after [`QUIT_GRACE`].
+/// reported as timed out. Without SAM's terminal relay (`mode` None),
+/// SIGTERM or SIGHUP to SAM asks the app to quit, marks the launch as
+/// closed and ends the sandbox after [`QUIT_GRACE`]. With the relay, the
+/// relay hangs up the app's terminal instead.
+///
+/// When `Sam::stop` had asked the app already (its [`STOP_MARKER`]), the
+/// grace time runs from then, not again from now: `stop` signals the
+/// launcher only once that time is over, and before, the launcher began a
+/// new 10 seconds that `stop` cut short with SIGKILL 3 seconds later. The
+/// last look at the start places, the record and the end of the log never
+/// came (review 2026-11-23 F2).
 fn wait_until(
     child: &mut std::process::Child,
     timeout_secs: Option<u64>,
-    runtime_dir: Option<&Path>,
+    runtime_dir: &Path,
+    mode: TerminalMode,
 ) -> Result<(std::process::ExitStatus, bool)> {
     let start = std::time::Instant::now();
     let deadline = timeout_secs.map(|s| start + std::time::Duration::from_secs(s));
@@ -1471,11 +1535,25 @@ fn wait_until(
         if let Some(st) = child.try_wait()? {
             return Ok((st, false));
         }
-        if let (Some(dir), None) = (runtime_dir, asked) {
-            if pty::end_requested() {
-                let _ = fs::write(dir.join(STOP_MARKER), b"");
-                crate::ops::ask_to_quit(std::process::id());
-                asked = Some(std::time::Instant::now());
+        if asked.is_none() && mode != TerminalMode::Headless && pty::end_requested() {
+            let marker = runtime_dir.join(STOP_MARKER);
+            // When `Sam::stop` asked the app to quit.
+            let stop_asked = fs::metadata(&marker)
+                .and_then(|m| m.modified())
+                .ok()
+                .map(|t| t.elapsed().unwrap_or_default())
+                .and_then(|age| std::time::Instant::now().checked_sub(age));
+            if mode == TerminalMode::None {
+                if stop_asked.is_none() {
+                    let _ = fs::write(&marker, b"");
+                }
+                // Asked (again) only while the app still has time to save.
+                if stop_asked.is_none_or(|t| t.elapsed() < QUIT_GRACE) {
+                    crate::ops::ask_to_quit(std::process::id(), child.id());
+                }
+                asked = Some(stop_asked.unwrap_or_else(std::time::Instant::now));
+            } else {
+                asked = stop_asked;
             }
         }
         if asked.is_some_and(|t| t.elapsed() > QUIT_GRACE) {

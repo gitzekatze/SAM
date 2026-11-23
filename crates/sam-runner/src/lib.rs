@@ -16,6 +16,7 @@ pub mod dbus_proxy;
 pub mod diagnose;
 pub mod doctor;
 pub mod home_live;
+pub mod home_shared;
 pub mod kernel;
 pub mod launch;
 pub mod netns;

@@ -342,6 +342,16 @@ How these stay protected with the home writable:
   The watch costs nothing while nothing changes: it waits for Linux to
   report, without a timer.
   The same holds for `~/.ssh` and `~/.gnupg` when the app was not given them.
+- **What SAM watches is kept on disk** while the app runs, in
+  `~/.local/share/sam/home-watch/` (one record per launch, which no app can
+  see). A launch that starts while another watched app runs takes over
+  what that launch saw at its start, not what is there now: a link an app
+  planted meanwhile is never taken for yours and put back. If SAM's
+  launcher is ended before its last look (killed, or a crash), the next
+  time SAM looks at the running apps (the window, `sam-jail stop`, any
+  start) it takes that look and writes what it moved into that launch's
+  log. A record from before the computer was restarted is dropped without
+  that look.
 - **Key folders that are links** (dotfiles managed with `stow`, for example)
   are hidden where they point; **start files that are links** are locked
   where they point, and a replaced link is put back.
@@ -400,6 +410,15 @@ app started from the menu is asked to quit when you log out (SAM passes the
 request on, as `sam-jail stop` does) and has 10 seconds to save before its
 sandbox is ended; the start is recorded as closed and leaves nothing behind
 (`logging_out_closes_a_menu_started_app_properly`).
+
+Asking an app to quit (Close, `sam-jail stop`, logging out) reaches only
+the app's own processes inside its sandbox, chosen by where they run, not
+by their names. SAM's helpers are never asked: pasta ("This computer
+only") would quit at once and end the whole sandbox with it, with no time
+to save (`closing_a_this_computer_only_app_gives_it_time_to_save`). An app
+that does not quit within the 10 seconds is ended, and SAM still finishes
+its launch: the last look at the start places, the record and the log
+(`closing_an_app_that_ignores_it_still_finishes_its_launch`).
 
 An app started with its input from a pipe or a file (`cat data.json |
 sam-jail run jq .`, `< file`, a script), or with its output going to a

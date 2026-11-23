@@ -369,3 +369,197 @@ fn an_app_that_ignores_logout_is_ended_after_the_grace_time() {
         "{v}"
     );
 }
+
+/// An app made from `apprun`, added, and set with `sets`; its id. With
+/// `home`, SAM runs with that folder as the home.
+fn add_app(
+    root: &Path,
+    home: Option<&Path>,
+    name: &str,
+    apprun: &str,
+    sets: &[(&str, &str)],
+) -> String {
+    let run = |args: &[&str]| {
+        let mut c = sam(root);
+        if let Some(h) = home {
+            c.env("HOME", h);
+        }
+        let o = c.args(args).output().unwrap();
+        assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+        String::from_utf8_lossy(&o.stdout).into_owned()
+    };
+    let script = root.join(format!("{name}.AppRun"));
+    fs::write(&script, apprun).unwrap();
+    let img = root.join(format!("{name}-1.0-x86_64.AppImage"));
+    let (script, img) = (script.to_str().unwrap(), img.to_str().unwrap());
+    run(&[
+        "dev",
+        "make-fixture",
+        "--name",
+        name,
+        "--apprun",
+        script,
+        img,
+    ]);
+    run(&["add", img, "--no-launcher", "--accept"]);
+    let list = run(&["--json", "list"]);
+    let v: serde_json::Value = serde_json::from_str(list.lines().last().unwrap()).unwrap();
+    let id = v["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["name"] == name)
+        .and_then(|a| a["id"].as_str())
+        .unwrap()
+        .to_string();
+    for (key, value) in sets {
+        run(&["set", &id, key, value, "--yes"]);
+    }
+    id
+}
+
+/// Review 2026-11-23 F3: closing an app whose network is "This computer
+/// only" gives it its time to save, like any other. Before, pasta (which
+/// sits between SAM and Bubblewrap) was asked to quit too; it did at once,
+/// and Bubblewrap took the whole sandbox down with it.
+#[test]
+fn closing_a_this_computer_only_app_gives_it_time_to_save() {
+    if !bwrap_works() {
+        sam_runner::contracts::skip("bubblewrap cannot run here").unwrap_or_else(|e| panic!("{e}"));
+        return;
+    }
+    if !pasta_with_splice_only() {
+        sam_runner::contracts::not_here(
+            "no pasta with --splice-only, so SAM never starts \"This computer only\" here",
+        );
+        eprintln!("skipped: no pasta with --splice-only here");
+        return;
+    }
+    let _contracts = sam_runner::contracts::guard(&["bwrap-core", "pasta-splice-only"])
+        .unwrap_or_else(|e| panic!("{e}"));
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    let marker = format!("sam-local-saver-{}", std::process::id());
+    // Saving takes a moment, as it does for a real app.
+    let id = add_app(
+        root,
+        None,
+        "LocalSaver",
+        &format!(
+            "#!/bin/sh\nexec sh -c 'trap \"sleep 1; echo saved > \\\"$HOME/quit-seen\\\"; exit 0\" TERM; \
+             while :; do sleep 0.1; done' {marker}\n"
+        ),
+        &[("network.mode", "localhost")],
+    );
+    let mut launcher = sam(root)
+        .args(["run", &id])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    assert!(
+        wait_for(|| !with_marker(&marker).is_empty(), 30),
+        "the app did not start"
+    );
+    let stop = sam(root).args(["stop", &id]).output().unwrap();
+    assert!(
+        stop.status.success(),
+        "{}",
+        String::from_utf8_lossy(&stop.stderr)
+    );
+    launcher.wait().unwrap();
+    let home = root.join("data/homes").join(&id);
+    assert!(
+        home.join("quit-seen").exists(),
+        "the app was ended before it could save"
+    );
+}
+
+/// Review 2026-11-23 F2: closing an app that ignores the request to quit
+/// still finishes its launch. Before, SAM's runner began its own grace
+/// time when `stop` signalled it after 10 seconds, and `stop` killed it 3
+/// seconds later: no last look at the start places, no record, no end of
+/// the log. Here the app keeps writing a start file the whole time.
+#[test]
+fn closing_an_app_that_ignores_it_still_finishes_its_launch() {
+    if !bwrap_works() {
+        sam_runner::contracts::skip("bubblewrap cannot run here").unwrap_or_else(|e| panic!("{e}"));
+        return;
+    }
+    let _contracts =
+        sam_runner::contracts::guard(&["bwrap-core"]).unwrap_or_else(|e| panic!("{e}"));
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    let home = root.join("home/tester");
+    fs::create_dir_all(&home).unwrap();
+    let marker = format!("sam-stubborn-writer-{}", std::process::id());
+    let id = add_app(
+        root,
+        Some(&home),
+        "StubbornWriter",
+        &format!(
+            "#!/bin/sh\nexec sh -c 'trap \"\" TERM; \
+             while :; do echo pwned > \"$HOME/.bash_profile\"; sleep 0.05; done' {marker}\n"
+        ),
+        &[
+            ("filesystem.home", "true"),
+            ("filesystem.home_access", "rw"),
+        ],
+    );
+    let mut launcher = sam(root)
+        .env("HOME", &home)
+        .args(["run", &id])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    assert!(
+        wait_for(|| !with_marker(&marker).is_empty(), 30),
+        "the app did not start"
+    );
+    let asked = Instant::now();
+    let stop = sam(root)
+        .env("HOME", &home)
+        .args(["stop", &id])
+        .output()
+        .unwrap();
+    let took = asked.elapsed();
+    assert!(
+        stop.status.success(),
+        "{}",
+        String::from_utf8_lossy(&stop.stderr)
+    );
+    launcher.wait().unwrap();
+    assert!(
+        wait_for(|| with_marker(&marker).is_empty(), 10),
+        "the app outlived its launcher"
+    );
+    assert!(
+        took >= Duration::from_secs(9),
+        "the app got no time to save: closed after {took:?}"
+    );
+    assert!(
+        fs::symlink_metadata(home.join(".bash_profile")).is_err(),
+        "the start file stayed"
+    );
+    let info = sam(root)
+        .env("HOME", &home)
+        .args(["--json", "info", &id])
+        .output()
+        .unwrap();
+    let info = String::from_utf8_lossy(&info.stdout);
+    let v: serde_json::Value = serde_json::from_str(info.lines().last().unwrap()).unwrap();
+    let last = &v["data"]["entry"]["last_launch"];
+    assert_eq!(
+        last["summary"], "closed by SAM",
+        "the launch was not finished: {last}"
+    );
+    assert!(
+        last["moved_aside"].as_array().is_some_and(|m| m
+            .iter()
+            .any(|x| x.as_str().is_some_and(|s| s.contains(".bash_profile")))),
+        "the start file is not named: {last}"
+    );
+}
