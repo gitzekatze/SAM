@@ -213,7 +213,12 @@ rule: **no more than the app, no less than asked.**
     whole, as SAM or the person named them, never a path below one (which
     could lead through a link the app made in `/dev/shm`); one missing
     when the app starts is left out, so a device plugged in later never
-    reaches a room. A source on a drive that may be unmounted (any file
+    reaches a room. One present then is remembered by what it is (device
+    and inode, through links) and shown in a room only while it is still
+    that device; SAM's helper checks in the room that it is. A device
+    unplugged since, or another one now at its name (a keyboard at a game
+    controller's number), is left out and recorded. A source on a drive
+    that may be unmounted (any file
     system other than the root's and the home's, and anything under
     `/media`, `/mnt`, `/run/media`) is not held open, so the drive stays
     free to unmount: it is remembered by what it is (device and inode) and opened
