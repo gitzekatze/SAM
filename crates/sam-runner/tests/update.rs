@@ -90,6 +90,15 @@ fn updated_by_hand(
     root: &std::path::Path,
     kept_sha256: bool,
 ) -> (Sam, String, std::path::PathBuf, std::path::PathBuf) {
+    updated_by_hand_as(root, kept_sha256, "Tool-2.0-x86_64.AppImage")
+}
+
+/// [`updated_by_hand`] with the newer version named `newer`.
+fn updated_by_hand_as(
+    root: &std::path::Path,
+    kept_sha256: bool,
+    newer: &str,
+) -> (Sam, String, std::path::PathBuf, std::path::PathBuf) {
     let apps = root.join("Applications");
     fs::create_dir_all(&apps).unwrap();
     let v1 = apps.join("Tool-1.0-x86_64.AppImage");
@@ -112,7 +121,7 @@ fn updated_by_hand(
     fs::create_dir_all(&kept_dir).unwrap();
     let kept = kept_dir.join("Tool-1.0-x86_64.AppImage");
     fs::rename(&v1, &kept).unwrap();
-    let v2 = apps.join("Tool-2.0-x86_64.AppImage");
+    let v2 = apps.join(newer);
     let mut spec = FixtureSpec::hello("Tool");
     spec.comment = "Tool, version 2".into();
     build(&v2, &spec).unwrap();
@@ -223,4 +232,96 @@ fn going_back_keeps_a_copy_of_the_newer_version_no_other_app_can_change() {
     let e = sam.undo_update(&id).unwrap();
     assert_eq!(e.extraction.unwrap().source.sha256, unpacked);
     assert!(!e.content_changed_outside, "it is the version SAM checked");
+}
+
+/// The mode of `p` (permission bits only).
+fn mode(p: &std::path::Path) -> u32 {
+    use std::os::unix::fs::PermissionsExt;
+    fs::metadata(p).unwrap().permissions().mode() & 0o777
+}
+
+/// Going back keeps each file's own mode: neither the version put back
+/// nor the newer one kept in SAM's folder becomes writable for others
+/// (mutation run 2026-11-24: a mode of 0777 went unnoticed).
+#[test]
+fn going_back_keeps_the_files_modes() {
+    let tmp = tempfile::tempdir().unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    let (sam, id, v2, kept) = updated_by_hand(tmp.path(), true);
+    // Modes of their own, unlike SAM's fallback (0755) and each other.
+    fs::set_permissions(&kept, fs::Permissions::from_mode(0o700)).unwrap();
+    fs::set_permissions(&v2, fs::Permissions::from_mode(0o750)).unwrap();
+    let e = sam.undo_update(&id).unwrap();
+    assert_eq!(mode(&e.source_path), 0o700, "the version put back");
+    let newer = e.update_backup.unwrap().file;
+    assert_eq!(mode(&newer), 0o750, "the newer version kept");
+}
+
+/// A version SAM checked when it kept it, but changed since, asks for a
+/// review when SAM goes back to it (mutation run 2026-11-24: a recorded
+/// checksum alone could count as checked).
+#[test]
+fn going_back_to_a_kept_version_changed_since_needs_a_review() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (sam, id, _, kept) = updated_by_hand(tmp.path(), true);
+    let mut other = FixtureSpec::hello("Tool");
+    other.comment = "changed after SAM kept it".into();
+    let swapped = tmp.path().join("other.AppImage");
+    build(&swapped, &other).unwrap();
+    fs::write(&kept, fs::read(&swapped).unwrap()).unwrap();
+    let e = sam.undo_update(&id).unwrap();
+    assert!(
+        e.content_changed_outside,
+        "the changed version waits for a review"
+    );
+}
+
+/// When the earlier version cannot be put back (here: it cannot be read),
+/// going back fails and leaves both versions where they were: the newer
+/// one in place and the earlier one in SAM's backup folder, also when both
+/// have the same file name (mutation run 2026-11-24: losing either went
+/// unnoticed).
+#[test]
+fn a_failed_going_back_leaves_both_versions_where_they_were() {
+    use std::os::unix::fs::PermissionsExt;
+    for newer_name in ["Tool-2.0-x86_64.AppImage", "Tool-1.0-x86_64.AppImage"] {
+        let tmp = tempfile::tempdir().unwrap();
+        let (sam, id, v2, kept) = updated_by_hand_as(tmp.path(), true, newer_name);
+        let (newer, earlier) = (fs::read(&v2).unwrap(), fs::read(&kept).unwrap());
+        fs::set_permissions(&kept, fs::Permissions::from_mode(0o000)).unwrap();
+        let readable = fs::File::open(&kept).is_ok();
+        let result = sam.undo_update(&id);
+        let _ = fs::set_permissions(&kept, fs::Permissions::from_mode(0o644));
+        assert!(
+            !readable,
+            "mode 000 must lock the file: run as a normal user"
+        );
+        assert!(result.is_err(), "{newer_name}: going back failed");
+        assert_eq!(
+            fs::read(&v2).unwrap(),
+            newer,
+            "{newer_name}: the newer version"
+        );
+        assert_eq!(
+            fs::read(&kept).unwrap(),
+            earlier,
+            "{newer_name}: the earlier one"
+        );
+        let folder: Vec<_> = fs::read_dir(kept.parent().unwrap())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(
+            folder,
+            [kept.file_name().unwrap()],
+            "{newer_name}: nothing left over"
+        );
+        let e = sam.resolve(&id).unwrap();
+        assert_eq!(
+            e.source_path,
+            fs::canonicalize(&v2).unwrap(),
+            "{newer_name}"
+        );
+        assert_eq!(e.update_backup.unwrap().file, kept, "{newer_name}");
+    }
 }

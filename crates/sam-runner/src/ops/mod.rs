@@ -503,7 +503,7 @@ fn processes() -> Vec<Proc> {
     out
 }
 
-/// All processes below `root`, children before grandchildren.
+/// All processes below `root` (its children, theirs and so on).
 fn below(procs: &[Proc], root: u32) -> Vec<Proc> {
     let mut out: Vec<Proc> = Vec::new();
     let mut frontier = vec![root];
@@ -862,6 +862,42 @@ mod signature_tests {
             "never checked before"
         );
         assert_eq!(signature_unconfirmed(None, &sig(S::Unchecked, None)), None);
+    }
+}
+
+#[cfg(test)]
+mod below_tests {
+    use super::{below, Proc};
+
+    /// The processes below an app's sandbox are its children and their
+    /// children, and nothing else: quitting asks only those (mutation run
+    /// 2026-11-24: the walk could take every other process instead, so
+    /// stopping one app would have asked other sandboxes to quit).
+    #[test]
+    fn only_the_processes_below_a_sandbox_are_its_own() {
+        let p = |pid, ppid| Proc {
+            pid,
+            ppid,
+            start: 0,
+        };
+        // 10 is the sandbox: 11 and 12 its children, 13 a grandchild;
+        // 20 and 21 another sandbox, 1 the system.
+        let procs = [
+            p(1, 0),
+            p(10, 1),
+            p(11, 10),
+            p(12, 10),
+            p(13, 11),
+            p(20, 1),
+            p(21, 20),
+        ];
+        let mut got: Vec<u32> = below(&procs, 10).iter().map(|c| c.pid).collect();
+        got.sort_unstable();
+        assert_eq!(got, [11, 12, 13]);
+        assert!(below(&procs, 13).is_empty(), "no children, nothing below");
+        // Reused process numbers can make a loop: the walk still ends.
+        let looped = [p(40, 41), p(41, 40)];
+        assert_eq!(below(&looped, 40).len(), 2);
     }
 }
 
