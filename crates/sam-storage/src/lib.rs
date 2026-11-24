@@ -244,15 +244,30 @@ impl Registry {
     /// they were set: saving such a copy (a refresh, a profile change that
     /// overlapped an "unpack again") must not undo them (review L3). The
     /// same holds for a change made to the record outside SAM since it was
-    /// read. Only [`Registry::save_confirmed`] clears them.
+    /// read. A mark set between this read and the write below can still be
+    /// lost: this narrows the window to that moment (a record lock would
+    /// close it). Only [`Registry::save_confirmed`] clears the marks.
+    ///
+    /// When the record on disk cannot be read, nothing it says is known,
+    /// so nothing is dropped silently: a newer SAM's record is left
+    /// unchanged (an error), a read error stops the save, and over a
+    /// damaged or foreign record the copy is saved marked as changed
+    /// outside SAM, so the person looks first.
     pub fn save(&self, entry: &mut AppEntry) -> Result<()> {
         let p = self.paths.app_file(&entry.id);
         if valid_id(&entry.id) && p.exists() {
-            // A record that cannot be read (damaged, or of a newer format)
-            // has no marks to keep here; saving goes on as before.
-            if let Ok(on_disk) = self.load_file(&p) {
-                entry.changed_outside |= on_disk.changed_outside;
-                entry.content_changed_outside |= on_disk.content_changed_outside;
+            match self.load_file(&p) {
+                Ok(on_disk) => {
+                    entry.changed_outside |= on_disk.changed_outside;
+                    entry.content_changed_outside |= on_disk.content_changed_outside;
+                }
+                Err(e)
+                    if e.downcast_ref::<sam_core::format::NewerFormat>().is_some()
+                        || e.downcast_ref::<std::io::Error>().is_some() =>
+                {
+                    return Err(e);
+                }
+                Err(_) => entry.changed_outside = true,
             }
         }
         self.save_confirmed(entry)
@@ -937,6 +952,50 @@ mod tests {
         reg.save_confirmed(&mut seen).unwrap();
         let back = reg.get("appimage-x-3").unwrap().unwrap();
         assert!(!back.changed_outside && !back.content_changed_outside);
+    }
+
+    /// A save over a record SAM cannot read drops nothing silently: a
+    /// newer SAM's record stays unchanged and the save fails, and over a
+    /// damaged record or one with another id the copy is saved marked as
+    /// changed outside SAM (review of PR 120).
+    #[test]
+    fn a_save_over_an_unreadable_record_drops_nothing_silently() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = Paths::rooted(tmp.path());
+        let reg = Registry::new(&paths);
+        let mut e = AppEntry {
+            id: "appimage-x-4".into(),
+            name: "X".into(),
+            ..Default::default()
+        };
+        reg.save(&mut e).unwrap();
+        let copy = reg.get("appimage-x-4").unwrap().unwrap();
+        let file = paths.app_file("appimage-x-4");
+        let mut v: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&file).unwrap()).unwrap();
+        v["format"] = (sam_core::format::CURRENT + 1).into();
+        let newer = v.to_string();
+        fs::write(&file, &newer).unwrap();
+        assert!(
+            reg.save(&mut copy.clone()).is_err(),
+            "a newer record is not overwritten"
+        );
+        assert_eq!(
+            fs::read_to_string(&file).unwrap(),
+            newer,
+            "and stays unchanged"
+        );
+        for unreadable in ["{ damaged", r#"{"id": "appimage-other-1"}"#] {
+            fs::write(&file, unreadable).unwrap();
+            reg.save(&mut copy.clone()).unwrap();
+            assert!(
+                reg.get("appimage-x-4").unwrap().unwrap().changed_outside,
+                "over {unreadable:?}"
+            );
+            let mut seen = reg.get("appimage-x-4").unwrap().unwrap();
+            seen.changed_outside = false;
+            reg.save_confirmed(&mut seen).unwrap();
+        }
     }
 
     /// `update` changes the record as it is on disk now, so work that took a

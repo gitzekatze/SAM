@@ -791,25 +791,26 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-storage: App records, presets and logs on disk
 
-15 tests.
+16 tests.
 
 | Promise | Test |
 |---|---|
-| With more launches in one second than logs are kept, the newest log survives the pruning after its launch (regression: on a fast machine a pruned name was reused, sorted as the oldest and deleted at once). | [`the_newest_log_survives_pruning_within_one_second`](../crates/sam-storage/src/lib.rs#L783) |
-| A record SAM saved loads as unchanged; a record changed afterwards by something else is recognized as changed outside SAM, and stays marked through SAM's own saves until it is confirmed; a record without SAM's checksum (removed, or from before the checksum) is marked too. | [`records_changed_outside_sam_are_recognized`](../crates/sam-storage/src/lib.rs#L804) |
-| A copy of a record read before one of its "look at it first" marks was set, saved later, keeps the mark: a refresh or a profile change that overlapped an "unpack again" no longer undoes it (review L3). | [`a_save_of_an_older_copy_keeps_the_marks_set_meanwhile`](../crates/sam-storage/src/lib.rs#L891) |
-| `update` changes the record as it is on disk now, so work that took a while does not undo a change made meanwhile (audit U-M8: the update check turned a switch back on). | [`a_late_save_keeps_a_change_made_meanwhile`](../crates/sam-storage/src/lib.rs#L945) |
-| A preset is always stored inside the presets folder, whatever its name: names like "../../evil" or "/etc/x" (typed, or from an imported file) cannot place a file elsewhere. | [`preset_names_cannot_place_files_outside_the_presets_folder`](../crates/sam-storage/src/lib.rs#L985) |
-| ⟲ Regression (found in the test audit): a record changed outside SAM with an id like "../../.ssh" would have pointed the folders SAM deletes on removal (private home, logs) outside SAM's own folders. | [`records_with_unsafe_or_mismatched_ids_are_not_loaded`](../crates/sam-storage/src/lib.rs#L1014) |
-| The newest log is found even when two logs start within the same second. | [`the_newest_log_is_found_even_within_one_second`](../crates/sam-storage/src/lib.rs#L1044) |
-| Apps are found by name or ID, and an ambiguous name is refused. | [`apps_are_found_by_name_or_id_and_ambiguous_names_are_refused`](../crates/sam-storage/src/lib.rs#L1067) |
-| ⟲ Regression (audit U-L7): the name an AppImage gives itself came first, so one added later calling itself "firefox" was started for `sam-jail run firefox` instead of "Firefox Web Browser", with its own permissions. | [`a_name_an_app_chose_cannot_take_over_another_apps_query`](../crates/sam-storage/src/lib.rs#L1100) |
-| An AppImage chooses its own name: an app named `vlc` does not capture a command meant for "VLC media player", which `vlc` also names; the reference is refused as naming more than one app, and each app is still found by its ID or a reference only it matches (audit G-F7: the exact name won, so `sam-jail set vlc network.mode full` changed the hostile app without a word). | [`an_apps_own_name_never_captures_a_reference_to_another_app`](../crates/sam-storage/src/lib.rs#L1149) |
-| A damaged preset is moved aside once; a preset from a newer SAM is only skipped and stays where it is, for when SAM is updated (mutation run P14: moving every unreadable preset aside went unnoticed). | [`only_a_damaged_preset_is_moved_aside`](../crates/sam-storage/src/lib.rs#L1186) |
-| Presets in the older flat format still load. | [`presets_in_the_older_flat_format_still_load`](../crates/sam-storage/src/lib.rs#L1210) |
-| The risk word of a preset is worked out from its permissions, never taken from the file: a file placed in the presets folder that says "low" for full home and network is listed as Dangerous (review F6). | [`a_presets_risk_word_comes_from_its_permissions`](../crates/sam-storage/src/lib.rs#L1241) |
-| Importing a preset file never replaces a preset of the same name: it gets a free name instead, and the person's own stays as it was (review F9). | [`an_imported_preset_never_replaces_one_of_the_same_name`](../crates/sam-storage/src/lib.rs#L1270) |
-| A saved preset loads back unchanged, found by its name in any letter case. | [`a_saved_preset_loads_back_unchanged`](../crates/sam-storage/src/lib.rs#L1311) |
+| With more launches in one second than logs are kept, the newest log survives the pruning after its launch (regression: on a fast machine a pruned name was reused, sorted as the oldest and deleted at once). | [`the_newest_log_survives_pruning_within_one_second`](../crates/sam-storage/src/lib.rs#L798) |
+| A record SAM saved loads as unchanged; a record changed afterwards by something else is recognized as changed outside SAM, and stays marked through SAM's own saves until it is confirmed; a record without SAM's checksum (removed, or from before the checksum) is marked too. | [`records_changed_outside_sam_are_recognized`](../crates/sam-storage/src/lib.rs#L819) |
+| A copy of a record read before one of its "look at it first" marks was set, saved later, keeps the mark: a refresh or a profile change that overlapped an "unpack again" no longer undoes it (review L3). | [`a_save_of_an_older_copy_keeps_the_marks_set_meanwhile`](../crates/sam-storage/src/lib.rs#L906) |
+| A save over a record SAM cannot read drops nothing silently: a newer SAM's record stays unchanged and the save fails, and over a damaged record or one with another id the copy is saved marked as changed outside SAM (review of PR 120). | [`a_save_over_an_unreadable_record_drops_nothing_silently`](../crates/sam-storage/src/lib.rs#L961) |
+| `update` changes the record as it is on disk now, so work that took a while does not undo a change made meanwhile (audit U-M8: the update check turned a switch back on). | [`a_late_save_keeps_a_change_made_meanwhile`](../crates/sam-storage/src/lib.rs#L1004) |
+| A preset is always stored inside the presets folder, whatever its name: names like "../../evil" or "/etc/x" (typed, or from an imported file) cannot place a file elsewhere. | [`preset_names_cannot_place_files_outside_the_presets_folder`](../crates/sam-storage/src/lib.rs#L1044) |
+| ⟲ Regression (found in the test audit): a record changed outside SAM with an id like "../../.ssh" would have pointed the folders SAM deletes on removal (private home, logs) outside SAM's own folders. | [`records_with_unsafe_or_mismatched_ids_are_not_loaded`](../crates/sam-storage/src/lib.rs#L1073) |
+| The newest log is found even when two logs start within the same second. | [`the_newest_log_is_found_even_within_one_second`](../crates/sam-storage/src/lib.rs#L1103) |
+| Apps are found by name or ID, and an ambiguous name is refused. | [`apps_are_found_by_name_or_id_and_ambiguous_names_are_refused`](../crates/sam-storage/src/lib.rs#L1126) |
+| ⟲ Regression (audit U-L7): the name an AppImage gives itself came first, so one added later calling itself "firefox" was started for `sam-jail run firefox` instead of "Firefox Web Browser", with its own permissions. | [`a_name_an_app_chose_cannot_take_over_another_apps_query`](../crates/sam-storage/src/lib.rs#L1159) |
+| An AppImage chooses its own name: an app named `vlc` does not capture a command meant for "VLC media player", which `vlc` also names; the reference is refused as naming more than one app, and each app is still found by its ID or a reference only it matches (audit G-F7: the exact name won, so `sam-jail set vlc network.mode full` changed the hostile app without a word). | [`an_apps_own_name_never_captures_a_reference_to_another_app`](../crates/sam-storage/src/lib.rs#L1208) |
+| A damaged preset is moved aside once; a preset from a newer SAM is only skipped and stays where it is, for when SAM is updated (mutation run P14: moving every unreadable preset aside went unnoticed). | [`only_a_damaged_preset_is_moved_aside`](../crates/sam-storage/src/lib.rs#L1245) |
+| Presets in the older flat format still load. | [`presets_in_the_older_flat_format_still_load`](../crates/sam-storage/src/lib.rs#L1269) |
+| The risk word of a preset is worked out from its permissions, never taken from the file: a file placed in the presets folder that says "low" for full home and network is listed as Dangerous (review F6). | [`a_presets_risk_word_comes_from_its_permissions`](../crates/sam-storage/src/lib.rs#L1300) |
+| Importing a preset file never replaces a preset of the same name: it gets a free name instead, and the person's own stays as it was (review F9). | [`an_imported_preset_never_replaces_one_of_the_same_name`](../crates/sam-storage/src/lib.rs#L1329) |
+| A saved preset loads back unchanged, found by its name in any letter case. | [`a_saved_preset_loads_back_unchanged`](../crates/sam-storage/src/lib.rs#L1370) |
 
 ## sam-jail-cli: The command line and its JSON interface
 
@@ -985,4 +986,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 898 automated Rust tests plus 8 scripted checks.
+Total: 899 automated Rust tests plus 8 scripted checks.
