@@ -265,6 +265,7 @@ jobs:
           python3 scripts/flaky-check.py --self-test
           python3 scripts/skips.py --self-test
           python3 scripts/changelog-check.py --self-test
+          python3 scripts/pr-size.py --self-test
           python3 scripts/changes.py --self-test
 
       - name: Risk class of this change
@@ -276,6 +277,8 @@ jobs:
           python3 scripts/risk-class.py "origin/$BASE" | tee -a "$GITHUB_STEP_SUMMARY"
           # A behaviour change without a changelog line is flagged, never failed.
           python3 scripts/changelog-check.py "origin/$BASE"
+          # A pull request too large for one good review is flagged, never failed.
+          python3 scripts/pr-size.py "origin/$BASE"
 
 
       - name: Third-party licenses are up to date
