@@ -197,6 +197,9 @@ rule: **no more than the app, no less than asked.**
     them) come along, so a room never sees what the app does not.
   - Every source is opened once when the app starts and shown by that
     handle; nothing else is found by name later, whatever the app renames.
+    A source that exists but cannot be opened then (no descriptors left,
+    no permission, a link loop) is never left out quietly: no room is built
+    that start, and every refusal names the place.
     A path the request names below a source is opened without following
     any link (a link the app made could lead to a place it sees protected
     or hidden); such a request is refused. SAM's room helper then checks,
