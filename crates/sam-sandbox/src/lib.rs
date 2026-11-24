@@ -3492,6 +3492,11 @@ mod tests {
         ctx.permissions.sockets.custom = vec![listed_s.clone()];
         ctx.extra_binds = vec![(shared.clone(), "/run/x".into(), true)];
         assert!(!args_of(&ctx).iter().any(|a| a == &target_s));
+        // A read-only extra bind lets the app change nothing there: the
+        // link is followed (mutation run over PR 95).
+        ctx.extra_binds = vec![(shared.clone(), "/run/x".into(), false)];
+        let a = args_of(&ctx);
+        assert!(has_seq(&a, &["--bind-try", &target_s, &listed_s]), "{a:?}");
     }
 
     /// An extra socket whose link leads to a socket SAM calls dangerous
@@ -3811,6 +3816,48 @@ mod guard_tests {
         );
     }
 
+    /// Both walks follow links as Linux does: a way through 40 links ends
+    /// where they lead, one through 41 counts as a loop (reached nowhere,
+    /// and possibly made by the app), and the check of a listed socket
+    /// ends in time on a loop (the walk to a place has its loop test
+    /// above). The mutation run over PR 95 found the exact limit and the
+    /// count untested.
+    #[test]
+    fn a_way_through_forty_links_is_followed_and_one_through_more_is_not() {
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap();
+        fs::create_dir(home.join("end")).unwrap();
+        // `n` links in a row, the last one to `end`.
+        let chain = |name: &str, n: usize| {
+            for i in 0..n {
+                let to = match i + 1 == n {
+                    true => "end".to_string(),
+                    false => format!("{name}{}", i + 1),
+                };
+                std::os::unix::fs::symlink(to, home.join(format!("{name}{i}"))).unwrap();
+            }
+            home.join(format!("{name}0/f"))
+        };
+        let (forty, more) = (chain("a", 40), chain("b", 41));
+        std::os::unix::fs::symlink("loop", home.join("loop")).unwrap();
+        let v = Views::of(&ctx_for(&full_rw(), &home));
+        assert_eq!(v.reached_at(&forty), Some(home.join("end/f")));
+        assert_eq!(v.reached_at(&more), None, "41 links");
+        let nobody_changes = |_: &Path| false;
+        assert!(!link_the_app_can_change(&forty, &nobody_changes));
+        assert!(link_the_app_can_change(&more, &nobody_changes), "41 links");
+        let (tx, rx) = std::sync::mpsc::channel();
+        let looped = home.join("loop/f");
+        std::thread::spawn(move || {
+            let _ = tx.send(link_the_app_can_change(&looped, &|_: &Path| false));
+        });
+        assert_eq!(
+            rx.recv_timeout(std::time::Duration::from_secs(10)),
+            Ok(true),
+            "a loop counts as a link the app may have made, and ends"
+        );
+    }
+
     /// With the home kept behind a link (`/home/u` a link to `/data/u`),
     /// a link in it that names the home's real path (`~/.config` to
     /// `/data/u/dots/config`, as tools that resolve the folder they run in
@@ -3981,6 +4028,24 @@ mod guard_tests {
                 "{:?} was taken as a place",
                 String::from_utf8_lossy(bad)
             );
+        }
+        // A line of a known kind with parts missing or too many is a
+        // damaged record, not one to pass over (mutation run over PR 95).
+        let h = hex(b"/home/u");
+        let home = format!("home {h}");
+        let place = hex(b".bashrc");
+        let good = format!("absent {place}");
+        assert!(HomeWatch::from_lines([home.as_str(), good.as_str()].into_iter()).is_some());
+        for bad in [
+            "home".to_string(),
+            format!("home {h} {h}"),
+            "absent".to_string(),
+            format!("absent {place} {place}"),
+            format!("link {place}"),
+            format!("link {place} {place} {place}"),
+        ] {
+            let rec = [home.as_str(), bad.as_str()];
+            assert!(HomeWatch::from_lines(rec.into_iter()).is_none(), "{bad:?}");
         }
     }
 
