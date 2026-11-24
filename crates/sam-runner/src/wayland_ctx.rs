@@ -212,6 +212,29 @@ impl Dispatch<WpSecurityContextV1, ()> for State {
 mod tests {
     use super::*;
 
+    /// Security contexts count as supported only when a compositor says
+    /// so: not where there is no compositor, nor where one hangs up
+    /// without an answer (mutation run 2026-11-24: an answer of "always
+    /// supported" went unnoticed; doctor and the contract check would then
+    /// claim support wrongly).
+    #[test]
+    fn no_compositor_or_no_answer_means_no_security_context() {
+        let t = tempfile::tempdir().unwrap();
+        assert!(!supported(&t.path().join("wayland-0")), "no compositor");
+        let path = t.path().join("wayland-1");
+        let listener = std::os::unix::net::UnixListener::bind(&path).unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(listener.accept().is_ok());
+        });
+        assert!(!supported(&path), "a compositor that hangs up");
+        assert_eq!(
+            rx.recv_timeout(std::time::Duration::from_secs(30)),
+            Ok(true),
+            "SAM asked the compositor"
+        );
+    }
+
     /// A compositor that takes the connection and never answers ends the
     /// attempt with an error once the time is up, instead of holding up
     /// the app's start for ever (audit: no time limit). The test waits far
