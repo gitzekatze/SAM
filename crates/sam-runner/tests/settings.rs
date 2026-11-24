@@ -163,6 +163,30 @@ fn reset_to_recommendation_brings_back_the_recommended_settings() {
     let _ = Access::None;
 }
 
+/// "Look at it first" (the AppImage's content changed outside SAM) stays
+/// through a save of a copy read before it was set, and only the review
+/// step clears it (review L3).
+#[test]
+fn only_the_review_clears_look_at_it_first() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (sam, id) = named_app(tmp.path(), "Swapped");
+    let older = sam.resolve(&id).unwrap();
+    let mut marked = sam.registry().get(&id).unwrap().unwrap();
+    marked.content_changed_outside = true;
+    sam.registry().save(&mut marked).unwrap();
+    sam.registry().save(&mut older.clone()).unwrap();
+    assert!(
+        sam.resolve(&id).unwrap().content_changed_outside,
+        "still marked"
+    );
+    let reviewed = sam.mark_reviewed(&id).unwrap();
+    assert!(!reviewed.content_changed_outside);
+    assert!(
+        !sam.resolve(&id).unwrap().content_changed_outside,
+        "cleared"
+    );
+}
+
 /// A running app keeps its sandbox: removing it is refused until the app
 /// is closed (a launch holds a lock in the app's runtime folder).
 #[test]

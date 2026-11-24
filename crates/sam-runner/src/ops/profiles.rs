@@ -406,7 +406,7 @@ impl Sam {
         // The one place that confirms changes made outside SAM.
         e.changed_outside = false;
         e.content_changed_outside = false;
-        self.registry().save(&mut e)?;
+        self.registry().save_confirmed(&mut e)?;
         Ok(e)
     }
 

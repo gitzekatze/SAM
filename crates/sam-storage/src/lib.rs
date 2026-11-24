@@ -238,7 +238,30 @@ impl Registry {
         }
     }
 
+    /// Saves `entry`. The marks that ask the person to look at the app
+    /// first (`changed_outside`, `content_changed_outside`) stay set when
+    /// the record on disk has them, also when `entry` is a copy read before
+    /// they were set: saving such a copy (a refresh, a profile change that
+    /// overlapped an "unpack again") must not undo them (review L3). The
+    /// same holds for a change made to the record outside SAM since it was
+    /// read. Only [`Registry::save_confirmed`] clears them.
     pub fn save(&self, entry: &mut AppEntry) -> Result<()> {
+        let p = self.paths.app_file(&entry.id);
+        if valid_id(&entry.id) && p.exists() {
+            // A record that cannot be read (damaged, or of a newer format)
+            // has no marks to keep here; saving goes on as before.
+            if let Ok(on_disk) = self.load_file(&p) {
+                entry.changed_outside |= on_disk.changed_outside;
+                entry.content_changed_outside |= on_disk.content_changed_outside;
+            }
+        }
+        self.save_confirmed(entry)
+    }
+
+    /// Saves `entry` exactly as it is, marks included: the person has
+    /// looked at the app (`Sam::mark_reviewed`, the one caller outside
+    /// tests). Every other save goes through [`Registry::save`].
+    pub fn save_confirmed(&self, entry: &mut AppEntry) -> Result<()> {
         if !valid_id(&entry.id) {
             bail!(
                 "{}",
@@ -814,7 +837,7 @@ mod tests {
         // Only confirming clears it (`Sam::mark_reviewed` does this).
         let mut confirmed = reg.get("appimage-x-1").unwrap().unwrap();
         confirmed.changed_outside = false;
-        reg.save(&mut confirmed).unwrap();
+        reg.save_confirmed(&mut confirmed).unwrap();
         assert!(!reg.get("appimage-x-1").unwrap().unwrap().changed_outside);
 
         // Regression (audit U-L3): removing the checksum, or the checksum and
@@ -833,7 +856,7 @@ mod tests {
             );
             let mut ok = reg.get("appimage-x-1").unwrap().unwrap();
             ok.changed_outside = false;
-            reg.save(&mut ok).unwrap();
+            reg.save_confirmed(&mut ok).unwrap();
         }
         // Regression (review F4): lowering the format number with the old
         // checksum left in place (`0`, or no number, which reads as 0)
@@ -855,9 +878,65 @@ mod tests {
             );
             let mut ok = reg.get("appimage-x-1").unwrap().unwrap();
             ok.changed_outside = false;
-            reg.save(&mut ok).unwrap();
+            reg.save_confirmed(&mut ok).unwrap();
             assert!(!reg.get("appimage-x-1").unwrap().unwrap().changed_outside);
         }
+    }
+
+    /// A copy of a record read before one of its "look at it first" marks
+    /// was set, saved later, keeps the mark: a refresh or a profile change
+    /// that overlapped an "unpack again" no longer undoes it (review L3).
+    /// The same holds for a change made outside SAM after the copy was
+    /// read. Only a confirming save clears the marks.
+    #[test]
+    fn a_save_of_an_older_copy_keeps_the_marks_set_meanwhile() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = Paths::rooted(tmp.path());
+        let reg = Registry::new(&paths);
+        let mut e = AppEntry {
+            id: "appimage-x-3".into(),
+            name: "X".into(),
+            ..Default::default()
+        };
+        reg.save(&mut e).unwrap();
+        let older = reg.get("appimage-x-3").unwrap().unwrap();
+        // Unpacked again meanwhile: the new content waits for a look.
+        let mut marked = reg.get("appimage-x-3").unwrap().unwrap();
+        marked.content_changed_outside = true;
+        reg.save(&mut marked).unwrap();
+        let mut late = AppEntry {
+            name: "Y".into(),
+            ..older.clone()
+        };
+        reg.save(&mut late).unwrap();
+        let back = reg.get("appimage-x-3").unwrap().unwrap();
+        assert!(back.content_changed_outside, "the older copy kept the mark");
+        assert_eq!(back.name, "Y", "and its own change was saved");
+        reg.update("appimage-x-3", |e| e.content_changed_outside = false)
+            .unwrap();
+        assert!(
+            reg.get("appimage-x-3")
+                .unwrap()
+                .unwrap()
+                .content_changed_outside
+        );
+        // Changed outside SAM after the older copy was read.
+        let file = paths.app_file("appimage-x-3");
+        let mut v: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&file).unwrap()).unwrap();
+        v["profile"]["permissions"]["network"]["mode"] = "full".into();
+        fs::write(&file, v.to_string()).unwrap();
+        let mut late = older.clone();
+        reg.save(&mut late).unwrap();
+        let back = reg.get("appimage-x-3").unwrap().unwrap();
+        assert!(back.changed_outside, "a change outside SAM stays marked");
+        // Confirming clears both.
+        let mut seen = back;
+        seen.changed_outside = false;
+        seen.content_changed_outside = false;
+        reg.save_confirmed(&mut seen).unwrap();
+        let back = reg.get("appimage-x-3").unwrap().unwrap();
+        assert!(!back.changed_outside && !back.content_changed_outside);
     }
 
     /// `update` changes the record as it is on disk now, so work that took a
