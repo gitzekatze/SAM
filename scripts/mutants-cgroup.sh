@@ -20,7 +20,12 @@ case $mode in
 start)
     cg=/sys/fs/cgroup$(sed -n 's/^0:://p' /proc/self/cgroup)
     mkdir -p "$cg/main"
-    echo $$ > "$cg/main/cgroup.procs"
+    # Every process of this cgroup moves (a container's own first process
+    # too): a cgroup with processes of its own cannot give its children
+    # memory limits.
+    for p in $(cat "$cg/cgroup.procs"); do
+        echo "$p" > "$cg/main/cgroup.procs" 2>/dev/null || true
+    done
     echo +memory > "$cg/cgroup.subtree_control"
     SAM_MUTANTS_CGROUP=$cg
     export SAM_MUTANTS_CGROUP
