@@ -467,6 +467,19 @@ pub fn bus_pattern_matches(pattern: &str, name: &str) -> bool {
     }
 }
 
+/// Whether the always-blocked list `deny` blocks `name`: a bus name, a
+/// pattern of names, or a rule (`NAME=…`, judged by its name). Blocked when
+/// an entry covers it, or when it could reach a name an entry covers:
+/// xdg-dbus-proxy cannot make exceptions, so such a pattern is not used.
+pub fn bus_name_denied(deny: &[String], name: &str) -> bool {
+    let bare = |n: &str| n.split_once('=').map_or(n, |(n, _)| n).trim().to_string();
+    let name = bare(name);
+    deny.iter()
+        .map(|d| bare(d))
+        .filter(|d| !d.is_empty())
+        .any(|d| bus_pattern_matches(&d, &name) || bus_pattern_matches(&name, &d))
+}
+
 /// Wildcard allow entries that cover a name in `deny`: they cannot be
 /// enforced together, so the wildcard is not used.
 pub fn blocked_wildcards(b: &DbusBusPerms) -> Vec<String> {
@@ -917,10 +930,6 @@ impl PermissionSet {
     /// the enabled integrations and tray item names.
     pub fn effective_session_bus(&self) -> DbusBusPerms {
         let mut b = self.dbus.session.clone();
-        // xdg-dbus-proxy has no deny rules: a wildcard allow entry would let
-        // a blocked name through. Fail closed: drop such wildcards.
-        let blocked = blocked_wildcards(&b);
-        b.allow.retain(|a| !blocked.contains(a));
         let (talk, own) = self.integrations.bus_names();
         for n in talk {
             if !b.allow.iter().any(|x| x == n) {
@@ -959,6 +968,17 @@ impl PermissionSet {
             b.broadcasts
                 .push(format!("{PORTAL_NAME}=@/org/freedesktop/portal/*"));
         }
+        // The always-blocked names stay blocked whatever else allows them,
+        // a preset, an integration or another list: for talking, owning,
+        // calls and signals alike, and through a wildcard on either side
+        // (xdg-dbus-proxy has no deny rules, so a wildcard that could reach
+        // a blocked name is not used either).
+        let deny = b.deny.clone();
+        let open = |n: &String| !bus_name_denied(&deny, n);
+        b.allow.retain(open);
+        b.own.retain(open);
+        b.calls.retain(open);
+        b.broadcasts.retain(open);
         b
     }
 
@@ -1206,7 +1226,7 @@ pub fn permission_catalog() -> Vec<PermissionInfo> {
         perm!("dbus.session.broadcasts", "D-Bus", "Signals of services",
             "Signals of a service the app may receive although it may not talk to the service otherwise, written NAME=[SIGNAL][@PATH]. The app learns what the service announces.", Medium, advanced),
         perm!("dbus.session.deny", "D-Bus", "Always blocked names",
-            "Bus names that stay blocked even when a preset or another setting allows them.", Low, advanced),
+            "Bus names that stay blocked even when a preset or another setting allows them: for talking, owning, calls and signals; org.example.* blocks every name below it. The filter works per program: a program that also holds a name you allow can still be reached through that name.", Low, advanced),
         perm!("environment.passthrough", "Environment", "Passed-through variables",
             "Host environment variables made visible to the app.", Medium, advanced),
         perm!("environment.set", "Environment", "Environment variables",
@@ -1532,6 +1552,83 @@ mod tests {
             "org.kde.kdeconnect",
         ] {
             assert!(dangerous_bus_name(ok).is_none(), "{ok}");
+        }
+    }
+
+    /// The always-blocked names stay blocked whatever else allows them
+    /// (the setting's promise): an exact entry and a wildcard entry are
+    /// left out of talking, owning, calls and signals alike, also when a
+    /// wildcard elsewhere could reach them or an integration asks for
+    /// them; names nobody blocked stay. Found by the read of the mutation
+    /// run 2026-11-24: only talking was checked, and only exact names.
+    #[test]
+    fn always_blocked_names_stay_blocked_everywhere() {
+        let mut p = PermissionSet::strict_gui();
+        p.integrations.keyring = true;
+        let s = &mut p.dbus.session;
+        s.deny = vec![
+            "org.kde.KWin".into(),
+            "org.example.*".into(),
+            "org.freedesktop.secrets".into(),
+        ];
+        s.allow = vec![
+            "org.kde.KWin".into(),
+            "org.example.Foo".into(),
+            "org.kde.*".into(),
+            "org.ok.App".into(),
+        ];
+        s.own = vec!["org.example.Mine".into(), "org.ok.Mine".into()];
+        s.calls = vec![
+            "org.kde.KWin=org.kde.KWin.foo@/x".into(),
+            "org.ok.App=a.b@/c".into(),
+        ];
+        s.broadcasts = vec!["org.example.Bar=@/x".into(), "org.ok.App=@/y".into()];
+        let b = p.effective_session_bus();
+        let lists = [&b.allow, &b.own, &b.calls, &b.broadcasts];
+        for n in [
+            "org.kde.KWin",
+            "org.example.",
+            "org.kde.*",
+            "org.freedesktop.secrets",
+        ] {
+            assert!(
+                lists.iter().all(|l| l.iter().all(|e| !e.starts_with(n))),
+                "{n} got through: {b:?}"
+            );
+        }
+        assert!(b.allow.contains(&"org.ok.App".into()), "{:?}", b.allow);
+        assert!(
+            b.allow.contains(&"org.kde.kwalletd6".into()),
+            "the rest of the keyring"
+        );
+        assert!(b.own.contains(&"org.ok.Mine".into()), "{:?}", b.own);
+        assert!(
+            b.calls.contains(&"org.ok.App=a.b@/c".into()),
+            "{:?}",
+            b.calls
+        );
+        assert!(
+            b.broadcasts.contains(&"org.ok.App=@/y".into()),
+            "{:?}",
+            b.broadcasts
+        );
+        for (deny, name, blocked) in [
+            ("org.kde.KWin", "org.kde.KWin", true),
+            ("org.kde.*", "org.kde.KWin", true),
+            ("org.kde.KWin", "org.kde.*", true),
+            ("org.kde.*", "org.*", true),
+            ("org.kde.KWin", "org.kde.KWin=a.b@/c", true),
+            ("org.kde.KWin", "org.kde.KWinX", false),
+            (" org.kde.KWin ", "org.kde.KWin", true),
+            ("org.kde.KWin=org.kde.KWin.foo", "org.kde.KWin", true),
+            ("", "org.kde.KWin", false),
+            ("org.kde.*", "org.kdex.App", false),
+        ] {
+            assert_eq!(
+                bus_name_denied(&[deny.into()], name),
+                blocked,
+                "{deny} / {name}"
+            );
         }
     }
 
