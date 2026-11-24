@@ -60,15 +60,16 @@ fn filter_args(
     may_own: &dyn Fn(&str) -> bool,
 ) -> (Vec<String>, Vec<(String, String)>) {
     let mut args = vec!["--filter".to_string()];
-    for name in &perms.allow {
-        if perms.deny.iter().any(|d| d == name) {
-            continue;
-        }
+    // The always-blocked names, checked again here for every list (the
+    // start's rules come from `effective_session_bus`, which leaves them
+    // out already).
+    let denied = |n: &str| sam_core::permissions::bus_name_denied(&perms.deny, n);
+    for name in perms.allow.iter().filter(|n| !denied(n)) {
         args.push(format!("--talk={name}"));
     }
     let tray_names = perms.tray_own_names();
     let mut refused = Vec::new();
-    for name in &perms.own {
+    for name in perms.own.iter().filter(|n| !denied(n)) {
         // The tray's item names are SAM's own choice, never refused.
         let tray = tray_names.contains(name);
         if let Some(why) = (!tray)
@@ -89,15 +90,16 @@ fn filter_args(
                     .filter(|n| {
                         sam_core::permissions::refuse_own_name(n, activatable).is_none()
                             && may_own(n)
+                            && !denied(n)
                     })
                     .map(|n| format!("--own={n}")),
             );
         }
     }
-    for rule in &perms.calls {
+    for rule in perms.calls.iter().filter(|r| !denied(r)) {
         args.push(format!("--call={rule}"));
     }
-    for rule in &perms.broadcasts {
+    for rule in perms.broadcasts.iter().filter(|r| !denied(r)) {
         args.push(format!("--broadcast={rule}"));
     }
     // Let the app own names under its own id.
@@ -236,6 +238,31 @@ impl Drop for DbusProxy {
 #[cfg(test)]
 mod tests {
     use sam_core::permissions::DbusPerms;
+
+    /// The proxy's filter never names an always-blocked name, in any of
+    /// its rules, also when the rules it is given still hold one: the
+    /// second line behind `effective_session_bus`.
+    #[test]
+    fn the_filter_never_names_an_always_blocked_name() {
+        let mut p = DbusPerms::default().session;
+        p.deny = vec!["org.x.*".into(), "org.ok.Mine-3".into()];
+        p.allow = vec!["org.x.A".into(), "org.ok.A".into()];
+        p.own = vec!["org.x.Mine".into(), "org.ok.Mine".into()];
+        p.calls = vec!["org.x.A=a.b@/c".into()];
+        p.broadcasts = vec!["org.x.A=@/d".into()];
+        let (args, _) = super::filter_args(&p, &Default::default(), "appimage-x", &|_| true);
+        assert!(!args.iter().any(|a| a.contains("org.x.")), "{args:?}");
+        assert!(args.contains(&"--talk=org.ok.A".to_string()), "{args:?}");
+        // Its numbered instance names too (`org.ok.Mine-2` to `-16`).
+        assert!(
+            !args.contains(&"--own=org.ok.Mine-3".to_string()),
+            "{args:?}"
+        );
+        assert!(
+            args.contains(&"--own=org.ok.Mine-4".to_string()),
+            "{args:?}"
+        );
+    }
 
     /// Only the proxy's "wants to own" lines name a name to learn, and
     /// only a well-formed one (what the app printed never reaches this).
