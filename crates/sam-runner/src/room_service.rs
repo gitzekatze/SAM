@@ -1450,6 +1450,13 @@ fn spawn_room(
             // only; the room keeps the launcher's own limit.
             let mut lim: libc::rlimit = std::mem::zeroed();
             let have = libc::getrlimit(libc::RLIMIT_NOFILE, &mut lim) == 0;
+            // The highest number the launcher's own descriptors can have
+            // (below its soft limit), for kernels without close_range.
+            let last: u32 = if have {
+                u32::try_from(lim.rlim_cur.saturating_sub(1)).unwrap_or(u32::MAX)
+            } else {
+                65535
+            };
             if have {
                 let raised = libc::rlimit {
                     rlim_cur: lim.rlim_max,
@@ -1512,21 +1519,11 @@ fn spawn_room(
             let mut from: RawFd = 3;
             for t in &targets {
                 if *t > from {
-                    libc::syscall(
-                        libc::SYS_close_range,
-                        from as u32,
-                        (*t - 1) as u32,
-                        CLOSE_RANGE_CLOEXEC,
-                    );
+                    cloexec_range(from as u32, (*t - 1) as u32, last);
                 }
                 from = from.max(*t + 1);
             }
-            libc::syscall(
-                libc::SYS_close_range,
-                from as u32,
-                u32::MAX,
-                CLOSE_RANGE_CLOEXEC,
-            );
+            cloexec_range(from as u32, u32::MAX, last);
             libc::execve(path.as_ptr(), argv_ptrs.as_ptr(), envp.as_ptr());
             fail(err)
         }
@@ -1557,6 +1554,39 @@ fn spawn_room(
 }
 
 const CLOSE_RANGE_CLOEXEC: u32 = 4;
+
+/// Marks the descriptors `from..=to` close-on-exec, in a child between
+/// fork and exec (async-signal-safe calls only): all at once with
+/// close_range (Linux 5.11), else one by one up to `last`, so on an older
+/// kernel nothing of the launcher reaches a room either.
+///
+/// # Safety
+/// Only sets flags on this process's own descriptor numbers.
+unsafe fn cloexec_range(from: u32, to: u32, last: u32) {
+    if close_range_cloexec(from, to) == 0 {
+        return;
+    }
+    for fd in from..=to.min(last) {
+        let Ok(fd) = RawFd::try_from(fd) else { break };
+        // SAFETY: as above; a number not open gives EBADF, ignored.
+        unsafe { libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC) };
+    }
+}
+
+/// close_range with CLOSE_RANGE_CLOEXEC; 0 when it worked.
+fn close_range_cloexec(from: u32, to: u32) -> libc::c_long {
+    #[cfg(test)]
+    if NO_CLOSE_RANGE_FOR_TESTS.load(Ordering::SeqCst) {
+        return -1;
+    }
+    // SAFETY: close_range with CLOSE_RANGE_CLOEXEC only sets a flag on
+    // this process's own descriptors; it closes nothing.
+    unsafe { libc::syscall(libc::SYS_close_range, from, to, CLOSE_RANGE_CLOEXEC) }
+}
+
+/// Tests only: close_range fails, as on a kernel before 5.11.
+#[cfg(test)]
+static NO_CLOSE_RANGE_FOR_TESTS: AtomicBool = AtomicBool::new(false);
 
 /// The room's rules for SAM's room helper: `key=value` entries separated by
 /// NUL bytes (see room-exec/main.rs). Landlock: the app's rules plus the
@@ -2766,6 +2796,26 @@ mod process_tests {
     /// program starts.
     #[test]
     fn a_room_gets_exactly_its_connections_and_none_overwrites_another() {
+        exactly_its_connections();
+    }
+
+    /// The same on a kernel before 5.11, which has no close_range: each
+    /// descriptor of the launcher is then marked on its own, and none
+    /// reaches the room. Runs on its own: it makes close_range fail in
+    /// this process.
+    #[test]
+    fn without_close_range_a_room_still_gets_exactly_its_connections() {
+        if !alone("without_close_range_a_room_still_gets_exactly_its_connections") {
+            return;
+        }
+        NO_CLOSE_RANGE_FOR_TESTS.store(true, Ordering::SeqCst);
+        exactly_its_connections();
+    }
+
+    /// Starts a room with three connections, a launcher descriptor that
+    /// is not close-on-exec at a number between them, and checks that the
+    /// room's program has exactly its connections.
+    fn exactly_its_connections() {
         let null = dev_null();
         // A descriptor of the launcher that a started program would keep
         // (not close-on-exec), at a number between the room's.
