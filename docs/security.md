@@ -221,16 +221,20 @@ rule: **no more than the app, no less than asked.**
     that may be unmounted (any file
     system other than the root's and the home's, and anything under
     `/media`, `/mnt`, `/run/media`) is not held open, so the drive stays
-    free to unmount: it is remembered by what it is and opened again for a
-    room, which is refused unless it is still the same. Device and inode
+    free to unmount: it is remembered by what it is and where it really is
+    (every link resolved at the start), and opened again there for a room
+    without following any link (one the app planted since, at a folder
+    above it that it can write, is never followed by the launcher), which
+    is refused unless it is still the same. Device and inode
     alone repeat (another stick at the same port has the same device number,
     and its top folder the same inode), so the drive's own identity is
     compared too: the mount's unique ID on Linux 6.8 and later, before that
     the file system's ID from `/dev/disk/by-uuid` (written when it was
     formatted). A drive with neither is compared by device and inode alone
-    (see Known limitations). A drive unmounted and mounted again, also by
-    an automounter after its idle time, is a new mount: rooms are refused
-    its places until the app starts again.
+    (see Known limitations). On Linux 6.8 and later, a drive unmounted and
+    mounted again, also by an automounter after its idle time, is a new
+    mount: rooms are refused its places until the app starts again (before
+    6.8 the same drive, with its same file-system ID, is shown again).
   - Writable only where the app's place is writable (the app's own
     `--remount-ro` arguments count); devices only the app's, and working
     only where the request asked for working devices (the app's `/dev`
@@ -1106,6 +1110,10 @@ was easily misread.
   stick, or sticks written from the same image, share theirs. Such a drive
   mounted at the same place with the same device and inode numbers could
   be shown in a room on an older kernel.
+- **Places on removable drives need Linux 5.6 or later in rooms.** Room
+  service opens such a place again for each room with `openat2`, which
+  refuses links; an older kernel (or a container whose syscall filter
+  blocks `openat2`) refuses every room that shows such a place.
 - **D-Bus filtering needs `xdg-dbus-proxy`.** Without it, an app with
   filtered D-Bus gets no session bus at all.
 - **Abstract sockets** are blocked only on kernel 6.12+. On older kernels,
