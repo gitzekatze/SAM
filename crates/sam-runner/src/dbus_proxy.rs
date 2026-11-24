@@ -337,6 +337,26 @@ mod tests {
             ["org.freedesktop.StatusNotifierItem-evil"],
             "only names someone asked for are reported"
         );
+        // Instance names are added only to the app's own names, never to
+        // SAM's tray names (mutation run 2026-11-24).
+        assert!(
+            tray.iter().all(|t| !owns(&format!("{t}-2"))),
+            "no instances of tray names: {args:?}"
+        );
+    }
+
+    /// A name on the always-blocked list is not talked to although it is
+    /// allowed, and blocking one name leaves the other allowed names alone
+    /// (mutation run 2026-11-24: the comparison could be turned around
+    /// unnoticed).
+    #[test]
+    fn an_always_blocked_name_is_not_talked_to_and_others_stay_allowed() {
+        let mut p = DbusPerms::default().session;
+        p.allow = vec!["org.a.B".into(), "org.c.D".into()];
+        p.deny = vec!["org.x.Y".into(), "org.a.B".into()];
+        let (args, _) = super::filter_args(&p, &Default::default(), "appimage-x", &|_| true);
+        assert!(!args.contains(&"--talk=org.a.B".to_string()), "{args:?}");
+        assert!(args.contains(&"--talk=org.c.D".to_string()), "{args:?}");
     }
 }
 
