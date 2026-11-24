@@ -814,7 +814,7 @@ fn plan_at_start_with(
                         // follows them): a room opens it again there and
                         // follows no link. Should that differ from `fd`,
                         // the identity check refuses every room.
-                        path: std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf()),
+                        path: std::fs::canonicalize(p).map_err(failed)?,
                         dev,
                         ino,
                         drive: drive_id(&fd, dev),

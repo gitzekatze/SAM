@@ -231,9 +231,10 @@ rule: **no more than the app, no less than asked.**
     compared too: the mount's unique ID on Linux 6.8 and later, before that
     the file system's ID from `/dev/disk/by-uuid` (written when it was
     formatted). A drive with neither is compared by device and inode alone
-    (see Known limitations). A drive unmounted and mounted again, also by
-    an automounter after its idle time, is a new mount: rooms are refused
-    its places until the app starts again.
+    (see Known limitations). On Linux 6.8 and later, a drive unmounted and
+    mounted again, also by an automounter after its idle time, is a new
+    mount: rooms are refused its places until the app starts again (before
+    6.8 the same drive, with its same file-system ID, is shown again).
   - Writable only where the app's place is writable (the app's own
     `--remount-ro` arguments count); devices only the app's, and working
     only where the request asked for working devices (the app's `/dev`
@@ -1109,6 +1110,10 @@ was easily misread.
   stick, or sticks written from the same image, share theirs. Such a drive
   mounted at the same place with the same device and inode numbers could
   be shown in a room on an older kernel.
+- **Places on removable drives need Linux 5.6 or later in rooms.** Room
+  service opens such a place again for each room with `openat2`, which
+  refuses links; an older kernel (or a container whose syscall filter
+  blocks `openat2`) refuses every room that shows such a place.
 - **D-Bus filtering needs `xdg-dbus-proxy`.** Without it, an app with
   filtered D-Bus gets no session bus at all.
 - **Abstract sockets** are blocked only on kernel 6.12+. On older kernels,
