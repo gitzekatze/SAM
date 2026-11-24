@@ -428,6 +428,47 @@ impl Drop for Held<'_> {
     }
 }
 
+/// One counted connection (at most MAX_CONNECTIONS at once), given back
+/// when it is dropped: when its thread ends, also by a fault (a panic), or
+/// with the thread that never started.
+struct Counted(Arc<State>);
+
+impl Drop for Counted {
+    fn drop(&mut self) {
+        self.0.connections.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+/// A room slot (at most MAX_ROOMS rooms at once), given back when it is
+/// dropped: when the room is done, also by a fault (a panic) in the
+/// request. A fault after the room's Bubblewrap has started gives the slot
+/// back while that room may still run until the app's start ends (the
+/// room itself is ended at the stop); a guard for the running room is
+/// still to come.
+struct Slot<'a>(&'a State);
+
+impl Drop for Slot<'_> {
+    fn drop(&mut self) {
+        let mut used = self.0.slots.lock().unwrap_or_else(|e| e.into_inner());
+        *used = used.saturating_sub(1);
+        drop(used);
+        self.0.freed.notify_one();
+    }
+}
+
+/// Tests only: a request for this program meets a fault (a panic) just
+/// before its room is built, as an unforeseen bug would.
+#[cfg(test)]
+const FAULT_FOR_TESTS: &str = "sam-test-fault";
+
+#[cfg(test)]
+#[allow(clippy::panic)]
+fn fault_for_tests(command: &[String]) {
+    if command.first().is_some_and(|c| c == FAULT_FOR_TESTS) {
+        panic!("a fault before the room is built (test)");
+    }
+}
+
 /// Room service for one start.
 pub struct RoomService {
     pub socket: PathBuf,
@@ -535,16 +576,13 @@ impl RoomService {
                                 ));
                                 continue; // closed
                             }
-                            let (st, sv) = (state.clone(), served.clone());
-                            let started = std::thread::Builder::new()
+                            // Given back when the thread ends, also by a
+                            // fault, or with the thread that never started.
+                            let counted = Counted(state.clone());
+                            let sv = served.clone();
+                            let _ = std::thread::Builder::new()
                                 .name("sam-room".into())
-                                .spawn(move || {
-                                    serve_one(stream, &st, &sv);
-                                    st.connections.fetch_sub(1, Ordering::SeqCst);
-                                });
-                            if started.is_err() {
-                                state.connections.fetch_sub(1, Ordering::SeqCst);
-                            }
+                                .spawn(move || serve_one(stream, &counted.0, &sv));
                         }
                         Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                             std::thread::sleep(Duration::from_millis(20));
@@ -821,14 +859,14 @@ fn serve_one(mut stream: UnixStream, state: &State, served: &Served) {
         Err(why) => return refuse(&mut stream, &program, &why),
     };
     // A room slot (waits while 16 rooms run).
-    {
-        let Ok(mut used) = state.slots.lock() else {
-            return;
-        };
+    let slot = {
+        // A count stays a count after a fault elsewhere (as `Slot` gives
+        // it back): never every later request closed without an answer.
+        let mut used = state.slots.lock().unwrap_or_else(|e| e.into_inner());
         while *used >= MAX_ROOMS && !state.stop.load(Ordering::SeqCst) {
             used = match state.freed.wait_timeout(used, Duration::from_millis(200)) {
                 Ok((u, _)) => u,
-                Err(_) => return,
+                Err(e) => e.into_inner().0,
             };
         }
         if state.stop.load(Ordering::SeqCst) {
@@ -840,12 +878,12 @@ fn serve_one(mut stream: UnixStream, state: &State, served: &Served) {
             );
         }
         *used += 1;
-    }
+        Slot(state)
+    };
+    #[cfg(test)]
+    fault_for_tests(&req.command);
     let result = run_room(&mut stream, state, served, &req, fds, held, room, &program);
-    if let Ok(mut used) = state.slots.lock() {
-        *used -= 1;
-    }
-    state.freed.notify_one();
+    drop(slot);
     match result {
         Ok(code) => answer(&mut stream, &serde_json::json!({ "exit": code })),
         Err(why) => refuse(&mut stream, &program, &format!("{why:#}")),
@@ -3971,6 +4009,44 @@ exec "$@"
                 assert!(UnixStream::connect(&service.socket).is_ok());
             }
         }
+    }
+
+    /// A fault (a panic) in a request never keeps its connection or its
+    /// room slot counted: after more faults than rooms may run at
+    /// once, every count is back to nothing, a later request is served, and
+    /// the stop reports no request as unfinished.
+    #[test]
+    fn a_fault_in_a_request_gives_back_its_slot_and_connection() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (bwrap, _) = fake_bwrap(tmp.path());
+        let mut service = service_in(tmp.path());
+        service.serve(context(tmp.path(), &bwrap, &[]));
+        for k in 0..=MAX_ROOMS {
+            let a = ask_service(&service.socket, &request(&[], &[FAULT_FOR_TESTS]));
+            assert!(a.is_null(), "fault {k}: {a}");
+        }
+        let counts = |st: &State| {
+            (
+                st.connections.load(Ordering::SeqCst),
+                *st.slots.lock().unwrap(),
+            )
+        };
+        let end = Instant::now() + Duration::from_secs(10);
+        while counts(&service.state) != (0, 0) {
+            assert!(
+                Instant::now() < end,
+                "(connections, slots) still counted: {:?}",
+                counts(&service.state)
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let a = ask_service(&service.socket, &request(&[], &["/bin/sh", "-c", "exit 7"]));
+        assert_eq!(a["exit"], 7, "{a}");
+        let lines = service.stop();
+        assert!(
+            !lines.iter().any(|l| l.contains("still unfinished")),
+            "{lines:?}"
+        );
     }
 
     /// A service that is dropped without a stop ends like one: it stops
