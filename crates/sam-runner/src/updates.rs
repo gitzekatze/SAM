@@ -849,6 +849,56 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&victim).unwrap(), "keep");
     }
 
+    /// A failed download says why, in words, also after up to 64 KiB of
+    /// other error output (2000 bytes here, more than a cut to 1 KiB
+    /// would keep): curl's last line is kept (mutation run 2026-11-24:
+    /// losing it went unnoticed, leaving "download failed:" with no
+    /// reason).
+    #[test]
+    fn a_failed_download_says_why() {
+        let t = tempfile::tempdir().unwrap();
+        let dest = t.path().join("new.AppImage");
+        for noise in [0, 2000] {
+            let mut cmd = Command::new("sh");
+            cmd.args([
+                "-c",
+                "head -c \"$1\" /dev/zero | tr '\\0' x >&2; echo >&2; \
+                 echo 'curl: (22) The requested URL returned error: 404' >&2; exit 22",
+                "sh",
+                &noise.to_string(),
+            ]);
+            let err = save_capped(cmd, &dest, 100).unwrap_err().to_string();
+            assert!(
+                err.contains("nothing published at that address"),
+                "{noise}: {err}"
+            );
+        }
+    }
+
+    /// A mapping of the installed version is undone when dropped: the
+    /// window runs for days and maps a whole AppImage at every update
+    /// (mutation run 2026-11-24).
+    #[test]
+    fn a_mapped_file_is_unmapped_when_dropped() {
+        use std::os::unix::ffi::OsStrExt;
+        let t = tempfile::tempdir().unwrap();
+        let f = std::fs::canonicalize(t.path())
+            .unwrap()
+            .join("installed.AppImage");
+        std::fs::write(&f, vec![7u8; 64 * 1024]).unwrap();
+        let mapped = || {
+            std::fs::read_to_string("/proc/self/maps")
+                .unwrap()
+                .lines()
+                .any(|l| l.as_bytes().ends_with(f.as_os_str().as_bytes()))
+        };
+        let m = Mapped::open(&f).unwrap();
+        assert_eq!(m.bytes(), &[7u8; 64 * 1024][..]);
+        assert!(mapped(), "mapped while open");
+        drop(m);
+        assert!(!mapped(), "unmapped when dropped");
+    }
+
     /// Regression (review 2026-11-23, U-7): an answer longer than SAM
     /// reads was cut off and handed on as if complete, so a GitHub release
     /// description over 512 KiB failed as "GitHub's answer" every time.
