@@ -500,6 +500,7 @@ tests = [
   "every_room_ends_with_the_start_whatever_other_rooms_did_before",
   "a_signal_to_the_rooms_watcher_never_ends_the_room",
   "a_source_on_a_removable_drive_is_remembered_not_held",
+  "a_link_planted_above_a_remembered_place_is_never_followed",
   "a_device_place_is_shown_only_while_it_is_the_one_the_app_was_given",
   "places_a_later_mount_of_the_room_covers_are_not_checked_in_the_room",
   "a_device_place_that_cannot_be_checked_at_the_start_refuses_every_room",

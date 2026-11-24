@@ -762,9 +762,13 @@ fn may_be_unmounted(p: &Path, dev: u64, fixed: &[u64]) -> bool {
 pub(crate) enum SourceHandle {
     /// Held open (O_PATH): shown by this handle, whatever is renamed.
     Open(OwnedFd),
-    /// On a drive that may be unmounted: what it was (device and inode,
-    /// and the drive's own identity), opened again for a room and refused
-    /// unless it is still the same.
+    /// On a drive that may be unmounted: where it really was (its path
+    /// with every link resolved at the start) and what it was (device and
+    /// inode, and the drive's own identity), opened again for a room
+    /// without following any link and refused unless it is still the same.
+    /// A link planted since (where the app can write a folder above it)
+    /// is never followed: the launcher, outside the sandbox, never looks
+    /// at a place of the computer the app names that way.
     Known {
         path: PathBuf,
         dev: u64,
@@ -805,7 +809,12 @@ fn plan_at_start_with(
                 let (dev, ino) = identity(&fd).map_err(failed)?;
                 let handle = if removable(p, dev) {
                     SourceHandle::Known {
-                        path: p.to_path_buf(),
+                        // Where it really is, every link resolved now
+                        // (before the app runs, so as its Bubblewrap
+                        // follows them): a room opens it again there and
+                        // follows no link. Should that differ from `fd`,
+                        // the identity check refuses every room.
+                        path: std::fs::canonicalize(p).map_err(failed)?,
                         dev,
                         ino,
                         drive: drive_id(&fd, dev),
@@ -1751,7 +1760,7 @@ fn open_source(source: &Source, sources: &[Option<SourceHandle>]) -> std::io::Re
             ino,
             drive,
         } => {
-            let fd = open_path(path)?;
+            let fd = open_following_no_link(path)?;
             if identity(&fd)? != (*dev, *ino) || drive_id(&fd, *dev) != *drive {
                 return Err(std::io::Error::other(
                     "it is no longer what the app was shown when it started",
@@ -1906,19 +1915,42 @@ struct OpenHow {
 }
 
 fn openat2_beneath(dir: &OwnedFd, rel: &Path) -> std::io::Result<OwnedFd> {
+    openat2_path(
+        dir.as_raw_fd(),
+        rel,
+        RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS | RESOLVE_NO_MAGICLINKS,
+    )
+}
+
+/// Opens the absolute path `p` (O_PATH) without following any link in it,
+/// also not in its last part: a link anywhere refuses (ELOOP).
+fn open_following_no_link(p: &Path) -> std::io::Result<OwnedFd> {
+    if !p.is_absolute() {
+        return Err(std::io::Error::from(std::io::ErrorKind::InvalidInput));
+    }
+    openat2_path(
+        libc::AT_FDCWD,
+        p,
+        RESOLVE_NO_SYMLINKS | RESOLVE_NO_MAGICLINKS,
+    )
+}
+
+/// `openat2` of `path` from `dir` (O_PATH, close-on-exec) with `resolve`.
+fn openat2_path(dir: RawFd, path: &Path, resolve: u64) -> std::io::Result<OwnedFd> {
     use std::os::unix::ffi::OsStrExt;
-    let c = std::ffi::CString::new(rel.as_os_str().as_bytes())
+    let c = std::ffi::CString::new(path.as_os_str().as_bytes())
         .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidInput))?;
     let how = OpenHow {
         flags: (libc::O_PATH | libc::O_CLOEXEC) as u64,
         mode: 0,
-        resolve: RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS | RESOLVE_NO_MAGICLINKS,
+        resolve,
     };
-    // SAFETY: openat2 with a valid descriptor, C string and struct size.
+    // SAFETY: openat2 with a valid descriptor (or AT_FDCWD), C string and
+    // struct size.
     let fd = unsafe {
         libc::syscall(
             libc::SYS_openat2,
-            dir.as_raw_fd(),
+            dir,
             c.as_ptr(),
             &how as *const OpenHow,
             std::mem::size_of::<OpenHow>(),
@@ -3567,6 +3599,59 @@ mod tests {
             e.to_string().contains("no longer what the app was shown"),
             "{e}"
         );
+    }
+
+    /// A place on a drive that may be unmounted is opened again for a room
+    /// where it really was at the start, following no link. A link the app
+    /// plants since, at a folder above the place that it can write, is
+    /// never followed by the launcher (outside the sandbox): the refusal is
+    /// the same whether the link leads to something of the computer or to
+    /// nothing, so it tells the app nothing about places it cannot see. A
+    /// link that was there at the start (`/media` to `/run/media` on some
+    /// systems) still leads to the place.
+    #[test]
+    fn a_link_planted_above_a_remembered_place_is_never_followed() {
+        use std::os::unix::fs::symlink;
+        let tmp = tempfile::tempdir().unwrap();
+        let real = tmp.path().join("real");
+        std::fs::create_dir_all(real.join("apps/data")).unwrap();
+        // Named through a link, as the person's settings may name it.
+        symlink(&real, tmp.path().join("media")).unwrap();
+        let named = tmp.path().join("media/apps/data");
+        let plan = FloorPlan::from_bwrap_args(&s(&[
+            "--ro-bind",
+            named.to_str().unwrap(),
+            "/run/media/me/stick/apps/data",
+            "--",
+            "x",
+        ]))
+        .unwrap();
+        let (_, sources) = plan_at_start_with(plan, |p, _| p.starts_with(tmp.path())).unwrap();
+        assert!(matches!(sources[0], Some(SourceHandle::Known { .. })));
+        let whole = Source {
+            entry: 0,
+            rel: PathBuf::new(),
+        };
+        if let Err(e) = open_source(&whole, &sources) {
+            panic!("a link there at the start still leads to the place: {e}");
+        }
+        // The app moves the folder above away and plants a link there.
+        std::fs::rename(real.join("apps"), real.join("moved")).unwrap();
+        let something = tmp.path().join("something");
+        std::fs::create_dir_all(something.join("data")).unwrap();
+        let refusal = |target: &Path| {
+            let _ = std::fs::remove_file(real.join("apps"));
+            symlink(target, real.join("apps")).unwrap();
+            open_source(&whole, &sources).unwrap_err()
+        };
+        let to_something = refusal(&something);
+        let to_nothing = refusal(&tmp.path().join("nothing"));
+        assert_eq!(
+            to_something.raw_os_error(),
+            Some(libc::ELOOP),
+            "{to_something}"
+        );
+        assert_eq!(to_nothing.raw_os_error(), Some(libc::ELOOP), "{to_nothing}");
     }
 
     /// A drive is known by its mount's unique ID where the kernel gives
