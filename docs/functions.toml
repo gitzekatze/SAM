@@ -481,6 +481,8 @@ tests = [
   "an_empty_send_succeeds_and_a_send_to_a_closed_connection_fails",
   "a_send_taken_in_part_still_sends_everything",
   "the_standin_dies_with_its_parent_only_when_asked",
+  "a_quit_asked_before_the_request_went_out_reaches_the_room_once",
+  "a_quit_asked_as_the_request_went_out_reaches_the_room_once",
   "the_helper_is_the_stand_in_only_under_bubblewraps_name",
   "a_version_line_keeps_only_plain_characters_and_at_most_60",
   "the_start_record_keeps_its_room_lines_and_counts_the_rest",
