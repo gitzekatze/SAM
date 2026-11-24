@@ -99,6 +99,9 @@ pub struct ChangeLock {
     id: String,
     /// The lock file; None for a change inside another of the same app.
     _file: Option<fs::File>,
+    /// Released on the thread that took it: the count of nested changes
+    /// is that thread's (not `Send`).
+    _here: std::marker::PhantomData<*const ()>,
 }
 
 impl Drop for ChangeLock {
@@ -119,12 +122,17 @@ impl Drop for ChangeLock {
 /// [`CHANGE_WAIT`]. None while it is starting, running or being changed
 /// elsewhere.
 pub fn for_change(paths: &Paths, id: &str) -> Result<Option<ChangeLock>> {
+    for_change_within(paths, id, CHANGE_WAIT)
+}
+
+/// [`for_change`], waiting at most `wait`.
+pub fn for_change_within(paths: &Paths, id: &str, wait: Duration) -> Result<Option<ChangeLock>> {
     let nested = CHANGING.with(|c| c.borrow().contains_key(id));
     let file = if nested {
         None
     } else {
         let f = open(paths, id)?;
-        if !take(&f, libc::LOCK_EX, CHANGE_WAIT)? {
+        if !take(&f, libc::LOCK_EX, wait)? {
             return Ok(None);
         }
         Some(f)
@@ -133,12 +141,29 @@ pub fn for_change(paths: &Paths, id: &str) -> Result<Option<ChangeLock>> {
     Ok(Some(ChangeLock {
         id: id.to_string(),
         _file: file,
+        _here: std::marker::PhantomData,
     }))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A start right after a lock was dropped. Another test of this
+    /// process may fork at that moment; its child holds a copy of the lock
+    /// until it runs its program (close-on-exec), so allow it a moment.
+    fn start_soon(paths: &Paths, id: &str) -> bool {
+        let until = Instant::now() + Duration::from_secs(1);
+        loop {
+            if for_start(paths, id).unwrap().is_some() {
+                return true;
+            }
+            if Instant::now() >= until {
+                return false;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
 
     /// A start and a change of the same app never hold it together, in
     /// either order; another app is not held. A start is refused at once,
@@ -176,7 +201,7 @@ mod tests {
             "refused at once, after {took:?}"
         );
         drop(change);
-        assert!(for_start(&paths, "app-1a2b").unwrap().is_some());
+        assert!(start_soon(&paths, "app-1a2b"), "free again once dropped");
     }
 
     /// A change that is a step of another change of the same app (an
@@ -194,7 +219,7 @@ mod tests {
         let other = std::thread::spawn(move || for_start(&p, "app-1a2b").unwrap().is_some());
         assert!(!other.join().unwrap(), "the outer change still holds it");
         drop(outer);
-        assert!(for_start(&paths, "app-1a2b").unwrap().is_some());
+        assert!(start_soon(&paths, "app-1a2b"), "free again once dropped");
     }
 
     /// The lock file lives beside the apps' runtime folders, so removing

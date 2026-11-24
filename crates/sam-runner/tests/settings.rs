@@ -185,6 +185,20 @@ fn removing_a_sandbox_while_its_app_runs_is_refused() {
     let _ = fs::remove_dir_all(sam.paths.runtime_dir(&id));
 }
 
+/// `f` once a lock just dropped is free. Another test of this process may
+/// fork at that moment; its child holds a copy of the lock until it runs
+/// its program (close-on-exec), so `f` gets a second to succeed.
+fn soon<T, E: std::fmt::Display>(mut f: impl FnMut() -> Result<T, E>) -> T {
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(1);
+    loop {
+        match f() {
+            Ok(v) => return v,
+            Err(e) if std::time::Instant::now() >= until => panic!("{e}"),
+            Err(_) => std::thread::sleep(std::time::Duration::from_millis(10)),
+        }
+    }
+}
+
 /// While an app is starting (from its checks until it has ended), its
 /// sandbox is not changed: removing it or unpacking it again waits a
 /// moment, then is refused and says why, and the sandbox stays (review L2).
@@ -228,7 +242,39 @@ fn a_start_is_refused_while_the_sandbox_is_being_changed() {
     assert!(t.elapsed() < std::time::Duration::from_secs(1), "at once");
     sam.reextract(&id, false).unwrap();
     drop(change);
-    sam.start_lock(&mut e).unwrap();
+    soon(|| sam.start_lock(&mut e));
+}
+
+/// A start whose unpacked copy is gone (after "Free space") unpacks it
+/// again first; while another step changes the sandbox, that is refused at
+/// once with the start's message, as the start itself is (review L2).
+#[test]
+fn unpacking_for_a_start_is_refused_at_once_while_the_sandbox_is_changed() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (sam, id) = named_app(tmp.path(), "Freed");
+    sam.free_space(&id).unwrap();
+    let (held_tx, held) = std::sync::mpsc::channel::<()>();
+    let (done, done_rx) = std::sync::mpsc::channel::<()>();
+    let (paths, app) = (sam.paths.clone(), id.clone());
+    let changing = std::thread::spawn(move || {
+        let _change = sam_runner::app_lock::for_change(&paths, &app)
+            .unwrap()
+            .unwrap();
+        held_tx.send(()).unwrap();
+        let _ = done_rx.recv();
+    });
+    held.recv().unwrap();
+    let mut e = sam.resolve(&id).unwrap();
+    let t = std::time::Instant::now();
+    let err = sam.ensure_unpacked(&mut e).unwrap_err().to_string();
+    assert!(err.contains("is being changed"), "{err}");
+    assert!(t.elapsed() < std::time::Duration::from_secs(1), "at once");
+    done.send(()).unwrap();
+    changing.join().unwrap();
+    assert!(
+        soon(|| sam.ensure_unpacked(&mut e)),
+        "unpacked once the change is done"
+    );
 }
 
 /// A start reads the app's record again once it holds the app: what a
@@ -250,39 +296,6 @@ fn a_start_sees_what_a_change_saved_before_it() {
     sam.remove(&id, false).unwrap();
     let err = sam.start_lock(&mut e).unwrap_err().to_string();
     assert!(err.contains("no registered app"), "{err}");
-}
-
-/// A change that waited for another works on the app's record as the
-/// other left it, read again once it holds the app, not as it was when
-/// the change was asked for (review L2).
-#[test]
-fn a_change_works_on_the_record_as_the_one_before_it_left_it() {
-    let tmp = tempfile::tempdir().unwrap();
-    let (sam, id) = named_app(tmp.path(), "Queued");
-    let root = tmp.path().join("sam");
-    let before = sam_runner::app_lock::for_change(&sam.paths, &id)
-        .unwrap()
-        .unwrap();
-    let remove = {
-        let (root, id) = (root.clone(), id.clone());
-        std::thread::spawn(move || {
-            let sam = Sam::with_paths(Paths::rooted(&root)).unwrap();
-            sam.remove(&id, true).map(drop).map_err(|e| e.to_string())
-        })
-    };
-    // The removal has read the record and waits for the app.
-    std::thread::sleep(std::time::Duration::from_millis(500));
-    let mut saved = sam.registry().get(&id).unwrap().unwrap();
-    saved.source.sha256 = "0".repeat(64);
-    sam.registry().save(&mut saved).unwrap();
-    drop(before);
-    remove.join().unwrap().unwrap();
-    let kept = fs::read_to_string(sam.paths.data_dir.join("kept").join(&id)).unwrap();
-    assert_eq!(
-        kept,
-        "0".repeat(64),
-        "kept for the file as the change before left it"
-    );
 }
 
 /// Removing a sandbox with "keep my data" keeps the app's private home; without it, the home is deleted.

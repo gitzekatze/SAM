@@ -180,6 +180,12 @@ fn main() {
             let function = sam_core::error::function_of(&e).unwrap_or(19);
             let part = sam_core::i18n::trf("SAM function {id}", &[("id", &function)]);
             errln!("sam-jail-run: {message} ({part})");
+            // Refused for the moment (its sandbox is being changed):
+            // nothing to repair, it starts once that is done.
+            if sam_core::error::code_of(&e) == Some("app-being-changed") {
+                notify(&sam_core::i18n::tr("SAM could not start the app"), &message);
+                std::process::exit(1);
+            }
             notify(
                 &sam_core::i18n::tr("SAM could not start the app"),
                 &sam_core::i18n::trf(

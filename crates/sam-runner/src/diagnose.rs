@@ -391,14 +391,15 @@ pub fn diagnose(
             )
         )
     };
+    // No change of the sandbox until this start has ended (app_lock); the
+    // check below looks at the record as it is under the lock.
+    let _start = sam.start_lock(entry)?;
     if entry.profile.permissions.filesystem.home {
         bail!(
             "{}",
             sam_core::i18n::tr("diagnostic runs are refused while full home access is granted")
         );
     }
-    // No change of the sandbox until this start has ended (app_lock).
-    let _start = sam.start_lock(entry)?;
     let diag_dir = sam.paths.runtime_dir(&entry.id).join("diag");
     let _ = fs::remove_dir_all(&diag_dir);
     fs::create_dir_all(&diag_dir)?;
