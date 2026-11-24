@@ -1097,6 +1097,25 @@ mod tests {
         );
         assert_ne!(control[12], eperm, "TIOCLINUX is refused by the filter");
         assert_eq!(control[13], libc::ESRCH, "no process 0 to trace");
+        // Every allowed socket family answers as without the filter, not
+        // only the first one it checks (mutation run 2026-11-24: a jump
+        // past the allowing answer for all but AF_UNIX went unnoticed).
+        let families: Vec<fn() -> libc::c_long> = vec![
+            || call32(359, libc::AF_INET as u32, libc::SOCK_DGRAM as u32, 0),
+            || call32(359, libc::AF_INET6 as u32, libc::SOCK_DGRAM as u32, 0),
+            || call32(359, libc::AF_NETLINK as u32, libc::SOCK_DGRAM as u32, 0),
+        ];
+        let open = errnos(None, &families);
+        assert_eq!(open[0], 0, "an internet socket opens without the filter");
+        for (name, errno) in [("IPv6", open[1]), ("netlink", open[2])] {
+            if errno != 0 {
+                // Off on this computer: the filter's own refusal could not
+                // be told apart from the kernel's.
+                crate::contracts::skip(&format!("{name} sockets are off here"))
+                    .unwrap_or_else(|e| panic!("{e}"));
+            }
+        }
+        assert_eq!(errnos(Some(&spec), &families), open, "allowed families");
         // The strict filter's calls are refused through their 32-bit
         // numbers too.
         let strict = SeccompSpec {
