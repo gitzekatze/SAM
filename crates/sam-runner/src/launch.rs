@@ -1417,8 +1417,16 @@ fn learn_names(
         return (vec![], vec![]);
     }
     let check = crate::own_names::NameCheck::for_app(app, host, paths);
+    let deny = &app.profile.permissions.dbus.session.deny;
     let (mut learned, mut refused) = (Vec::new(), Vec::new());
     for name in wanted {
+        // A name the person blocked is never learned: it would stay blocked
+        // anyway, and the app would only be started again for nothing.
+        if sam_core::permissions::bus_name_denied(deny, name) {
+            let why = sam_core::i18n::tr("you blocked it (always blocked names)");
+            refused.push(format!("{name}: {why}"));
+            continue;
+        }
         match check.not_learned(name) {
             None => learned.push(name.clone()),
             Some(why) => refused.push(format!("{name}: {why}")),
