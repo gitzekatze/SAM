@@ -9,7 +9,7 @@
 >
 > Test results are from the newest version report (2026-11-21 05:11:03).
 
-**42 functions:** 3 proven by passing tests, 38 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 897 tests in all.
+**42 functions:** 3 proven by passing tests, 38 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 898 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
@@ -34,7 +34,7 @@
 | 41 | [A program in an app that builds a sandbox of its own (such as GTK's image loader) gets it from SAM, built outside the app's sandbox (Room service): never with more than the app, never with less than it asked, always with SAM's protection layers, and never outliving the app.](#41) | sam-jail-cli, sam-runner | 130 | ✅ 🆕 130 new tests since the report |
 | 19 | [Starting from SAM's window, from the menu, or from the terminal always goes through the sandbox.](#19) | sam-jail-cli, sam-runner, sam-intake, sam-core | 42 | ✅ 🆕 20 new tests since the report |
 | 20 | [SAM checks from inside the sandbox that every setting applies (the sandbox check).](#20) | sam-jail-cli, sam-runner, sam-sandbox | 29 | ✅ 🆕 15 new tests since the report |
-| 21 | [A second start, closing, and stopping work cleanly and leave nothing behind.](#21) | sam-runner, sam-core | 23 | ✅ 🆕 15 new tests since the report |
+| 21 | [A second start, closing, and stopping work cleanly and leave nothing behind.](#21) | sam-runner, sam-core | 24 | ✅ 🆕 16 new tests since the report |
 | 22 | [Logs of every start are kept, with old ones removed automatically.](#22) | sam-runner, sam-storage | 6 | ✅ 🆕 3 new tests since the report |
 | 23 | [After a failed start, SAM says what went wrong and offers a fix with one click.](#23) | sam-gtk, sam-runner | 13 | ✅ 🆕 6 new tests since the report |
 | 24 | [Repair steps go from mild to strong, and each one can be undone.](#24) | sam-runner, sam-sandbox | 18 | ✅ 🆕 1 new test since the report |
@@ -902,7 +902,8 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`a_lock_held_too_long_stops_the_launch_in_bounded_time`](../crates/sam-runner/src/launch.rs#L2553) | A lock that stays taken longer than the wait still stops the start, with a message that names the lock, and in bounded time. | 🆕 new |
 | [`a_start_and_a_change_of_one_app_exclude_each_other`](../crates/sam-runner/src/app_lock.rs#L171) | A start and a change of the same app never hold it together, in either order; another app is not held. | 🆕 new |
 | [`a_change_inside_a_change_of_the_same_app_goes_on`](../crates/sam-runner/src/app_lock.rs#L210) | A change that is a step of another change of the same app (an update unpacks again) goes on in the same thread; another thread still has to wait until the outer change ends. | 🆕 new |
-| [`the_lock_is_not_inside_the_apps_runtime_folder`](../crates/sam-runner/src/app_lock.rs#L227) | The lock file lives beside the apps' runtime folders, so removing an app's runtime folder never removes it. | 🆕 new |
+| [`the_lock_is_not_inside_the_apps_runtime_folder`](../crates/sam-runner/src/app_lock.rs#L245) | The lock file lives beside the apps' runtime folders, so removing an app's runtime folder never removes it. | 🆕 new |
+| [`programs_sam_starts_never_inherit_an_apps_lock`](../crates/sam-runner/src/app_lock.rs#L229) | No program SAM starts inherits an app's lock: the lock files close when a child runs its program (close-on-exec), so an app never holds its own start lock and blocks changes for as long as it lives, and a helper of a change holds it only until it runs. | 🆕 new |
 | [`a_sandbox_is_not_changed_while_its_app_is_starting`](../crates/sam-runner/tests/settings.rs#L205) | While an app is starting (from its checks until it has ended), its sandbox is not changed: removing it or unpacking it again waits a moment, then is refused and says why, and the sandbox stays (review L2). | 🆕 new |
 | [`a_start_is_refused_while_the_sandbox_is_being_changed`](../crates/sam-runner/tests/settings.rs#L231) | While an app's sandbox is being changed, a start is refused at once and says why; the change itself goes on, also a step of it (an update unpacks again), and the app starts once it is done (review L2). | 🆕 new |
 | [`a_start_sees_what_a_change_saved_before_it`](../crates/sam-runner/tests/settings.rs#L284) | A start reads the app's record again once it holds the app: what a change saved after the caller read it (a new unpacked copy marked "look at it first", or the sandbox removed) is what the start checks and runs (review L2: the mark was skipped). | 🆕 new |
@@ -971,7 +972,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`ladder_skips_applied_and_noop_steps`](../crates/sam-runner/src/repair.rs#L1104) | The repair ladder leaves out steps already applied and steps that would change nothing. | ✅ |
 | [`a_writable_app_folder_is_offered_only_where_it_can_work`](../crates/sam-runner/src/repair.rs#L1398) | The repair steps offer a writable app folder only where an overlay can work: not where SAM's overlay folder cannot hold one (regression: the step was offered by Bubblewrap's version alone, and on such disks the app then started read-only anyway). | ✅ |
 | [`undoing_repair_steps_restores_the_settings_from_before_the_first_step`](../crates/sam-runner/tests/settings.rs#L59) | Undoing repair steps restores the settings from before the first step. | ✅ |
-| [`switching_off_one_repair_step_keeps_the_others`](../crates/sam-runner/tests/settings.rs#L365) | A repair step can be switched off on its own: exactly what that step changed goes back, and the other applied steps stay. | ✅ |
+| [`switching_off_one_repair_step_keeps_the_others`](../crates/sam-runner/tests/settings.rs#L380) | A repair step can be switched off on its own: exactly what that step changed goes back, and the other applied steps stay. | ✅ |
 | [`only_plain_library_names_are_accepted`](../crates/sam-core/src/permissions.rs#L1758) | Only plain shared-library file names are accepted as system libraries: no folders, no `..`, nothing that is not a library. | ✅ |
 | [`system_copies_replace_only_bundled_libraries_by_plain_name`](../crates/sam-sandbox/src/lib.rs#L3533) | A bundled library listed in advanced.system_libraries is replaced by the system's copy at its place in the app folder; names with folders or `..`, libraries the app does not bundle and libraries the system does not have are ignored. | ✅ |
 | [`undoing_repair_steps_keeps_what_the_person_changed_since`](../crates/sam-runner/tests/settings.rs#L86) | Undoing repair steps takes back only what the steps changed: a setting the person changed afterwards stays as they set it, also the one a step had changed (audit G-F4: the whole profile from before the first step came back). | ✅ |
@@ -1119,7 +1120,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`a_swapped_appimage_is_marked_also_after_the_change_check`](../crates/sam-runner/tests/changed_appimage.rs#L111) ⟲ | Regression (audit U-H2): "Check all AppImages for changes" (or moving the file with relocate) recorded the swapped file's checksum, so the following "Unpack Again" compared the file with itself: the swapped content ran with the old app's permissions, unmarked, and its signature was not checked again. | ✅ |
 | [`a_swapped_appimage_file_is_marked_and_old_records_stay_unchanged`](../crates/sam-core/src/model.rs#L766) | An AppImage file swapped outside SAM shows as changed outside SAM; while the mark is off it is not written, so every record saved before it existed keeps its checksum (no app looks changed after an update). | ✅ |
 | [`a_changed_appimage_file_is_noticed`](../crates/sam-intake/src/fingerprint.rs#L158) | A changed AppImage file is noticed by its fingerprint. | ✅ |
-| [`a_moved_appimage_is_recognized_by_its_content`](../crates/sam-runner/tests/settings.rs#L344) | When a sandboxed app's AppImage is moved to another searched folder, SAM recognizes it by its content and offers to follow it. | ✅ |
+| [`a_moved_appimage_is_recognized_by_its_content`](../crates/sam-runner/tests/settings.rs#L359) | When a sandboxed app's AppImage is moved to another searched folder, SAM recognizes it by its content and offers to follow it. | ✅ |
 
 **Code:** [`sam-intake/src/fingerprint.rs`](../crates/sam-intake/src/fingerprint.rs), [`sam-runner/src/ops/maintain.rs`](../crates/sam-runner/src/ops/maintain.rs)
 
@@ -1133,10 +1134,10 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`removing_a_sandbox_never_deletes_outside_sams_unpack_folder`](../crates/sam-runner/tests/tamper.rs#L34) ⟲ | Regression: the unpack folder in a record was only checked with Path::starts_with, which does not resolve "..": "extracted/../../victim" passed, and removing the sandbox deleted the victim folder. | ✅ |
 | [`a_record_with_a_climbing_id_reaches_nothing`](../crates/sam-runner/tests/tamper.rs#L66) | A record whose id climbs out of SAM's folders cannot be loaded, so no operation can reach the folders that id would name. | ✅ |
 | [`records_with_unsafe_or_mismatched_ids_are_not_loaded`](../crates/sam-storage/src/lib.rs#L935) ⟲ | Regression (found in the test audit): a record changed outside SAM with an id like "../../.ssh" would have pointed the folders SAM deletes on removal (private home, logs) outside SAM's own folders. | ✅ |
-| [`removing_with_keep_my_data_keeps_the_private_home_and_without_deletes_it`](../crates/sam-runner/tests/settings.rs#L302) | Removing a sandbox with "keep my data" keeps the app's private home; without it, the home is deleted. | ✅ |
+| [`removing_with_keep_my_data_keeps_the_private_home_and_without_deletes_it`](../crates/sam-runner/tests/settings.rs#L317) | Removing a sandbox with "keep my data" keeps the app's private home; without it, the home is deleted. | ✅ |
 | [`removing_a_sandbox_while_its_app_runs_is_refused`](../crates/sam-runner/tests/settings.rs#L168) | A running app keeps its sandbox: removing it is refused until the app is closed (a launch holds a lock in the app's runtime folder). | ✅ |
 | [`names_become_safe_identifiers`](../crates/sam-core/src/util.rs#L949) | Names become safe identifiers made of lowercase letters, digits and dashes. | ✅ |
-| [`an_apps_icon_is_kept_in_sams_icon_folder_and_goes_with_it`](../crates/sam-runner/tests/settings.rs#L322) | The app's icon is copied into SAM's own icon folder, named after the app, and goes with its sandbox; nothing lands in the folder SAM was started in. | 🆕 new |
+| [`an_apps_icon_is_kept_in_sams_icon_folder_and_goes_with_it`](../crates/sam-runner/tests/settings.rs#L337) | The app's icon is copied into SAM's own icon folder, named after the app, and goes with its sandbox; nothing lands in the folder SAM was started in. | 🆕 new |
 | [`the_extraction_folder_is_never_the_root_or_the_home_folder`](../crates/sam-core/src/config.rs#L737) | The extraction folder is a folder of its own: never the root, never the home folder itself (however it is written), never relative and never with `..`. | 🆕 new |
 
 **Code:** [`sam-runner/src/ops/maintain.rs`](../crates/sam-runner/src/ops/maintain.rs), [`sam-storage/src/lib.rs`](../crates/sam-storage/src/lib.rs), [`sam-core/src/util.rs`](../crates/sam-core/src/util.rs)
