@@ -9,7 +9,7 @@
 >
 > Test results are from the newest version report (2026-11-21 05:11:03).
 
-**42 functions:** 3 proven by passing tests, 38 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 870 tests in all.
+**42 functions:** 3 proven by passing tests, 38 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 871 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
@@ -41,7 +41,7 @@
 | 25 | [The diagnose run finds missing files and suggests only what helps.](#25) | sam-runner | 10 | ✅ 🆕 1 new test since the report |
 | 26 | [Compatibility mode as a last resort, with its cost explained, and it can be undone.](#26) | sam-runner | 4 | ✅ 🆕 1 new test since the report |
 | 27 | [SAM notices app settings that something else changed and asks before starting the app.](#27) | sam-runner, sam-storage | 6 | ✅ 🆕 2 new tests since the report |
-| 28 | [Updates use HTTPS only, replace only the AppImage SAM unpacked and unpack what they checked, keep the old version so it can be restored, refuse a changed signing key until you accept it (the yes covers only the file you were shown), and never install a build for another processor.](#28) | sam-runner, sam-detect | 71 | ✅ 🆕 29 new tests since the report |
+| 28 | [Updates use HTTPS only, replace only the AppImage SAM unpacked and unpack what they checked, keep the old version so it can be restored, refuse a changed signing key until you accept it (the yes covers only the file you were shown), and never install a build for another processor.](#28) | sam-runner, sam-detect | 72 | ✅ 🆕 30 new tests since the report |
 | 29 | [SAM notices AppImages that were moved or changed.](#29) | sam-runner, sam-intake | 7 | ✅ 🆕 1 new test since the report |
 | 30 | [Removing an app deletes only SAM's own folders, never your files.](#30) | sam-runner, sam-storage, sam-core | 8 | ✅ 🆕 2 new tests since the report |
 | 31 | [Disk space per app, and freeing space.](#31) | sam-runner | 2 | ✅ 🆕 1 new test since the report |
@@ -1013,6 +1013,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`gnupg_reads_an_appimages_key_and_signature_only_in_a_sandbox`](../crates/sam-jail-cli/tests/gnupg_sandbox.rs#L53) | Gnupg reads an appimages key and signature only in a sandbox. | 🆕 new |
 | [`key_changes_are_noticed`](../crates/sam-runner/src/ops/mod.rs#L791) | An update signed with another key, or not signed at all, is noticed. | ✅ |
 | [`an_update_signed_with_another_key_waits_for_consent`](../crates/sam-runner/tests/update_server.rs#L700) | A new signing key: refused until the person accepts it (audit B24; verification audit 2026-11-19: only a unit test of the comparison showed this). | ✅ |
+| [`an_update_that_cannot_be_checked_after_a_checked_signature_waits_for_consent`](../crates/sam-runner/tests/update_without_gnupg.rs#L58) | An update whose signature cannot be checked waits for a yes when the installed version's signature was checked. | 🆕 new |
 | [`sam_updates_itself_only_with_its_release_key`](../crates/sam-runner/src/release_key.rs#L105) | SAM accepts an update of itself only with a valid signature from one of its release keys; unsigned, changed, unchecked or otherwise signed updates are refused (regression: self-update installed any AppImage the update information pointed to). | ✅ |
 | [`release_keys_are_full_fingerprints`](../crates/sam-runner/src/release_key.rs#L77) | Every built-in release key is a full fingerprint (40 hex characters), never a short key id that another key could share. | ✅ |
 | [`signing_a_file_without_signature_sections_is_refused`](../crates/sam-jail-cli/tests/robustness.rs#L259) | Signing a file that has no AppImage signature sections is refused with a clear message, before GnuPG is asked anything, and the file stays as it was. | ✅ |
