@@ -394,11 +394,13 @@ fn real_main(cli: Cli) -> Result<()> {
                     quiet: true,
                     ..Default::default()
                 };
-                let (status, detail, findings) =
-                    match run(&mut e, &opts, &app.config, &app.paths, &app.host()) {
-                        Ok(rec) => selftest_verdict(&rec, seconds, e.metadata.terminal),
-                        Err(err) => ("fail", format!("{err:#}"), vec![]),
-                    };
+                let start = app.start_lock(&mut e);
+                let (status, detail, findings) = match start
+                    .and_then(|_start| run(&mut e, &opts, &app.config, &app.paths, &app.host()))
+                {
+                    Ok(rec) => selftest_verdict(&rec, seconds, e.metadata.terminal),
+                    Err(err) => ("fail", format!("{err:#}"), vec![]),
+                };
                 results.push(json!({"id": e.id, "name": e.display_name(), "status": status, "detail": detail, "findings": findings}));
             }
             if results.iter().any(|r| r["status"] != "ok") {
@@ -862,6 +864,7 @@ fn real_main(cli: Cli) -> Result<()> {
         Cmd::Run { app: q, args } => {
             let mut e = app.resolve(&q)?;
             app.ensure_unpacked(&mut e)?;
+            let _start = app.start_lock(&mut e)?;
             app.check_before_start(&mut e, &app.host())?;
             let rec = run(
                 &mut e,

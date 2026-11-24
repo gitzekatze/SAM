@@ -180,6 +180,12 @@ fn main() {
             let function = sam_core::error::function_of(&e).unwrap_or(19);
             let part = sam_core::i18n::trf("SAM function {id}", &[("id", &function)]);
             errln!("sam-jail-run: {message} ({part})");
+            // Refused for the moment (its sandbox is being changed):
+            // nothing to repair, it starts once that is done.
+            if sam_core::error::code_of(&e) == Some("app-being-changed") {
+                notify(&sam_core::i18n::tr("SAM could not start the app"), &message);
+                std::process::exit(1);
+            }
             notify(
                 &sam_core::i18n::tr("SAM could not start the app"),
                 &sam_core::i18n::trf(
@@ -261,6 +267,8 @@ fn launch(args: Vec<String>) -> Result<i32> {
     app.ensure_unpacked(&mut entry)
         .context(sam_core::i18n::tr("unpacking the AppImage again"))
         .in_function(3)?;
+    // No change of the sandbox until this start has ended (app_lock).
+    let start = app.start_lock(&mut entry)?;
     let host = sam_core::HostInfo::probe();
     if let Err(e) = app.check_before_start(&mut entry, &host) {
         // Only a failed check gets the notification: it names what to look at.
@@ -285,6 +293,8 @@ fn launch(args: Vec<String>) -> Result<i32> {
         &app.paths,
         &host,
     )?;
+    // Ended: the window's "press Enter" below must not hold it.
+    drop(start);
     if hold_terminal_window(
         entry.metadata.terminal,
         rec.exit_code,
