@@ -38,7 +38,7 @@ Use these keys with `sam-jail set <app> <key> <value>`, or edit the `[permission
 | `sockets.ssh_agent`, `sockets.cups` | `true` / `false` |
 | `sockets.custom` | paths of extra service sockets; only real socket files are passed in, from where their links lead, and never through a link in a folder the app may change |
 | `environment.passthrough` | list of variable names |
-| `dbus.session.deny` | bus names that stay blocked even if allowed elsewhere |
+| `dbus.session.deny` | bus names that stay blocked even if allowed elsewhere: for talking, owning, calls and signals; `org.example.*` blocks every name below it, and a wildcard allowed elsewhere that could reach a blocked name is not used. The filter (xdg-dbus-proxy) works per program: a program that also holds a name the app may talk to can still be reached through that name. SAM's own names for the app (`io.github.gitzekatze.SAM.<app>.*`) and the bus itself (`org.freedesktop.DBus`) cannot be blocked |
 | `environment.set` | variables set inside the sandbox, e.g. `{"QT_SCALE_FACTOR": "1.5"}` (names: letters, digits, `_`) |
 | `advanced.host_runtime` | `minimal` / `full` |
 | `advanced.persistent_home`, `advanced.seccomp_strict`, `advanced.allow_userns`, `advanced.host_themes` | `true` / `false` |

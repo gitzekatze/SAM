@@ -469,7 +469,8 @@ pub fn plan(p: &PermissionSet, cfg: &Config, host: &HostInfo) -> ProbePlan {
             ("org.kde.KWin", sam_core::i18n::n_("Window manager (KWin)")),
         ] {
             if on_host(name) {
-                let want = allowed(name) && !p.dbus.session.deny.iter().any(|d| d == name);
+                let want = allowed(name)
+                    && !sam_core::permissions::bus_name_denied(&p.dbus.session.deny, name);
                 v.push(c(
                     "busname",
                     "D-Bus",
