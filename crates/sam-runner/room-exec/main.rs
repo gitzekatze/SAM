@@ -6,8 +6,8 @@
 //! room's request shapes: nothing of that layout may run or be read before
 //! SAM's layers are in place. It reads the room's rules from SAM's own
 //! place (`/.sam-room/room.spec`), then, in this order:
-//! 0. checks that every place SAM showed by handle is exactly what SAM
-//!    opened (device and inode), whatever Bubblewrap did;
+//! 0. checks that every place of the app the room shows is exactly what
+//!    SAM opened or checked (device and inode), whatever Bubblewrap did;
 //! 1. Landlock: read everywhere, write only where the rules say; abstract
 //!    sockets outside the room blocked (kernels with Landlock 6 and newer);
 //! 2. SAM's syscall filter (compiled by SAM, passed as a connection);
@@ -263,8 +263,8 @@ fn candidates(name: &OsStr, env: &[(&OsStr, &OsStr)]) -> Vec<Vec<u8>> {
         .collect()
 }
 
-/// A place `DEV:INO:PATH` of the room is the file or folder SAM opened
-/// (same device, same inode), or the room ends here.
+/// A place `DEV:INO:PATH` of the room is the file, folder or device SAM
+/// opened or checked (same device, same inode), or the room ends here.
 fn check_place(entry: &[u8]) {
     use std::os::unix::fs::MetadataExt;
     let mut parts = entry.splitn(3, |b| *b == b':');
@@ -282,7 +282,7 @@ fn check_place(entry: &[u8]) {
     match std::fs::symlink_metadata(path) {
         Ok(m) if m.dev() == dev && m.ino() == ino => {}
         _ => fail(&format!(
-            "{} is not the place SAM opened for this room (Bubblewrap showed something else)",
+            "{} is not the place SAM checked for this room (Bubblewrap showed something else)",
             path.to_string_lossy()
         )),
     }
