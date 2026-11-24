@@ -221,8 +221,14 @@ rule: **no more than the app, no less than asked.**
     that may be unmounted (any file
     system other than the root's and the home's, and anything under
     `/media`, `/mnt`, `/run/media`) is not held open, so the drive stays
-    free to unmount: it is remembered by what it is (device and inode) and opened
-    again for a room, which is refused unless it is still the same.
+    free to unmount: it is remembered by what it is and opened again for a
+    room, which is refused unless it is still the same. Device and inode
+    alone repeat (another stick at the same port has the same device number,
+    and its top folder the same inode), so the drive's own identity is
+    compared too: the mount's unique ID on Linux 6.8 and later, before that
+    the file system's ID from `/dev/disk/by-uuid` (written when it was
+    formatted). Only a drive with neither (a network or FUSE mount on a
+    kernel before 6.8) is compared by device and inode alone.
   - Writable only where the app's place is writable (the app's own
     `--remount-ro` arguments count); devices only the app's, and working
     only where the request asked for working devices (the app's `/dev`
@@ -1090,6 +1096,12 @@ was easily misread.
   (PNG or SVG, checked as above, at most 1 MiB) into its cache. The window and the menu
   draw it with the system's image libraries, as every AppImage integration
   tool does.
+- **A swapped network or FUSE drive before Linux 6.8.** Room service
+  tells a drive put in after the app started from the one the app was
+  shown by its unique mount ID (Linux 6.8+) or its file-system ID. A
+  network or FUSE mount on an older kernel has neither, so one mounted
+  again at the same place with the same device and inode numbers could be
+  shown in a room.
 - **D-Bus filtering needs `xdg-dbus-proxy`.** Without it, an app with
   filtered D-Bus gets no session bus at all.
 - **Abstract sockets** are blocked only on kernel 6.12+. On older kernels,
