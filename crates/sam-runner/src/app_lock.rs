@@ -222,6 +222,24 @@ mod tests {
         assert!(start_soon(&paths, "app-1a2b"), "free again once dropped");
     }
 
+    /// No program SAM starts inherits an app's lock: the lock files close
+    /// when a child runs its program (close-on-exec), so an app never holds
+    /// its own start lock and blocks changes for as long as it lives, and a
+    /// helper of a change holds it only until it runs.
+    #[test]
+    fn programs_sam_starts_never_inherit_an_apps_lock() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = Paths::rooted(tmp.path());
+        let start = for_start(&paths, "app-1a2b").unwrap().unwrap();
+        let change = for_change(&paths, "other-3c4d").unwrap().unwrap();
+        let change_file = change._file.as_ref().unwrap();
+        for fd in [start._file.as_raw_fd(), change_file.as_raw_fd()] {
+            // SAFETY: `fd` is an open descriptor; F_GETFD only reads its flags.
+            let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
+            assert!(flags >= 0 && flags & libc::FD_CLOEXEC != 0, "flags {flags}");
+        }
+    }
+
     /// The lock file lives beside the apps' runtime folders, so removing
     /// an app's runtime folder never removes it.
     #[test]

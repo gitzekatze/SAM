@@ -318,7 +318,22 @@ fn a_start_sees_what_a_change_saved_before_it() {
     assert!(e.content_changed_outside, "the start sees the mark");
     drop(start);
     sam.remove(&id, false).unwrap();
-    let err = sam.start_lock(&mut e).unwrap_err().to_string();
+    // Another test of this process may fork while the removal holds the
+    // app's lock; its child keeps a copy of the lock until it runs its
+    // program (close-on-exec), and a start is refused without waiting
+    // (CI, ARM: "Reread is being changed right now"). So the start gets a
+    // second for the removal's lock to be gone.
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(1);
+    let err = loop {
+        let err = sam
+            .start_lock(&mut e)
+            .expect_err("the removed app still starts")
+            .to_string();
+        if !err.contains("is being changed") || std::time::Instant::now() >= until {
+            break err;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    };
     assert!(err.contains("no registered app"), "{err}");
 }
 

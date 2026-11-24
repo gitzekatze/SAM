@@ -40,7 +40,9 @@ fn freeing_space_deletes_the_unpacked_copy_and_unpacking_restores_it() {
     let mut e = sam.resolve(&id).unwrap();
     assert_eq!(sam.disk_usage(&e).unpacked, 0);
 
-    // Unpacked again (same file), settings kept.
+    // Unpacked again (same file), settings kept. Right after "Free space"
+    // released the app's lock: safe while this is the only test in its
+    // binary (another test's fork could hold a copy of the lock a moment).
     assert!(sam.ensure_unpacked(&mut e).unwrap(), "unpacked again");
     let x = e.extraction.clone().unwrap();
     assert!(x.appdir.join(&x.entry).exists());
