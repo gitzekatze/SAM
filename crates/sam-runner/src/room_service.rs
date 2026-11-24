@@ -434,6 +434,8 @@ pub struct RoomService {
     listener: Option<UnixListener>,
     state: Arc<State>,
     accept: Option<JoinHandle<()>>,
+    /// Why every request is refused this start, when it is.
+    refusing: Option<String>,
 }
 
 impl RoomService {
@@ -467,6 +469,7 @@ impl RoomService {
             listener: Some(listener),
             state: Arc::new(State::default()),
             accept: None,
+            refusing: None,
         })
     }
 
@@ -491,11 +494,18 @@ impl RoomService {
     /// Keeps the socket the app's sandbox shows, but refuses every request
     /// (when no floor plan could be read this start).
     pub fn serve_refusing(&mut self, ctx: RoomContext, why: String) {
+        self.refusing = Some(why.clone());
         self.run(Served {
             ctx,
             sources: Vec::new(),
             refuse_all: Some(why),
         });
+    }
+
+    /// Why the service refuses every request this start, if it does: the
+    /// launcher warns the person once, before any program asks.
+    pub fn refusing(&self) -> Option<&str> {
+        self.refusing.as_deref()
     }
 
     fn run(&mut self, served: Served) {
@@ -3610,6 +3620,7 @@ mod service_tests {
             listener: Some(listener),
             state: Arc::new(State::default()),
             accept: None,
+            refusing: None,
         }
     }
 
@@ -4226,12 +4237,16 @@ exec "$@"
         .unwrap();
         let mut service = service_in(tmp.path());
         service.serve(ctx);
+        let said = format!("{p} could not be opened when the app started");
+        // The launcher warns before any program asks.
+        assert!(
+            service.refusing().is_some_and(|w| w.contains(&said)),
+            "{:?}",
+            service.refusing()
+        );
         let a = ask_service(&service.socket, &request(&[], &["/bin/sh", "-c", "exit 0"]));
         let why = a["error"].as_str().unwrap_or_default();
-        assert!(
-            why.contains(&format!("{p} could not be opened when the app started")),
-            "{a}"
-        );
+        assert!(why.contains(&said), "{a}");
         let lines = service.stop();
         assert!(
             !lines.iter().any(|l| l.starts_with("sam-room: built")),
