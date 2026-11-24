@@ -375,7 +375,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-384 tests.
+388 tests.
 
 | Promise | Test |
 |---|---|
@@ -468,7 +468,8 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | An update signed with another key, or not signed at all, is noticed. | [`key_changes_are_noticed`](../crates/sam-runner/src/ops/mod.rs#L791) |
 | A signature recorded as "not checked" (GnuPG was missing) lets no key through: once the new file's signature can be read, whatever it is (another key, none, a bad one) counts as a change; both unchecked is no news (review 2026-11-23, U-3). | [`a_signature_that_was_never_checked_lets_no_key_through`](../crates/sam-runner/src/ops/mod.rs#L819) |
 | A signed app whose update cannot be checked (GnuPG missing) is not waved through: SAM cannot tell whether the key changed. | [`an_update_that_cannot_be_checked_needs_consent_after_a_valid_signature`](../crates/sam-runner/src/ops/mod.rs#L841) |
-| Review 2026-11-23 F3: asking an app to quit reaches the app's own processes, also one whose program is called `bwrap`, and nothing of SAM's: not the program the launcher started (here a stand-in for pasta that quits on SIGTERM, which would take the sandbox down at once), not a helper beside the sandbox (as the sound relay). | [`only_the_apps_own_processes_are_asked_to_quit`](../crates/sam-runner/src/ops/mod.rs#L880) |
+| The processes below an app's sandbox are its children and their children, and nothing else: quitting asks only those (mutation run 2026-11-24: the walk could take every other process instead, so stopping one app would have asked other sandboxes to quit). | [`only_the_processes_below_a_sandbox_are_its_own`](../crates/sam-runner/src/ops/mod.rs#L876) |
+| Review 2026-11-23 F3: asking an app to quit reaches the app's own processes, also one whose program is called `bwrap`, and nothing of SAM's: not the program the launcher started (here a stand-in for pasta that quits on SIGTERM, which would take the sandbox down at once), not a helper beside the sandbox (as the sound relay). | [`only_the_apps_own_processes_are_asked_to_quit`](../crates/sam-runner/src/ops/mod.rs#L916) |
 | A menu start unpacks in a sandbox with the cli next to it. | [`a_menu_start_unpacks_in_a_sandbox_with_the_cli_next_to_it`](../crates/sam-runner/src/ops/overview.rs#L523) |
 | Sams programs never unpack without a sandbox. | [`sams_programs_never_unpack_without_a_sandbox`](../crates/sam-runner/src/ops/overview.rs#L551) |
 | Tests and benchmarks may unpack in their own process. | [`tests_and_benchmarks_may_unpack_in_their_own_process`](../crates/sam-runner/src/ops/overview.rs#L573) |
@@ -743,9 +744,12 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Uninstalling SAM removes all of its files and restores the menu entries it had hidden. | [`uninstall_removes_everything_and_restores_menus`](../crates/sam-runner/tests/uninstall.rs#L17) |
 | Uninstalling refuses to delete a folder that is not SAM's, such as the home folder. | [`uninstall_refuses_folders_that_are_not_sams`](../crates/sam-runner/tests/uninstall.rs#L123) |
 | Undoing an update puts the previous version back. | [`undo_puts_the_previous_version_back`](../crates/sam-runner/tests/update.rs#L15) |
-| ⟲ Regression (review 2026-11-23, U-1): going back kept the current file as "the newer version" without looking at it, and going forward again unpacked it as SAM's own work, without the review a replaced file needs. | [`going_back_refuses_a_current_version_swapped_outside_sam`](../crates/sam-runner/tests/update.rs#L139) |
-| ⟲ Regression (review 2026-11-23, U-1): a version kept by an earlier SAM was moved out of the AppImage's folder without being checked, so it may not be what SAM unpacked then. | [`going_back_to_a_version_kept_without_its_checksum_needs_a_review`](../crates/sam-runner/tests/update.rs#L177) |
-| ⟲ Regression (review check 2026-11-23, U-1): going back moved the current file from the AppImage's folder into SAM's backup folder and checked it there. | [`going_back_keeps_a_copy_of_the_newer_version_no_other_app_can_change`](../crates/sam-runner/tests/update.rs#L200) |
+| ⟲ Regression (review 2026-11-23, U-1): going back kept the current file as "the newer version" without looking at it, and going forward again unpacked it as SAM's own work, without the review a replaced file needs. | [`going_back_refuses_a_current_version_swapped_outside_sam`](../crates/sam-runner/tests/update.rs#L148) |
+| ⟲ Regression (review 2026-11-23, U-1): a version kept by an earlier SAM was moved out of the AppImage's folder without being checked, so it may not be what SAM unpacked then. | [`going_back_to_a_version_kept_without_its_checksum_needs_a_review`](../crates/sam-runner/tests/update.rs#L186) |
+| ⟲ Regression (review check 2026-11-23, U-1): going back moved the current file from the AppImage's folder into SAM's backup folder and checked it there. | [`going_back_keeps_a_copy_of_the_newer_version_no_other_app_can_change`](../crates/sam-runner/tests/update.rs#L209) |
+| Going back keeps each file's own mode: neither the version put back nor the newer one kept in SAM's folder becomes writable for others (mutation run 2026-11-24: a mode of 0777 went unnoticed). | [`going_back_keeps_the_files_modes`](../crates/sam-runner/tests/update.rs#L246) |
+| A version SAM checked when it kept it, but changed since, asks for a review when SAM goes back to it (mutation run 2026-11-24: a recorded checksum alone could count as checked). | [`going_back_to_a_kept_version_changed_since_needs_a_review`](../crates/sam-runner/tests/update.rs#L263) |
+| When the earlier version cannot be put back (here: it cannot be read), going back fails and leaves both versions where they were: the newer one in place and the earlier one in SAM's backup folder, also when both have the same file name (mutation run 2026-11-24: losing either went unnoticed). | [`a_failed_going_back_leaves_both_versions_where_they_were`](../crates/sam-runner/tests/update.rs#L284) |
 | Updates download only changes check them and refuse tampering. | [`updates_download_only_changes_check_them_and_refuse_tampering`](../crates/sam-runner/tests/update_server.rs#L212) |
 | ⟲ Regressions (audit U-H4, U-H3): updates were downloaded next to the AppImage under a guessable name (`.<name>.sam-download`) with tools that follow links, so an app with write access to that folder (often Downloads) could plant a link there and SAM wrote the update through it into any file of the person. | [`an_update_writes_through_no_planted_link_and_keeps_the_sandbox`](../crates/sam-runner/tests/update_server.rs#L373) |
 | ⟲ Regression (audit U-H5): when the new version had the same file name as the old one, going back moved the current file onto the kept old version (destroying it), then "restored" the new file and reported that the app was back. | [`going_back_with_an_unchanged_file_name_keeps_both_versions`](../crates/sam-runner/tests/update_server.rs#L468) |
@@ -958,4 +962,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 871 automated Rust tests plus 8 scripted checks.
+Total: 875 automated Rust tests plus 8 scripted checks.
