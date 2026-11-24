@@ -980,6 +980,26 @@ fn step_place(step: &Step) -> Option<&Path> {
     }
 }
 
+/// Whether a later step of the room mounts something at or above the
+/// place of step `i`, so the room no longer shows what step `i` put there
+/// (a room's own `--dev /dev` over the app's `/dev/dri`, a `--tmpfs` over
+/// a folder of the app). `--dir`, `--symlink` and `--chmod` mount nothing.
+pub(crate) fn covered_later(steps: &[Step], i: usize) -> bool {
+    let Some(at) = steps.get(i).and_then(step_place) else {
+        return false;
+    };
+    steps[i + 1..].iter().any(|s| {
+        let mounts = match s {
+            Step::Show { .. } | Step::Device { .. } | Step::Mask(_) => true,
+            Step::Args(a) => matches!(
+                a.first().map(String::as_str),
+                Some("--tmpfs" | "--proc" | "--dev" | "--mqueue")
+            ),
+        };
+        mounts && step_place(s).is_some_and(|p| under(at, p))
+    })
+}
+
 /// Whether the app could move a protected or hidden place inside the
 /// writable entry `w` to another name: true when a folder between `w` and
 /// such a place is not a mount point of its own (pinned). A renamed folder

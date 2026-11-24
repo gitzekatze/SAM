@@ -617,6 +617,9 @@ impl Drop for RoomService {
 /// (Bubblewrap skips such `-try` places), so it leaves the plan and
 /// neither shows nor covers anything in a room. Device places are checked
 /// the same way: one that appears later is never looked up by its name.
+/// A device place present now is remembered by what it is (device and
+/// inode): Bubblewrap shows devices only by name, so a room shows one only
+/// while it is still that device ([`device_at_start`]).
 /// A source that exists but cannot be opened is an error: see
 /// [`plan_at_start_with`].
 fn plan_at_start(plan: FloorPlan) -> Result<(FloorPlan, Vec<Option<SourceHandle>>), String> {
@@ -667,6 +670,9 @@ pub(crate) enum SourceHandle {
     /// On a drive that may be unmounted: what it was (device and inode),
     /// opened again for a room and refused unless it is still the same.
     Known { path: PathBuf, dev: u64, ino: u64 },
+    /// A device place of the app (shown by name): what it was when the app
+    /// started (device and inode, through links as Bubblewrap follows them).
+    Device { dev: u64, ino: u64 },
 }
 
 /// The floor plan with its sources opened now ([`plan_at_start`]). Only a
@@ -709,12 +715,22 @@ fn plan_at_start_with(
                 entries.push(e);
             }
             None => {
+                let mut handle = None;
                 if let Entry::Dev { src, .. } = &e {
-                    if std::fs::symlink_metadata(src).is_err() {
-                        continue;
+                    // Through links, as Bubblewrap shows it: a link to a
+                    // device that is not there now is not in the app either.
+                    match device_identity(src) {
+                        Ok((dev, ino)) => handle = Some(SourceHandle::Device { dev, ino }),
+                        Err(err) if err.kind() == std::io::ErrorKind::NotFound => continue,
+                        Err(err) => {
+                            return Err(format!(
+                                "{} could not be checked when the app started ({err}), so no room is built this start",
+                                e.at().display()
+                            ))
+                        }
                     }
                 }
-                sources.push(None);
+                sources.push(handle);
                 entries.push(e);
             }
         }
@@ -942,15 +958,20 @@ fn run_room(
     args.extend(["--ro-bind-data".into(), n.to_string(), SPEC_INSIDE.into()]);
     let spec_at = handles.len();
     handles.push(data);
-    // Each place shown by handle, with what it is (device, inode): SAM's
-    // helper checks in the room that Bubblewrap showed exactly that (an
-    // older Bubblewrap mounts the handle's path by name, which the app can
-    // swap while the room is built).
+    // Each place of the app the room shows, with what it is (device,
+    // inode): SAM's helper checks in the room that Bubblewrap showed
+    // exactly that (an older Bubblewrap mounts a handle's path by name,
+    // which the app can swap while the room is built; a device is always
+    // mounted by name). Not a place a later mount of the room covers: the
+    // room does not show it, so there is nothing to check.
     let mut shown_ids: Vec<(u64, u64, PathBuf)> = Vec::new();
     // The request's places and the room's own things, in order.
     // Writes the request asked for but the app cannot make (recorded).
     let mut capped_here: Vec<String> = Vec::new();
-    for step in &room.steps {
+    // Device places left out because they changed since the app started.
+    let mut left_out: Vec<String> = Vec::new();
+    for (i, step) in room.steps.iter().enumerate() {
+        let shown_in_room = !room_rules::covered_later(&room.steps, i);
         match step {
             Step::Show {
                 source,
@@ -999,10 +1020,37 @@ fn run_room(
                 args.push(n.to_string());
                 args.push(dst.to_string_lossy().into_owned());
                 let (dev, ino) = identity(&fd)?;
-                shown_ids.push((dev, ino, dst.clone()));
+                if shown_in_room {
+                    shown_ids.push((dev, ino, dst.clone()));
+                }
                 handles.push(fd);
             }
             Step::Device { src, dst, access } => {
+                // Shown by name (Bubblewrap cannot show a device by handle),
+                // and only while it is still the device the app was given
+                // when it started: one unplugged since, or another now at
+                // its name (a keyboard at a game controller's number), is
+                // left out, as the app no longer has it either. SAM's helper
+                // then checks in the room that Bubblewrap showed exactly it.
+                let checked = match device_at_start(&served.ctx.plan, &served.sources, src) {
+                    // Not a device place of the app: a node of the room's
+                    // own minimal /dev.
+                    None => None,
+                    Some(start) => match (start, device_identity(src)) {
+                        (Some(was), Ok(now)) if was == now => Some(now),
+                        _ => {
+                            capped_here.push(format!(
+                                "{}: not the device the app was given when it started, so left out",
+                                dst.display()
+                            ));
+                            left_out.push(dst.to_string_lossy().into_owned());
+                            continue;
+                        }
+                    },
+                };
+                if let Some((dev, ino)) = checked.filter(|_| shown_in_room) {
+                    shown_ids.push((dev, ino, dst.clone()));
+                }
                 args.push(
                     match access {
                         DeviceAccess::Devices => "--dev-bind-try",
@@ -1017,6 +1065,9 @@ fn run_room(
             Step::Mask(at) => {
                 args.push("--tmpfs".into());
                 args.push(at.to_string_lossy().into_owned());
+            }
+            // A device left out is not made read-only either.
+            Step::Args(a) if a.len() == 2 && a[0] == "--remount-ro" && left_out.contains(&a[1]) => {
             }
             Step::Args(a) => args.extend(a.iter().cloned()),
         }
@@ -1484,11 +1535,41 @@ fn open_source(source: &Source, sources: &[Option<SourceHandle>]) -> std::io::Re
             }
             fd
         }
+        SourceHandle::Device { .. } => {
+            return Err(std::io::Error::other(
+                "a device place is shown by its name, never by a handle",
+            ))
+        }
     };
     if source.rel.as_os_str().is_empty() {
         return Ok(top);
     }
     openat2_beneath(&top, &source.rel)
+}
+
+/// Device and inode of what `p` names, through links (as Bubblewrap shows
+/// a device place).
+fn device_identity(p: &Path) -> std::io::Result<(u64, u64)> {
+    use std::os::unix::fs::MetadataExt;
+    std::fs::metadata(p).map(|m| (m.dev(), m.ino()))
+}
+
+/// What the device place `src` of the app was when the app started:
+/// `None` when `src` is no device place of the app (a node of a room's own
+/// minimal /dev), `Some(None)` when it is one whose start is not known
+/// (never shown then).
+fn device_at_start(
+    plan: &FloorPlan,
+    sources: &[Option<SourceHandle>],
+    src: &Path,
+) -> Option<Option<(u64, u64)>> {
+    plan.entries
+        .iter()
+        .position(|e| matches!(e, Entry::Dev { src: at, .. } if at == src))
+        .map(|i| match sources.get(i) {
+            Some(Some(SourceHandle::Device { dev, ino })) => Some((*dev, *ino)),
+            _ => None,
+        })
 }
 
 /// Device and inode of an open file or folder.
@@ -3676,6 +3757,7 @@ done
 while [ $# -gt 0 ] && [ "$1" != -- ]; do shift; done
 shift 4
 [ "$1" = unconfirmed ] && exit 3
+tr '\0' '\n' < "/proc/self/fd/$spec" > '{log}.spec'
 status=$(tr '\0' '\n' < "/proc/self/fd/$spec" | sed -n 's/^status=//p')
 echo "layers of the stand-in" > "/proc/self/fd/$status"
 exec "$@"
@@ -4251,6 +4333,140 @@ exec "$@"
         assert!(
             !lines.iter().any(|l| l.starts_with("sam-room: built")),
             "{lines:?}"
+        );
+    }
+
+    /// A device place of the app is shown by its name (Bubblewrap cannot
+    /// show a device by handle), so a room shows it only while it is still
+    /// what the app was given when it started, and SAM's helper is told
+    /// what it must be in the room. Another device now at its name (a
+    /// keyboard at a game controller's number) is left out and recorded,
+    /// and so is one that is gone. Regular files stand in for device nodes.
+    #[test]
+    fn a_device_place_is_shown_only_while_it_is_the_one_the_app_was_given() {
+        use std::os::unix::fs::MetadataExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let (bwrap, log) = fake_bwrap(tmp.path());
+        let pad = tmp.path().join("event5");
+        std::fs::write(&pad, "pad").unwrap();
+        let p = pad.to_str().unwrap();
+        let mut ctx = context(tmp.path(), &bwrap, &[]);
+        // Read-only for the app, so read-only in a room too.
+        ctx.plan =
+            FloorPlan::from_bwrap_args(&s(&["--dev-bind-try", p, p, "--remount-ro", p, "--", "x"]))
+                .unwrap();
+        let mut service = service_in(tmp.path());
+        service.serve(ctx);
+        let remount = format!("--remount-ro\n{p}\n");
+        let ask = || {
+            let a = ask_service(
+                &service.socket,
+                &request(&[&["--dev-bind", p, p]], &["/bin/sh", "-c", "exit 0"]),
+            );
+            assert_eq!(a["exit"], 0, "{a}");
+            std::fs::read_to_string(&log).unwrap()
+        };
+        // Unchanged: shown, and the helper checks it is this one.
+        let args = ask();
+        assert!(
+            args.contains(&format!("--dev-bind-try\n{p}\n{p}\n")),
+            "{args}"
+        );
+        assert!(args.contains(&remount), "{args}");
+        let m = std::fs::metadata(&pad).unwrap();
+        let spec = std::fs::read_to_string(log.with_extension("spec")).unwrap();
+        assert!(
+            spec.contains(&format!("place={}:{}:{p}\n", m.dev(), m.ino())),
+            "{spec}"
+        );
+        let left_out = format!("{p}: not the device the app was given when it started");
+        assert!(!last_room_record(&service.state).contains(&left_out));
+        // Another device at its name, then none: left out and recorded.
+        let other = tmp.path().join("keyboard");
+        std::fs::write(&other, "keyboard").unwrap();
+        std::fs::rename(&other, &pad).unwrap();
+        for case in ["another device", "gone"] {
+            if case == "gone" {
+                std::fs::remove_file(&pad).unwrap();
+            }
+            let args = ask();
+            // Left out, and not made read-only either (nothing is there).
+            assert!(!args.lines().any(|l| l == p), "{case}: {args}");
+            assert!(!args.contains(&remount), "{case}: {args}");
+            let record = last_room_record(&service.state);
+            assert!(record.contains(&left_out), "{case}: {record}");
+        }
+        service.stop();
+    }
+
+    /// A place of the app that a later mount of the room covers (a room's
+    /// own `--dev /dev` over the app's `/dev/dri`, as in the common
+    /// `--ro-bind / / --dev /dev`, or a `--tmpfs` over a folder of the app)
+    /// is not shown in the room, so SAM's helper is not told to check it,
+    /// and the room is built as asked. A place the room still shows is
+    /// checked.
+    #[test]
+    fn places_a_later_mount_of_the_room_covers_are_not_checked_in_the_room() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (bwrap, log) = fake_bwrap(tmp.path());
+        let keep = tmp.path().join("keep");
+        let top = tmp.path().join("top");
+        let data = top.join("data");
+        let dev = tmp.path().join("dev");
+        let dri = dev.join("dri");
+        for d in [&keep, &data, &dri] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        let path = |p: &Path| p.to_str().unwrap().to_string();
+        let (k, t, a, d, r) = (path(&keep), path(&top), path(&data), path(&dev), path(&dri));
+        let mut ctx = context(tmp.path(), &bwrap, &[]);
+        ctx.plan = FloorPlan::from_bwrap_args(&s(&[
+            "--ro-bind",
+            &k,
+            &k,
+            "--ro-bind",
+            &a,
+            &a,
+            "--dev-bind-try",
+            &r,
+            &r,
+            "--",
+            "x",
+        ]))
+        .unwrap();
+        let mut service = service_in(tmp.path());
+        service.serve(ctx);
+        let answer = ask_service(
+            &service.socket,
+            &request(
+                &[&["--ro-bind", "/", "/"], &["--tmpfs", &t], &["--dev", &d]],
+                &["/bin/sh", "-c", "exit 0"],
+            ),
+        );
+        assert_eq!(answer["exit"], 0, "{answer}");
+        let spec = std::fs::read_to_string(log.with_extension("spec")).unwrap();
+        let places: Vec<&str> = spec.lines().filter(|l| l.starts_with("place=")).collect();
+        assert_eq!(places.len(), 1, "{spec}");
+        assert!(places[0].ends_with(&format!(":{k}")), "{spec}");
+        service.stop();
+    }
+
+    /// A device place of the app that exists but cannot be checked when the
+    /// app starts (here a link to itself) refuses every room of that start,
+    /// as other places do: it is never left out quietly.
+    #[test]
+    fn a_device_place_that_cannot_be_checked_at_the_start_refuses_every_room() {
+        let tmp = tempfile::tempdir().unwrap();
+        let node = tmp.path().join("event5");
+        std::os::unix::fs::symlink(&node, &node).unwrap();
+        let n = node.to_str().unwrap();
+        let plan = FloorPlan::from_bwrap_args(&s(&["--dev-bind-try", n, n, "--", "x"])).unwrap();
+        let e = plan_at_start_with(plan, |_, _| false)
+            .err()
+            .unwrap_or_default();
+        assert!(
+            e.contains(&format!("{n} could not be checked when the app started")),
+            "{e}"
         );
     }
 
