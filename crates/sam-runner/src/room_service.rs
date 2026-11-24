@@ -1450,6 +1450,10 @@ fn spawn_room(
             // only; the room keeps the launcher's own limit.
             let mut lim: libc::rlimit = std::mem::zeroed();
             let have = libc::getrlimit(libc::RLIMIT_NOFILE, &mut lim) == 0;
+            // The highest number the launcher's own descriptors can have
+            // (below its soft limit), for the last way of marking them.
+            let last: Option<u32> =
+                have.then(|| u32::try_from(lim.rlim_cur.saturating_sub(1)).unwrap_or(u32::MAX));
             if have {
                 let raised = libc::rlimit {
                     rlim_cur: lim.rlim_max,
@@ -1510,23 +1514,19 @@ fn spawn_room(
             }
             // Everything else from 3 on closes when Bubblewrap starts.
             let mut from: RawFd = 3;
+            let mut marked = true;
             for t in &targets {
                 if *t > from {
-                    libc::syscall(
-                        libc::SYS_close_range,
-                        from as u32,
-                        (*t - 1) as u32,
-                        CLOSE_RANGE_CLOEXEC,
-                    );
+                    marked &= cloexec_range(from as u32, (*t - 1) as u32, last);
                 }
                 from = from.max(*t + 1);
             }
-            libc::syscall(
-                libc::SYS_close_range,
-                from as u32,
-                u32::MAX,
-                CLOSE_RANGE_CLOEXEC,
-            );
+            marked &= cloexec_range(from as u32, u32::MAX, last);
+            // Never a room that might get the launcher's descriptors.
+            if !marked {
+                *libc::__errno_location() = libc::ENOSYS;
+                fail(err);
+            }
             libc::execve(path.as_ptr(), argv_ptrs.as_ptr(), envp.as_ptr());
             fail(err)
         }
@@ -1557,6 +1557,130 @@ fn spawn_room(
 }
 
 const CLOSE_RANGE_CLOEXEC: u32 = 4;
+
+/// Marks the descriptors `from..=to` close-on-exec, in a child between
+/// fork and exec (async-signal-safe calls only, nothing allocated): all at
+/// once with close_range (Linux 5.11); before that, each open one as
+/// /proc/self/fd lists it; without /proc, each number up to `last` (the
+/// launcher's soft limit, above which it has none of its own). False when
+/// none of these ways is there: the start then fails.
+///
+/// # Safety
+/// Only sets flags on this process's own descriptor numbers.
+unsafe fn cloexec_range(from: u32, to: u32, last: Option<u32>) -> bool {
+    if close_range_cloexec(from, to) == 0 {
+        return true;
+    }
+    // SAFETY: as above.
+    if unsafe { cloexec_listed(from, to) } {
+        return true;
+    }
+    let Some(last) = last else {
+        return false;
+    };
+    for fd in from..=to.min(last) {
+        let Ok(fd) = RawFd::try_from(fd) else { break };
+        // SAFETY: as above; a number not open gives EBADF, ignored.
+        unsafe { libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC) };
+    }
+    true
+}
+
+/// Marks each open descriptor in `from..=to` close-on-exec as
+/// /proc/self/fd lists it, read with getdents64 into a buffer on the
+/// stack (as CPython does between fork and exec): only the open ones,
+/// however high the limit. False when /proc cannot be read.
+///
+/// # Safety
+/// As [`cloexec_range`].
+unsafe fn cloexec_listed(from: u32, to: u32) -> bool {
+    #[cfg(test)]
+    if NO_PROC_FOR_TESTS.load(Ordering::SeqCst) {
+        return false;
+    }
+    // SAFETY: a static C string; the result is checked.
+    let dir = unsafe {
+        libc::open(
+            c"/proc/self/fd".as_ptr(),
+            libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC,
+        )
+    };
+    if dir < 0 {
+        return false;
+    }
+    let mut buf = [0u8; 4096];
+    let complete = loop {
+        // SAFETY: getdents64 writes at most `buf.len()` bytes into `buf`.
+        let n = unsafe { libc::syscall(libc::SYS_getdents64, dir, buf.as_mut_ptr(), buf.len()) };
+        let Ok(n) = usize::try_from(n) else {
+            break false;
+        };
+        if n == 0 {
+            break true;
+        }
+        let n = n.min(buf.len());
+        // Each entry: inode (8), offset (8), its length (2), type (1),
+        // then its name up to a NUL byte.
+        let mut at = 0;
+        while at + 19 < n {
+            let len = match (buf.get(at + 16), buf.get(at + 17)) {
+                (Some(a), Some(b)) => usize::from(u16::from_ne_bytes([*a, *b])),
+                _ => break,
+            };
+            if len == 0 {
+                break;
+            }
+            let mut fd: u32 = 0;
+            let mut number = false;
+            let mut i = at + 19;
+            while i < (at + len).min(n) {
+                match buf.get(i) {
+                    Some(c) if c.is_ascii_digit() => {
+                        fd = fd.saturating_mul(10).saturating_add(u32::from(c - b'0'));
+                        number = true;
+                    }
+                    Some(0) => break,
+                    _ => {
+                        number = false;
+                        break;
+                    }
+                }
+                i += 1;
+            }
+            if number && (from..=to).contains(&fd) {
+                if let Ok(fd) = RawFd::try_from(fd) {
+                    if fd != dir {
+                        // SAFETY: as above.
+                        unsafe { libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC) };
+                    }
+                }
+            }
+            at += len;
+        }
+    };
+    // SAFETY: our own descriptor, opened above.
+    unsafe { libc::close(dir) };
+    complete
+}
+
+/// close_range with CLOSE_RANGE_CLOEXEC; 0 when it worked.
+fn close_range_cloexec(from: u32, to: u32) -> libc::c_long {
+    #[cfg(test)]
+    if NO_CLOSE_RANGE_FOR_TESTS.load(Ordering::SeqCst) {
+        return -1;
+    }
+    // SAFETY: close_range with CLOSE_RANGE_CLOEXEC only sets a flag on
+    // this process's own descriptors; it closes nothing.
+    unsafe { libc::syscall(libc::SYS_close_range, from, to, CLOSE_RANGE_CLOEXEC) }
+}
+
+/// Tests only: close_range fails, as on a kernel before 5.11.
+#[cfg(test)]
+static NO_CLOSE_RANGE_FOR_TESTS: AtomicBool = AtomicBool::new(false);
+
+/// Tests only: /proc/self/fd cannot be read, as without /proc.
+#[cfg(test)]
+static NO_PROC_FOR_TESTS: AtomicBool = AtomicBool::new(false);
 
 /// The room's rules for SAM's room helper: `key=value` entries separated by
 /// NUL bytes (see room-exec/main.rs). Landlock: the app's rules plus the
@@ -2766,14 +2890,65 @@ mod process_tests {
     /// program starts.
     #[test]
     fn a_room_gets_exactly_its_connections_and_none_overwrites_another() {
+        exactly_its_connections();
+    }
+
+    /// The same on a kernel before 5.11, which has no close_range: each
+    /// descriptor of the launcher is then marked on its own, and none
+    /// reaches the room. Runs on its own: it makes close_range fail in
+    /// this process.
+    #[test]
+    fn without_close_range_a_room_still_gets_exactly_its_connections() {
+        if !alone("without_close_range_a_room_still_gets_exactly_its_connections") {
+            return;
+        }
+        NO_CLOSE_RANGE_FOR_TESTS.store(true, Ordering::SeqCst);
+        exactly_its_connections();
+    }
+
+    /// The same without close_range and without /proc: each number up to
+    /// the launcher's soft limit is then marked. Runs on its own.
+    #[test]
+    fn without_close_range_and_proc_a_room_still_gets_exactly_its_connections() {
+        if !alone("without_close_range_and_proc_a_room_still_gets_exactly_its_connections") {
+            return;
+        }
+        NO_CLOSE_RANGE_FOR_TESTS.store(true, Ordering::SeqCst);
+        NO_PROC_FOR_TESTS.store(true, Ordering::SeqCst);
+        // A soft limit low enough that the last number below it is
+        // checked too (a copy of its own: the limit is this copy's).
+        // SAFETY: a zeroed rlimit is valid; getrlimit fills it.
+        let mut lim: libc::rlimit = unsafe { std::mem::zeroed() };
+        // SAFETY: getrlimit writes the struct given.
+        assert_eq!(unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &mut lim) }, 0);
+        set_nofile(2048, lim.rlim_max.max(2048));
+        exactly_its_connections();
+    }
+
+    /// Starts a room with three connections, a launcher descriptor that
+    /// is not close-on-exec at a number between them, and checks that the
+    /// room's program has exactly its connections.
+    fn exactly_its_connections() {
         let null = dev_null();
-        // A descriptor of the launcher that a started program would keep
-        // (not close-on-exec), at a number between the room's.
-        // SAFETY: F_DUPFD copies our own open descriptor; checked below.
-        let leak = unsafe { libc::fcntl(null.as_raw_fd(), libc::F_DUPFD, 500) };
-        assert!(leak >= 500);
-        // SAFETY: a new descriptor of our own.
-        let leak = unsafe { OwnedFd::from_raw_fd(leak) };
+        // Descriptors of the launcher that a started program would keep
+        // (not close-on-exec): one between the room's numbers, one above
+        // them, and one at the last number below the soft limit.
+        let leak_at = |n: RawFd| {
+            // SAFETY: F_DUPFD copies our own open descriptor; checked below.
+            let fd = unsafe { libc::fcntl(null.as_raw_fd(), libc::F_DUPFD, n) };
+            assert!(fd >= n, "{}", std::io::Error::last_os_error());
+            // SAFETY: a new descriptor of our own.
+            unsafe { OwnedFd::from_raw_fd(fd) }
+        };
+        // SAFETY: a zeroed rlimit is valid; getrlimit fills it.
+        let mut lim: libc::rlimit = unsafe { std::mem::zeroed() };
+        // SAFETY: getrlimit writes the struct given.
+        assert_eq!(unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &mut lim) }, 0);
+        let mut leaks = vec![leak_at(500), leak_at(950)];
+        if (952..=65536).contains(&lim.rlim_cur) {
+            leaks.push(leak_at(lim.rlim_cur as RawFd - 1));
+        }
+        let leak: Vec<RawFd> = leaks.iter().map(|l| l.as_raw_fd()).collect();
         let (a_r, a_w) = pipe().unwrap();
         let (b_r, b_w) = pipe().unwrap();
         let (out_r, out_w) = pipe().unwrap();
@@ -2817,7 +2992,7 @@ mod process_tests {
             (900, pipe_of(&a_r)),
         ]
         .into();
-        assert_eq!(seen, want, "launcher's own at {}\n{out}", leak.as_raw_fd());
+        assert_eq!(seen, want, "launcher's own at {leak:?}\n{out}");
     }
 
     /// The room's rules never carry an environment variable without a
