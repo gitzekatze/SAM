@@ -1317,3 +1317,186 @@ mod space_tests {
         assert!(!is_limit_error(&anyhow!("the image is damaged")));
     }
 }
+
+/// The unpacking limits at their exact edges, and how a tool's end is read
+/// (mutation run over PR 95, which found these untested).
+#[cfg(test)]
+mod limit_tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    fn limits(max_files: u64, max_bytes: u64) -> Limits {
+        Limits {
+            max_files,
+            max_bytes,
+            ..Limits::default()
+        }
+    }
+
+    fn mode(p: &Path) -> u32 {
+        fs::metadata(p).unwrap().permissions().mode() & 0o777
+    }
+
+    fn set_mode(p: &Path, m: u32) {
+        fs::set_permissions(p, fs::Permissions::from_mode(m)).unwrap();
+    }
+
+    /// The counting holds the exact limits: as many bytes as allowed pass
+    /// and one more is over; for the files it allows two entries of slack
+    /// for the box's own folders (`normalize` holds the exact limit
+    /// afterwards).
+    #[test]
+    fn the_unpacking_limits_hold_at_their_exact_edge() {
+        let t = tempfile::tempdir().unwrap();
+        for i in 0..3 {
+            fs::write(t.path().join(format!("f{i}")), "").unwrap();
+        }
+        assert!(
+            over_limits(t.path(), &limits(1, 100)).is_none(),
+            "1 file and 2 entries of slack fit"
+        );
+        fs::write(t.path().join("f3"), "").unwrap();
+        assert!(
+            over_limits(t.path(), &limits(1, 100)).is_some(),
+            "one entry more is over"
+        );
+        let b = tempfile::tempdir().unwrap();
+        fs::write(b.path().join("ten"), "0123456789").unwrap();
+        assert!(
+            over_limits(b.path(), &limits(100, 10)).is_none(),
+            "10 bytes fit a 10-byte limit"
+        );
+        assert!(
+            over_limits(b.path(), &limits(100, 9)).is_some(),
+            "10 bytes are over a 9-byte limit"
+        );
+    }
+
+    /// A folder the tool removed or replaced meanwhile is passed over, and
+    /// a folder the tool made unreadable inside the box is opened and
+    /// counted: what it holds counts against the limits, never reported as
+    /// "cannot be counted" and never passed over.
+    #[test]
+    fn folders_gone_or_unreadable_meanwhile_are_still_counted() {
+        let t = tempfile::tempdir().unwrap();
+        assert!(over_limits(&t.path().join("gone"), &limits(10, 100)).is_none());
+        fs::write(t.path().join("file"), "").unwrap();
+        assert!(over_limits(&t.path().join("file"), &limits(10, 100)).is_none());
+        let shut = t.path().join("shut");
+        fs::create_dir(&shut).unwrap();
+        fs::write(shut.join("inside"), "12345").unwrap();
+        set_mode(&shut, 0o000);
+        let unreadable = fs::read_dir(&shut).is_err();
+        let within = over_limits(t.path(), &limits(10, 100));
+        let opened = mode(&shut);
+        set_mode(&shut, 0o000);
+        let over = over_limits(t.path(), &limits(10, 4));
+        set_mode(&shut, 0o700);
+        assert!(
+            unreadable,
+            "mode 000 must lock the folder: run as a normal user"
+        );
+        assert!(within.is_none(), "{within:?}");
+        assert_eq!(opened, 0o700, "SAM opened the locked folder to count it");
+        let msg = format!(
+            "{:#}",
+            over.expect("its 5 bytes count against a 4-byte limit")
+        );
+        assert!(
+            msg.contains("more than") && !msg.contains("cannot be counted"),
+            "{msg}"
+        );
+    }
+
+    /// A folder the tool swapped for a link while SAM counts is never
+    /// opened through the link, wherever it leads, and a folder reached
+    /// through a link further up leaves the box: nothing outside it is
+    /// opened or changed.
+    #[test]
+    fn a_folder_swapped_for_a_link_is_not_opened() {
+        let t = tempfile::tempdir().unwrap();
+        let (top, outside) = (t.path().join("box"), t.path().join("outside"));
+        fs::create_dir_all(top.join("real")).unwrap();
+        fs::create_dir_all(outside.join("sub")).unwrap();
+        set_mode(&outside.join("sub"), 0o755);
+        std::os::unix::fs::symlink(top.join("real"), top.join("inside")).unwrap();
+        std::os::unix::fs::symlink(&outside, top.join("out")).unwrap();
+        assert!(
+            read_dir_inside(&top, &top.join("real")).is_some(),
+            "its own folder"
+        );
+        assert!(
+            read_dir_inside(&top, &top.join("inside")).is_none(),
+            "a link inside"
+        );
+        assert!(
+            read_dir_inside(&top, &top.join("out")).is_none(),
+            "a link out"
+        );
+        assert!(
+            read_dir_inside(&top, &top.join("out/sub")).is_none(),
+            "through a link further up"
+        );
+        assert_eq!(mode(&outside.join("sub")), 0o755, "left unchanged");
+    }
+
+    /// Removing a box that is not there (never made, or removed already)
+    /// is not an error.
+    #[test]
+    fn removing_a_missing_box_succeeds() {
+        let t = tempfile::tempdir().unwrap();
+        assert!(remove_box(&t.path().join("never-made")).is_ok());
+    }
+
+    /// Runs `script` as an unpacking tool and returns its result.
+    fn tool(script: &str, limits: &Limits) -> Result<()> {
+        let watch = tempfile::tempdir().unwrap();
+        // With less than 1 MiB free, any failure reads as a full disk.
+        assert!(
+            free_bytes(watch.path()).is_some_and(|f| f >= 1024 * 1024),
+            "the temporary folder needs 1 MiB free"
+        );
+        let mut cmd = Command::new("sh");
+        cmd.args(["-c", script]);
+        let mut log = Vec::new();
+        run_tool(&mut cmd, limits, Instant::now(), &mut log, watch.path())
+    }
+
+    /// A memory limit of 0 means none: the tool runs.
+    #[test]
+    fn no_memory_limit_lets_the_tool_run() {
+        let none = Limits {
+            max_memory: 0,
+            ..Limits::default()
+        };
+        tool("exit 0", &none).unwrap();
+    }
+
+    /// How a tool's end is read: a plain failure is neither a limit nor a
+    /// full disk; a full disk is told by the exit code or by the tool's own
+    /// words, each on its own; a limit the tool reports comes with its
+    /// reason.
+    #[test]
+    fn a_failed_tool_is_told_apart_from_a_limit_and_a_full_disk() {
+        let d = Limits::default();
+        let full = |e: &anyhow::Error| {
+            e.downcast_ref::<io::Error>()
+                .and_then(io::Error::raw_os_error)
+                == Some(libc::ENOSPC)
+        };
+        let plain = tool("echo broken image >&2; exit 1", &d).unwrap_err();
+        assert!(!is_limit_error(&plain) && !full(&plain), "{plain:#}");
+        for script in [
+            format!("exit {EXIT_DISK_FULL}"),
+            "echo 'write: No space left on device' >&2; exit 1".to_string(),
+        ] {
+            let e = tool(&script, &d).unwrap_err();
+            assert!(full(&e) && !is_limit_error(&e), "{script}: {e:#}");
+        }
+        let e = tool(&format!("echo 'error: too big' >&2; exit {EXIT_LIMIT}"), &d).unwrap_err();
+        assert!(
+            is_limit_error(&e) && format!("{e:#}").contains("too big"),
+            "{e:#}"
+        );
+    }
+}
