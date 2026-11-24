@@ -1682,9 +1682,11 @@ pub(crate) enum DriveId {
     /// mount while the computer runs.
     Mount(u64),
     /// Before Linux 6.8: the file system's own ID (`/dev/disk/by-uuid`),
-    /// written when it was formatted, so another stick has another.
+    /// written when it was formatted (a copy of a stick or of the same
+    /// image has the same).
     Disk(std::ffi::OsString),
-    /// Neither (a network or FUSE mount before Linux 6.8): only device and
+    /// Neither (before Linux 6.8: a network or FUSE mount, or a file
+    /// system on no single block device such as btrfs): only device and
     /// inode are compared.
     Unknown,
 }
@@ -4243,25 +4245,47 @@ exec "$@"
             return;
         }
         let full = format!("room_service::service_tests::{name}");
-        let out = std::process::Command::new("unshare")
+        let child = std::process::Command::new("unshare")
             .args(["--user", "--map-root-user", "--mount"])
             .arg(std::env::current_exe().unwrap())
             .args(["--exact", &full, "--test-threads=1", "--nocapture"])
             .env(VAR, name)
-            .output();
-        let ran = out
-            .as_ref()
-            .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).contains("running 1 test"));
-        if !ran {
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn();
+        let mut child = match child {
+            Ok(c) => c,
+            Err(e) => {
+                if let Err(e) = crate::contracts::skip(&format!("unshare cannot start: {e}")) {
+                    panic!("{e}");
+                }
+                return;
+            }
+        };
+        // At most a minute: a hang fails the test instead of the whole run.
+        let end = Instant::now() + Duration::from_secs(60);
+        while child.try_wait().unwrap().is_none() {
+            if Instant::now() >= end {
+                let _ = child.kill();
+                let _ = child.wait();
+                panic!("{name} did not end within a minute");
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let out = child.wait_with_output().unwrap();
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        // A test of another name (renamed or moved) is never taken for a
+        // missing namespace.
+        assert!(!stdout.contains("running 0 tests"), "{full} was not found");
+        if !stdout.contains("running 1 test") {
             if let Err(e) = crate::contracts::skip(&format!(
-                "no user and mount namespace of the test's own (unshare): {out:?}"
+                "no user and mount namespace of the test's own (unshare): {}",
+                String::from_utf8_lossy(&out.stderr)
             )) {
                 panic!("{e}");
             }
             return;
         }
-        let out = out.unwrap();
-        let stdout = String::from_utf8_lossy(&out.stdout);
         assert!(
             out.status.success() && stdout.contains("1 passed"),
             "{:?}\n{stdout}\n{}",
@@ -4351,6 +4375,8 @@ exec "$@"
                     e.to_string().contains("no longer what the app was shown"),
                     "{e}"
                 );
+                // Unmounted, so the temporary folder can go.
+                unmount(&stick);
             },
         );
     }
