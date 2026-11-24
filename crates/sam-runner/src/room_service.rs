@@ -99,6 +99,12 @@ const SPEC_INSIDE: &str = "/.sam-room/room.spec";
 /// no library. Empty when this build could not make it.
 const ROOM_HELPER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/sam-room-exec"));
 
+/// Whether `helper` can serve as the room helper: there is one, and it
+/// needs no loader (the room has none to give it).
+fn helper_usable(helper: &[u8]) -> bool {
+    !(helper.is_empty() || needs_loader(helper))
+}
+
 /// Whether an ELF program asks for a loader (a PT_INTERP program header).
 pub fn needs_loader(elf: &[u8]) -> bool {
     let u16_at = |i: usize| {
@@ -444,7 +450,7 @@ impl RoomService {
                 )
             );
         }
-        if ROOM_HELPER.is_empty() || needs_loader(ROOM_HELPER) {
+        if !helper_usable(ROOM_HELPER) {
             bail!(
                 "{}",
                 sam_core::i18n::tr(
@@ -2203,6 +2209,16 @@ mod process_tests {
         cut.truncate(66);
         assert!(needs_loader(&cut), "a program header cut short");
         assert!(needs_loader(b""), "nothing");
+    }
+
+    /// Room service runs only with a static room helper: none built, or
+    /// one built to need a loader, even when not empty, turns it off
+    /// (mutation run 2026-11-24: a dynamic helper was accepted unnoticed).
+    #[test]
+    fn room_service_runs_only_with_a_static_helper() {
+        assert!(helper_usable(&elf(&[PT_LOAD])), "static");
+        assert!(!helper_usable(&elf(&[PT_LOAD, PT_INTERP])), "with a loader");
+        assert!(!helper_usable(b""), "none built");
     }
 
     /// What the launcher keeps for itself is never given to rooms: 128 of
