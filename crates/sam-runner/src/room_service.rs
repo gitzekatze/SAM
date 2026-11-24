@@ -441,10 +441,9 @@ impl Drop for Counted {
 
 /// A room slot (at most MAX_ROOMS rooms at once), given back when it is
 /// dropped: when the room is done, also by a fault (a panic) in the
-/// request. A fault after the room's Bubblewrap has started gives the slot
-/// back while that room may still run until the app's start ends (the
-/// room itself is ended at the stop); a guard for the running room is
-/// still to come.
+/// request. A room that has started is ended and waited for by its
+/// [`RunningRoom`] first (dropped before the slot), so a slot is never
+/// free while its room still runs.
 struct Slot<'a>(&'a State);
 
 impl Drop for Slot<'_> {
@@ -466,6 +465,64 @@ const FAULT_FOR_TESTS: &str = "sam-test-fault";
 fn fault_for_tests(command: &[String]) {
     if command.first().is_some_and(|c| c == FAULT_FOR_TESTS) {
         panic!("a fault before the room is built (test)");
+    }
+}
+
+/// Tests only: a request whose command ends with this meets a fault (a
+/// panic) just after its room's Bubblewrap and watcher have started.
+#[cfg(test)]
+const FAULT_AFTER_START_FOR_TESTS: &str = "sam-test-fault-after-start";
+
+#[cfg(test)]
+#[allow(clippy::panic)]
+fn fault_after_start_for_tests(command: &[String]) {
+    if command
+        .last()
+        .is_some_and(|c| c == FAULT_AFTER_START_FOR_TESTS)
+    {
+        panic!("a fault after the room started (test)");
+    }
+}
+
+/// A room whose Bubblewrap has started, ended and waited for when dropped
+/// (nothing to do when it has ended already) and taken off the service's
+/// list: also by a fault (a panic) after the start, so no room outlives
+/// its request. On a fault the stand-in is told and its connection shut
+/// (the room's watcher holds a copy of it), so neither waits until the
+/// app's start ends.
+struct RunningRoom<'a> {
+    child: Arc<Mutex<RoomProcess>>,
+    state: &'a State,
+    /// The stand-in's connection (a copy made before the room started).
+    stream: UnixStream,
+    program: String,
+}
+
+impl RunningRoom<'_> {
+    /// Ends the room now and waits for it (it stays on the list until the
+    /// guard is dropped).
+    fn end(&self) {
+        let mut c = self.child.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = c.kill();
+        let _ = c.wait();
+    }
+}
+
+impl Drop for RunningRoom<'_> {
+    fn drop(&mut self) {
+        self.end();
+        self.state
+            .rooms
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .retain(|r| !Arc::ptr_eq(r, &self.child));
+        if std::thread::panicking() {
+            let why = "a fault in SAM's Room service ended the room";
+            self.state
+                .record_room(format!("sam-room: failed {}: {why}", self.program));
+            answer(&mut self.stream, &serde_json::json!({ "error": why }));
+            let _ = self.stream.shutdown(std::net::Shutdown::Both);
+        }
     }
 }
 
@@ -1150,21 +1207,30 @@ fn run_room(
     // runs, it is never left untracked.
     let mut peer = stream.try_clone()?;
     let _ = peer.set_read_timeout(None);
+    let guard_stream = stream.try_clone()?;
     let child = spawn_room(&ctx.bwrap, &args, &map, highest, null_std, &limits, umask)
         .context("starting Bubblewrap for the room")?;
+    // From here on the room is ended and waited for whatever happens, also
+    // by a fault: before the slot is given back (it is dropped first).
+    let child = Arc::new(Mutex::new(child));
+    let running = RunningRoom {
+        child: child.clone(),
+        state,
+        stream: guard_stream,
+        program: program.to_string(),
+    };
     // The room has its copies: the app's connections leave the budget.
     drop(passed);
     drop(handles);
     held.release();
-    let child = Arc::new(Mutex::new(child));
-    if let Ok(mut rooms) = state.rooms.lock() {
-        rooms.push(child.clone());
-    }
+    state
+        .rooms
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .push(child.clone());
     // Started while the service was stopping: it ends now too.
     if state.stop.load(Ordering::SeqCst) {
-        if let Ok(mut c) = child.lock() {
-            let _ = c.kill();
-        }
+        let _ = child.lock().unwrap_or_else(|e| e.into_inner()).kill();
     }
     // The stand-in gone (its program ended or was killed): the room ends.
     let watcher = {
@@ -1178,9 +1244,10 @@ fn run_room(
                         // The stand-in was asked to quit: so is the room's
                         // program, which keeps its time to save.
                         Ok(n) if n > 0 && b[..n].iter().all(|c| *c == QUIT_ASK) => {
-                            if let Ok(c) = child.lock() {
-                                c.ask_to_quit();
-                            }
+                            child
+                                .lock()
+                                .unwrap_or_else(|e| e.into_inner())
+                                .ask_to_quit();
                         }
                         // A signal that interrupts the wait is not the
                         // stand-in leaving (the launcher handles terminal
@@ -1189,24 +1256,14 @@ fn run_room(
                         _ => break,
                     }
                 }
-                if let Ok(mut c) = child.lock() {
-                    let _ = c.kill();
-                }
+                let _ = child.lock().unwrap_or_else(|e| e.into_inner()).kill();
             })
     };
-    let end_room = |child: &Arc<Mutex<RoomProcess>>| {
-        if let Ok(mut c) = child.lock() {
-            let _ = c.kill();
-            let _ = c.wait();
-        }
-        if let Ok(mut rooms) = state.rooms.lock() {
-            rooms.retain(|r| !Arc::ptr_eq(r, child));
-        }
-    };
     let Ok(watcher) = watcher else {
-        end_room(&child);
         bail!("no watcher for the room could be started");
     };
+    #[cfg(test)]
+    fault_after_start_for_tests(&req.command);
     // What SAM's helper applied, in its own words (it closes the
     // connection before the program starts, or the room ends first).
     let mut status = String::new();
@@ -1227,7 +1284,7 @@ fn run_room(
     };
     if status.is_empty() {
         // Never a room without SAM's layers: it ends at once.
-        end_room(&child);
+        running.end();
         state.record_room(format!(
             "sam-room: failed {program}: SAM's layers were not confirmed{capped}"
         ));
@@ -1244,22 +1301,15 @@ fn run_room(
         ));
     }
     let status = loop {
-        if let Ok(mut c) = child.lock() {
-            match c.try_wait() {
-                Ok(Some(st)) => break st,
-                Ok(None) => {}
-                Err(e) => {
-                    drop(c);
-                    end_room(&child);
-                    return Err(e.into());
-                }
-            }
+        let waited = child.lock().unwrap_or_else(|e| e.into_inner()).try_wait();
+        match waited {
+            Ok(Some(st)) => break st,
+            Ok(None) => {}
+            Err(e) => return Err(e.into()),
         }
         std::thread::sleep(Duration::from_millis(10));
     };
-    if let Ok(mut rooms) = state.rooms.lock() {
-        rooms.retain(|r| !Arc::ptr_eq(r, &child));
-    }
+    drop(running);
     drop(watcher); // ends when the connection closes
     Ok(exit_code(status))
 }
@@ -4301,6 +4351,71 @@ exec "$@"
                     e.to_string().contains("no longer what the app was shown"),
                     "{e}"
                 );
+            },
+        );
+    }
+
+    /// A fault (a panic) after a room's Bubblewrap has started never leaves
+    /// that room behind: the room is ended and waited for (no child of
+    /// the launcher is left unwaited) and leaves the service's list, the stand-in hears why at
+    /// once (instead of waiting until the app's start ends), the start
+    /// record names it, and a later request is served. In its own process,
+    /// so its only children are the rooms.
+    #[test]
+    fn a_fault_after_a_room_started_ends_that_room_and_answers() {
+        in_own_process(
+            "a_fault_after_a_room_started_ends_that_room_and_answers",
+            || {
+                let tmp = tempfile::tempdir().unwrap();
+                let (bwrap, _) = fake_bwrap(tmp.path());
+                let mut service = service_in(tmp.path());
+                service.serve(context(tmp.path(), &bwrap, &[]));
+                let started = Instant::now();
+                let a = ask_service(
+                    &service.socket,
+                    &request(
+                        &[],
+                        &["/bin/sh", "-c", "sleep 60", FAULT_AFTER_START_FOR_TESTS],
+                    ),
+                );
+                assert!(
+                    a["error"]
+                        .as_str()
+                        .is_some_and(|e| e.contains("a fault in SAM's Room service")),
+                    "{a}"
+                );
+                assert!(
+                    started.elapsed() < Duration::from_secs(10),
+                    "the stand-in waited {:?}",
+                    started.elapsed()
+                );
+                let end = Instant::now() + Duration::from_secs(10);
+                loop {
+                    let mut st = 0;
+                    // SAFETY: waitpid on any child, st is a live int.
+                    let r = unsafe { libc::waitpid(-1, &mut st, libc::WNOHANG) };
+                    assert!(r <= 0, "the room ended but was never waited for");
+                    if r < 0 {
+                        break; // no child at all
+                    }
+                    assert!(Instant::now() < end, "the room still runs");
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+                let end = Instant::now() + Duration::from_secs(10);
+                while !service.state.rooms.lock().unwrap().is_empty()
+                    || *service.state.slots.lock().unwrap() != 0
+                {
+                    assert!(Instant::now() < end, "the room is still listed or counted");
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+                assert!(
+                    last_room_record(&service.state).contains("failed sh: a fault"),
+                    "{}",
+                    last_room_record(&service.state)
+                );
+                let a = ask_service(&service.socket, &request(&[], &["/bin/sh", "-c", "exit 7"]));
+                assert_eq!(a["exit"], 7, "{a}");
+                service.stop();
             },
         );
     }
