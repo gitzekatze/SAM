@@ -334,6 +334,29 @@ pub fn integrity_of(e: &AppEntry) -> Result<String> {
     Ok(digest.iter().map(|b| format!("{b:02x}")).collect())
 }
 
+/// What a review confirms, as a fingerprint (SHA-256): the notices a
+/// review clears or that ask for a look (changed outside SAM, the
+/// AppImage's content changed, a changed signing key, the needs of an
+/// update, not reviewed yet), the settings, and the AppImage's checksum.
+/// A page that shows an app sends it with its review; when the record no
+/// longer has it, the person has not seen what the review would confirm
+/// (review L4). Saves that change none of this (a test result, a start)
+/// keep it.
+pub fn review_fingerprint(e: &AppEntry) -> Result<String> {
+    use sha2::{Digest, Sha256};
+    let seen = serde_json::json!({
+        "changed_outside": e.changed_outside,
+        "content_changed_outside": e.content_changed_outside,
+        "signing_key_changed": e.signing_key_changed,
+        "pending_changes": e.pending_changes,
+        "reviewed": e.reviewed,
+        "permissions": e.profile.permissions,
+        "source": e.source.sha256,
+    });
+    let digest = Sha256::digest(serde_json::to_vec(&seen)?);
+    Ok(digest.iter().map(|b| format!("{b:02x}")).collect())
+}
+
 /// A fingerprint of a set of permissions (SHA-256 over its saved form):
 /// what a question was asked about, so that only that is applied after the
 /// answer (`preset apply --expect`).
@@ -996,6 +1019,40 @@ mod tests {
             seen.changed_outside = false;
             reg.save_confirmed(&mut seen).unwrap();
         }
+    }
+
+    /// The review fingerprint changes with every notice a review clears or
+    /// that asks for a look, with the settings and with the AppImage, and
+    /// stays the same through saves that change none of these (review L4).
+    #[test]
+    fn the_review_fingerprint_covers_what_a_review_confirms() {
+        let base = AppEntry {
+            id: "appimage-x-5".into(),
+            name: "X".into(),
+            ..Default::default()
+        };
+        let fp = |e: &AppEntry| review_fingerprint(e).unwrap();
+        type Change = (&'static str, fn(&mut AppEntry));
+        let changes: [Change; 7] = [
+            ("changed outside", |e| e.changed_outside = true),
+            ("content changed", |e| e.content_changed_outside = true),
+            ("signing key", |e| {
+                e.signing_key_changed = Some("old key".into())
+            }),
+            ("update needs", |e| e.pending_changes = vec!["sound".into()]),
+            ("reviewed", |e| e.reviewed = !e.reviewed),
+            ("a setting", |e| e.profile.permissions.display.x11 = true),
+            ("the AppImage", |e| e.source.sha256 = "1".repeat(64)),
+        ];
+        for (what, change) in changes {
+            let mut e = base.clone();
+            change(&mut e);
+            assert_ne!(fp(&e), fp(&base), "{what}");
+        }
+        let mut same = base.clone();
+        same.updated_at = 42;
+        same.last_error = Some("a start failed".into());
+        assert_eq!(fp(&same), fp(&base), "a save that changes nothing of it");
     }
 
     /// `update` changes the record as it is on disk now, so work that took a

@@ -89,8 +89,10 @@ check("a record changed outside SAM offers Confirm Settings", confirm is not Non
 # without the question.
 check("…and nothing else that confirms them (no Got It)", find(app, lambda s: s == "Got It", "button") is None)
 if confirm:
-    # Changed again while the page is open: the question names the
-    # settings as they are now, not as the page read them.
+    # Changed again while the page is open: nothing is confirmed from the
+    # page as it was drawn. It says so and shows the app as it is now
+    # (review L4: a review from an out-of-date page confirmed unseen
+    # changes); asked again, the question names the settings as they are.
     rec = os.path.join(os.environ["SAM_DATA_DIR"], "apps", os.environ["SAM_TEST_APP"] + ".json")
     with open(rec) as f:
         d = json.load(f)
@@ -98,6 +100,13 @@ if confirm:
     with open(rec, "w") as f:
         json.dump(d, f)
     confirm.get_action_iface().do_action(0)
+    told = wait(lambda: find(app, lambda s: "changed since this page showed it" in s), 10)
+    check("a change made after the page was drawn is not confirmed from it", told is not None)
+    check("…no question about a state the page never showed", find(app, lambda s: s == "Confirm These Settings?") is None)
+    check("…and the app stays blocked", entry().get("changed_outside") is True)
+    confirm = wait(lambda: find(app, lambda s: s == "Confirm Settings", "button"))
+    if confirm:
+        confirm.get_action_iface().do_action(0)
     asks = wait(lambda: find(app, lambda s: s == "Confirm These Settings?"))
     check("Confirm Settings asks first", asks is not None)
     check("…and names X11, which the change added", find(app, lambda s: "These settings let the app use:" in s and "X11" in s) is not None)
