@@ -365,7 +365,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-373 tests.
+374 tests.
 
 | Promise | Test |
 |---|---|
@@ -740,6 +740,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | ⟲ Regression (review 2026-11-23, U-8): an update did not look at the processor the new file is built for. | [`an_update_built_for_another_processor_is_not_installed`](../crates/sam-runner/tests/update_server.rs#L1181) |
 | ⟲ Regression (review 2026-11-23, U-5): a full download stopped at the published length only through curl's `--max-filesize`, which before curl 8.4 does nothing when the server names no length: a server could stream into the home folder for an hour. | [`a_server_that_sends_more_than_announced_cannot_fill_the_disk`](../crates/sam-runner/tests/update_server.rs#L1238) |
 | ⟲ Regression (review 2026-11-23, U-4): "Update Anyway" ran the update a second time with a blanket "accept any key change". | [`consent_to_a_new_key_covers_only_the_file_that_was_shown`](../crates/sam-runner/tests/update_server.rs#L1317) |
+| An update whose signature cannot be checked waits for a yes when the installed version's signature was checked. | [`an_update_that_cannot_be_checked_after_a_checked_signature_waits_for_consent`](../crates/sam-runner/tests/update_without_gnupg.rs#L58) |
 | The sandbox check passes when the settings apply, and catches a setting that does not apply. | [`the_sandbox_check_passes_and_catches_mismatches`](../crates/sam-runner/tests/verify.rs#L23) |
 | An AppImage for ARM is refused on an x86-64 computer with a sentence that names both processors and what to download instead, and nothing is stored (regression: SAM created a sandbox for an arm64 Neovim and failed only at the start, with "permission denied or wrong format"). | [`an_appimage_for_another_processor_gets_no_sandbox`](../crates/sam-runner/tests/wrong_processor.rs#L14) |
 
@@ -937,4 +938,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 850 automated Rust tests plus 8 scripted checks.
+Total: 851 automated Rust tests plus 8 scripted checks.
