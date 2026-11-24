@@ -365,7 +365,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-373 tests.
+377 tests.
 
 | Promise | Test |
 |---|---|
@@ -613,10 +613,12 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | The header of a zsync file is read (file name, size, checksum). | [`the_zsync_header_is_read`](../crates/sam-runner/src/updates.rs#L759) |
 | Download addresses in zsync files are resolved, and plain-HTTP addresses are refused. | [`update_download_addresses_are_resolved_and_http_refused`](../crates/sam-runner/src/updates.rs#L783) |
 | ⟲ Regression (review 2026-11-23, U-5): the size limit of a full download was left to curl's `--max-filesize`, which before curl 8.4 does nothing when the server names no length, so a server could stream into the home folder for an hour. | [`a_full_download_stops_at_the_published_length_whatever_the_server_sends`](../crates/sam-runner/src/updates.rs#L824) |
-| ⟲ Regression (review 2026-11-23, U-7): an answer longer than SAM reads was cut off and handed on as if complete, so a GitHub release description over 512 KiB failed as "GitHub's answer" every time. | [`a_whole_answer_is_never_cut_off_and_handed_on_as_complete`](../crates/sam-runner/src/updates.rs#L858) |
-| A release with 600 files: each file's entry carries its uploader, so the description is well over 512 KiB (review 2026-11-23, U-7). | [`a_release_with_hundreds_of_files_is_read_whole`](../crates/sam-runner/src/updates.rs#L871) |
-| ⟲ Regression (review 2026-11-23, U-8): with a pattern that matches the builds for every processor, the release's first file was taken, so an x86-64 computer could get the ARM build. | [`release_files_for_this_processor_come_first`](../crates/sam-runner/src/updates.rs#L922) |
-| Update downloads use HTTPS only; HTTP and file addresses are refused. | [`updates_are_downloaded_over_https_only`](../crates/sam-runner/src/updates.rs#L948) |
+| A failed download says why, in words, also after up to 64 KiB of other error output (2000 bytes here, more than a cut to 1 KiB would keep): curl's last line is kept (mutation run 2026-11-24: losing it went unnoticed, leaving "download failed:" with no reason). | [`a_failed_download_says_why`](../crates/sam-runner/src/updates.rs#L857) |
+| A mapping of the installed version is undone when dropped: the window runs for days and maps a whole AppImage at every update (mutation run 2026-11-24). | [`a_mapped_file_is_unmapped_when_dropped`](../crates/sam-runner/src/updates.rs#L881) |
+| ⟲ Regression (review 2026-11-23, U-7): an answer longer than SAM reads was cut off and handed on as if complete, so a GitHub release description over 512 KiB failed as "GitHub's answer" every time. | [`a_whole_answer_is_never_cut_off_and_handed_on_as_complete`](../crates/sam-runner/src/updates.rs#L908) |
+| A release with 600 files: each file's entry carries its uploader, so the description is well over 512 KiB (review 2026-11-23, U-7). | [`a_release_with_hundreds_of_files_is_read_whole`](../crates/sam-runner/src/updates.rs#L921) |
+| ⟲ Regression (review 2026-11-23, U-8): with a pattern that matches the builds for every processor, the release's first file was taken, so an x86-64 computer could get the ARM build. | [`release_files_for_this_processor_come_first`](../crates/sam-runner/src/updates.rs#L972) |
+| Update downloads use HTTPS only; HTTP and file addresses are refused. | [`updates_are_downloaded_over_https_only`](../crates/sam-runner/src/updates.rs#L998) |
 | What the check expects of each folder: the folder's own setting, but never less than the home shows it (a read-only home shows Documents read-only even when Documents has no setting; a writable folder in a read-only home stays writable); keys only with full home and their own switch; extra folders like the home inside it. | [`the_check_expects_each_folder_as_its_settings_show_it`](../crates/sam-runner/src/verify.rs#L887) |
 | Network, display, sound, the session bus, the SSH agent, variables and the security layers: the check expects each only where both the setting and this computer provide it. | [`the_check_expects_the_rest_where_setting_and_computer_allow_it`](../crates/sam-runner/src/verify.rs#L972) |
 | What the check expects of each desktop service that exists on the computer: full access reaches all of them; the filter reaches the desktop portal and exactly the names its list allows (a whole name, or a family with `.*`); a denied name stays hidden even with full access; a service the computer does not have is not checked at all. | [`the_check_expects_each_desktop_service_as_the_filter_shows_it`](../crates/sam-runner/src/verify.rs#L1182) |
@@ -629,7 +631,9 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | The rolling checksum of the update transfer matches a direct computation at every offset. | [`the_rolling_checksum_matches_a_direct_computation`](../crates/sam-runner/src/zsync.rs#L534) |
 | Compressed or incomplete zsync files are refused. | [`refuses_compressed_and_broken_files`](../crates/sam-runner/src/zsync.rs#L550) |
 | ⟲ Regression (review 2026-11-23, U-6): `Blocksize: 1` and the shortest checksums made a description of 64 MiB (the most SAM fetches) list about 16 million blocks, and SAM allocated some 2 GB for them before giving up on the delta. | [`a_description_with_tiny_or_countless_blocks_is_refused_before_allocating`](../crates/sam-runner/src/zsync.rs#L565) |
-| A description from a hostile server cannot crash SAM or keep it busy (audit U-M7): an absurd length is refused, a block count that would overflow the size computation is refused instead of wrapping, and thousands of blocks whose quick checksum matches a stretch of identical bytes end at the time limit, with those blocks left for downloading. | [`a_hostile_update_description_cannot_crash_or_stall_sam`](../crates/sam-runner/src/zsync.rs#L594) |
+| The short last block is found at the end of the old file, and only when both its checksums match: a quick checksum alone takes no block (mutation run 2026-11-24). | [`the_short_last_block_is_reused_only_when_both_checksums_match`](../crates/sam-runner/src/zsync.rs#L609) |
+| With `seq_matches` 2 (zsyncmake's usual choice, with shorter stored checksums) a block is taken only together with the next one: an unchanged file is still reused whole, also in zsyncmake's own short format, and a block whose next one changed is downloaded (mutation run 2026-11-24: the check of the next block could fail every time unnoticed, so everything was downloaded). | [`blocks_are_reused_in_pairs_when_the_description_asks_for_it`](../crates/sam-runner/src/zsync.rs#L631) |
+| A description from a hostile server cannot crash SAM or keep it busy (audit U-M7): an absurd length is refused, a block count that would overflow the size computation is refused instead of wrapping, and thousands of blocks whose quick checksum matches a stretch of identical bytes end at the time limit, with those blocks left for downloading. | [`a_hostile_update_description_cannot_crash_or_stall_sam`](../crates/sam-runner/src/zsync.rs#L677) |
 | H1: an app printing a fake Bubblewrap error is not a sandbox failure. | [`fake_bwrap_error_is_not_a_sandbox_failure`](../crates/sam-runner/tests/adversarial.rs#L21) |
 | H2/M4: suggestions derived from app output never grant escape-capable services or protected folders, and are always marked as app-derived. | [`app_output_cannot_buy_dangerous_grants`](../crates/sam-runner/tests/adversarial.rs#L74) |
 | H3: markup in an AppImage's name or comment is neutralized before it is stored or shown. | [`markup_in_metadata_is_neutralized`](../crates/sam-runner/tests/adversarial.rs#L95) |
@@ -937,4 +941,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 850 automated Rust tests plus 8 scripted checks.
+Total: 854 automated Rust tests plus 8 scripted checks.

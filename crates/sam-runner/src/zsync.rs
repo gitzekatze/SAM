@@ -583,6 +583,89 @@ mod tests {
         }
         let c = parse(&make(MIN_BLOCKSIZE, 100_000)).unwrap();
         assert_eq!(c.rsums.len(), 100_000usize.div_ceil(MIN_BLOCKSIZE));
+        // Exactly as many blocks as SAM plans with are accepted
+        // (mutation run 2026-11-24).
+        let c = parse(&make(MIN_BLOCKSIZE, MAX_BLOCKS * MIN_BLOCKSIZE)).unwrap();
+        assert_eq!(c.block_count(), MAX_BLOCKS);
+    }
+
+    /// The description of `data`, as SAM's update server would publish it.
+    fn described(data: &[u8]) -> Control {
+        let d = tempfile::tempdir().unwrap();
+        let f = d.path().join("app.AppImage");
+        std::fs::write(&f, data).unwrap();
+        let z = make(
+            &f,
+            "app.AppImage",
+            "app.AppImage",
+            "Wed, 11 Nov 2026 12:00:00 +0000",
+        );
+        parse(&z.unwrap()).unwrap()
+    }
+
+    /// The short last block is found at the end of the old file, and only
+    /// when both its checksums match: a quick checksum alone takes no
+    /// block (mutation run 2026-11-24).
+    #[test]
+    fn the_short_last_block_is_reused_only_when_both_checksums_match() {
+        let old = sample(5000, 3);
+        let mut c = described(&old);
+        let last = c.block_count() - 1;
+        let tail = old.len() - last * c.blocksize;
+        assert!(tail < c.blocksize, "the test needs a short last block");
+        assert_eq!(plan(&c, &old)[last], Some((old.len() - tail) as u64));
+        // The same quick checksum, another MD4; then the other way round.
+        c.checksums[last * c.checksum_bytes] ^= 0xff;
+        assert_eq!(plan(&c, &old)[last], None, "a quick checksum alone");
+        c.checksums[last * c.checksum_bytes] ^= 0xff;
+        c.rsums[last] ^= 1;
+        assert_eq!(plan(&c, &old)[last], None, "an MD4 alone");
+    }
+
+    /// With `seq_matches` 2 (zsyncmake's usual choice, with shorter stored
+    /// checksums) a block is taken only together with the next one: an
+    /// unchanged file is still reused whole, also in zsyncmake's own short
+    /// format, and a block whose next one changed is downloaded (mutation
+    /// run 2026-11-24: the check of the next block could fail every time
+    /// unnoticed, so everything was downloaded).
+    #[test]
+    fn blocks_are_reused_in_pairs_when_the_description_asks_for_it() {
+        // Whole blocks only: a short last block cannot complete the pair
+        // before it (noted for the review of PR 95).
+        let old = sample(10 * 2048, 5);
+        let mut c = described(&old);
+        c.seq_matches = 2;
+        let p = plan(&c, &old);
+        assert!(p.iter().all(Option::is_some), "{p:?}");
+        let mut changed = old.clone();
+        changed[4 * 2048] ^= 0xff;
+        assert_eq!(plan(&c, &changed)[3], None, "its next block changed");
+        c.seq_matches = 1;
+        assert_eq!(plan(&c, &changed)[3], Some(3 * 2048), "alone it matches");
+        // zsyncmake's format: 2 bytes of the quick checksum, 5 of the MD4.
+        let d = tempfile::tempdir().unwrap();
+        let f = d.path().join("app.AppImage");
+        std::fs::write(&f, &old).unwrap();
+        let z = make(
+            &f,
+            "app.AppImage",
+            "app.AppImage",
+            "Wed, 11 Nov 2026 12:00:00 +0000",
+        )
+        .unwrap();
+        let at = z.windows(2).position(|w| w == b"\n\n").unwrap() + 2;
+        let head = String::from_utf8(z[..at].to_vec()).unwrap();
+        let mut short = head
+            .replace("Hash-Lengths: 1,4,16", "Hash-Lengths: 2,2,5")
+            .into_bytes();
+        for rec in z[at..].chunks(20) {
+            short.extend_from_slice(&rec[2..4]);
+            short.extend_from_slice(&rec[4..9]);
+        }
+        let c = parse(&short).unwrap();
+        assert_eq!((c.seq_matches, c.rsum_bytes, c.checksum_bytes), (2, 2, 5));
+        let p = plan(&c, &old);
+        assert!(p.iter().all(Option::is_some), "short format: {p:?}");
     }
 
     /// A description from a hostile server cannot crash SAM or keep it busy
