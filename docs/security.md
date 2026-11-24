@@ -221,8 +221,11 @@ rule: **no more than the app, no less than asked.**
     that may be unmounted (any file
     system other than the root's and the home's, and anything under
     `/media`, `/mnt`, `/run/media`) is not held open, so the drive stays
-    free to unmount: it is remembered by what it is and opened again for a
-    room, which is refused unless it is still the same. Device and inode
+    free to unmount: it is remembered by what it is and where it really is
+    (every link resolved at the start), and opened again there for a room
+    without following any link (one the app planted since, at a folder
+    above it that it can write, is never followed by the launcher), which
+    is refused unless it is still the same. Device and inode
     alone repeat (another stick at the same port has the same device number,
     and its top folder the same inode), so the drive's own identity is
     compared too: the mount's unique ID on Linux 6.8 and later, before that
