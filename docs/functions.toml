@@ -729,7 +729,7 @@ id = 27
 area = "F"
 promise = "SAM notices app settings that something else changed and asks before starting the app."
 code = ["sam-storage/src/lib.rs", "sam-runner/src/launch.rs"]
-tests = ["records_changed_outside_sam_are_recognized", "an_app_changed_outside_sam_starts_only_after_confirmation", "a_changed_record_stays_blocked_until_it_is_confirmed", "a_late_save_keeps_a_change_made_meanwhile",
+tests = ["records_changed_outside_sam_are_recognized", "a_save_of_an_older_copy_keeps_the_marks_set_meanwhile", "a_save_over_an_unreadable_record_drops_nothing_silently", "only_the_review_clears_look_at_it_first", "an_app_changed_outside_sam_starts_only_after_confirmation", "a_changed_record_stays_blocked_until_it_is_confirmed", "a_late_save_keeps_a_change_made_meanwhile",
   "add_reminds_to_confirm_unconfirmed_settings",
   "confirming_changed_settings_names_what_they_allow",
 ]

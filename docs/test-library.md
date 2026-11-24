@@ -375,7 +375,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-410 tests.
+411 tests.
 
 | Promise | Test |
 |---|---|
@@ -733,15 +733,16 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Undoing repair steps restores the settings from before the first step. | [`undoing_repair_steps_restores_the_settings_from_before_the_first_step`](../crates/sam-runner/tests/settings.rs#L59) |
 | Undoing repair steps takes back only what the steps changed: a setting the person changed afterwards stays as they set it, also the one a step had changed (audit G-F4: the whole profile from before the first step came back). | [`undoing_repair_steps_keeps_what_the_person_changed_since`](../crates/sam-runner/tests/settings.rs#L86) |
 | "Reset to recommendation" brings back SAM's recommended settings and turns compatibility mode off. | [`reset_to_recommendation_brings_back_the_recommended_settings`](../crates/sam-runner/tests/settings.rs#L147) |
-| A running app keeps its sandbox: removing it is refused until the app is closed (a launch holds a lock in the app's runtime folder). | [`removing_a_sandbox_while_its_app_runs_is_refused`](../crates/sam-runner/tests/settings.rs#L168) |
-| While an app is starting (from its checks until it has ended), its sandbox is not changed: removing it or unpacking it again waits a moment, then is refused and says why, and the sandbox stays (review L2). | [`a_sandbox_is_not_changed_while_its_app_is_starting`](../crates/sam-runner/tests/settings.rs#L205) |
-| While an app's sandbox is being changed, a start is refused at once and says why; the change itself goes on, also a step of it (an update unpacks again), and the app starts once it is done (review L2). | [`a_start_is_refused_while_the_sandbox_is_being_changed`](../crates/sam-runner/tests/settings.rs#L231) |
-| A start whose unpacked copy is gone (after "Free space") unpacks it again first; while another step changes the sandbox, that is refused at once with the start's message, as the start itself is (review L2). | [`unpacking_for_a_start_is_refused_at_once_while_the_sandbox_is_changed`](../crates/sam-runner/tests/settings.rs#L251) |
-| A start reads the app's record again once it holds the app: what a change saved after the caller read it (a new unpacked copy marked "look at it first", or the sandbox removed) is what the start checks and runs (review L2: the mark was skipped). | [`a_start_sees_what_a_change_saved_before_it`](../crates/sam-runner/tests/settings.rs#L284) |
-| Removing a sandbox with "keep my data" keeps the app's private home; without it, the home is deleted. | [`removing_with_keep_my_data_keeps_the_private_home_and_without_deletes_it`](../crates/sam-runner/tests/settings.rs#L317) |
-| The app's icon is copied into SAM's own icon folder, named after the app, and goes with its sandbox; nothing lands in the folder SAM was started in. | [`an_apps_icon_is_kept_in_sams_icon_folder_and_goes_with_it`](../crates/sam-runner/tests/settings.rs#L337) |
-| When a sandboxed app's AppImage is moved to another searched folder, SAM recognizes it by its content and offers to follow it. | [`a_moved_appimage_is_recognized_by_its_content`](../crates/sam-runner/tests/settings.rs#L359) |
-| A repair step can be switched off on its own: exactly what that step changed goes back, and the other applied steps stay. | [`switching_off_one_repair_step_keeps_the_others`](../crates/sam-runner/tests/settings.rs#L380) |
+| "Look at it first" (the AppImage's content changed outside SAM) stays through a save of a copy read before it was set, and only the review step clears it (review L3). | [`only_the_review_clears_look_at_it_first`](../crates/sam-runner/tests/settings.rs#L169) |
+| A running app keeps its sandbox: removing it is refused until the app is closed (a launch holds a lock in the app's runtime folder). | [`removing_a_sandbox_while_its_app_runs_is_refused`](../crates/sam-runner/tests/settings.rs#L192) |
+| While an app is starting (from its checks until it has ended), its sandbox is not changed: removing it or unpacking it again waits a moment, then is refused and says why, and the sandbox stays (review L2). | [`a_sandbox_is_not_changed_while_its_app_is_starting`](../crates/sam-runner/tests/settings.rs#L229) |
+| While an app's sandbox is being changed, a start is refused at once and says why; the change itself goes on, also a step of it (an update unpacks again), and the app starts once it is done (review L2). | [`a_start_is_refused_while_the_sandbox_is_being_changed`](../crates/sam-runner/tests/settings.rs#L255) |
+| A start whose unpacked copy is gone (after "Free space") unpacks it again first; while another step changes the sandbox, that is refused at once with the start's message, as the start itself is (review L2). | [`unpacking_for_a_start_is_refused_at_once_while_the_sandbox_is_changed`](../crates/sam-runner/tests/settings.rs#L275) |
+| A start reads the app's record again once it holds the app: what a change saved after the caller read it (a new unpacked copy marked "look at it first", or the sandbox removed) is what the start checks and runs (review L2: the mark was skipped). | [`a_start_sees_what_a_change_saved_before_it`](../crates/sam-runner/tests/settings.rs#L308) |
+| Removing a sandbox with "keep my data" keeps the app's private home; without it, the home is deleted. | [`removing_with_keep_my_data_keeps_the_private_home_and_without_deletes_it`](../crates/sam-runner/tests/settings.rs#L341) |
+| The app's icon is copied into SAM's own icon folder, named after the app, and goes with its sandbox; nothing lands in the folder SAM was started in. | [`an_apps_icon_is_kept_in_sams_icon_folder_and_goes_with_it`](../crates/sam-runner/tests/settings.rs#L361) |
+| When a sandboxed app's AppImage is moved to another searched folder, SAM recognizes it by its content and offers to follow it. | [`a_moved_appimage_is_recognized_by_its_content`](../crates/sam-runner/tests/settings.rs#L383) |
+| A repair step can be switched off on its own: exactly what that step changed goes back, and the other applied steps stay. | [`switching_off_one_repair_step_keeps_the_others`](../crates/sam-runner/tests/settings.rs#L404) |
 | Skips are refused in ci and always written down. | [`skips_are_refused_in_ci_and_always_written_down`](../crates/sam-runner/tests/skip_reporting.rs#L35) |
 | An app cannot turn its extra socket into a link to another one. | [`an_app_cannot_turn_its_extra_socket_into_a_link_to_another_one`](../crates/sam-runner/tests/socket_links.rs#L63) |
 | Sound never loads code into the sound server. | [`sound_never_loads_code_into_the_sound_server`](../crates/sam-runner/tests/sound_relay.rs#L98) |
@@ -792,24 +793,26 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-storage: App records, presets and logs on disk
 
-14 tests.
+16 tests.
 
 | Promise | Test |
 |---|---|
-| With more launches in one second than logs are kept, the newest log survives the pruning after its launch (regression: on a fast machine a pruned name was reused, sorted as the oldest and deleted at once). | [`the_newest_log_survives_pruning_within_one_second`](../crates/sam-storage/src/lib.rs#L760) |
-| A record SAM saved loads as unchanged; a record changed afterwards by something else is recognized as changed outside SAM, and stays marked through SAM's own saves until it is confirmed; a record without SAM's checksum (removed, or from before the checksum) is marked too. | [`records_changed_outside_sam_are_recognized`](../crates/sam-storage/src/lib.rs#L781) |
-| `update` changes the record as it is on disk now, so work that took a while does not undo a change made meanwhile (audit U-M8: the update check turned a switch back on). | [`a_late_save_keeps_a_change_made_meanwhile`](../crates/sam-storage/src/lib.rs#L866) |
-| A preset is always stored inside the presets folder, whatever its name: names like "../../evil" or "/etc/x" (typed, or from an imported file) cannot place a file elsewhere. | [`preset_names_cannot_place_files_outside_the_presets_folder`](../crates/sam-storage/src/lib.rs#L906) |
-| ⟲ Regression (found in the test audit): a record changed outside SAM with an id like "../../.ssh" would have pointed the folders SAM deletes on removal (private home, logs) outside SAM's own folders. | [`records_with_unsafe_or_mismatched_ids_are_not_loaded`](../crates/sam-storage/src/lib.rs#L935) |
-| The newest log is found even when two logs start within the same second. | [`the_newest_log_is_found_even_within_one_second`](../crates/sam-storage/src/lib.rs#L965) |
-| Apps are found by name or ID, and an ambiguous name is refused. | [`apps_are_found_by_name_or_id_and_ambiguous_names_are_refused`](../crates/sam-storage/src/lib.rs#L988) |
-| ⟲ Regression (audit U-L7): the name an AppImage gives itself came first, so one added later calling itself "firefox" was started for `sam-jail run firefox` instead of "Firefox Web Browser", with its own permissions. | [`a_name_an_app_chose_cannot_take_over_another_apps_query`](../crates/sam-storage/src/lib.rs#L1021) |
-| An AppImage chooses its own name: an app named `vlc` does not capture a command meant for "VLC media player", which `vlc` also names; the reference is refused as naming more than one app, and each app is still found by its ID or a reference only it matches (audit G-F7: the exact name won, so `sam-jail set vlc network.mode full` changed the hostile app without a word). | [`an_apps_own_name_never_captures_a_reference_to_another_app`](../crates/sam-storage/src/lib.rs#L1070) |
-| A damaged preset is moved aside once; a preset from a newer SAM is only skipped and stays where it is, for when SAM is updated (mutation run P14: moving every unreadable preset aside went unnoticed). | [`only_a_damaged_preset_is_moved_aside`](../crates/sam-storage/src/lib.rs#L1107) |
-| Presets in the older flat format still load. | [`presets_in_the_older_flat_format_still_load`](../crates/sam-storage/src/lib.rs#L1131) |
-| The risk word of a preset is worked out from its permissions, never taken from the file: a file placed in the presets folder that says "low" for full home and network is listed as Dangerous (review F6). | [`a_presets_risk_word_comes_from_its_permissions`](../crates/sam-storage/src/lib.rs#L1162) |
-| Importing a preset file never replaces a preset of the same name: it gets a free name instead, and the person's own stays as it was (review F9). | [`an_imported_preset_never_replaces_one_of_the_same_name`](../crates/sam-storage/src/lib.rs#L1191) |
-| A saved preset loads back unchanged, found by its name in any letter case. | [`a_saved_preset_loads_back_unchanged`](../crates/sam-storage/src/lib.rs#L1232) |
+| With more launches in one second than logs are kept, the newest log survives the pruning after its launch (regression: on a fast machine a pruned name was reused, sorted as the oldest and deleted at once). | [`the_newest_log_survives_pruning_within_one_second`](../crates/sam-storage/src/lib.rs#L798) |
+| A record SAM saved loads as unchanged; a record changed afterwards by something else is recognized as changed outside SAM, and stays marked through SAM's own saves until it is confirmed; a record without SAM's checksum (removed, or from before the checksum) is marked too. | [`records_changed_outside_sam_are_recognized`](../crates/sam-storage/src/lib.rs#L819) |
+| A copy of a record read before one of its "look at it first" marks was set, saved later, keeps the mark: a refresh or a profile change that overlapped an "unpack again" no longer undoes it (review L3). | [`a_save_of_an_older_copy_keeps_the_marks_set_meanwhile`](../crates/sam-storage/src/lib.rs#L906) |
+| A save over a record SAM cannot read drops nothing silently: a newer SAM's record stays unchanged and the save fails, and over a damaged record or one with another id the copy is saved marked as changed outside SAM (review of PR 120). | [`a_save_over_an_unreadable_record_drops_nothing_silently`](../crates/sam-storage/src/lib.rs#L961) |
+| `update` changes the record as it is on disk now, so work that took a while does not undo a change made meanwhile (audit U-M8: the update check turned a switch back on). | [`a_late_save_keeps_a_change_made_meanwhile`](../crates/sam-storage/src/lib.rs#L1004) |
+| A preset is always stored inside the presets folder, whatever its name: names like "../../evil" or "/etc/x" (typed, or from an imported file) cannot place a file elsewhere. | [`preset_names_cannot_place_files_outside_the_presets_folder`](../crates/sam-storage/src/lib.rs#L1044) |
+| ⟲ Regression (found in the test audit): a record changed outside SAM with an id like "../../.ssh" would have pointed the folders SAM deletes on removal (private home, logs) outside SAM's own folders. | [`records_with_unsafe_or_mismatched_ids_are_not_loaded`](../crates/sam-storage/src/lib.rs#L1073) |
+| The newest log is found even when two logs start within the same second. | [`the_newest_log_is_found_even_within_one_second`](../crates/sam-storage/src/lib.rs#L1103) |
+| Apps are found by name or ID, and an ambiguous name is refused. | [`apps_are_found_by_name_or_id_and_ambiguous_names_are_refused`](../crates/sam-storage/src/lib.rs#L1126) |
+| ⟲ Regression (audit U-L7): the name an AppImage gives itself came first, so one added later calling itself "firefox" was started for `sam-jail run firefox` instead of "Firefox Web Browser", with its own permissions. | [`a_name_an_app_chose_cannot_take_over_another_apps_query`](../crates/sam-storage/src/lib.rs#L1159) |
+| An AppImage chooses its own name: an app named `vlc` does not capture a command meant for "VLC media player", which `vlc` also names; the reference is refused as naming more than one app, and each app is still found by its ID or a reference only it matches (audit G-F7: the exact name won, so `sam-jail set vlc network.mode full` changed the hostile app without a word). | [`an_apps_own_name_never_captures_a_reference_to_another_app`](../crates/sam-storage/src/lib.rs#L1208) |
+| A damaged preset is moved aside once; a preset from a newer SAM is only skipped and stays where it is, for when SAM is updated (mutation run P14: moving every unreadable preset aside went unnoticed). | [`only_a_damaged_preset_is_moved_aside`](../crates/sam-storage/src/lib.rs#L1245) |
+| Presets in the older flat format still load. | [`presets_in_the_older_flat_format_still_load`](../crates/sam-storage/src/lib.rs#L1269) |
+| The risk word of a preset is worked out from its permissions, never taken from the file: a file placed in the presets folder that says "low" for full home and network is listed as Dangerous (review F6). | [`a_presets_risk_word_comes_from_its_permissions`](../crates/sam-storage/src/lib.rs#L1300) |
+| Importing a preset file never replaces a preset of the same name: it gets a free name instead, and the person's own stays as it was (review F9). | [`an_imported_preset_never_replaces_one_of_the_same_name`](../crates/sam-storage/src/lib.rs#L1329) |
+| A saved preset loads back unchanged, found by its name in any letter case. | [`a_saved_preset_loads_back_unchanged`](../crates/sam-storage/src/lib.rs#L1370) |
 
 ## sam-jail-cli: The command line and its JSON interface
 
@@ -985,4 +988,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 898 automated Rust tests plus 8 scripted checks.
+Total: 901 automated Rust tests plus 8 scripted checks.
