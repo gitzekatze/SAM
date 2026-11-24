@@ -472,7 +472,6 @@ impl AppPage {
         }
     }
 
-    /// Runs a command that changes the app, then reloads.
     /// The review fingerprint of the app as this page shows it (from
     /// `info`); empty when the page has none, which no record matches.
     pub(super) fn shown_fingerprint(&self) -> String {
@@ -491,6 +490,7 @@ impl AppPage {
         review_args(&self.app_id, &self.shown_fingerprint())
     }
 
+    /// Runs a command that changes the app, then reloads.
     pub(super) fn simple(self: &Rc<Self>, args: Vec<String>, ok_text: &str) {
         self.simple_with(args, ok_text, false)
     }

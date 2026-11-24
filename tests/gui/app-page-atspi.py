@@ -104,10 +104,16 @@ if confirm:
     check("a change made after the page was drawn is not confirmed from it", told is not None)
     check("…no question about a state the page never showed", find(app, lambda s: s == "Confirm These Settings?") is None)
     check("…and the app stays blocked", entry().get("changed_outside") is True)
-    confirm = wait(lambda: find(app, lambda s: s == "Confirm Settings", "button"))
-    if confirm:
-        confirm.get_action_iface().do_action(0)
-    asks = wait(lambda: find(app, lambda s: s == "Confirm These Settings?"))
+    # The page draws itself again after the refusal: a button found before
+    # that still belongs to the old page and is refused again, so ask anew.
+    asks = None
+    for _ in range(3):
+        confirm = wait(lambda: find(app, lambda s: s == "Confirm Settings", "button"))
+        if confirm:
+            confirm.get_action_iface().do_action(0)
+        asks = wait(lambda: find(app, lambda s: s == "Confirm These Settings?"), 4)
+        if asks:
+            break
     check("Confirm Settings asks first", asks is not None)
     check("…and names X11, which the change added", find(app, lambda s: "These settings let the app use:" in s and "X11" in s) is not None)
     check("…and raw USB, added after the page was shown", find(app, lambda s: "These settings let the app use:" in s and "Raw USB" in s) is not None)

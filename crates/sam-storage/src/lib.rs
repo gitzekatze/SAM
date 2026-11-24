@@ -334,26 +334,48 @@ pub fn integrity_of(e: &AppEntry) -> Result<String> {
     Ok(digest.iter().map(|b| format!("{b:02x}")).collect())
 }
 
-/// What a review confirms, as a fingerprint (SHA-256): the notices a
-/// review clears or that ask for a look (changed outside SAM, the
-/// AppImage's content changed, a changed signing key, the needs of an
-/// update, not reviewed yet), the settings, and the AppImage's checksum.
-/// A page that shows an app sends it with its review; when the record no
+/// Fields of an app's record that change by themselves, without anything
+/// a review would confirm: bookkeeping, the results of starts, checks and
+/// update checks, the state a refresh finds, and the repair steps a start
+/// tried. Every other field counts for [`review_fingerprint`].
+const REVIEW_IGNORES: &[&str] = &[
+    "integrity",
+    "format",
+    "updated_at",
+    "last_launched",
+    "last_launch",
+    "last_error",
+    "last_check",
+    "update",
+    "state",
+    "tried_repairs",
+];
+
+/// What a review confirms, as a fingerprint (SHA-256): the whole record,
+/// notices, settings, launch arguments and the unpacked copy included,
+/// except the fields that change by themselves ([`REVIEW_IGNORES`]); the
+/// AppImage and its unpacked copy count by their content's checksum (a
+/// refresh updates the file's other details when it was only touched). A
+/// page that shows an app sends it with its review; when the record no
 /// longer has it, the person has not seen what the review would confirm
-/// (review L4). Saves that change none of this (a test result, a start)
-/// keep it.
+/// (review L4). A field added later counts too, until it is named above.
 pub fn review_fingerprint(e: &AppEntry) -> Result<String> {
     use sha2::{Digest, Sha256};
-    let seen = serde_json::json!({
-        "changed_outside": e.changed_outside,
-        "content_changed_outside": e.content_changed_outside,
-        "signing_key_changed": e.signing_key_changed,
-        "pending_changes": e.pending_changes,
-        "reviewed": e.reviewed,
-        "permissions": e.profile.permissions,
-        "source": e.source.sha256,
-    });
-    let digest = Sha256::digest(serde_json::to_vec(&seen)?);
+    let mut v = serde_json::to_value(e)?;
+    if let Some(o) = v.as_object_mut() {
+        for k in REVIEW_IGNORES {
+            o.remove(*k);
+        }
+        o.insert("source".into(), e.source.sha256.clone().into());
+        if let (Some(x), Some(made_from)) = (
+            o.get_mut("extraction")
+                .and_then(serde_json::Value::as_object_mut),
+            e.extraction.as_ref().map(|x| x.source.sha256.clone()),
+        ) {
+            x.insert("source".into(), made_from.into());
+        }
+    }
+    let digest = Sha256::digest(serde_json::to_vec(&v)?);
     Ok(digest.iter().map(|b| format!("{b:02x}")).collect())
 }
 
@@ -1029,11 +1051,12 @@ mod tests {
         let base = AppEntry {
             id: "appimage-x-5".into(),
             name: "X".into(),
+            extraction: Some(Default::default()),
             ..Default::default()
         };
         let fp = |e: &AppEntry| review_fingerprint(e).unwrap();
         type Change = (&'static str, fn(&mut AppEntry));
-        let changes: [Change; 7] = [
+        let changes: [Change; 10] = [
             ("changed outside", |e| e.changed_outside = true),
             ("content changed", |e| e.content_changed_outside = true),
             ("signing key", |e| {
@@ -1043,15 +1066,32 @@ mod tests {
             ("reviewed", |e| e.reviewed = !e.reviewed),
             ("a setting", |e| e.profile.permissions.display.x11 = true),
             ("the AppImage", |e| e.source.sha256 = "1".repeat(64)),
+            ("launch arguments", |e| {
+                e.profile.args = vec!["--no-sandbox".into()]
+            }),
+            ("the unpacked copy", |e| {
+                e.extraction.as_mut().unwrap().appdir = "/elsewhere".into()
+            }),
+            ("compatibility mode", |e| {
+                e.profile.compatibility_mode = true
+            }),
         ];
         for (what, change) in changes {
             let mut e = base.clone();
             change(&mut e);
             assert_ne!(fp(&e), fp(&base), "{what}");
         }
+        // What a start, a check, an update check and a refresh write.
         let mut same = base.clone();
         same.updated_at = 42;
+        same.last_launched = Some(42);
+        same.last_launch = Some(Default::default());
+        same.last_check = Some(Default::default());
+        same.update = Some(Default::default());
         same.last_error = Some("a start failed".into());
+        same.tried_repairs = vec!["some step".into()];
+        same.source.size = 7;
+        same.extraction.as_mut().unwrap().source.mtime = 7;
         assert_eq!(fp(&same), fp(&base), "a save that changes nothing of it");
     }
 

@@ -477,17 +477,19 @@ impl AppPage {
                     let Some(me) = w.upgrade() else { return };
                     let Some(app) = me.app() else { return };
                     // One click is no look at the settings: the question
-                    // names what they let the app do (audit G-F12/13), as
-                    // they are now: they may have changed again since the
-                    // page read them. Unreadable ones count as risky.
+                    // names what they let the app do (audit G-F12/13). It is
+                    // asked only about the app as this page shows it: changed
+                    // since, the page is drawn again first (review L4).
+                    // Unreadable settings count as risky.
                     glib::spawn_future_local(async move {
-                        let now = app.backend.call(&["info", &me.app_id], None).await.ok();
-                        // Changed since the page drew it: show what is there
-                        // now first, never ask about a state not shown.
-                        let shown = me.shown_fingerprint();
-                        if now.as_ref().map(|i| util::str_of(i, "review_fingerprint"))
-                            != Some(shown.as_str())
-                        {
+                        let now = match app.backend.call(&["info", &me.app_id], None).await {
+                            Ok(i) => i,
+                            Err(e) => {
+                                app.report_error(&e);
+                                return;
+                            }
+                        };
+                        if util::str_of(&now, "review_fingerprint") != me.shown_fingerprint() {
                             app.toast(&crate::i18n::trf(
                                 "{app} changed since this page showed it. Look at it again, then confirm.",
                                 &[("app", &me.name())],
@@ -496,13 +498,10 @@ impl AppPage {
                             return;
                         }
                         let (mut body, risky) = confirm_outside_text(
-                            now.as_ref()
-                                .and_then(|i| util::get(i, "entry.profile.permissions")),
+                            util::get(&now, "entry.profile.permissions"),
                             file,
                         );
-                        let pending = now
-                            .as_ref()
-                            .and_then(|i| util::get(i, "entry"))
+                        let pending = util::get(&now, "entry")
                             .map(|e| util::list_of(e, "pending_changes"))
                             .unwrap_or_default();
                         if let Some(note) = pending_note(&pending) {
