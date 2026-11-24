@@ -351,6 +351,28 @@ mod tests {
         );
     }
 
+    /// A launch that still runs keeps its record, and what it watches is
+    /// left alone: only a record whose launcher is gone gets the last look
+    /// (mutation run 2026-11-24: taking every record for a killed
+    /// launcher's went unnoticed).
+    #[test]
+    fn a_running_launch_is_never_taken_for_a_killed_one() {
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path().join("home");
+        fs::create_dir_all(&home).unwrap();
+        let paths = Paths::rooted(&t.path().join("sam"));
+        let aside = t.path().join("aside");
+        let (_, r) = start(&paths, &home, "live", &aside);
+        fs::write(home.join(".bash_profile"), "echo mine").unwrap();
+        let running = Shared::open(&paths).unwrap().running();
+        assert_eq!(running.len(), 1, "the running launch is listed");
+        assert!(r.path.exists(), "its record stays");
+        assert!(
+            home.join(".bash_profile").exists(),
+            "nothing is moved aside while it runs"
+        );
+    }
+
     /// Review 2026-11-23 F2: when SAM's launcher is killed (SIGKILL, a
     /// crash), its last look still happens: the next look at the running
     /// launches (`Sam::running`, which the window, `stop` and every start
