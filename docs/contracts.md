@@ -40,6 +40,7 @@ where to look.
 | [etc-identity-and-names](#etc-identity-and-names) | The distribution's file system layout | Loses a feature | partly |
 | [sensitive-system-files](#sensitive-system-files) | The distribution's file system layout | Nothing breaks | fully |
 | [devices](#devices) | Linux kernel | Loses a feature | partly |
+| [drive-identity](#drive-identity) | Linux kernel | Loses a feature | partly |
 | [wayland-socket](#wayland-socket) | Wayland compositor | Loses a feature | partly |
 | [wayland-security-context](#wayland-security-context) | Wayland compositor | Warns | partly |
 | [x11](#x11) | X11 / XWayland | Loses a feature | partly |
@@ -56,7 +57,7 @@ where to look.
 | [printing-ssh-drives](#printing-ssh-drives) | freedesktop.org conventions (XDG folders, menus) | Loses a feature | partly |
 | [xdg-folders](#xdg-folders) | freedesktop.org conventions (XDG folders, menus) | Loses a feature | partly |
 
-16 of 37 contracts are tested fully; for the others the entry says what is not tested, mostly because CI machines have no sound, GPU, Wayland session or desktop services. The quick checks and the early-warning runs cover part of that.
+16 of 38 contracts are tested fully; for the others the entry says what is not tested, mostly because CI machines have no sound, GPU, Wayland session or desktop services. The quick checks and the early-warning runs cover part of that.
 
 ## bwrap-core
 
@@ -332,6 +333,18 @@ Devices appear under these names: GPUs as /dev/dri/card* and renderD*, NVIDIA as
 - **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox` (partly: Device checks only assert where the computer has the device; CI has no GPU, sound card, camera or gamepad.)
 - **Covers:** `path:/dev/bus/usb`, `path:/dev/dri`, `path:/dev/dri/card0`, `path:/dev/dri/renderD128`, `path:/dev/input`, `path:/dev/nvidia`, `path:/dev/nvidia0`, `path:/dev/nvidiactl`, `path:/dev/snd`, `path:/dev/uinput`, `path:/dev/video`, `path:/run/udev/data`, `path:/sys/bus`, `path:/sys/class`, `path:/sys/dev`, `path:/sys/devices`, `path:/sys/devices/system/cpu`, `path:/sys/module`
 - **If it breaks:** A renamed device is simply not passed in: the app loses that device, never gains another. Add the new name in sam-sandbox (devices) and host.rs (gpu_devices).
+
+## drive-identity
+
+statx gives each mount a unique ID (STATX_MNT_ID_UNIQUE, Linux 6.8 and later) that no other mount gets while the computer runs; the older mount ID is given out again after an unmount and is not used. Before Linux 6.8, udev lists each file system's own ID under /dev/disk/by-uuid as a link to its block device.
+
+- **Component:** Linux kernel ([releases](https://kernelnewbies.org/LinuxVersions))
+- **When it breaks:** one feature is unavailable; the sandbox is unaffected.
+- **SAM functions that rely on it:** [41](functions.md#41)
+- **Quick check:** none (only the tests below)
+- **Tests:** `a_drive_is_known_by_its_mount_or_its_file_systems_id`, `a_drive_mounted_anew_at_its_place_is_not_the_one_the_app_was_shown` (partly: The unique mount ID is tested with a real mount made again at the same place, in a namespace of the test's own. The /dev/disk/by-uuid lookup is tested with stand-in links; a real stick swapped at a port is not tested (CI has none). Before Linux 6.8 the file-system ID does not cover network, FUSE or btrfs-like file systems (no single block device), nor copies of one stick or image (same ID).)
+- **Covers:** `path:/dev/disk/by-uuid`
+- **If it breaks:** Without either identity Room service compares a drive by device and inode only (the known limitation in docs/security.md); the app itself is unaffected. A place whose identity cannot be read again for a room is refused in that room.
 
 ## wayland-socket
 

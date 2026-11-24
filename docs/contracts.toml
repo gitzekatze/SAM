@@ -442,6 +442,19 @@ gaps = "Device checks only assert where the computer has the device; CI has no G
 playbook = "A renamed device is simply not passed in: the app loses that device, never gains another. Add the new name in sam-sandbox (devices) and host.rs (gpu_devices)."
 
 [[contract]]
+id = "drive-identity"
+component = "kernel"
+assumes = "statx gives each mount a unique ID (STATX_MNT_ID_UNIQUE, Linux 6.8 and later) that no other mount gets while the computer runs; the older mount ID is given out again after an unmount and is not used. Before Linux 6.8, udev lists each file system's own ID under /dev/disk/by-uuid as a link to its block device."
+covers = ["path:/dev/disk/by-uuid"]
+functions = [41]
+probe = "none"
+tests = ["a_drive_is_known_by_its_mount_or_its_file_systems_id", "a_drive_mounted_anew_at_its_place_is_not_the_one_the_app_was_shown"]
+on_break = "feature"
+coverage = "partial"
+gaps = "The unique mount ID is tested with a real mount made again at the same place, in a namespace of the test's own. The /dev/disk/by-uuid lookup is tested with stand-in links; a real stick swapped at a port is not tested (CI has none). Before Linux 6.8 the file-system ID does not cover network, FUSE or btrfs-like file systems (no single block device), nor copies of one stick or image (same ID)."
+playbook = "Without either identity Room service compares a drive by device and inode only (the known limitation in docs/security.md); the app itself is unaffected. A place whose identity cannot be read again for a room is refused in that room."
+
+[[contract]]
 id = "wayland-socket"
 component = "wayland"
 assumes = "The compositor's socket is $XDG_RUNTIME_DIR/$WAYLAND_DISPLAY (or an absolute WAYLAND_DISPLAY) and is a real socket."

@@ -762,9 +762,15 @@ fn may_be_unmounted(p: &Path, dev: u64, fixed: &[u64]) -> bool {
 pub(crate) enum SourceHandle {
     /// Held open (O_PATH): shown by this handle, whatever is renamed.
     Open(OwnedFd),
-    /// On a drive that may be unmounted: what it was (device and inode),
-    /// opened again for a room and refused unless it is still the same.
-    Known { path: PathBuf, dev: u64, ino: u64 },
+    /// On a drive that may be unmounted: what it was (device and inode,
+    /// and the drive's own identity), opened again for a room and refused
+    /// unless it is still the same.
+    Known {
+        path: PathBuf,
+        dev: u64,
+        ino: u64,
+        drive: DriveId,
+    },
     /// A device place of the app (shown by name): what it was when the app
     /// started (device and inode, through links as Bubblewrap follows them).
     Device { dev: u64, ino: u64 },
@@ -802,6 +808,7 @@ fn plan_at_start_with(
                         path: p.to_path_buf(),
                         dev,
                         ino,
+                        drive: drive_id(&fd, dev),
                     }
                 } else {
                     SourceHandle::Open(fd)
@@ -1614,9 +1621,14 @@ fn open_source(source: &Source, sources: &[Option<SourceHandle>]) -> std::io::Re
         .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::NotFound))?;
     let top = match handle {
         SourceHandle::Open(fd) => fd.try_clone()?,
-        SourceHandle::Known { path, dev, ino } => {
+        SourceHandle::Known {
+            path,
+            dev,
+            ino,
+            drive,
+        } => {
             let fd = open_path(path)?;
-            if identity(&fd)? != (*dev, *ino) {
+            if identity(&fd)? != (*dev, *ino) || drive_id(&fd, *dev) != *drive {
                 return Err(std::io::Error::other(
                     "it is no longer what the app was shown when it started",
                 ));
@@ -1658,6 +1670,80 @@ fn device_at_start(
             Some(Some(SourceHandle::Device { dev, ino })) => Some((*dev, *ino)),
             _ => None,
         })
+}
+
+/// What a drive is beyond device and inode, which repeat: a stick put in
+/// at the same port gets the same device number, its top folder has the
+/// same inode as any other stick's of its kind (1 on FAT and exFAT, 2 on
+/// ext4), and a new mount can get the number of one unmounted before.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum DriveId {
+    /// The mount's unique ID (Linux 6.8 and later): never given to another
+    /// mount while the computer runs.
+    Mount(u64),
+    /// Before Linux 6.8: the file system's own ID (`/dev/disk/by-uuid`),
+    /// written when it was formatted (a copy of a stick or of the same
+    /// image has the same).
+    Disk(std::ffi::OsString),
+    /// Neither (before Linux 6.8: a network or FUSE mount, or a file
+    /// system on no single block device such as btrfs): only device and
+    /// inode are compared.
+    Unknown,
+}
+
+/// Where the computer lists each drive's file-system ID.
+const DISK_IDS: &str = "/dev/disk/by-uuid";
+
+/// The identity of the drive `fd` (on device `dev`) lies on.
+fn drive_id(fd: &OwnedFd, dev: u64) -> DriveId {
+    drive_id_with(unique_mount_id(fd), || disk_id(dev, Path::new(DISK_IDS)))
+}
+
+/// [`drive_id`] with the unique mount ID (if the kernel gives one) and the
+/// lookup of the file-system ID given: the mount ID first, as it tells
+/// apart any two mounts.
+fn drive_id_with(mount: Option<u64>, disk: impl FnOnce() -> Option<std::ffi::OsString>) -> DriveId {
+    match mount {
+        Some(m) => DriveId::Mount(m),
+        None => disk().map_or(DriveId::Unknown, DriveId::Disk),
+    }
+}
+
+/// The mount's unique ID of `fd`, where the kernel has it (Linux 6.8+).
+fn unique_mount_id(fd: &OwnedFd) -> Option<u64> {
+    // SAFETY: statx with an empty path on our own descriptor
+    // (AT_EMPTY_PATH) writes the struct given.
+    let mut st: libc::statx = unsafe { std::mem::zeroed() };
+    // SAFETY: as above; the path is a valid empty C string.
+    let r = unsafe {
+        libc::statx(
+            fd.as_raw_fd(),
+            c"".as_ptr(),
+            libc::AT_EMPTY_PATH,
+            libc::STATX_MNT_ID_UNIQUE,
+            &mut st,
+        )
+    };
+    (r == 0 && st.stx_mask & libc::STATX_MNT_ID_UNIQUE != 0).then_some(st.stx_mnt_id)
+}
+
+/// The file-system ID in `ids` whose block device is `dev`, if one is.
+fn disk_id(dev: u64, ids: &Path) -> Option<std::ffi::OsString> {
+    use std::os::unix::fs::FileTypeExt;
+    disk_id_where(dev, ids, |t| t.is_block_device())
+}
+
+/// [`disk_id`] for the kind of device `kind` accepts.
+fn disk_id_where(
+    dev: u64,
+    ids: &Path,
+    kind: impl Fn(&std::fs::FileType) -> bool,
+) -> Option<std::ffi::OsString> {
+    use std::os::unix::fs::MetadataExt;
+    std::fs::read_dir(ids).ok()?.flatten().find_map(|e| {
+        let m = std::fs::metadata(e.path()).ok()?;
+        (kind(&m.file_type()) && m.rdev() == dev).then(|| e.file_name())
+    })
 }
 
 /// Device and inode of an open file or folder.
@@ -3308,6 +3394,56 @@ mod tests {
         );
     }
 
+    /// A drive is known by its mount's unique ID where the kernel gives
+    /// one; before Linux 6.8 by the file-system ID listed for its block
+    /// device; otherwise by nothing more than device and inode. Here the
+    /// list of IDs holds stand-ins: links to /dev/null and /dev/zero
+    /// (character devices, which the real lookup never takes).
+    #[test]
+    fn a_drive_is_known_by_its_mount_or_its_file_systems_id() {
+        use std::os::unix::fs::{symlink, FileTypeExt, MetadataExt};
+        assert_eq!(
+            drive_id_with(Some(7), || Some("X".into())),
+            DriveId::Mount(7)
+        );
+        assert_eq!(
+            drive_id_with(None, || Some("X".into())),
+            DriveId::Disk("X".into())
+        );
+        assert_eq!(drive_id_with(None, || None), DriveId::Unknown);
+        let tmp = tempfile::tempdir().unwrap();
+        let ids = tmp.path().join("by-uuid");
+        std::fs::create_dir(&ids).unwrap();
+        symlink("/dev/null", ids.join("AAAA-1111")).unwrap();
+        symlink("/dev/zero", ids.join("BBBB-2222")).unwrap();
+        std::fs::write(tmp.path().join("plain"), "").unwrap();
+        symlink(tmp.path().join("plain"), ids.join("not-a-device")).unwrap();
+        symlink("/nonexistent", ids.join("dangling")).unwrap();
+        let rdev = |p: &str| std::fs::metadata(p).unwrap().rdev();
+        let (null, zero) = (rdev("/dev/null"), rdev("/dev/zero"));
+        let chr = |t: &std::fs::FileType| t.is_char_device();
+        assert_eq!(disk_id_where(null, &ids, chr), Some("AAAA-1111".into()));
+        assert_eq!(disk_id_where(zero, &ids, chr), Some("BBBB-2222".into()));
+        let plain = std::fs::metadata(tmp.path().join("plain")).unwrap().dev();
+        assert_eq!(disk_id_where(plain, &ids, chr), None);
+        assert_eq!(disk_id_where(null, &tmp.path().join("missing"), chr), None);
+        // Only a block device names a drive.
+        assert_eq!(disk_id(null, &ids), None);
+        // The kernel's own: one mount keeps its ID, two mounts differ.
+        let id = |p: &str| unique_mount_id(&open_path(Path::new(p)).unwrap());
+        match id("/") {
+            Some(root) => {
+                assert_eq!(id("/"), Some(root));
+                assert_ne!(id("/proc"), Some(root));
+            }
+            None => {
+                if let Err(e) = crate::contracts::skip("no unique mount IDs (Linux before 6.8)") {
+                    panic!("{e}");
+                }
+            }
+        }
+    }
+
     /// The descriptors held for rooms stay within what the launcher's
     /// limit leaves free, and a reservation gives back what did not come.
     #[test]
@@ -4096,6 +4232,152 @@ exec "$@"
         assert!(
             !lines.iter().any(|l| l.contains("still unfinished")),
             "{lines:?}"
+        );
+    }
+
+    /// Runs `body` alone in a child process with a user and mount
+    /// namespace of its own (util-linux's `unshare`), where the test may
+    /// mount: nothing it mounts reaches the computer.
+    fn in_own_mount_namespace(name: &str, body: impl FnOnce()) {
+        const VAR: &str = "SAM_TEST_SERVICE_OWN_MOUNTS";
+        if std::env::var(VAR).is_ok_and(|v| v == name) {
+            body();
+            return;
+        }
+        let full = format!("room_service::service_tests::{name}");
+        let child = std::process::Command::new("unshare")
+            .args(["--user", "--map-root-user", "--mount"])
+            .arg(std::env::current_exe().unwrap())
+            .args(["--exact", &full, "--test-threads=1", "--nocapture"])
+            .env(VAR, name)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn();
+        let mut child = match child {
+            Ok(c) => c,
+            Err(e) => {
+                if let Err(e) = crate::contracts::skip(&format!("unshare cannot start: {e}")) {
+                    panic!("{e}");
+                }
+                return;
+            }
+        };
+        // At most a minute: a hang fails the test instead of the whole run.
+        let end = Instant::now() + Duration::from_secs(60);
+        while child.try_wait().unwrap().is_none() {
+            if Instant::now() >= end {
+                let _ = child.kill();
+                let _ = child.wait();
+                panic!("{name} did not end within a minute");
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let out = child.wait_with_output().unwrap();
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        // A test of another name (renamed or moved) is never taken for a
+        // missing namespace.
+        assert!(!stdout.contains("running 0 tests"), "{full} was not found");
+        if !stdout.contains("running 1 test") {
+            if let Err(e) = crate::contracts::skip(&format!(
+                "no user and mount namespace of the test's own (unshare): {}",
+                String::from_utf8_lossy(&out.stderr)
+            )) {
+                panic!("{e}");
+            }
+            return;
+        }
+        assert!(
+            out.status.success() && stdout.contains("1 passed"),
+            "{:?}\n{stdout}\n{}",
+            out.status,
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+
+    /// Mounts `from` at `at` (a bind mount), or unmounts `at`.
+    fn bind(from: &Path, at: &Path) {
+        use std::os::unix::ffi::OsStrExt;
+        let c = |p: &Path| std::ffi::CString::new(p.as_os_str().as_bytes()).unwrap();
+        let (from, at) = (c(from), c(at));
+        // SAFETY: valid C strings; the result is checked.
+        let r = unsafe {
+            libc::mount(
+                from.as_ptr(),
+                at.as_ptr(),
+                std::ptr::null(),
+                libc::MS_BIND,
+                std::ptr::null(),
+            )
+        };
+        assert_eq!(r, 0, "{}", std::io::Error::last_os_error());
+    }
+
+    fn unmount(at: &Path) {
+        use std::os::unix::ffi::OsStrExt;
+        let at = std::ffi::CString::new(at.as_os_str().as_bytes()).unwrap();
+        // SAFETY: a valid C string; the result is checked.
+        let r = unsafe { libc::umount2(at.as_ptr(), 0) };
+        assert_eq!(r, 0, "{}", std::io::Error::last_os_error());
+    }
+
+    /// A drive unmounted and another mounted at its place, with the same
+    /// device and the same inode (as any two FAT sticks' top folders at
+    /// the same port), is not the one the app was shown: a room is
+    /// refused it. Here the "other drive" is the same folder mounted
+    /// again, which gives exactly the same numbers every time.
+    #[test]
+    fn a_drive_mounted_anew_at_its_place_is_not_the_one_the_app_was_shown() {
+        in_own_mount_namespace(
+            "a_drive_mounted_anew_at_its_place_is_not_the_one_the_app_was_shown",
+            || {
+                let tmp = tempfile::tempdir().unwrap();
+                let (folder, stick) = (tmp.path().join("folder"), tmp.path().join("stick"));
+                std::fs::create_dir(&folder).unwrap();
+                std::fs::create_dir(&stick).unwrap();
+                bind(&folder, &stick);
+                let plan = FloorPlan::from_bwrap_args(&s(&[
+                    "--ro-bind",
+                    stick.to_str().unwrap(),
+                    "/run/media/me/stick",
+                    "--",
+                    "x",
+                ]))
+                .unwrap();
+                let (_, sources) =
+                    plan_at_start_with(plan, |p, _| p.starts_with(tmp.path())).unwrap();
+                let Some(SourceHandle::Known {
+                    dev, ino, drive, ..
+                }) = &sources[0]
+                else {
+                    panic!("not remembered as a drive that may be unmounted");
+                };
+                if !matches!(drive, DriveId::Mount(_)) {
+                    if let Err(e) = crate::contracts::skip("no unique mount IDs (Linux before 6.8)")
+                    {
+                        panic!("{e}");
+                    }
+                    return;
+                }
+                let whole = Source {
+                    entry: 0,
+                    rel: PathBuf::new(),
+                };
+                assert!(open_source(&whole, &sources).is_ok());
+                unmount(&stick);
+                bind(&folder, &stick);
+                assert_eq!(
+                    identity(&open_path(&stick).unwrap()).unwrap(),
+                    (*dev, *ino),
+                    "the drive mounted anew has the same device and inode"
+                );
+                let e = open_source(&whole, &sources).unwrap_err();
+                assert!(
+                    e.to_string().contains("no longer what the app was shown"),
+                    "{e}"
+                );
+                // Unmounted, so the temporary folder can go.
+                unmount(&stick);
+            },
         );
     }
 
