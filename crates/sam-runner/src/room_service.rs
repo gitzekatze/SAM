@@ -434,6 +434,8 @@ pub struct RoomService {
     listener: Option<UnixListener>,
     state: Arc<State>,
     accept: Option<JoinHandle<()>>,
+    /// Why every request is refused this start, when it is.
+    refusing: Option<String>,
 }
 
 impl RoomService {
@@ -467,29 +469,43 @@ impl RoomService {
             listener: Some(listener),
             state: Arc::new(State::default()),
             accept: None,
+            refusing: None,
         })
     }
 
     /// Starts serving the app's requests. Opens the floor plan's sources
-    /// now, before the app runs: a room shows what the app was shown.
+    /// now, before the app runs: a room shows what the app was shown. A
+    /// source that exists but cannot be opened refuses every room this
+    /// start.
     pub fn serve(&mut self, mut ctx: RoomContext) {
-        let (plan, sources) = plan_at_start(std::mem::take(&mut ctx.plan));
-        ctx.plan = plan;
-        self.run(Served {
-            ctx,
-            sources,
-            refuse_all: None,
-        });
+        match plan_at_start(std::mem::take(&mut ctx.plan)) {
+            Ok((plan, sources)) => {
+                ctx.plan = plan;
+                self.run(Served {
+                    ctx,
+                    sources,
+                    refuse_all: None,
+                });
+            }
+            Err(why) => self.serve_refusing(ctx, why),
+        }
     }
 
     /// Keeps the socket the app's sandbox shows, but refuses every request
     /// (when no floor plan could be read this start).
     pub fn serve_refusing(&mut self, ctx: RoomContext, why: String) {
+        self.refusing = Some(why.clone());
         self.run(Served {
             ctx,
             sources: Vec::new(),
             refuse_all: Some(why),
         });
+    }
+
+    /// Why the service refuses every request this start, if it does: the
+    /// launcher warns the person once, before any program asks.
+    pub fn refusing(&self) -> Option<&str> {
+        self.refusing.as_deref()
     }
 
     fn run(&mut self, served: Served) {
@@ -601,7 +617,9 @@ impl Drop for RoomService {
 /// (Bubblewrap skips such `-try` places), so it leaves the plan and
 /// neither shows nor covers anything in a room. Device places are checked
 /// the same way: one that appears later is never looked up by its name.
-fn plan_at_start(plan: FloorPlan) -> (FloorPlan, Vec<Option<SourceHandle>>) {
+/// A source that exists but cannot be opened is an error: see
+/// [`plan_at_start_with`].
+fn plan_at_start(plan: FloorPlan) -> Result<(FloorPlan, Vec<Option<SourceHandle>>), String> {
     use std::os::unix::fs::MetadataExt;
     let fixed: Vec<u64> = [
         Some(PathBuf::from("/")),
@@ -651,31 +669,44 @@ pub(crate) enum SourceHandle {
     Known { path: PathBuf, dev: u64, ino: u64 },
 }
 
+/// The floor plan with its sources opened now ([`plan_at_start`]). Only a
+/// source that does not exist leaves the plan, as Bubblewrap skips only
+/// those (`-try`). Any other failure (no descriptors left, no permission,
+/// a link loop) is an error, and no room is built this start: the app
+/// still has the place, and leaving it out could take away a protection,
+/// such as a read-only file inside a writable home, from every room.
 fn plan_at_start_with(
     mut plan: FloorPlan,
     removable: impl Fn(&Path, u64) -> bool,
-) -> (FloorPlan, Vec<Option<SourceHandle>>) {
+) -> Result<(FloorPlan, Vec<Option<SourceHandle>>), String> {
     let mut sources = Vec::new();
     let mut entries = Vec::new();
     for e in std::mem::take(&mut plan.entries) {
         match e.source() {
             Some(p) => {
-                if let Ok(fd) = open_path(p) {
-                    let Ok((dev, ino)) = identity(&fd) else {
-                        continue;
-                    };
-                    let handle = if removable(p, dev) {
-                        SourceHandle::Known {
-                            path: p.to_path_buf(),
-                            dev,
-                            ino,
-                        }
-                    } else {
-                        SourceHandle::Open(fd)
-                    };
-                    sources.push(Some(handle));
-                    entries.push(e);
-                }
+                let failed = |err: std::io::Error| {
+                    format!(
+                        "{} could not be opened when the app started ({err}), so no room is built this start",
+                        e.at().display()
+                    )
+                };
+                let fd = match open_path(p) {
+                    Ok(fd) => fd,
+                    Err(err) if err.kind() == std::io::ErrorKind::NotFound => continue,
+                    Err(err) => return Err(failed(err)),
+                };
+                let (dev, ino) = identity(&fd).map_err(failed)?;
+                let handle = if removable(p, dev) {
+                    SourceHandle::Known {
+                        path: p.to_path_buf(),
+                        dev,
+                        ino,
+                    }
+                } else {
+                    SourceHandle::Open(fd)
+                };
+                sources.push(Some(handle));
+                entries.push(e);
             }
             None => {
                 if let Entry::Dev { src, .. } = &e {
@@ -689,7 +720,7 @@ fn plan_at_start_with(
         }
     }
     plan.entries = entries;
-    (plan, sources)
+    Ok((plan, sources))
 }
 
 fn answer(stream: &mut UnixStream, body: &serde_json::Value) {
@@ -2921,7 +2952,7 @@ mod tests {
             "x",
         ]))
         .unwrap();
-        let (plan, sources) = plan_at_start(plan);
+        let (plan, sources) = plan_at_start(plan).unwrap();
         let at: Vec<&Path> = plan.entries.iter().map(|e| e.at()).collect();
         assert_eq!(at, vec![Path::new("/dev/null")]);
         assert_eq!(sources.len(), plan.entries.len());
@@ -3092,7 +3123,7 @@ mod tests {
             "x",
         ]))
         .unwrap();
-        let (_, sources) = plan_at_start_with(plan, |p, _| p.starts_with(tmp.path()));
+        let (_, sources) = plan_at_start_with(plan, |p, _| p.starts_with(tmp.path())).unwrap();
         assert!(matches!(sources[0], Some(SourceHandle::Known { .. })));
         let whole = Source {
             entry: 0,
@@ -3589,6 +3620,7 @@ mod service_tests {
             listener: Some(listener),
             state: Arc::new(State::default()),
             accept: None,
+            refusing: None,
         }
     }
 
@@ -3610,7 +3642,7 @@ mod service_tests {
 
     /// What `serve` keeps, with every source held open.
     fn served(ctx: RoomContext) -> Arc<Served> {
-        let (plan, sources) = plan_at_start_with(ctx.plan.clone(), |_, _| false);
+        let (plan, sources) = plan_at_start_with(ctx.plan.clone(), |_, _| false).unwrap();
         Arc::new(Served {
             ctx: RoomContext { plan, ..ctx },
             sources,
@@ -4027,7 +4059,7 @@ exec "$@"
             args.extend(s(&["--", "x"]));
             let plan = FloorPlan::from_bwrap_args(&args).unwrap();
             // Remembered, not held open: the test holds no 2000 descriptors.
-            let (plan, sources) = plan_at_start_with(plan, |_, _| true);
+            let (plan, sources) = plan_at_start_with(plan, |_, _| true).unwrap();
             assert_eq!(plan.entries.len(), places);
             let mut ctx = context(&top, Path::new("/nonexistent"), &[]);
             ctx.plan = plan;
@@ -4157,6 +4189,69 @@ exec "$@"
             .filter(|l| l.starts_with("sam-room: built sh"))
             .count();
         assert_eq!(built, MAX_ROOMS + 1, "{lines:?}");
+    }
+
+    /// A place of the app that exists but cannot be opened when the app
+    /// starts (here a link to itself; in practice no descriptors left)
+    /// never leaves the floor plan quietly: it may be the read-only file
+    /// that protects something inside a writable folder, which every room
+    /// would then get writable while the app has it read-only. No room is
+    /// built this start, and the refusal names the place. A place that
+    /// does not exist still leaves the plan, as Bubblewrap skips it for
+    /// the app too.
+    #[test]
+    fn a_place_that_cannot_be_opened_at_the_start_refuses_every_room() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (bwrap, _) = fake_bwrap(tmp.path());
+        let home = tmp.path().join("home");
+        std::fs::create_dir(&home).unwrap();
+        let protect = home.join(".bashrc");
+        // A link to itself: opening it fails with ELOOP, also as root.
+        std::os::unix::fs::symlink(&protect, &protect).unwrap();
+        let missing = home.join(".profile");
+        let (h, p, m) = (
+            home.to_str().unwrap(),
+            protect.to_str().unwrap(),
+            missing.to_str().unwrap(),
+        );
+        let only_missing =
+            FloorPlan::from_bwrap_args(&s(&["--bind", h, h, "--ro-bind-try", m, m, "--", "x"]))
+                .unwrap();
+        let (plan, _) = plan_at_start_with(only_missing, |_, _| false).unwrap();
+        let at: Vec<&Path> = plan.entries.iter().map(|e| e.at()).collect();
+        assert_eq!(at, vec![home.as_path()]);
+        let mut ctx = context(tmp.path(), &bwrap, &[]);
+        ctx.plan = FloorPlan::from_bwrap_args(&s(&[
+            "--bind",
+            h,
+            h,
+            "--ro-bind-try",
+            p,
+            p,
+            "--ro-bind-try",
+            m,
+            m,
+            "--",
+            "x",
+        ]))
+        .unwrap();
+        let mut service = service_in(tmp.path());
+        service.serve(ctx);
+        let said = format!("{p} could not be opened when the app started");
+        // The launcher warns before any program asks.
+        assert!(
+            service.refusing().is_some_and(|w| w.contains(&said)),
+            "{:?}",
+            service.refusing()
+        );
+        let a = ask_service(&service.socket, &request(&[], &["/bin/sh", "-c", "exit 0"]));
+        let why = a["error"].as_str().unwrap_or_default();
+        assert!(why.contains(&said), "{a}");
+        let lines = service.stop();
+        assert!(
+            !lines.iter().any(|l| l.starts_with("sam-room: built")),
+            "{lines:?}"
+        );
     }
 
     /// Every room still running ends with the app's start, also after

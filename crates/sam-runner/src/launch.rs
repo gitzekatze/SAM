@@ -753,7 +753,20 @@ pub fn prepare(
             },
         };
         match plan {
-            Ok(_) => service.serve(room_ctx),
+            Ok(_) => {
+                service.serve(room_ctx);
+                // A place of the app could not be opened: no room this start.
+                if let Some(e) = service.refusing() {
+                    warnings.push(Warning::warn(
+                        "room-service-failed",
+                        "Room service unavailable",
+                        sam_core::i18n::trf(
+                            "{error}; programs in this app that build a sandbox of their own fail this time",
+                            &[("error", &e)],
+                        ),
+                    ));
+                }
+            }
             Err(e) => {
                 warnings.push(Warning::warn(
                     "room-service-failed",
