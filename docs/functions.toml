@@ -461,6 +461,8 @@ tests = [
   "a_start_that_fails_while_moving_connections_is_reported_with_its_cause",
   "a_signal_while_a_room_starts_does_not_fail_the_start",
   "a_room_gets_exactly_its_connections_and_none_overwrites_another",
+  "without_close_range_a_room_still_gets_exactly_its_connections",
+  "without_close_range_and_proc_a_room_still_gets_exactly_its_connections",
   "a_room_never_gets_a_variable_without_a_valid_name",
   "a_place_is_opened_beneath_its_source_as_a_handle_through_no_link",
   "sams_own_descriptors_work_at_any_number_and_fail_when_none_is_left",
