@@ -41,6 +41,7 @@ say control "$(rv room -- /usr/bin/echo ok)"
 say view "$(rv room -- /usr/bin/sh -c "test -e '$HOME' && echo sees-home || echo no-home")"
 say own_tmpfs "$(rv room --tmpfs /scratch -- $P write /scratch x)"
 say own_chmod "$(rv room --tmpfs /scratch --chmod 0700 /scratch -- /usr/bin/echo ok)"
+say die_with_parent "$(rv room --die-with-parent -- /usr/bin/echo ok)"
 say home_rw "$(rv room --bind "$HOME" "$HOME" -- $P write "$HOME" room-rw-marker)"
 say home_ro "$(rv room --ro-bind "$HOME" "$HOME" -- $P write "$HOME" room-ro-marker)"
 exec 5>"$HOME/fd5"
@@ -679,6 +680,22 @@ if [ ! -s "$HOME/beat" ]; then killed=no-room; else
   done
 fi
 say killed_standin "$killed"
+# A room asked to end with its program (`--die-with-parent`) ends when
+# that program is killed: here the subshell that started the stand-in.
+# shellcheck disable=SC2086
+( bwrap --die-with-parent --ro-bind /usr /usr $SYS --bind "$HOME" "$HOME" -- /usr/bin/sh -c 'while :; do date +%s%N > "$HOME/beat-dwp"; /usr/bin/sleep 0.2; done' & wait ) &
+starter=$!
+i=0; while [ ! -s "$HOME/beat-dwp" ] && [ $i -lt 300 ]; do sleep 0.2; i=$((i+1)); done
+kill -9 "$starter"
+if [ ! -s "$HOME/beat-dwp" ]; then dwp=no-room; else
+  dwp=room-still-running; i=0
+  while [ $i -lt 30 ]; do
+    a=$(cat "$HOME/beat-dwp"); sleep 2; b=$(cat "$HOME/beat-dwp")
+    if [ "$a" = "$b" ]; then dwp=room-ended; break; fi
+    i=$((i+1))
+  done
+fi
+say died_with_parent "$dwp"
 room --bind "$HOME" "$HOME" -- /usr/bin/sh -c 'echo up > "$HOME/alive"; exec /usr/bin/sleep {left}' &
 # A room asked to make its program the first process, whose program then
 # drops its tie to the room's starter: it still ends with the app's start.
@@ -1096,6 +1113,7 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
                 ("view", "no-home"),
                 ("own_tmpfs", "allowed"),
                 ("own_chmod", "ok"),
+                ("die_with_parent", "ok"),
                 ("home_rw", "allowed"),
                 ("home_ro", "blocked"),
                 ("fd", "via-fd-5"),
@@ -1659,6 +1677,7 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
                 ("slots_ran", "20"),
                 ("slots_most_at_once", "16"),
                 ("killed_standin", "room-ended"),
+                ("died_with_parent", "room-ended"),
                 ("left_running", "started"),
                 ("pid1_running", "started"),
             ],
