@@ -362,6 +362,9 @@ impl FloorPlan {
         // Bubblewrap shares the network unless told otherwise.
         let mut network = true;
         let mut read_only: Vec<(usize, PathBuf)> = Vec::new();
+        // Entries asked with `-try`: Bubblewrap skips one whose source is
+        // missing, and Room service then leaves it out of the floor plan.
+        let mut tried: Vec<usize> = Vec::new();
         let at = |i: usize| -> Result<&String, String> {
             args.get(i)
                 .ok_or_else(|| "SAM's own sandbox command ends early".to_string())
@@ -372,6 +375,9 @@ impl FloorPlan {
                 break;
             }
             let p = |k: usize| -> Result<PathBuf, String> { at(i + k).map(PathBuf::from) };
+            if matches!(o, "--bind-try" | "--ro-bind-try" | "--dev-bind-try") {
+                tried.push(entries.len());
+            }
             i += match o {
                 "--ro-bind" | "--ro-bind-try" => {
                     entries.push(Entry::Ro {
@@ -415,6 +421,12 @@ impl FloorPlan {
                     2
                 }
                 "--overlay-src" => {
+                    // One lower layer only: with several, a room would see
+                    // one of them, which may hold what another covers in
+                    // the app.
+                    if overlay_src.is_some() {
+                        return Err("an overlay of several layers, unknown to Room service".into());
+                    }
                     overlay_src = Some(p(1)?);
                     2
                 }
@@ -454,18 +466,21 @@ impl FloorPlan {
         }
         // A --remount-ro makes read-only the one mount at its place made
         // last before it: Bubblewrap's remount is not recursive, so mounts
-        // below it made earlier keep their rights (SAM's own final
-        // `--remount-ro /` only concerns the sandbox's root, which holds
-        // nothing of the computer).
+        // below it made earlier keep their rights. SAM's own final
+        // `--remount-ro /` finds no entry of SAM's at the root; it counts
+        // for one the person's own arguments put there (`--bind / /`).
+        // When the mount on top was asked with `-try`, its source may be
+        // missing: Bubblewrap then remounts the mount below it, and Room
+        // service leaves the skipped entry out. So every mount at the place
+        // down to the first one not asked with `-try` becomes read-only;
+        // the ones below a shown `-try` place are covered by it anyway.
         for (before, at) in read_only {
-            if at == Path::new("/") {
-                continue;
-            }
-            let top = entries
+            let mut end = before;
+            while let Some(i) = entries
                 .iter()
-                .take(before)
-                .rposition(|e| e.is_mount() && e.at() == at);
-            if let Some(i) = top {
+                .take(end)
+                .rposition(|e| e.is_mount() && e.at() == at)
+            {
                 match &mut entries[i] {
                     Entry::Rw { src, dst } => {
                         entries[i] = Entry::Ro {
@@ -476,6 +491,10 @@ impl FloorPlan {
                     Entry::Dev { read_only, .. } => *read_only = true,
                     _ => {}
                 }
+                if !tried.contains(&i) {
+                    break;
+                }
+                end = i;
             }
         }
         entries.retain(|e| !NOT_FOR_ROOMS.iter().any(|n| e.at() == Path::new(n)));
@@ -2038,6 +2057,114 @@ mod tests {
         .unwrap();
         assert!(matches!(plan.entries[0], Entry::Ro { .. }));
         assert!(matches!(plan.entries[1], Entry::Rw { .. }));
+    }
+
+    /// A remount reaches whatever mount Bubblewrap finds on top at its
+    /// place: also one at the root (the person's own `--bind / /` before
+    /// SAM's final `--remount-ro /`), and the mount below a `-try` place,
+    /// which Bubblewrap skips when its source is missing and Room service
+    /// then leaves out. Several overlay layers give no rooms. Before, the
+    /// root and the mount below a `-try` place stayed writable for rooms
+    /// while the app had them read-only.
+    #[test]
+    fn a_remount_reaches_the_mount_bubblewrap_finds_on_top() {
+        let fp = |a: &[&str]| FloorPlan::from_bwrap_args(&s(a));
+        let root = fp(&["--bind", "/", "/", "--remount-ro", "/", "--", "x"]).unwrap();
+        assert_eq!(
+            root.entries,
+            vec![Entry::Ro {
+                src: "/".into(),
+                dst: "/".into()
+            }]
+        );
+        let req_x = req(&[&["--bind", "/x/f", "/x/f"]], &["x"]);
+        for try_bind in ["--bind-try", "--ro-bind-try"] {
+            let mut plan = fp(&[
+                "--bind",
+                "/a",
+                "/x",
+                try_bind,
+                "/b",
+                "/x",
+                "--remount-ro",
+                "/x",
+                "--",
+                "x",
+            ])
+            .unwrap();
+            assert!(
+                plan.entries.iter().all(|e| matches!(e, Entry::Ro { .. })),
+                "{try_bind}: {:?}",
+                plan.entries
+            );
+            // /b missing: Room service leaves it out, /a is on top.
+            plan.entries.remove(1);
+            let room = plan_room(&plan, &req_x, AppFacts::default()).unwrap();
+            assert!(
+                matches!(
+                    room.steps[..],
+                    [Step::Show {
+                        writable: false,
+                        ..
+                    }]
+                ),
+                "{try_bind}: {:?}",
+                room.steps
+            );
+        }
+        // A place not asked with -try stops the remount there.
+        let below = fp(&[
+            "--bind",
+            "/a",
+            "/x",
+            "--bind",
+            "/b",
+            "/x",
+            "--remount-ro",
+            "/x",
+            "--",
+            "x",
+        ])
+        .unwrap();
+        assert!(matches!(below.entries[0], Entry::Rw { .. }));
+        assert!(matches!(below.entries[1], Entry::Ro { .. }));
+        let mut dev = fp(&[
+            "--dev-bind",
+            "/dev/a",
+            "/dev/x",
+            "--dev-bind-try",
+            "/dev/b",
+            "/dev/x",
+            "--remount-ro",
+            "/dev/x",
+            "--",
+            "x",
+        ])
+        .unwrap();
+        dev.entries.remove(1);
+        assert!(matches!(
+            dev.entries[0],
+            Entry::Dev {
+                read_only: true,
+                ..
+            }
+        ));
+        assert_eq!(
+            fp(&[
+                "--overlay-src",
+                "/l1",
+                "--overlay-src",
+                "/l2",
+                "--overlay",
+                "/u",
+                "/w",
+                "/app",
+                "--",
+                "x"
+            ])
+            .unwrap_err(),
+            "an overlay of several layers, unknown to Room service"
+        );
     }
 
     /// The room's own link is never made inside a place shown from the
