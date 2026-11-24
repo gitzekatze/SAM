@@ -34,7 +34,8 @@ impl Sam {
             return self.reextract_from(query, consent_fallback, c);
         }
         let entry = self.resolve(query)?;
-        self.ensure_not_running(&entry, &sam_core::i18n::tr("unpack it again"))?;
+        let (_change, entry) =
+            self.lock_for_change(&entry, &sam_core::i18n::tr("unpack it again"))?;
         if !entry.source_path.exists() {
             bail!(
                 "{}",
@@ -72,8 +73,9 @@ impl Sam {
         consent_fallback: bool,
         checked: &Checked<'_>,
     ) -> Result<AppEntry> {
-        let mut entry = self.resolve(query)?;
-        self.ensure_not_running(&entry, &sam_core::i18n::tr("unpack it again"))?;
+        let entry = self.resolve(query)?;
+        let (_change, mut entry) =
+            self.lock_for_change(&entry, &sam_core::i18n::tr("unpack it again"))?;
         if !entry.source_path.exists() {
             bail!(
                 "{}",
@@ -399,6 +401,48 @@ impl Sam {
         Ok(d)
     }
 
+    /// Holds `entry`'s app for a change of its sandbox ([`crate::app_lock`])
+    /// and returns its record as it is now, under the lock. Refused while
+    /// the app runs, is starting, or is being changed elsewhere.
+    pub(super) fn lock_for_change(
+        &self,
+        entry: &AppEntry,
+        what: &str,
+    ) -> Result<(crate::app_lock::ChangeLock, AppEntry)> {
+        let Some(lock) = crate::app_lock::for_change(&self.paths, &entry.id)? else {
+            self.ensure_not_running(entry, what)?;
+            bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "{app} is starting or being changed right now. Wait until that is done, then {what}.",
+                    &[("app", &sam_core::util::display_safe(&entry.metadata.name, 80)), ("what", &what)]
+                )
+            );
+        };
+        self.ensure_not_running(entry, what)?;
+        let fresh = self.registry().get(&entry.id)?.with_context(|| {
+            sam_core::i18n::trf("no registered app '{id}'", &[("id", &entry.id)])
+        })?;
+        Ok((lock, fresh))
+    }
+
+    /// Holds `entry`'s app for a start ([`crate::app_lock`]) until the
+    /// returned lock is dropped, and reads its record again into `entry`:
+    /// what a change saved before the lock was taken (a new unpacked copy,
+    /// its "look at it first" mark) is what this start checks and runs.
+    /// Refused at once, without waiting, while the app's sandbox is being
+    /// changed. Every way of starting an app takes it before
+    /// [`Sam::check_before_start`] and keeps it until the start has ended.
+    pub fn start_lock(&self, entry: &mut AppEntry) -> Result<crate::app_lock::StartLock> {
+        let Some(lock) = crate::app_lock::for_start(&self.paths, &entry.id)? else {
+            return Err(being_changed(entry));
+        };
+        *entry = self.registry().get(&entry.id)?.with_context(|| {
+            sam_core::i18n::trf("no registered app '{id}'", &[("id", &entry.id)])
+        })?;
+        Ok(lock)
+    }
+
     pub(super) fn ensure_not_running(&self, entry: &AppEntry, what: &str) -> Result<()> {
         if !self.running(&entry.id).is_empty() {
             bail!(
@@ -414,7 +458,8 @@ impl Sam {
 
     pub fn remove(&self, query: &str, keep_data: bool) -> Result<(AppEntry, Vec<String>)> {
         let entry = self.resolve(query)?;
-        self.ensure_not_running(&entry, &sam_core::i18n::tr("remove its sandbox"))?;
+        let (_change, entry) =
+            self.lock_for_change(&entry, &sam_core::i18n::tr("remove its sandbox"))?;
         let mut problems = Vec::new();
         desktop::remove_launcher(&self.paths, &entry.id)?;
         for h in &entry.hidden_entries {
@@ -582,7 +627,8 @@ impl Sam {
     /// [`Sam::ensure_unpacked`]). Returns the bytes freed.
     pub fn free_space(&self, query: &str) -> Result<u64> {
         let entry = self.resolve(query)?;
-        self.ensure_not_running(&entry, &sam_core::i18n::tr("free its space"))?;
+        let (_change, entry) =
+            self.lock_for_change(&entry, &sam_core::i18n::tr("free its space"))?;
         if !entry.source_path.exists() {
             bail!(
                 "{}",
@@ -616,6 +662,13 @@ impl Sam {
         ) {
             return Ok(false);
         }
+        // A start unpacks first: like the start itself it never waits for
+        // a change of the sandbox (`app_lock`), it is refused at once.
+        let Some(_change) =
+            crate::app_lock::for_change_within(&self.paths, &entry.id, std::time::Duration::ZERO)?
+        else {
+            return Err(being_changed(entry));
+        };
         *entry = self.reextract(&entry.id, false)?;
         Ok(true)
     }
@@ -751,7 +804,7 @@ impl Sam {
     pub fn update(&self, query: &str, accept_key_change: bool) -> Result<AppEntry> {
         let entry = self.resolve(query)?;
         self.forget_old_waiting();
-        self.ensure_not_running(&entry, "update it")?;
+        let (_change, entry) = self.lock_for_change(&entry, &sam_core::i18n::tr("update it"))?;
         if !entry.source_path.exists() {
             bail!(
                 "{}",
@@ -1020,7 +1073,7 @@ impl Sam {
     /// in its place, so going back can itself be undone.
     pub fn undo_update(&self, query: &str) -> Result<AppEntry> {
         let entry = self.resolve(query)?;
-        self.ensure_not_running(&entry, "go back")?;
+        let (_change, entry) = self.lock_for_change(&entry, &sam_core::i18n::tr("go back"))?;
         let b = entry.update_backup.clone().context(sam_core::i18n::tr(
             "there is no earlier version to go back to",
         ))?;
@@ -1326,6 +1379,19 @@ impl Sam {
 
 /// Rename, or copy and delete across file systems.
 /// The refusal of an update that is an older signed version.
+/// A start refused because `entry`'s sandbox is being changed (code
+/// `app-being-changed`): it is temporary, nothing needs repairing.
+fn being_changed(entry: &AppEntry) -> anyhow::Error {
+    sam_core::error::CodedError::new(
+        "app-being-changed",
+        sam_core::i18n::trf(
+            "{app} is being changed right now (unpacked again, updated or removed). Start it when that is done.",
+            &[("app", &sam_core::util::display_safe(&entry.metadata.name, 80))],
+        ),
+    )
+    .into()
+}
+
 fn older_version_error(was: i64, now: i64) -> sam_core::error::CodedError {
     let day = |t: i64| {
         sam_core::util::format_utc_date(t)
@@ -1537,6 +1603,29 @@ fn move_file(from: &Path, to: &Path) -> Result<()> {
 mod tests {
     use super::*;
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+    /// A change works on the app's record as it is once it holds the app,
+    /// not on the copy read when the change was asked for: another change
+    /// may have saved in between (review L2).
+    #[test]
+    fn a_change_works_on_the_record_as_it_is_under_the_lock() {
+        let t = tempfile::tempdir().unwrap();
+        let sam = Sam::with_paths(Paths::rooted(t.path())).unwrap();
+        let mut asked = AppEntry {
+            id: "queued-1a2b".into(),
+            ..Default::default()
+        };
+        sam.registry().save(&mut asked).unwrap();
+        let mut saved = sam.registry().get(&asked.id).unwrap().unwrap();
+        saved.source.sha256 = "0".repeat(64);
+        sam.registry().save(&mut saved).unwrap();
+        let (_change, entry) = sam.lock_for_change(&asked, "remove its sandbox").unwrap();
+        assert_eq!(
+            entry.source.sha256,
+            "0".repeat(64),
+            "as the other change left it"
+        );
+    }
 
     /// Regression (audit U-L4): the data of an app whose record SAM could
     /// not read (damaged, or written by a newer SAM) was listed as left

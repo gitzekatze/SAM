@@ -391,6 +391,9 @@ pub fn diagnose(
             )
         )
     };
+    // No change of the sandbox until this start has ended (app_lock); the
+    // check below looks at the record as it is under the lock.
+    let _start = sam.start_lock(entry)?;
     if entry.profile.permissions.filesystem.home {
         bail!(
             "{}",
