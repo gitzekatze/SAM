@@ -2096,19 +2096,39 @@ fn sound_without_relay(
     }
 }
 
+/// How long a launch waits for its own `running.lock`.
+const LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
+
 /// Creates `path` and holds an exclusive lock on it while the file is open.
+/// Waits at most [`LOCK_WAIT`] for it.
 fn hold_lock(path: &Path) -> Result<fs::File> {
     use std::os::fd::AsRawFd;
     let f = fs::File::create(path).with_context(|| format!("creating {}", path.display()))?;
-    // SAFETY: `f` is an open file; flock only takes its descriptor.
-    if unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
-        bail!(
-            "locking {}: {}",
-            path.display(),
-            std::io::Error::last_os_error()
-        );
+    // Each launch has its own folder, so only running-checks ([`lock_held`],
+    // from every caller of `Sam::running`) take this lock, shared and for an
+    // instant. A check that meets the start must not end it: the launch
+    // tries again, but never waits without a limit.
+    let until = std::time::Instant::now() + LOCK_WAIT;
+    loop {
+        // SAFETY: `f` is an open file; flock only takes its descriptor.
+        if unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+            return Ok(f);
+        }
+        let err = std::io::Error::last_os_error();
+        match err.kind() {
+            std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted
+                if std::time::Instant::now() < until =>
+            {
+                std::thread::sleep(std::time::Duration::from_millis(2));
+            }
+            std::io::ErrorKind::WouldBlock => bail!(
+                "locking {}: still taken after waiting {} seconds",
+                path.display(),
+                LOCK_WAIT.as_secs()
+            ),
+            _ => bail!("locking {}: {err}", path.display()),
+        }
     }
-    Ok(f)
 }
 
 /// True if another process holds the lock on `path`.
@@ -2460,6 +2480,106 @@ mod tests {
     }
 
     use super::*;
+
+    /// A running-check (`lock_held`, as the window or `sam-jail list` run
+    /// it) that meets a start at that moment never ends the start: while
+    /// two threads keep checking, every one of many starts gets its lock.
+    #[test]
+    fn a_running_check_at_the_start_never_ends_the_launch() {
+        use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+        let dir = tempfile::tempdir().unwrap();
+        let lock = dir.path().join("running.lock");
+        fs::File::create(&lock).unwrap();
+        let stop = Arc::new(AtomicBool::new(false));
+        let counts: Vec<_> = (0..2).map(|_| Arc::new(AtomicU64::new(0))).collect();
+        let checkers: Vec<_> = counts
+            .iter()
+            .map(|count| {
+                let (lock, stop, count) = (lock.clone(), stop.clone(), count.clone());
+                std::thread::spawn(move || {
+                    while !stop.load(Ordering::Relaxed) {
+                        lock_held(&lock);
+                        count.fetch_add(1, Ordering::Relaxed);
+                    }
+                })
+            })
+            .collect();
+        let total = || {
+            counts
+                .iter()
+                .map(|c| c.load(Ordering::Relaxed))
+                .sum::<u64>()
+        };
+        // The starts begin only once both checkers are checking.
+        let ready = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while counts.iter().any(|c| c.load(Ordering::Relaxed) == 0) {
+            assert!(
+                std::time::Instant::now() < ready,
+                "the running-checks never ran"
+            );
+            std::thread::yield_now();
+        }
+        let before = total();
+        let mut failed = Vec::new();
+        // At least 500 starts over at least 300 ms: many time slices, so
+        // the checks run between the starts even on a single busy core.
+        let (mut starts, end) = (
+            0,
+            std::time::Instant::now() + std::time::Duration::from_millis(300),
+        );
+        while starts < 500 || std::time::Instant::now() < end {
+            match hold_lock(&lock) {
+                Ok(f) => drop(f),
+                Err(e) => failed.push(e.to_string()),
+            }
+            starts += 1;
+        }
+        let during = total() - before;
+        stop.store(true, Ordering::Relaxed);
+        for t in checkers {
+            t.join().unwrap();
+        }
+        assert!(during > 0, "no running-check ran while the starts ran");
+        assert!(
+            failed.is_empty(),
+            "{} of {starts} starts failed: {}",
+            failed.len(),
+            failed[0]
+        );
+    }
+
+    /// A lock that stays taken longer than the wait still stops the start,
+    /// with a message that names the lock, and in bounded time.
+    #[test]
+    fn a_lock_held_too_long_stops_the_launch_in_bounded_time() {
+        use std::os::fd::AsRawFd;
+        let dir = tempfile::tempdir().unwrap();
+        let lock = dir.path().join("running.lock");
+        let held = fs::File::create(&lock).unwrap();
+        // SAFETY: `held` is an open file; flock only takes its descriptor.
+        let taken = unsafe { libc::flock(held.as_raw_fd(), libc::LOCK_SH | libc::LOCK_NB) };
+        assert_eq!(taken, 0);
+        let (tx, rx) = std::sync::mpsc::channel();
+        let path = lock.clone();
+        let started = std::time::Instant::now();
+        std::thread::spawn(move || {
+            let _ = tx.send(hold_lock(&path).map(drop).map_err(|e| e.to_string()));
+        });
+        let result = rx
+            .recv_timeout(LOCK_WAIT + std::time::Duration::from_secs(10))
+            .expect("the start waited for the lock without a limit");
+        let waited = started.elapsed();
+        let err = result.expect_err("the start took a lock another process held");
+        assert!(
+            err.contains(&lock.display().to_string()) && err.contains("still taken after waiting"),
+            "unclear message: {err}"
+        );
+        assert!(
+            waited >= LOCK_WAIT,
+            "gave up after {waited:?}, before the wait was over"
+        );
+        drop(held);
+    }
 
     /// With its input redirected an app has no terminal relay; its output
     /// shown in a terminal still loses clipboard codes and title reports,
