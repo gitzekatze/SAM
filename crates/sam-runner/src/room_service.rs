@@ -4100,8 +4100,8 @@ exec "$@"
     }
 
     /// A fault (a panic) after a room's Bubblewrap has started never leaves
-    /// that room behind: the room is ended and waited for (no process of
-    /// it is left) and leaves the service's list, the stand-in hears why at
+    /// that room behind: the room is ended and waited for (no child of
+    /// the launcher is left unwaited) and leaves the service's list, the stand-in hears why at
     /// once (instead of waiting until the app's start ends), the start
     /// record names it, and a later request is served. In its own process,
     /// so its only children are the rooms.
