@@ -2105,9 +2105,9 @@ fn hold_lock(path: &Path) -> Result<fs::File> {
     use std::os::fd::AsRawFd;
     let f = fs::File::create(path).with_context(|| format!("creating {}", path.display()))?;
     // Each launch has its own folder, so only running-checks ([`lock_held`],
-    // from the window, `sam-jail list`, remove or reextract) take this lock,
-    // shared and for an instant. A check that meets the start must not end
-    // it: the launch tries again, but never waits without a limit.
+    // from every caller of `Sam::running`) take this lock, shared and for an
+    // instant. A check that meets the start must not end it: the launch
+    // tries again, but never waits without a limit.
     let until = std::time::Instant::now() + LOCK_WAIT;
     loop {
         // SAFETY: `f` is an open file; flock only takes its descriptor.
@@ -2116,12 +2116,13 @@ fn hold_lock(path: &Path) -> Result<fs::File> {
         }
         let err = std::io::Error::last_os_error();
         match err.kind() {
-            std::io::ErrorKind::Interrupted => {}
-            std::io::ErrorKind::WouldBlock if std::time::Instant::now() < until => {
+            std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted
+                if std::time::Instant::now() < until =>
+            {
                 std::thread::sleep(std::time::Duration::from_millis(2));
             }
             std::io::ErrorKind::WouldBlock => bail!(
-                "locking {}: another process kept it locked for more than {} seconds",
+                "locking {}: still taken after waiting {} seconds",
                 path.display(),
                 LOCK_WAIT.as_secs()
             ),
@@ -2485,36 +2486,63 @@ mod tests {
     /// two threads keep checking, every one of many starts gets its lock.
     #[test]
     fn a_running_check_at_the_start_never_ends_the_launch() {
-        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
         let dir = tempfile::tempdir().unwrap();
         let lock = dir.path().join("running.lock");
+        fs::File::create(&lock).unwrap();
         let stop = Arc::new(AtomicBool::new(false));
-        let checkers: Vec<_> = (0..2)
-            .map(|_| {
-                let (lock, stop) = (lock.clone(), stop.clone());
+        let counts: Vec<_> = (0..2).map(|_| Arc::new(AtomicU64::new(0))).collect();
+        let checkers: Vec<_> = counts
+            .iter()
+            .map(|count| {
+                let (lock, stop, count) = (lock.clone(), stop.clone(), count.clone());
                 std::thread::spawn(move || {
-                    let mut checks = 0u64;
                     while !stop.load(Ordering::Relaxed) {
                         lock_held(&lock);
-                        checks += 1;
+                        count.fetch_add(1, Ordering::Relaxed);
                     }
-                    checks
                 })
             })
             .collect();
+        let total = || {
+            counts
+                .iter()
+                .map(|c| c.load(Ordering::Relaxed))
+                .sum::<u64>()
+        };
+        // The starts begin only once both checkers are checking.
+        let ready = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while counts.iter().any(|c| c.load(Ordering::Relaxed) == 0) {
+            assert!(
+                std::time::Instant::now() < ready,
+                "the running-checks never ran"
+            );
+            std::thread::yield_now();
+        }
+        let before = total();
         let mut failed = Vec::new();
-        for _ in 0..500 {
+        // At least 500 starts over at least 300 ms: many time slices, so
+        // the checks run between the starts even on a single busy core.
+        let (mut starts, end) = (
+            0,
+            std::time::Instant::now() + std::time::Duration::from_millis(300),
+        );
+        while starts < 500 || std::time::Instant::now() < end {
             match hold_lock(&lock) {
                 Ok(f) => drop(f),
                 Err(e) => failed.push(e.to_string()),
             }
+            starts += 1;
         }
+        let during = total() - before;
         stop.store(true, Ordering::Relaxed);
-        let checks: u64 = checkers.into_iter().map(|t| t.join().unwrap()).sum();
-        assert!(checks > 0, "the running-checks never ran");
+        for t in checkers {
+            t.join().unwrap();
+        }
+        assert!(during > 0, "no running-check ran while the starts ran");
         assert!(
             failed.is_empty(),
-            "{} of 500 starts failed: {}",
+            "{} of {starts} starts failed: {}",
             failed.len(),
             failed[0]
         );
@@ -2543,7 +2571,7 @@ mod tests {
         let waited = started.elapsed();
         let err = result.expect_err("the start took a lock another process held");
         assert!(
-            err.contains(&lock.display().to_string()) && err.contains("kept it locked"),
+            err.contains(&lock.display().to_string()) && err.contains("still taken after waiting"),
             "unclear message: {err}"
         );
         assert!(
