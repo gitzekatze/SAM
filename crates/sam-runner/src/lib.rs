@@ -9,6 +9,7 @@
 //! * [`doctor`]: environment checks, diagnostics and bug reports
 //! * [`diagnose`]: dynamic dependency fallback via strace
 
+pub mod app_lock;
 pub mod bwrap;
 pub mod contracts;
 pub mod dbus_check;

@@ -202,3 +202,91 @@ fn an_app_nobody_has_confirmed_does_not_start() {
         "confirmed once, it is no longer refused for this: {err}"
     );
 }
+
+/// A start from the menu or the window (`sam-jail-run`) and from
+/// `sam-jail run` is refused at once, saying why, while the app's sandbox
+/// is being changed (review L2: a start that met "unpack again" ran the
+/// new content without its "look at it first" mark). The refusal comes
+/// before any sandbox is built, so it needs no Bubblewrap.
+#[test]
+fn no_start_while_the_sandbox_is_being_changed() {
+    use std::os::fd::AsRawFd;
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    for d in ["bin", "run", "config", "home"] {
+        fs::create_dir_all(root.join(d)).unwrap();
+    }
+    fs::copy(env!("CARGO_BIN_EXE_sam-jail"), root.join("bin/sam-jail")).unwrap();
+    fs::copy(
+        env!("CARGO_BIN_EXE_sam-jail-run"),
+        root.join("bin/sam-jail-run"),
+    )
+    .unwrap();
+    let img = root.join("Quick-1.0-x86_64.AppImage");
+    let img_s = img.to_str().unwrap();
+    assert!(
+        sam(root, &["dev", "make-fixture", "--name", "Quick", img_s])
+            .status
+            .success()
+    );
+    assert!(sam(root, &["add", img_s, "--no-launcher", "--accept"])
+        .status
+        .success());
+    let id = json(&sam(root, &["--json", "list"]))["data"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    // A change of the sandbox holds the app's lock, beside the apps'
+    // runtime folders ($XDG_RUNTIME_DIR/sam).
+    fs::create_dir_all(root.join("run/sam")).unwrap();
+    let lock = fs::File::create(root.join("run/sam").join(format!(".{id}.lock"))).unwrap();
+    // SAFETY: `lock` is an open file; flock only takes its descriptor.
+    let taken = unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+    assert_eq!(taken, 0);
+    let menu = root.join("bin/sam-jail-run");
+    let menu = menu.to_str().unwrap();
+    for (name, args) in [
+        (
+            "sam-jail run",
+            vec![
+                root.join("bin/sam-jail").display().to_string(),
+                "run".into(),
+                id.clone(),
+            ],
+        ),
+        (
+            "sam-jail-run",
+            vec![menu.to_string(), "--app-id".into(), id.clone()],
+        ),
+    ] {
+        let t = std::time::Instant::now();
+        let out = Command::new(&args[0])
+            .args(&args[1..])
+            .env("SAM_CONFIG_DIR", root.join("config"))
+            .env("SAM_DATA_DIR", root.join("data"))
+            .env("SAM_APPLICATIONS_DIR", root.join("applications"))
+            .env("HOME", root.join("home"))
+            .env("XDG_CONFIG_HOME", root.join("home/.config"))
+            .env("XDG_DATA_HOME", root.join("home/.local/share"))
+            .env("XDG_RUNTIME_DIR", root.join("run"))
+            .env("LC_ALL", "C")
+            .env_remove("LANGUAGE")
+            .env_remove("DBUS_SESSION_BUS_ADDRESS")
+            .env("PATH", "/usr/bin:/bin")
+            .stdin(Stdio::null())
+            .output()
+            .unwrap();
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(!out.status.success(), "{name}: the start stops: {err}");
+        assert!(
+            err.contains("is being changed"),
+            "{name}: and says why: {err}"
+        );
+        assert!(
+            t.elapsed() < std::time::Duration::from_secs(5),
+            "{name}: at once, not after {:?}",
+            t.elapsed()
+        );
+    }
+    drop(lock);
+}

@@ -128,7 +128,14 @@ impl Sam {
     pub fn verify(&self, query: &str) -> Result<crate::verify::Outcome> {
         let mut e = self.resolve(query)?;
         self.ensure_unpacked(&mut e)?;
-        let out = crate::verify::verify(&e, &self.config, &self.paths, &self.host())?;
+        self.verify_unpacked(&e)
+    }
+
+    /// [`Sam::verify`] of `e` as it is, without unpacking it again first:
+    /// a start has done that before it took its lock (`app_lock`), and
+    /// unpacking under its own start lock would wait for itself.
+    fn verify_unpacked(&self, e: &AppEntry) -> Result<crate::verify::Outcome> {
+        let out = crate::verify::verify(e, &self.config, &self.paths, &self.host())?;
         let reg = self.registry();
         if let Some(mut fresh) = reg.get(&e.id)? {
             fresh.last_check = Some(out.record.clone());
@@ -155,7 +162,7 @@ impl Sam {
             return Ok(());
         }
         let out = self
-            .verify(&entry.id)
+            .verify_unpacked(entry)
             .context(sam_core::i18n::tr("checking the sandbox before starting"))?;
         if !out.record.failed.is_empty() {
             let list = out.record.failed.join(", ");
