@@ -301,7 +301,10 @@ fn a_start_sees_what_a_change_saved_before_it() {
     // second for the removal's lock to be gone.
     let until = std::time::Instant::now() + std::time::Duration::from_secs(1);
     let err = loop {
-        let err = sam.start_lock(&mut e).unwrap_err().to_string();
+        let err = sam
+            .start_lock(&mut e)
+            .expect_err("the removed app still starts")
+            .to_string();
         if !err.contains("is being changed") || std::time::Instant::now() >= until {
             break err;
         }

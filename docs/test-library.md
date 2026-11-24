@@ -375,13 +375,14 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-409 tests.
+410 tests.
 
 | Promise | Test |
 |---|---|
 | A start and a change of the same app never hold it together, in either order; another app is not held. | [`a_start_and_a_change_of_one_app_exclude_each_other`](../crates/sam-runner/src/app_lock.rs#L171) |
 | A change that is a step of another change of the same app (an update unpacks again) goes on in the same thread; another thread still has to wait until the outer change ends. | [`a_change_inside_a_change_of_the_same_app_goes_on`](../crates/sam-runner/src/app_lock.rs#L210) |
-| The lock file lives beside the apps' runtime folders, so removing an app's runtime folder never removes it. | [`the_lock_is_not_inside_the_apps_runtime_folder`](../crates/sam-runner/src/app_lock.rs#L227) |
+| No program SAM starts inherits an app's lock: the lock files close when a child runs its program (close-on-exec), so an app never holds its own start lock and blocks changes for as long as it lives, and a helper of a change holds it only until it runs. | [`programs_sam_starts_never_inherit_an_apps_lock`](../crates/sam-runner/src/app_lock.rs#L229) |
+| The lock file lives beside the apps' runtime folders, so removing an app's runtime folder never removes it. | [`the_lock_is_not_inside_the_apps_runtime_folder`](../crates/sam-runner/src/app_lock.rs#L245) |
 | Without Bubblewrap, the message says which package to install. | [`missing_bubblewrap_names_the_package_to_install`](../crates/sam-runner/src/bwrap.rs#L55) |
 | When the system forbids user namespaces, the message explains that and never claims Bubblewrap is missing: the user already has it, and an "install bubblewrap" hint would send them the wrong way. | [`disabled_user_namespaces_are_explained_not_called_missing`](../crates/sam-runner/src/bwrap.rs#L69) |
 | A setuid Bubblewrap works without unprivileged user namespaces, so SAM does not refuse it. | [`setuid_bubblewrap_works_without_user_namespaces`](../crates/sam-runner/src/bwrap.rs#L96) |
@@ -737,10 +738,10 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | While an app's sandbox is being changed, a start is refused at once and says why; the change itself goes on, also a step of it (an update unpacks again), and the app starts once it is done (review L2). | [`a_start_is_refused_while_the_sandbox_is_being_changed`](../crates/sam-runner/tests/settings.rs#L231) |
 | A start whose unpacked copy is gone (after "Free space") unpacks it again first; while another step changes the sandbox, that is refused at once with the start's message, as the start itself is (review L2). | [`unpacking_for_a_start_is_refused_at_once_while_the_sandbox_is_changed`](../crates/sam-runner/tests/settings.rs#L251) |
 | A start reads the app's record again once it holds the app: what a change saved after the caller read it (a new unpacked copy marked "look at it first", or the sandbox removed) is what the start checks and runs (review L2: the mark was skipped). | [`a_start_sees_what_a_change_saved_before_it`](../crates/sam-runner/tests/settings.rs#L284) |
-| Removing a sandbox with "keep my data" keeps the app's private home; without it, the home is deleted. | [`removing_with_keep_my_data_keeps_the_private_home_and_without_deletes_it`](../crates/sam-runner/tests/settings.rs#L314) |
-| The app's icon is copied into SAM's own icon folder, named after the app, and goes with its sandbox; nothing lands in the folder SAM was started in. | [`an_apps_icon_is_kept_in_sams_icon_folder_and_goes_with_it`](../crates/sam-runner/tests/settings.rs#L334) |
-| When a sandboxed app's AppImage is moved to another searched folder, SAM recognizes it by its content and offers to follow it. | [`a_moved_appimage_is_recognized_by_its_content`](../crates/sam-runner/tests/settings.rs#L356) |
-| A repair step can be switched off on its own: exactly what that step changed goes back, and the other applied steps stay. | [`switching_off_one_repair_step_keeps_the_others`](../crates/sam-runner/tests/settings.rs#L377) |
+| Removing a sandbox with "keep my data" keeps the app's private home; without it, the home is deleted. | [`removing_with_keep_my_data_keeps_the_private_home_and_without_deletes_it`](../crates/sam-runner/tests/settings.rs#L317) |
+| The app's icon is copied into SAM's own icon folder, named after the app, and goes with its sandbox; nothing lands in the folder SAM was started in. | [`an_apps_icon_is_kept_in_sams_icon_folder_and_goes_with_it`](../crates/sam-runner/tests/settings.rs#L337) |
+| When a sandboxed app's AppImage is moved to another searched folder, SAM recognizes it by its content and offers to follow it. | [`a_moved_appimage_is_recognized_by_its_content`](../crates/sam-runner/tests/settings.rs#L359) |
+| A repair step can be switched off on its own: exactly what that step changed goes back, and the other applied steps stay. | [`switching_off_one_repair_step_keeps_the_others`](../crates/sam-runner/tests/settings.rs#L380) |
 | Skips are refused in ci and always written down. | [`skips_are_refused_in_ci_and_always_written_down`](../crates/sam-runner/tests/skip_reporting.rs#L35) |
 | An app cannot turn its extra socket into a link to another one. | [`an_app_cannot_turn_its_extra_socket_into_a_link_to_another_one`](../crates/sam-runner/tests/socket_links.rs#L63) |
 | Sound never loads code into the sound server. | [`sound_never_loads_code_into_the_sound_server`](../crates/sam-runner/tests/sound_relay.rs#L98) |
@@ -984,4 +985,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 897 automated Rust tests plus 8 scripted checks.
+Total: 898 automated Rust tests plus 8 scripted checks.
