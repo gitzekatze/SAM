@@ -619,17 +619,24 @@ pub fn private_dirs(base: &Path, dir: &Path) -> std::io::Result<()> {
 /// programs that start apps. Linux 5.11 marks them all at once; older
 /// kernels go through `/proc/self/fd`.
 pub fn close_inherited_on_exec() {
-    // SAFETY: close_range with CLOSE_RANGE_CLOEXEC only sets a flag on this
-    // process's own descriptors; it closes nothing.
-    let marked = unsafe {
-        libc::syscall(
-            libc::SYS_close_range,
-            3u32,
-            u32::MAX,
-            libc::CLOSE_RANGE_CLOEXEC,
-        )
-    };
-    if marked == 0 {
+    close_inherited_with(|| {
+        // SAFETY: close_range with CLOSE_RANGE_CLOEXEC only sets a flag on
+        // this process's own descriptors; it closes nothing.
+        unsafe {
+            libc::syscall(
+                libc::SYS_close_range,
+                3u32,
+                u32::MAX,
+                libc::CLOSE_RANGE_CLOEXEC,
+            )
+        }
+    });
+}
+
+/// [`close_inherited_on_exec`] with the call to close_range given, so a
+/// test can run the older kernels' way on any kernel.
+fn close_inherited_with(close_range: impl FnOnce() -> libc::c_long) {
+    if close_range() == 0 {
         return;
     }
     let open: Vec<i32> = fs::read_dir("/proc/self/fd")
@@ -654,6 +661,92 @@ pub fn close_inherited_on_exec() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The descriptor flags of `fd` in this process, -1 when it is not open.
+    fn fd_flags(fd: i32) -> i32 {
+        // SAFETY: F_GETFD only reads the flags of a descriptor number.
+        unsafe { libc::fcntl(fd, libc::F_GETFD) }
+    }
+
+    /// Sets the descriptor flags of `fd` in this process.
+    fn set_fd_flags(fd: i32, flags: i32) {
+        // SAFETY: F_SETFD only sets the flags of this test's descriptor.
+        assert_eq!(unsafe { libc::fcntl(fd, libc::F_SETFD, flags) }, 0);
+    }
+
+    /// Review F6 on kernels before 5.11, which have no close_range: the
+    /// way through `/proc/self/fd` marks an inherited descriptor
+    /// close-on-exec, keeps the mark on one that has it, and leaves the
+    /// standard three alone, which a started program needs. The mutation
+    /// run over PR 95 found this way untested, as test computers have
+    /// newer kernels.
+    ///
+    /// It marks every descriptor of this test process for good, as SAM's
+    /// programs do: no test in this crate may hand a child a descriptor by
+    /// inheritance.
+    #[test]
+    fn without_close_range_each_descriptor_above_the_standard_three_is_marked() {
+        use std::os::fd::AsRawFd;
+        /// Puts standard error's flags back however the test ends.
+        struct Restore(i32);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                // SAFETY: F_SETFD only sets the flags of standard error.
+                unsafe { libc::fcntl(2, libc::F_SETFD, self.0) };
+            }
+        }
+        let leaked = fs::File::open("/dev/null").unwrap();
+        set_fd_flags(leaked.as_raw_fd(), 0);
+        let marked = fs::File::open("/dev/null").unwrap();
+        assert_ne!(fd_flags(marked.as_raw_fd()) & libc::FD_CLOEXEC, 0);
+        // Standard error without the mark, as a started program gets it.
+        let standard: Vec<i32> = (0..3).map(fd_flags).collect();
+        assert!(standard[2] >= 0, "standard error is open");
+        let _restore = Restore(standard[2]);
+        set_fd_flags(2, 0);
+        close_inherited_with(|| -1);
+        let after: Vec<i32> = (0..3).map(fd_flags).collect();
+        assert_ne!(
+            fd_flags(leaked.as_raw_fd()) & libc::FD_CLOEXEC,
+            0,
+            "the inherited descriptor is marked"
+        );
+        assert_ne!(
+            fd_flags(marked.as_raw_fd()) & libc::FD_CLOEXEC,
+            0,
+            "a marked descriptor keeps its mark"
+        );
+        assert_eq!(
+            after,
+            [standard[0], standard[1], 0],
+            "the standard three are left alone"
+        );
+    }
+
+    /// Review F4: `private_dirs` makes the folders from `dir` up to `base`
+    /// private, those that exist already too, and never `base` or a folder
+    /// above it: SAM's data folder and the person's own folders keep their
+    /// modes. The mutation run over PR 95 found the upper end untested.
+    #[test]
+    fn private_dirs_stops_below_its_base() {
+        use std::os::unix::fs::PermissionsExt;
+        let t = tempfile::tempdir().unwrap();
+        let above = t.path().join("above");
+        let base = above.join("base");
+        let older = base.join("older");
+        fs::create_dir_all(&older).unwrap();
+        let set = |p: &Path, m| fs::set_permissions(p, fs::Permissions::from_mode(m)).unwrap();
+        let mode = |p: &Path| fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        set(&above, 0o751);
+        set(&base, 0o755);
+        set(&older, 0o755);
+        let dir = older.join("new");
+        private_dirs(&base, &dir).unwrap();
+        assert_eq!(mode(&dir), 0o700, "the new folder");
+        assert_eq!(mode(&older), 0o700, "the folder an older SAM made");
+        assert_eq!(mode(&base), 0o755, "the base");
+        assert_eq!(mode(&above), 0o751, "the folder above the base");
+    }
 
     /// SAM's own programs are its AppImage, the running program and SAM's
     /// programs next to it, each once; other files there are not (security
