@@ -218,6 +218,7 @@ tests = [
   "the_loaders_folders_on_this_computer_are_found",
   "an_app_is_never_told_a_folder_it_cannot_see",
   "private_folders_and_logs_are_for_the_user_only",
+  "private_dirs_stops_below_its_base",
 ]
 
 [[function]]
@@ -399,6 +400,7 @@ tests = ["output_shown_in_a_terminal_is_filtered_without_the_relay", "a_pipe_int
   "every_printed_line_goes_through_the_screen_filter",
   "an_old_log_shows_only_its_text",
   "a_descriptor_sam_inherited_never_reaches_the_app",
+  "without_close_range_each_descriptor_above_the_standard_three_is_marked",
 ]
 
 [[function]]
