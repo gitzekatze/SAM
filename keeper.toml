@@ -102,6 +102,7 @@ protected_tests = [
   "crates/sam-runner/tests/sound_relay.rs",
   "crates/sam-runner/tests/self_update_signature.rs",
   "crates/sam-runner/tests/own_names.rs",
+  "crates/sam-runner/tests/always_blocked_names.rs",
   "crates/sam-runner/tests/overlay_fallback.rs",
   "crates/sam-runner/tests/terminal_relay.rs",
   "crates/sam-runner/tests/fuzz_targets.rs",
