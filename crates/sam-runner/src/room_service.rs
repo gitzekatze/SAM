@@ -2350,12 +2350,21 @@ fn send_quit_ask(fd: RawFd) {
 /// (Close, logout), the stand-in among them; it passes that on to the
 /// service, which asks its room's program, and keeps waiting for the room.
 /// Ending here instead ended the room at once, with no time to save
-/// (review of PR 95). Only atomics and send: async-signal-safe.
+/// (review of PR 95). Before the request is sent it only notes the ask,
+/// which the stand-in passes on once it is; after, it passes it on itself.
+/// So each ask reaches the room once: a second SIGTERM is "quit now" to
+/// some programs, which then lose their save. The stand-in has one thread,
+/// which this handler interrupts, so the two never overlap. Only atomics
+/// and send: async-signal-safe.
 extern "C" fn pass_quit_on(_: libc::c_int) {
     // SAFETY: errno of this thread, read and put back around the send.
     let errno = unsafe { *libc::__errno_location() };
-    QUIT_ASKED.store(true, Ordering::SeqCst);
-    send_quit_ask(QUIT_TO.load(Ordering::SeqCst));
+    let to = QUIT_TO.load(Ordering::SeqCst);
+    if to < 0 {
+        QUIT_ASKED.store(true, Ordering::SeqCst);
+    } else {
+        send_quit_ask(to);
+    }
     // SAFETY: as above.
     unsafe { *libc::__errno_location() = errno };
 }
@@ -2364,6 +2373,28 @@ extern "C" fn pass_quit_on(_: libc::c_int) {
 /// service; `version` is the computer's Bubblewrap version line. Returns
 /// the exit code to end with.
 pub fn standin(version: &str, argv: &[String]) -> i32 {
+    standin_at(version, argv, Path::new(SOCKET_INSIDE))
+}
+
+/// A SIGTERM raised in [`standin_at`] at the step given (tests only):
+/// [`QUIT_BEFORE_SEND`] or [`QUIT_AFTER_SEND`].
+#[cfg(test)]
+static QUIT_FOR_TESTS: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+#[cfg(test)]
+const QUIT_BEFORE_SEND: u8 = 1;
+#[cfg(test)]
+const QUIT_AFTER_SEND: u8 = 2;
+
+#[cfg(test)]
+fn quit_for_tests(step: u8) {
+    if QUIT_FOR_TESTS.load(Ordering::SeqCst) == step {
+        // SAFETY: raise only sends a signal to this thread.
+        unsafe { libc::raise(libc::SIGTERM) };
+    }
+}
+
+/// [`standin`] with Room service's socket at `socket`.
+fn standin_at(version: &str, argv: &[String], socket: &Path) -> i32 {
     let fail = |msg: &str| -> i32 {
         sam_core::errln!("bwrap: {msg} (SAM's Room service)");
         1
@@ -2405,7 +2436,7 @@ pub fn standin(version: &str, argv: &[String]) -> i32 {
     // SAFETY: F_GETFD only asks whether the number is an open connection.
     fds.retain(|fd| unsafe { libc::fcntl(*fd, libc::F_GETFD) } >= 0);
     fds.sort_unstable();
-    let stream = match UnixStream::connect(SOCKET_INSIDE) {
+    let stream = match UnixStream::connect(socket) {
         Ok(s) => s,
         Err(e) => return fail(&format!("no Room service here ({e})")),
     };
@@ -2484,12 +2515,16 @@ pub fn standin(version: &str, argv: &[String]) -> i32 {
     };
     let mut msg = (body.len() as u32).to_be_bytes().to_vec();
     msg.extend(body);
+    #[cfg(test)]
+    quit_for_tests(QUIT_BEFORE_SEND);
     if let Err(e) = send_with_fds(&stream, &msg, &fds) {
         return fail(&format!("Room service did not take the request ({e})"));
     }
-    // Asked before the request went out: passed on now (passed twice when
-    // the signal comes just between, which asks the room once more).
+    // From here on the handler passes an ask on itself; one noted before
+    // the request went out is passed on now, once.
     QUIT_TO.store(stream.as_raw_fd(), Ordering::SeqCst);
+    #[cfg(test)]
+    quit_for_tests(QUIT_AFTER_SEND);
     // Forgotten before the connection closes: its number is then free.
     struct Forget;
     impl Drop for Forget {
@@ -5290,6 +5325,74 @@ exec "$@"
             // The watcher was still waiting for every signal.
             assert!(waited && reached == 3, "the watcher ended early");
         });
+    }
+
+    /// Asked to quit (SIGTERM) at `step` of its start, the stand-in passes
+    /// the ask on to Room service exactly once, and still answers with its
+    /// room's exit code. Here the service is a stand-in that takes the
+    /// request, counts the quit asks for a moment, then answers.
+    fn quit_reaches_the_room_once(step: u8) {
+        let tmp = tempfile::tempdir().unwrap();
+        let socket = tmp.path().join("rooms");
+        let listener = UnixListener::bind(&socket).unwrap();
+        let service = std::thread::spawn(move || {
+            let (mut c, _) = listener.accept().unwrap();
+            c.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+            // A plain read: the connections passed with it are closed.
+            let mut head = [0u8; 4];
+            c.read_exact(&mut head).unwrap();
+            let mut body = vec![0u8; u32::from_be_bytes(head) as usize];
+            c.read_exact(&mut body).unwrap();
+            // The first ask may take a while on a busy computer; a second
+            // one would follow at once.
+            let mut asks = Vec::new();
+            let mut b = [0u8; 8];
+            if let Ok(n @ 1..) = c.read(&mut b) {
+                asks.extend_from_slice(&b[..n]);
+                c.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
+                while let Ok(n @ 1..) = c.read(&mut b) {
+                    asks.extend_from_slice(&b[..n]);
+                }
+            }
+            let answer = br#"{"exit":7}"#;
+            let mut msg = (answer.len() as u32).to_be_bytes().to_vec();
+            msg.extend_from_slice(answer);
+            c.write_all(&msg).unwrap();
+            asks
+        });
+        QUIT_FOR_TESTS.store(step, Ordering::SeqCst);
+        let code = standin_at(
+            "bwrap 0.11.0",
+            &s(&["--ro-bind", "/usr", "/usr", "--", "/usr/bin/true"]),
+            &socket,
+        );
+        // Should the stand-in have ended without connecting, this ends the
+        // service's wait (it then finds no request), so the test never hangs.
+        let _ = UnixStream::connect(&socket);
+        let asks = service.join().unwrap();
+        assert_eq!(asks, [QUIT_ASK], "the quit ask, exactly once");
+        assert_eq!(code, 7, "the room's exit code");
+    }
+
+    /// A SIGTERM to the stand-in before its request went out (a Close or
+    /// a logout while a program starts its room) reaches the room once
+    /// the request is sent, so the room's program gets its time to save.
+    #[test]
+    fn a_quit_asked_before_the_request_went_out_reaches_the_room_once() {
+        in_own_process(
+            "a_quit_asked_before_the_request_went_out_reaches_the_room_once",
+            || quit_reaches_the_room_once(QUIT_BEFORE_SEND),
+        );
+    }
+
+    /// A SIGTERM just as the request went out reaches the room once, not
+    /// twice (a second SIGTERM is "quit now" to some programs).
+    #[test]
+    fn a_quit_asked_as_the_request_went_out_reaches_the_room_once() {
+        in_own_process(
+            "a_quit_asked_as_the_request_went_out_reaches_the_room_once",
+            || quit_reaches_the_room_once(QUIT_AFTER_SEND),
+        );
     }
 }
 
