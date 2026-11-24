@@ -202,7 +202,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-intake: Unpacking AppImages safely, metadata, menu entries
 
-46 tests.
+52 tests.
 
 | Promise | Test |
 |---|---|
@@ -220,6 +220,12 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | ⟲ Regression (audit I-F16): putting a new unpack in place was two renames, and when the second failed the app had no unpacked files left. | [`a_failed_swap_keeps_the_old_app`](../crates/sam-intake/src/extract.rs#L1250) |
 | ⟲ Regression (review 2026-11-23, F1): a stopped unpack left folders that nobody may enter (modes from the image), which `remove_dir_all` cannot empty, so the partial output stayed on the disk. | [`an_unpack_box_with_locked_folders_is_removed`](../crates/sam-intake/src/extract.rs#L1282) |
 | Only an exceeded limit counts as one: other errors are not explained as a limit the user could raise. | [`only_an_exceeded_limit_counts_as_one`](../crates/sam-intake/src/extract.rs#L1312) |
+| The counting holds the exact limits: as many bytes as allowed pass and one more is over; for the files it allows two entries of slack for the box's own folders (`normalize` holds the exact limit afterwards). | [`the_unpacking_limits_hold_at_their_exact_edge`](../crates/sam-intake/src/extract.rs#L1348) |
+| A folder the tool removed or replaced meanwhile is passed over, and a folder the tool made unreadable inside the box is opened and counted: what it holds counts against the limits, never reported as "cannot be counted" and never passed over. | [`folders_gone_or_unreadable_meanwhile_are_still_counted`](../crates/sam-intake/src/extract.rs#L1379) |
+| A folder the tool swapped for a link while SAM counts is never opened through the link, wherever it leads, and a folder reached through a link further up leaves the box: nothing outside it is opened or changed. | [`a_folder_swapped_for_a_link_is_not_opened`](../crates/sam-intake/src/extract.rs#L1415) |
+| Removing a box that is not there (never made, or removed already) is not an error. | [`removing_a_missing_box_succeeds`](../crates/sam-intake/src/extract.rs#L1445) |
+| A memory limit of 0 means none: the tool runs. | [`no_memory_limit_lets_the_tool_run`](../crates/sam-intake/src/extract.rs#L1466) |
+| How a tool's end is read: a plain failure is neither a limit nor a full disk; a full disk is told by the exit code or by the tool's own words, each on its own; a limit the tool reports comes with its reason. | [`a_failed_tool_is_told_apart_from_a_limit_and_a_full_disk`](../crates/sam-intake/src/extract.rs#L1479) |
 | A changed AppImage file is noticed by its fingerprint. | [`a_changed_appimage_file_is_noticed`](../crates/sam-intake/src/fingerprint.rs#L158) |
 | A readable name is taken from an AppImage's file name, without version and architecture. | [`a_readable_name_is_taken_from_the_file_name`](../crates/sam-intake/src/id.rs#L81) |
 | App IDs are stable and unique, also when two AppImages have the same name. | [`app_ids_stay_unique_when_names_collide`](../crates/sam-intake/src/id.rs#L98) |
@@ -943,4 +949,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 856 automated Rust tests plus 8 scripted checks.
+Total: 862 automated Rust tests plus 8 scripted checks.

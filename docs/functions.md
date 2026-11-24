@@ -9,13 +9,13 @@
 >
 > Test results are from the newest version report (2026-11-21 05:11:03).
 
-**42 functions:** 3 proven by passing tests, 38 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 856 tests in all.
+**42 functions:** 3 proven by passing tests, 38 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 862 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
 | 1 | [SAM finds AppImages in the folders you choose and shows them, sandboxed or not, without running anything.](#1) | sam-gtk, sam-runner, sam-intake | 11 | ✅ 🆕 3 new tests since the report |
 | 2 | [SAM recognizes the AppImage formats in use today (type 2 with a SquashFS or DwarFS image, and the old, rare type 1, which bsdtar unpacks) and refuses files that aren't AppImages, or are for the wrong processor, with a clear message.](#2) | sam-runner, sam-intake, sam-detect | 10 | ✅ 🆕 1 new test since the report |
-| 3 | [SAM unpacks an AppImage safely: without running it, inside a sandbox, with limits on size, number of files and time, and with a check of free disk space.](#3) | sam-runner, sam-intake | 39 | ✅ 🆕 8 new tests since the report |
+| 3 | [SAM unpacks an AppImage safely: without running it, inside a sandbox, with limits on size, number of files and time, and with a check of free disk space.](#3) | sam-runner, sam-intake | 45 | ✅ 🆕 14 new tests since the report |
 | 4 | [SAM reads the name, icon, description and update source from the app itself, and removes markup or control characters before showing them.](#4) | sam-intake, sam-core | 11 | ✅ 🆕 1 new test since the report |
 | 5 | [A damaged or hostile AppImage can't crash SAM or stop the list.](#5) | sam-intake, sam-detect | 11 | ✅ |
 | 6 | [SAM recommends permissions from what the app is (window app, terminal tool, game, browser and so on), starting as strict as possible.](#6) | sam-jail-cli, sam-detect, sam-profile | 19 | ✅ 🆕 3 new tests since the report |
@@ -139,6 +139,12 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`bytes_written_are_counted`](../crates/sam-runner/src/progress.rs#L177) | Unpacking progress counts the bytes written. | ✅ |
 | [`unpacking_stops_exactly_at_its_limits`](../crates/sam-intake/tests/limits.rs#L45) | The file-count and size limits let an app through that reaches them exactly and stop one entry or one byte more; a time limit of zero stops at once. | ✅ |
 | [`only_an_exceeded_limit_counts_as_one`](../crates/sam-intake/src/extract.rs#L1312) | Only an exceeded limit counts as one: other errors are not explained as a limit the user could raise. | ✅ |
+| [`the_unpacking_limits_hold_at_their_exact_edge`](../crates/sam-intake/src/extract.rs#L1348) | The counting holds the exact limits: as many bytes as allowed pass and one more is over; for the files it allows two entries of slack for the box's own folders (`normalize` holds the exact limit afterwards). | 🆕 new |
+| [`folders_gone_or_unreadable_meanwhile_are_still_counted`](../crates/sam-intake/src/extract.rs#L1379) | A folder the tool removed or replaced meanwhile is passed over, and a folder the tool made unreadable inside the box is opened and counted: what it holds counts against the limits, never reported as "cannot be counted" and never passed over. | 🆕 new |
+| [`a_folder_swapped_for_a_link_is_not_opened`](../crates/sam-intake/src/extract.rs#L1415) | A folder the tool swapped for a link while SAM counts is never opened through the link, wherever it leads, and a folder reached through a link further up leaves the box: nothing outside it is opened or changed. | 🆕 new |
+| [`removing_a_missing_box_succeeds`](../crates/sam-intake/src/extract.rs#L1445) | Removing a box that is not there (never made, or removed already) is not an error. | 🆕 new |
+| [`no_memory_limit_lets_the_tool_run`](../crates/sam-intake/src/extract.rs#L1466) | A memory limit of 0 means none: the tool runs. | 🆕 new |
+| [`a_failed_tool_is_told_apart_from_a_limit_and_a_full_disk`](../crates/sam-intake/src/extract.rs#L1479) | How a tool's end is read: a plain failure is neither a limit nor a full disk; a full disk is told by the exit code or by the tool's own words, each on its own; a limit the tool reports comes with its reason. | 🆕 new |
 | [`without_consent_the_appimages_own_unpacker_never_runs`](../crates/sam-intake/tests/damaged.rs#L25) | When SAM's own readers cannot unpack an AppImage, its own unpacker (code from the AppImage) runs only after the user agreed: without consent the unpacking stops and asks, and nothing of the AppImage runs. | ✅ |
 | [`a_menu_start_after_free_space_unpacks_inside_a_sandbox`](../crates/sam-jail-cli/tests/unpack.rs#L104) | A menu start after free space unpacks inside a sandbox. | ✅ |
 | [`without_the_command_line_a_menu_start_refuses_to_unpack`](../crates/sam-jail-cli/tests/unpack.rs#L127) | Without the command line a menu start refuses to unpack. | ✅ |
