@@ -1153,8 +1153,12 @@ impl Views {
     /// with the mounts.
     fn of_writes(ctx: &LaunchContext, writes: &[WriteGrant]) -> Views {
         let mut v = Views::without_writes(ctx);
-        for g in writes.iter().filter(|g| g.below_writable.is_none()) {
-            v.grants.push((g.bound.clone(), g.start_place.is_none()));
+        for g in writes {
+            match g.how {
+                WriteBind::Writable => v.grants.push((g.bound.clone(), true)),
+                WriteBind::ReadOnly(_) => v.grants.push((g.bound.clone(), false)),
+                WriteBind::Below(_) | WriteBind::InsideSam => {}
+            }
         }
         v
     }
@@ -1357,22 +1361,37 @@ struct WriteGrant {
     written: String,
     /// Where it is bound: `~` expanded and links resolved, once.
     bound: PathBuf,
-    /// The start place it is, lies in or is the real place of: bound
-    /// read-only, with or without the whole home (owner decision 9 of
-    /// 2026-11-23).
-    start_place: Option<sam_core::places::StartPlaceGrant>,
-    /// A folder above it that the app can already change (a writable
-    /// grant, SAM's folders, a writable bind of SAM's): not bound at all.
-    /// That folder shows it already, and the app could swap a part of
-    /// the way for a link before Bubblewrap follows it.
-    below_writable: Option<PathBuf>,
+    /// How it is shown.
+    how: WriteBind,
+}
+
+/// How an extra writable folder is shown ([`WriteGrant`]).
+#[derive(Debug, Clone, PartialEq)]
+enum WriteBind {
+    /// Bound writable where it leads.
+    Writable,
+    /// A start place, inside one or where one really is: bound read-only
+    /// where it leads, with or without the whole home, also below a folder
+    /// the app can change (owner decision 9 of 2026-11-23). Left out
+    /// there, a start place kept through a link in it (`conf.d` a link to
+    /// `~/work/fishconf`, `~/work` granted) stayed writable. The folders
+    /// above it are pinned ([`pins`]), so renaming one cannot carry the
+    /// read-only mount away.
+    ReadOnly(sam_core::places::StartPlaceGrant),
+    /// Below this folder, which the app can already change (a writable
+    /// grant, a writable opened folder, a writable bind of SAM's): not
+    /// bound at all. That folder shows it already, and the app could swap
+    /// a part of the way for a link before Bubblewrap follows it.
+    Below(PathBuf),
+    /// In SAM's own folders, which the app never sees: not bound.
+    InsideSam,
 }
 
 /// The extra writable folders of this start, each decided once
 /// ([`WriteGrant`]).
 fn write_grants(ctx: &LaunchContext) -> Vec<WriteGrant> {
     let home = &ctx.host.home;
-    let mut writes: Vec<WriteGrant> = ctx
+    let found: Vec<(String, PathBuf, Option<sam_core::places::StartPlaceGrant>)> = ctx
         .permissions
         .filesystem
         .custom_write
@@ -1380,21 +1399,23 @@ fn write_grants(ctx: &LaunchContext) -> Vec<WriteGrant> {
         .map(|c| {
             let written = expand_home(c);
             let bound = resolve(&written);
-            WriteGrant {
-                start_place: start_place_of_bound_write_grant(&written, &bound, home),
-                written: c.clone(),
-                bound,
-                below_writable: None,
-            }
+            let place = start_place_of_bound_write_grant(&written, &bound, home);
+            (c.clone(), bound, place)
         })
         .collect();
-    // Every grant counts here, a write grant left out below too: what
-    // lies below it lies below the writable folder above it as well.
+    // What the app can change: every grant, a write grant left out below
+    // too (what lies below it lies below the writable folder above it as
+    // well), and the folders named on the command line, worked out
+    // without the extra writable folders (independent review of
+    // decision 9: `app ~/work` with writable opened files and a grant of
+    // `~/work/a/proj` was missed).
     let all = {
         let mut v = Views::without_writes(ctx);
-        for g in &writes {
-            v.grants.push((g.bound.clone(), g.start_place.is_none()));
+        let opened = opened_paths_in(ctx, &v);
+        for (_, bound, place) in &found {
+            v.grants.push((bound.clone(), place.is_none()));
         }
+        v.grants.extend(opened);
         v
     };
     let app_can_change = |d: &Path| {
@@ -1405,15 +1426,27 @@ fn write_grants(ctx: &LaunchContext) -> Vec<WriteGrant> {
                 .iter()
                 .any(|(h, _, rw)| *rw && d.starts_with(resolve(h)))
     };
-    for g in &mut writes {
-        g.below_writable = g
-            .bound
-            .ancestors()
-            .skip(1)
-            .find(|a| app_can_change(a))
-            .map(Path::to_path_buf);
-    }
-    writes
+    found
+        .into_iter()
+        .map(|(written, bound, place)| {
+            let how = if inside_sam(ctx, &bound)
+                || place.as_ref().is_some_and(sam_core::places::is_sams_place)
+            {
+                WriteBind::InsideSam
+            } else if let Some(place) = place {
+                WriteBind::ReadOnly(place)
+            } else if let Some(folder) = bound.ancestors().skip(1).find(|a| app_can_change(a)) {
+                WriteBind::Below(folder.to_path_buf())
+            } else {
+                WriteBind::Writable
+            };
+            WriteGrant {
+                written,
+                bound,
+                how,
+            }
+        })
+        .collect()
 }
 
 /// A granted folder as it is bound: with `~` expanded and links resolved,
@@ -2183,19 +2216,23 @@ impl Section<'_> {
         // Each at the place decided once ([`WriteGrant`]), never resolved
         // again; one below a folder the app can already change not at all.
         for g in &self.writes {
-            if let Some(folder) = &g.below_writable {
-                notes.push(sam_core::i18n::trf(
-                    "{path} lies inside {folder}, which the app can already change, so SAM does not bind it a second time.",
-                    &[("path", &g.written), ("folder", &folder.display())],
-                ));
-                continue;
-            }
-            let op = match &g.start_place {
-                Some(found) => {
+            let op = match &g.how {
+                WriteBind::Writable => "--bind-try",
+                WriteBind::ReadOnly(found) => {
                     notes.push(sam_core::places::read_only_grant_note(&g.written, found));
                     "--ro-bind-try"
                 }
-                None => "--bind-try",
+                WriteBind::Below(folder) => {
+                    notes.push(sam_core::i18n::trf(
+                        "{path} lies inside {folder}, which the app can already change, so SAM does not bind it a second time.",
+                        &[("path", &g.written), ("folder", &sam_core::util::tildify(folder))],
+                    ));
+                    continue;
+                }
+                WriteBind::InsideSam => {
+                    notes.push(sam_core::places::inside_sams_folders_note(&g.written));
+                    continue;
+                }
             };
             let path = &g.bound;
             mount(path, &|m| m.op2(op, path, path));
@@ -2222,7 +2259,18 @@ impl Section<'_> {
             });
         }
         let views = &self.views;
-        let guarded = guarded_places(&home, fsp);
+        // An extra folder shown read-only for a start place counts as a
+        // guarded place: the folders above it that the app can change are
+        // pinned, so renaming one (`mv ~/work/dots ~/work/x`) cannot carry
+        // the read-only mount away and leave a writable fresh folder in its
+        // place (as R50 for start places kept through links).
+        let mut guarded = guarded_places(&home, fsp);
+        guarded.extend(
+            self.writes
+                .iter()
+                .filter(|g| matches!(g.how, WriteBind::ReadOnly(_)))
+                .map(|g| g.bound.clone()),
+        );
         for p in pins(&home, views, &guarded, &ctx.sam_dirs, &ctx.sam_programs) {
             mount(&p, &|m| m.op2("--bind", &p, &p));
         }
@@ -5524,14 +5572,13 @@ mod guard_tests {
     }
 
     /// An extra writable folder that is a start place, lies inside one or
-    /// is where one really is, is bound read-only, without and with a
-    /// read-only whole home, as named, through a link to the place and with
-    /// `..`; the views count it read-only and the start says so. An
-    /// ordinary extra folder stays writable. With the whole home writable
-    /// neither is bound again: the home shows them, and the start place is
-    /// locked as every start place there (owner decision 9 of 2026-11-23: a
-    /// writable `~/.config/fish/conf.d` let an app plant a file run at the
-    /// next shell outside the sandbox).
+    /// is where one really is, is bound read-only, without, with a
+    /// read-only and with a writable whole home, as named, through a link to
+    /// the place and with `..`; the views count it read-only and the start
+    /// says so. An ordinary extra folder stays writable (with the writable
+    /// home it is shown by the home, not bound again). Owner decision 9 of
+    /// 2026-11-23: a writable `~/.config/fish/conf.d` let an app plant a
+    /// file run at the next shell outside the sandbox.
     #[test]
     fn a_writable_grant_inside_a_start_place_is_bound_read_only() {
         let t = tempfile::tempdir().unwrap();
@@ -5578,26 +5625,18 @@ mod guard_tests {
                 let a = &cmd.args;
                 let case = format!("{grant} (whole home: {whole_home:?})");
                 assert!(
-                    !has_seq(a, &["--bind-try", &bound, &bound]),
-                    "{case}: {a:?}"
-                );
-                if whole_home == Some(Access::Rw) {
-                    // Locked where it lies, by the start place's own lock.
-                    assert!(
-                        a.windows(3).any(|w| w[0] == "--ro-bind-try"
-                            && w[1] == w[2]
-                            && Path::new(&bound).starts_with(&w[1])),
-                        "{case}: {a:?}"
-                    );
-                    assert!(!has_seq(a, &["--bind-try", &work, &work]), "{case}: {a:?}");
-                    assert_eq!(read_only_notes(&cmd.notes), 0, "{case}: {:?}", cmd.notes);
-                    continue;
-                }
-                assert!(
                     has_seq(a, &["--ro-bind-try", &bound, &bound]),
                     "{case}: {a:?}"
                 );
-                assert!(has_seq(a, &["--bind-try", &work, &work]), "{case}: {a:?}");
+                assert!(
+                    !has_seq(a, &["--bind-try", &bound, &bound]),
+                    "{case}: {a:?}"
+                );
+                assert_eq!(
+                    has_seq(a, &["--bind-try", &work, &work]),
+                    whole_home != Some(Access::Rw),
+                    "{case}: {a:?}"
+                );
                 let views = Views::base(&ctx);
                 assert!(!views.writable(Path::new(&bound)), "{case}");
                 assert!(views.writable(Path::new(&work)), "{case}");
@@ -5622,26 +5661,45 @@ mod guard_tests {
     }
 
     /// An extra writable folder below a folder the app can already change
-    /// (another writable extra folder, the writable home) is not bound at
-    /// all: a running copy of the app could turn a part of its way into a
-    /// link to a start place after SAM looked, and Bubblewrap would follow
-    /// it (independent review of decision 9). One that is a link to a start
-    /// place when SAM looks is bound read-only where it leads.
+    /// (another writable extra folder, the writable home, a folder opened
+    /// writable) is not bound at all: a running copy of the app could turn
+    /// a part of its way into a link to a start place after SAM looked, and
+    /// Bubblewrap would follow it (independent reviews of decision 9). One
+    /// in a start place is bound read-only all the same, where it leads,
+    /// with the folders above it pinned: `conf.d` kept as a link into a
+    /// granted `~/work` (stow) stayed writable when it was left out.
     #[test]
     fn a_write_grant_below_a_folder_the_app_can_change_is_not_bound() {
         let t = tempfile::tempdir().unwrap();
         let home = fs::canonicalize(t.path()).unwrap().join("u");
-        for d in [".config/fish", "work/a/proj", "work/b"] {
+        for d in [
+            ".config/fish",
+            "work/a/proj",
+            "work/b",
+            "work/dots/fishconf",
+        ] {
             fs::create_dir_all(home.join(d)).unwrap();
         }
         std::os::unix::fs::symlink(home.join(".config/fish"), home.join("work/b/proj")).unwrap();
+        std::os::unix::fs::symlink(
+            home.join("work/dots/fishconf"),
+            home.join(".config/fish/conf.d"),
+        )
+        .unwrap();
         let s = |p: PathBuf| p.to_string_lossy().into_owned();
         let work = s(home.join("work"));
         let proj = s(home.join("work/a/proj"));
         let fish = s(home.join(".config/fish"));
+        let dots = s(home.join("work/dots"));
+        let fishconf = s(home.join("work/dots/fishconf"));
         let binds = |a: &[String], p: &str| {
             a.windows(3)
                 .any(|w| matches!(w[0].as_str(), "--bind-try" | "--ro-bind-try") && w[1] == p)
+        };
+        let skipped = |notes: &[String], p: &str| {
+            notes
+                .iter()
+                .any(|n| n.contains(p) && n.contains("does not bind it a second time"))
         };
         // Below a writable extra folder: only that folder is bound.
         let mut p = PermissionSet::strict_gui();
@@ -5654,15 +5712,24 @@ mod guard_tests {
             cmd.args
         );
         assert!(!binds(&cmd.args, &proj), "{:?}", cmd.args);
-        assert!(
-            cmd.notes
-                .iter()
-                .any(|n| n.contains(&proj) && n.contains("does not bind it a second time")),
-            "{:?}",
-            cmd.notes
-        );
+        assert!(skipped(&cmd.notes, &proj), "{:?}", cmd.notes);
         // Shown all the same, writable, through the folder above it.
         assert!(Views::base(&ctx).writable(Path::new(&proj)));
+        // Below a folder opened writable on the command line: the same.
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.opened_files = Access::Rw;
+        p.filesystem.custom_write = vec![proj.clone()];
+        let mut ctx = ctx_for(&p, &home);
+        ctx.owd = home.clone();
+        ctx.args = vec!["work".into()];
+        let cmd = Bubblewrap.build(&ctx).unwrap();
+        assert!(
+            has_seq(&cmd.args, &["--bind-try", &work, &work]),
+            "opened: {:?}",
+            cmd.args
+        );
+        assert!(!binds(&cmd.args, &proj), "{:?}", cmd.args);
+        assert!(skipped(&cmd.notes, &proj), "{:?}", cmd.notes);
         // Below the writable whole home: not bound either.
         let mut p = full_rw();
         p.filesystem.custom_write = vec![proj.clone()];
@@ -5691,6 +5758,74 @@ mod guard_tests {
             "{:?}",
             cmd.args
         );
+        // A start place kept through a link into a writable folder (stow):
+        // read-only where it leads, also below the writable folder or home,
+        // and the folder between them pinned so it cannot be renamed away.
+        for whole_home in [false, true] {
+            let mut p = if whole_home {
+                full_rw()
+            } else {
+                PermissionSet::strict_gui()
+            };
+            p.filesystem.custom_write = vec![work.clone(), s(home.join(".config/fish/conf.d"))];
+            let ctx = ctx_for(&p, &home);
+            let cmd = Bubblewrap.build(&ctx).unwrap();
+            let a = &cmd.args;
+            assert!(
+                has_seq(a, &["--ro-bind-try", &fishconf, &fishconf]),
+                "{whole_home}: {a:?}"
+            );
+            assert!(
+                !has_seq(a, &["--bind-try", &fishconf, &fishconf]),
+                "{whole_home}: {a:?}"
+            );
+            assert!(has_seq(a, &["--bind", &dots, &dots]), "{whole_home}: {a:?}");
+            assert!(!Views::base(&ctx).writable(Path::new(&fishconf)));
+            assert!(
+                cmd.notes
+                    .iter()
+                    .any(|n| n.contains("SAM shows it read-only")),
+                "{whole_home}: {:?}",
+                cmd.notes
+            );
+        }
+    }
+
+    /// An extra writable folder inside SAM's own folders is not shown at
+    /// all, and the start says so in words that fit (independent review of
+    /// decision 9: it was said to be shown read-only).
+    #[test]
+    fn a_write_grant_inside_sams_folders_is_not_shown() {
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap().join("u");
+        for d in [".config/sam/apps", "Games/sam/x"] {
+            fs::create_dir_all(home.join(d)).unwrap();
+        }
+        let s = |p: PathBuf| p.to_string_lossy().into_owned();
+        for grant in [
+            s(home.join(".config/sam/apps")),
+            s(home.join("Games/sam/x")),
+        ] {
+            let mut p = PermissionSet::strict_gui();
+            p.filesystem.custom_write = vec![grant.clone()];
+            let mut ctx = ctx_for(&p, &home);
+            ctx.sam_dirs = vec![home.join("Games/sam")];
+            let cmd = Bubblewrap.build(&ctx).unwrap();
+            assert!(!cmd.args.contains(&grant), "{grant}: {:?}", cmd.args);
+            assert!(!Views::base(&ctx).visible(Path::new(&grant)), "{grant}");
+            assert!(
+                cmd.notes
+                    .iter()
+                    .any(|n| n.contains(&grant) && n.contains("SAM's own folders")),
+                "{grant}: {:?}",
+                cmd.notes
+            );
+            assert!(
+                !cmd.notes.iter().any(|n| n.contains("read-only")),
+                "{grant}: {:?}",
+                cmd.notes
+            );
+        }
     }
 
     /// The views and the mounts take one answer per extra writable folder
@@ -5722,19 +5857,19 @@ mod guard_tests {
             let rw = has_seq(&cmd.args, &["--bind-try", &b, &b]);
             let ro = has_seq(&cmd.args, &["--ro-bind-try", &b, &b]);
             let in_views = views.grants.iter().find(|(v, _)| *v == g.bound);
-            match (&g.below_writable, &g.start_place) {
-                (Some(_), _) => {
+            match &g.how {
+                WriteBind::Below(_) | WriteBind::InsideSam => {
                     assert!(!rw && !ro && in_views.is_none(), "{g:?}");
                     kinds.push("left out");
                 }
-                (None, Some(_)) => {
+                WriteBind::ReadOnly(_) => {
                     assert!(
                         ro && !rw && in_views == Some(&(g.bound.clone(), false)),
                         "{g:?}"
                     );
                     kinds.push("read-only");
                 }
-                (None, None) => {
+                WriteBind::Writable => {
                     assert!(
                         rw && !ro && in_views == Some(&(g.bound.clone(), true)),
                         "{g:?}"

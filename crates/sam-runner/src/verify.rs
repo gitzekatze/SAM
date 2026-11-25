@@ -123,10 +123,15 @@ pub fn plan(p: &PermissionSet, cfg: &Config, host: &HostInfo) -> ProbePlan {
             let path = sam_core::util::expand_home(raw);
             // A writable folder in a start place is shown read-only, also
             // inside a writable home (owner decision 9 of 2026-11-23).
-            let in_start_place =
-                sam_core::places::start_place_of_write_grant(&path, &host.home).is_some();
+            let in_start_place = sam_core::places::start_place_of_write_grant(&path, &host.home);
             if path.is_dir() {
-                let want = if in_start_place {
+                let want = if in_start_place
+                    .as_ref()
+                    .is_some_and(sam_core::places::is_sams_place)
+                {
+                    // In SAM's own folders: never shown.
+                    Access::Hidden
+                } else if in_start_place.is_some() {
                     Access::ReadOnly
                 } else if rank(home_level) > rank(want) && path.starts_with(&host.home) {
                     home_level

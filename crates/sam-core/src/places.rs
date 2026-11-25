@@ -308,7 +308,9 @@ pub fn start_place_of_write_grant_in(
 /// wrote it) that it shows read-only for lying in a start place: the
 /// launch note and the warning on the app page and in `sam-jail info`.
 pub fn read_only_grant_note(shown: &str, found: &StartPlaceGrant) -> String {
-    if found.inside {
+    if is_sams_place(found) {
+        inside_sams_folders_note(shown)
+    } else if found.inside {
         crate::i18n::trf(
             "{path} is inside {place}, which SAM protects because changing it can make your computer run programs or change what SAM does; SAM shows it read-only.",
             &[("path", &shown), ("place", &format!("~/{}", found.place))],
@@ -319,6 +321,23 @@ pub fn read_only_grant_note(shown: &str, found: &StartPlaceGrant) -> String {
             &[("path", &shown)],
         )
     }
+}
+
+/// Whether the place found is one of SAM's own folders (`~/.config/sam`,
+/// `~/.local/share/sam`, also under `XDG_CONFIG_HOME` or `XDG_DATA_HOME`:
+/// the only protected places named `sam`): the sandbox never shows those
+/// to an app, so a grant in them is not shown at all.
+pub fn is_sams_place(found: &StartPlaceGrant) -> bool {
+    Path::new(&found.place).file_name() == Some("sam".as_ref())
+}
+
+/// What SAM says about an extra folder (`shown`, as the person wrote it)
+/// inside SAM's own folders, which it does not show.
+pub fn inside_sams_folders_note(shown: &str) -> String {
+    crate::i18n::trf(
+        "{path} lies inside SAM's own folders, which apps never see; SAM does not show it.",
+        &[("path", &shown)],
+    )
 }
 
 #[cfg(test)]
@@ -399,6 +418,16 @@ mod tests {
             "{note}"
         );
         assert!(note.contains("read-only"), "{note}");
+        // SAM's own folders are not shown at all, and the words say so.
+        for sams in [".config/sam", ".local/share/sam", "cfg/sam"] {
+            assert!(is_sams_place(&inside(sams).unwrap()), "{sams}");
+            let note = read_only_grant_note("~/x", &inside(sams).unwrap());
+            assert!(note.contains("SAM's own folders"), "{note}");
+            assert!(!note.contains("read-only"), "{note}");
+        }
+        for other in [".config/fish", ".config/user-dirs.dirs", ".bashrc"] {
+            assert!(!is_sams_place(&inside(other).unwrap()), "{other}");
+        }
         let note = read_only_grant_note("~/.bashrc", &itself(".bashrc").unwrap());
         assert!(
             note.contains("~/.bashrc") && note.contains("read-only"),

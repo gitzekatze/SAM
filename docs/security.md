@@ -621,11 +621,16 @@ How these stay protected with the home writable:
   home (start places under an `XDG_CONFIG_HOME` or `XDG_DATA_HOME` outside
   the home are not covered, a known gap older than this rule). The start
   notes it, and the app page and `sam-jail info` warn before the start;
-  the folder's rating stays as it is. SAM decides this once per start, on
-  the place it binds, and an extra folder below another folder the app
-  can already change (another writable extra folder, the writable home) is
-  not bound a second time: the app could otherwise turn a part of its way
-  into a link to a start place after SAM looked.
+  the folder's rating stays as it is. Such a folder is shown read-only
+  where it leads also when it lies inside another folder the app may
+  write (`conf.d` kept as a link into a granted `~/work`), and the folders
+  between them cannot be renamed. SAM decides this once per start, on the
+  place it binds. Any other extra folder below a folder the app can
+  already change (another writable extra folder, a folder opened writable
+  on the command line, the writable home) is not bound a second time: the
+  app could otherwise turn a part of its way into a link to a start place
+  after SAM looked. An extra folder inside SAM's own folders is not shown
+  at all.
 - **User folders are only what they are.** `user-dirs.dirs` says where
   Documents, Downloads and the others are. A folder set there to the home,
   a folder above it, a system folder, a key folder, a start place or a

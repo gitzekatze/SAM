@@ -316,7 +316,7 @@ msgid "'{key}' is not a settable key"
 msgstr "„{key}“ ist kein einstellbarer Schlüssel"
 
 #: crates/sam-core/src/permissions.rs:1140 crates/sam-core/src/risk.rs:194
-#: crates/sam-core/src/warnings.rs:159
+#: crates/sam-core/src/warnings.rs:158
 msgid "Full home access"
 msgstr "Voller Zugriff auf den Persönlichen Ordner"
 
@@ -524,7 +524,7 @@ msgstr ""
 "Systems. Die meisten Spiele, Browser und Editoren brauchen sie."
 
 #: crates/sam-core/src/permissions.rs:1176 crates/sam-core/src/risk.rs:279
-#: crates/sam-core/src/warnings.rs:289 crates/sam-runner/src/verify.rs:358
+#: crates/sam-core/src/warnings.rs:288 crates/sam-runner/src/verify.rs:363
 msgid "Webcam"
 msgstr "Webcam"
 
@@ -551,7 +551,7 @@ msgstr ""
 "sich zusätzlich als Tastatur oder Maus meldet."
 
 #: crates/sam-core/src/permissions.rs:1180 crates/sam-core/src/risk.rs:290
-#: crates/sam-runner/src/verify.rs:372
+#: crates/sam-runner/src/verify.rs:377
 msgid "All input devices"
 msgstr "Alle Eingabegeräte"
 
@@ -568,7 +568,7 @@ msgstr ""
 "Programme, die Eingabegeräte umbelegen oder einrichten."
 
 #: crates/sam-core/src/permissions.rs:1182 crates/sam-core/src/risk.rs:298
-#: crates/sam-runner/src/verify.rs:409
+#: crates/sam-runner/src/verify.rs:414
 msgid "Raw USB"
 msgstr "Direkter USB-Zugriff"
 
@@ -581,7 +581,7 @@ msgstr ""
 "Hardware-Hilfsprogramme."
 
 #: crates/sam-core/src/permissions.rs:1184 crates/sam-core/src/risk.rs:301
-#: crates/sam-core/src/warnings.rs:349
+#: crates/sam-core/src/warnings.rs:348
 msgid "Bluetooth"
 msgstr "Bluetooth"
 
@@ -595,7 +595,7 @@ msgstr ""
 "zusätzlich den System-D-Bus."
 
 #: crates/sam-core/src/permissions.rs:1186 crates/sam-core/src/risk.rs:309
-#: crates/sam-runner/src/verify.rs:322
+#: crates/sam-runner/src/verify.rs:327
 msgid "Sound"
 msgstr "Ton"
 
@@ -624,7 +624,7 @@ msgstr ""
 "Start."
 
 #: crates/sam-core/src/permissions.rs:1190 crates/sam-core/src/risk.rs:320
-#: crates/sam-runner/src/verify.rs:332
+#: crates/sam-runner/src/verify.rs:337
 msgid "Direct PipeWire access"
 msgstr "Direkter PipeWire-Zugriff"
 
@@ -639,7 +639,7 @@ msgstr ""
 "Webcam und Bildschirmfreigabe. Nur für Apps, die nichts anderes unterstützen."
 
 #: crates/sam-core/src/permissions.rs:1192 crates/sam-core/src/risk.rs:336
-#: crates/sam-runner/src/verify.rs:420
+#: crates/sam-runner/src/verify.rs:425
 msgid "Raw ALSA devices"
 msgstr "Direkte ALSA-Geräte"
 
@@ -652,7 +652,7 @@ msgstr ""
 "PulseAudio nicht unterstützen."
 
 #: crates/sam-core/src/permissions.rs:1194 crates/sam-core/src/risk.rs:344
-#: crates/sam-runner/src/verify.rs:291
+#: crates/sam-runner/src/verify.rs:296
 msgid "Wayland"
 msgstr "Wayland"
 
@@ -665,7 +665,7 @@ msgstr ""
 "getrennt."
 
 #: crates/sam-core/src/permissions.rs:1196 crates/sam-core/src/risk.rs:312
-#: crates/sam-core/src/warnings.rs:309
+#: crates/sam-core/src/warnings.rs:308
 msgid "Privileged Wayland protocols"
 msgstr "Privilegierte Wayland-Protokolle"
 
@@ -682,11 +682,11 @@ msgstr ""
 "Bildschirmfoto- und Fernsteuerungswerkzeuge."
 
 #: crates/sam-core/src/permissions.rs:1198 crates/sam-core/src/risk.rs:395
-#: crates/sam-runner/src/verify.rs:299
+#: crates/sam-runner/src/verify.rs:304
 msgid "X11 / XWayland"
 msgstr "X11 / XWayland"
 
-#: crates/sam-core/src/permissions.rs:1198 crates/sam-core/src/warnings.rs:136
+#: crates/sam-core/src/permissions.rs:1198 crates/sam-core/src/warnings.rs:135
 msgid ""
 "X11 access allows the app to observe input and other windows. Wayland is "
 "safer, but some apps may require XWayland."
@@ -694,7 +694,7 @@ msgstr ""
 "Mit X11-Zugriff kann die App Eingaben und andere Fenster beobachten. Wayland "
 "ist sicherer, aber manche Apps brauchen XWayland."
 
-#: crates/sam-core/src/permissions.rs:1200 crates/sam-runner/src/verify.rs:450
+#: crates/sam-core/src/permissions.rs:1200 crates/sam-runner/src/verify.rs:455
 msgid "Session bus"
 msgstr "Sitzungsbus"
 
@@ -716,7 +716,7 @@ msgstr "Erlaubte Sitzungsnamen"
 msgid "Bus names reachable in filtered mode."
 msgstr "Busnamen, die im gefilterten Modus erreichbar sind."
 
-#: crates/sam-core/src/permissions.rs:1204 crates/sam-runner/src/verify.rs:525
+#: crates/sam-core/src/permissions.rs:1204 crates/sam-runner/src/verify.rs:530
 msgid "System bus"
 msgstr "Systembus"
 
@@ -728,7 +728,7 @@ msgstr ""
 "Standardmäßig gesperrt."
 
 #: crates/sam-core/src/permissions.rs:1206 crates/sam-core/src/risk.rs:347
-#: crates/sam-core/src/warnings.rs:279
+#: crates/sam-core/src/warnings.rs:278
 msgid "Passwords & keyring"
 msgstr "Passwörter und Schlüsselbund"
 
@@ -791,7 +791,7 @@ msgstr ""
 "Beispiel für Chinesisch, Japanisch oder Koreanisch, und Emoji-Auswahl."
 
 #: crates/sam-core/src/permissions.rs:1216 crates/sam-core/src/risk.rs:488
-#: crates/sam-core/src/warnings.rs:299 crates/sam-runner/src/verify.rs:538
+#: crates/sam-core/src/warnings.rs:298 crates/sam-runner/src/verify.rs:543
 msgid "SSH agent"
 msgstr "SSH-Agent"
 
@@ -801,7 +801,7 @@ msgstr ""
 "Erlaubt der App, die in deinem SSH-Agenten geladenen Schlüssel zu verwenden."
 
 #: crates/sam-core/src/permissions.rs:1218 crates/sam-core/src/risk.rs:496
-#: crates/sam-runner/src/verify.rs:548
+#: crates/sam-runner/src/verify.rs:553
 msgid "Printing"
 msgstr "Drucken"
 
@@ -960,7 +960,7 @@ msgstr ""
 "perf, Schlüsselringe, io_uring, Einschleusen ins Terminal). Nur ausschalten, "
 "wenn eine App deswegen nicht läuft."
 
-#: crates/sam-core/src/permissions.rs:1244 crates/sam-core/src/warnings.rs:339
+#: crates/sam-core/src/permissions.rs:1244 crates/sam-core/src/warnings.rs:338
 msgid "Nested namespaces"
 msgstr "Verschachtelte Namensräume"
 
@@ -1031,18 +1031,31 @@ msgstr ""
 "Argumente, die unverändert an Bubblewrap gehen. Können die Sandbox schwächen."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:312
+#: crates/sam-core/src/places.rs:314
 msgid ""
 "{path} is inside {place}, which SAM protects because changing it can make "
 "your computer run programs or change what SAM does; SAM shows it read-only."
-msgstr "{path} liegt in {place}, das SAM schützt, weil eine Änderung dort deinen Computer Programme ausführen lassen oder ändern kann, was SAM tut; SAM zeigt es nur lesbar."
+msgstr ""
+"{path} liegt in {place}, das SAM schützt, weil eine Änderung dort deinen "
+"Computer Programme ausführen lassen oder ändern kann, was SAM tut; SAM zeigt "
+"es nur lesbar."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:317
+#: crates/sam-core/src/places.rs:319
 msgid ""
 "{path} is a place SAM protects because changing it can make your computer "
 "run programs or change what SAM does; SAM shows it read-only."
-msgstr "{path} ist ein Ort, den SAM schützt, weil eine Änderung dort deinen Computer Programme ausführen lassen oder ändern kann, was SAM tut; SAM zeigt es nur lesbar."
+msgstr ""
+"{path} ist ein Ort, den SAM schützt, weil eine Änderung dort deinen Computer "
+"Programme ausführen lassen oder ändern kann, was SAM tut; SAM zeigt es nur "
+"lesbar."
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-core/src/places.rs:337
+msgid ""
+"{path} lies inside SAM's own folders, which apps never see; SAM does not "
+"show it."
+msgstr "{path} liegt in SAMs eigenen Ordnern, die Apps nie sehen; SAM zeigt es nicht."
 
 #: crates/sam-core/src/risk.rs:32 crates/sam-gtk/src/util.rs:115
 msgid "Harmless"
@@ -1102,11 +1115,11 @@ msgstr "Systembus: voller Zugriff"
 msgid "All of /usr"
 msgstr "Ganz /usr"
 
-#: crates/sam-core/src/risk.rs:527 crates/sam-core/src/warnings.rs:319
+#: crates/sam-core/src/risk.rs:527 crates/sam-core/src/warnings.rs:318
 msgid "Syscall filter off"
 msgstr "Syscall-Filter aus"
 
-#: crates/sam-core/src/risk.rs:535 crates/sam-core/src/warnings.rs:329
+#: crates/sam-core/src/risk.rs:535 crates/sam-core/src/warnings.rs:328
 msgid "Landlock off"
 msgstr "Landlock aus"
 
@@ -1129,16 +1142,20 @@ msgstr "Pfad hat keinen übergeordneten Ordner"
 msgid "{program} did not finish within {seconds} seconds and was stopped"
 msgstr "{program} war nach {seconds} Sekunden nicht fertig und wurde beendet"
 
-#: crates/sam-core/src/warnings.rs:106
+#: crates/sam-core/src/warnings.rs:107
+msgid "Not shown"
+msgstr "Nicht gezeigt"
+
+#: crates/sam-core/src/warnings.rs:109
 msgid "Shown read-only"
 msgstr "Nur lesbar gezeigt"
 
-#: crates/sam-core/src/warnings.rs:122
+#: crates/sam-core/src/warnings.rs:121
 msgid "D-Bus wildcard not used"
 msgstr "D-Bus-Platzhalter nicht verwendet"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/warnings.rs:125
+#: crates/sam-core/src/warnings.rs:124
 msgid ""
 "{names} would also reach a name you blocked, and the D-Bus filter cannot "
 "make exceptions, so SAM does not allow it. List the services you need one by "
@@ -1148,26 +1165,26 @@ msgstr ""
 "Filter kann keine Ausnahmen machen, deshalb erlaubt SAM es nicht. Führe die "
 "benötigten Dienste einzeln auf."
 
-#: crates/sam-core/src/warnings.rs:136
+#: crates/sam-core/src/warnings.rs:135
 msgid "X11 access"
 msgstr "X11-Zugriff"
 
-#: crates/sam-core/src/warnings.rs:145
+#: crates/sam-core/src/warnings.rs:144
 msgid "Terminal program"
 msgstr "Terminalprogramm"
 
-#: crates/sam-core/src/warnings.rs:151
+#: crates/sam-core/src/warnings.rs:150
 msgid "No display access"
 msgstr "Kein Anzeigezugriff"
 
-#: crates/sam-core/src/warnings.rs:151
+#: crates/sam-core/src/warnings.rs:150
 msgid ""
 "The app cannot open windows. This is only correct for command-line tools."
 msgstr ""
 "Die App kann keine Fenster öffnen. Das ist nur für Befehlszeilenwerkzeuge "
 "richtig."
 
-#: crates/sam-core/src/warnings.rs:159
+#: crates/sam-core/src/warnings.rs:158
 msgid ""
 "The app can read and write every file in your home folder, including other "
 "apps' settings and files that programs outside the sandbox read, so it could "
@@ -1180,22 +1197,22 @@ msgstr ""
 "schützt die üblichen Stellen (Shell-Start, Autostart, Menüeinträge), nicht "
 "jede. Nur für Apps, denen du vertraust."
 
-#: crates/sam-core/src/warnings.rs:170
+#: crates/sam-core/src/warnings.rs:169
 msgid "Private keys exposed"
 msgstr "Private Schlüssel sichtbar"
 
-#: crates/sam-core/src/warnings.rs:170
+#: crates/sam-core/src/warnings.rs:169
 msgid "SSH keys, GnuPG keys or other credential stores are visible to the app."
 msgstr ""
 "SSH-Schlüssel, GnuPG-Schlüssel oder andere Zugangsdatenspeicher sind für die "
 "App sichtbar."
 
-#: crates/sam-core/src/warnings.rs:185
+#: crates/sam-core/src/warnings.rs:184
 msgid "Connections to other programs exposed"
 msgstr "Verbindungen zu anderen Programmen sichtbar"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/warnings.rs:188
+#: crates/sam-core/src/warnings.rs:187
 msgid ""
 "'{path}' holds connections to programs outside the sandbox (terminal "
 "sessions, SSH connections, the X server). The app can use them to run "
@@ -1205,12 +1222,12 @@ msgstr ""
 "(Terminalsitzungen, SSH-Verbindungen, den X-Server). Die App kann über sie "
 "Befehle außerhalb der Sandbox ausführen, auch mit Nur-Lese-Zugriff."
 
-#: crates/sam-core/src/warnings.rs:194
+#: crates/sam-core/src/warnings.rs:193
 msgid "Sensitive path exposed"
 msgstr "Sensibler Pfad sichtbar"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/warnings.rs:197
+#: crates/sam-core/src/warnings.rs:196
 msgid ""
 "'{path}' contains system or credential data. Exposing it weakens the sandbox "
 "significantly."
@@ -1218,11 +1235,11 @@ msgstr ""
 "„{path}“ enthält System- oder Zugangsdaten. Ihn freizugeben schwächt die "
 "Sandbox erheblich."
 
-#: crates/sam-core/src/warnings.rs:205
+#: crates/sam-core/src/warnings.rs:204
 msgid "Network may not be needed"
 msgstr "Netzwerk vermutlich unnötig"
 
-#: crates/sam-core/src/warnings.rs:205
+#: crates/sam-core/src/warnings.rs:204
 msgid ""
 "This app does not appear to need the network. Consider setting network "
 "access to 'none'."
@@ -1230,11 +1247,11 @@ msgstr ""
 "Diese App scheint das Netzwerk nicht zu brauchen. Überleg dir, den "
 "Netzwerkzugriff auf „Kein Netzwerk“ zu stellen."
 
-#: crates/sam-core/src/warnings.rs:215
+#: crates/sam-core/src/warnings.rs:214
 msgid "Network is off"
 msgstr "Netzwerk ist aus"
 
-#: crates/sam-core/src/warnings.rs:215
+#: crates/sam-core/src/warnings.rs:214
 msgid ""
 "This app looks like it uses the network. Some features may not work until "
 "network access is enabled."
@@ -1242,11 +1259,11 @@ msgstr ""
 "Diese App scheint das Netzwerk zu nutzen. Manche Funktionen gehen erst, wenn "
 "der Netzwerkzugriff erlaubt ist."
 
-#: crates/sam-core/src/warnings.rs:226
+#: crates/sam-core/src/warnings.rs:225
 msgid "System D-Bus requested"
 msgstr "System-D-Bus angefordert"
 
-#: crates/sam-core/src/warnings.rs:226
+#: crates/sam-core/src/warnings.rs:225
 msgid ""
 "The system bus controls hardware, networking, power and package management. "
 "Grant only to apps you trust."
@@ -1254,11 +1271,11 @@ msgstr ""
 "Der Systembus steuert Hardware, Netzwerk, Energieverwaltung und "
 "Paketverwaltung. Nur Apps erlauben, denen du vertraust."
 
-#: crates/sam-core/src/warnings.rs:237
+#: crates/sam-core/src/warnings.rs:236
 msgid "Full session D-Bus"
 msgstr "Voller Sitzungs-D-Bus"
 
-#: crates/sam-core/src/warnings.rs:237
+#: crates/sam-core/src/warnings.rs:236
 msgid ""
 "Unfiltered session bus access lets the app control other desktop "
 "applications and services, and can be used to escape the sandbox."
@@ -1266,23 +1283,23 @@ msgstr ""
 "Ungefilterter Zugriff auf den Sitzungsbus lässt die App andere Desktop-"
 "Programme und -Dienste steuern und kann zum Ausbruch aus der Sandbox dienen."
 
-#: crates/sam-core/src/warnings.rs:249
+#: crates/sam-core/src/warnings.rs:248
 msgid "Dangerous D-Bus access"
 msgstr "Gefährlicher D-Bus-Zugriff"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/warnings.rs:252
+#: crates/sam-core/src/warnings.rs:251
 msgid ""
 "Allowed session service: {why}. This can let the app escape the sandbox."
 msgstr ""
 "Erlaubter Sitzungsdienst: {why}. Damit kann die App aus der Sandbox "
 "ausbrechen."
 
-#: crates/sam-core/src/warnings.rs:260
+#: crates/sam-core/src/warnings.rs:259
 msgid "D-Bus filtering unavailable"
 msgstr "D-Bus-Filter nicht verfügbar"
 
-#: crates/sam-core/src/warnings.rs:260
+#: crates/sam-core/src/warnings.rs:259
 msgid ""
 "xdg-dbus-proxy is not installed, so the filtered session bus is disabled. "
 "Install xdg-dbus-proxy."
@@ -1290,11 +1307,11 @@ msgstr ""
 "xdg-dbus-proxy ist nicht installiert, deshalb ist der gefilterte Sitzungsbus "
 "aus. Installiere xdg-dbus-proxy."
 
-#: crates/sam-core/src/warnings.rs:269
+#: crates/sam-core/src/warnings.rs:268
 msgid "Raw device access"
 msgstr "Direkter Gerätezugriff"
 
-#: crates/sam-core/src/warnings.rs:269
+#: crates/sam-core/src/warnings.rs:268
 msgid ""
 "Raw input, USB or sound devices are exposed. Input devices can be used to "
 "log keystrokes."
@@ -1302,7 +1319,7 @@ msgstr ""
 "Eingabe-, USB- oder Tongeräte sind direkt sichtbar. Über Eingabegeräte "
 "lassen sich Tastendrücke mitschneiden."
 
-#: crates/sam-core/src/warnings.rs:279
+#: crates/sam-core/src/warnings.rs:278
 msgid ""
 "The app can read every password and secret stored in your keyring, also "
 "those of other apps."
@@ -1310,11 +1327,11 @@ msgstr ""
 "Die App kann jedes Passwort und jedes Geheimnis in deinem Schlüsselbund "
 "lesen, auch die anderer Apps."
 
-#: crates/sam-core/src/warnings.rs:289
+#: crates/sam-core/src/warnings.rs:288
 msgid "The app can switch on your camera and record what it sees."
 msgstr "Die App kann deine Kamera einschalten und aufnehmen, was sie sieht."
 
-#: crates/sam-core/src/warnings.rs:299
+#: crates/sam-core/src/warnings.rs:298
 msgid ""
 "While it runs, the app can use your SSH keys through the agent to log in to "
 "other computers as you."
@@ -1322,7 +1339,7 @@ msgstr ""
 "Solange sie läuft, kann die App über den Agenten deine SSH-Schlüssel "
 "benutzen und sich in deinem Namen bei anderen Computern anmelden."
 
-#: crates/sam-core/src/warnings.rs:309
+#: crates/sam-core/src/warnings.rs:308
 msgid ""
 "The app can use desktop functions meant for trusted tools, such as capturing "
 "the screen, reading the clipboard history or typing into other windows."
@@ -1331,7 +1348,7 @@ msgstr ""
 "Werkzeuge gedacht sind, etwa den Bildschirm aufnehmen, den Verlauf der "
 "Zwischenablage lesen oder in andere Fenster tippen."
 
-#: crates/sam-core/src/warnings.rs:319
+#: crates/sam-core/src/warnings.rs:318
 msgid ""
 "The kernel functions SAM normally blocks are within the app's reach, so a "
 "flaw in the kernel is easier to use from inside the sandbox."
@@ -1339,7 +1356,7 @@ msgstr ""
 "Die Kernel-Funktionen, die SAM sonst sperrt, sind für die App erreichbar; "
 "ein Fehler im Kernel lässt sich so aus der Sandbox heraus leichter ausnutzen."
 
-#: crates/sam-core/src/warnings.rs:329
+#: crates/sam-core/src/warnings.rs:328
 msgid ""
 "The second barrier around your files (Landlock) is off; only the sandbox's "
 "own view of the files protects them."
@@ -1347,7 +1364,7 @@ msgstr ""
 "Die zweite Schranke um deine Dateien (Landlock) ist aus; nur die eigene "
 "Dateiansicht der Sandbox schützt sie."
 
-#: crates/sam-core/src/warnings.rs:339
+#: crates/sam-core/src/warnings.rs:338
 msgid ""
 "The app may build sandboxes of its own, which brings more of the kernel "
 "within its reach. Browsers built on Chromium need this for their own sandbox."
@@ -1355,7 +1372,7 @@ msgstr ""
 "Die App darf eigene Sandboxen bauen, dadurch ist mehr vom Kernel für sie "
 "erreichbar. Browser auf Chromium-Basis brauchen das für ihre eigene Sandbox."
 
-#: crates/sam-core/src/warnings.rs:349
+#: crates/sam-core/src/warnings.rs:348
 msgid ""
 "Bluetooth requires system D-Bus access (BlueZ), which SAM cannot filter. The "
 "toggle is ignored unless the system bus is granted."
@@ -1364,11 +1381,11 @@ msgstr ""
 "filtern kann. Der Schalter bleibt wirkungslos, solange der Systembus nicht "
 "erlaubt ist."
 
-#: crates/sam-core/src/warnings.rs:358
+#: crates/sam-core/src/warnings.rs:357
 msgid "Raw backend arguments"
 msgstr "Rohe Backend-Argumente"
 
-#: crates/sam-core/src/warnings.rs:358
+#: crates/sam-core/src/warnings.rs:357
 msgid ""
 "Custom backend arguments are passed through unchecked and may weaken the "
 "sandbox."
@@ -1376,11 +1393,11 @@ msgstr ""
 "Eigene Backend-Argumente werden ungeprüft durchgereicht und können die "
 "Sandbox schwächen."
 
-#: crates/sam-core/src/warnings.rs:365
+#: crates/sam-core/src/warnings.rs:364
 msgid "Experimental seccomp filter"
 msgstr "Experimenteller seccomp-Filter"
 
-#: crates/sam-core/src/warnings.rs:365
+#: crates/sam-core/src/warnings.rs:364
 msgid ""
 "Strict syscall filtering is experimental and can break apps (for example, "
 "Electron apps that need nested namespaces)."
@@ -1388,15 +1405,15 @@ msgstr ""
 "Strenges Filtern von Systemaufrufen ist experimentell und kann Apps stören "
 "(zum Beispiel Electron-Apps, die verschachtelte Namensräume brauchen)."
 
-#: crates/sam-core/src/warnings.rs:374
+#: crates/sam-core/src/warnings.rs:373
 msgid "User namespaces unavailable"
 msgstr "Benutzer-Namensräume nicht verfügbar"
 
-#: crates/sam-core/src/warnings.rs:381 crates/sam-sandbox/src/lib.rs:2262
+#: crates/sam-core/src/warnings.rs:380 crates/sam-sandbox/src/lib.rs:2310
 msgid "Wayland socket not available"
 msgstr "Wayland-Socket nicht verfügbar"
 
-#: crates/sam-core/src/warnings.rs:381
+#: crates/sam-core/src/warnings.rs:380
 msgid ""
 "The Wayland socket is not available. Enable X11 or log in to a Wayland "
 "session."
@@ -1404,21 +1421,21 @@ msgstr ""
 "Der Wayland-Socket ist nicht verfügbar. Schalte X11 ein oder melde dich in "
 "einer Wayland-Sitzung an."
 
-#: crates/sam-core/src/warnings.rs:388 crates/sam-sandbox/src/lib.rs:2282
+#: crates/sam-core/src/warnings.rs:387 crates/sam-sandbox/src/lib.rs:2330
 msgid "X11 display not available"
 msgstr "X11-Anzeige nicht verfügbar"
 
-#: crates/sam-core/src/warnings.rs:388
+#: crates/sam-core/src/warnings.rs:387
 msgid "No X11 display was found ($DISPLAY is unset or its socket is missing)."
 msgstr ""
 "Es wurde keine X11-Anzeige gefunden ($DISPLAY ist nicht gesetzt oder sein "
 "Socket fehlt)."
 
-#: crates/sam-core/src/warnings.rs:395
+#: crates/sam-core/src/warnings.rs:394
 msgid "Sound server not found"
 msgstr "Kein Soundserver gefunden"
 
-#: crates/sam-core/src/warnings.rs:399
+#: crates/sam-core/src/warnings.rs:398
 msgid ""
 "PipeWire runs without its PulseAudio service (pipewire-pulse), which "
 "sandboxed apps use for sound. Install or start pipewire-pulse."
@@ -1426,7 +1443,7 @@ msgstr ""
 "PipeWire läuft ohne seinen PulseAudio-Dienst (pipewire-pulse), den Apps in "
 "einer Sandbox für Ton verwenden. Installiere oder starte pipewire-pulse."
 
-#: crates/sam-core/src/warnings.rs:403
+#: crates/sam-core/src/warnings.rs:402
 msgid "No PulseAudio or PipeWire sound server was found. Audio may not work."
 msgstr ""
 "Es wurde kein PulseAudio- oder PipeWire-Soundserver gefunden. Ton geht "
@@ -1875,7 +1892,7 @@ msgid "On"
 msgstr "An"
 
 #: crates/sam-gtk/src/all_perms.rs:37 crates/sam-gtk/src/perms.rs:605
-#: crates/sam-runner/src/verify.rs:286
+#: crates/sam-runner/src/verify.rs:291
 msgid "No network"
 msgstr "Kein Netzwerk"
 
@@ -1905,8 +1922,8 @@ msgid "Full access"
 msgstr "Voller Zugriff"
 
 #: crates/sam-gtk/src/all_perms.rs:55 crates/sam-gtk/src/perms.rs:598
-#: crates/sam-runner/src/verify.rs:245 crates/sam-runner/src/verify.rs:254
-#: crates/sam-runner/src/verify.rs:258 crates/sam-runner/src/verify.rs:272
+#: crates/sam-runner/src/verify.rs:250 crates/sam-runner/src/verify.rs:259
+#: crates/sam-runner/src/verify.rs:263 crates/sam-runner/src/verify.rs:277
 msgid "Network"
 msgstr "Netzwerk"
 
@@ -3939,7 +3956,7 @@ msgid "Extra layers inside every sandbox."
 msgstr "Zusätzliche Schutzschichten in jeder Sandbox."
 
 #: crates/sam-gtk/src/pages.rs:304 crates/sam-runner/src/launch.rs:276
-#: crates/sam-runner/src/verify.rs:611
+#: crates/sam-runner/src/verify.rs:616
 msgid "Landlock write protection"
 msgstr "Landlock-Schreibschutz"
 
@@ -4240,8 +4257,8 @@ msgid "Copy a redacted bug report"
 msgstr "Bereinigten Fehlerbericht kopieren"
 
 #: crates/sam-gtk/src/pages.rs:930 crates/sam-gtk/src/window.rs:435
-#: crates/sam-runner/src/verify.rs:196 crates/sam-runner/src/verify.rs:204
-#: crates/sam-runner/src/verify.rs:212 crates/sam-runner/src/verify.rs:220
+#: crates/sam-runner/src/verify.rs:201 crates/sam-runner/src/verify.rs:209
+#: crates/sam-runner/src/verify.rs:217 crates/sam-runner/src/verify.rs:225
 msgid "System"
 msgstr "System"
 
@@ -4475,9 +4492,9 @@ msgstr "Port auf diesem Computer, zum Beispiel 11434 für Ollama"
 msgid "Port of the app (empty = automatic)"
 msgstr "Port der App (leer = automatisch)"
 
-#: crates/sam-gtk/src/perms.rs:633 crates/sam-runner/src/verify.rs:291
-#: crates/sam-runner/src/verify.rs:299 crates/sam-runner/src/verify.rs:312
-#: crates/sam-runner/src/verify.rs:831
+#: crates/sam-gtk/src/perms.rs:633 crates/sam-runner/src/verify.rs:296
+#: crates/sam-runner/src/verify.rs:304 crates/sam-runner/src/verify.rs:317
+#: crates/sam-runner/src/verify.rs:836
 msgid "Display"
 msgstr "Anzeige"
 
@@ -4485,9 +4502,9 @@ msgstr "Anzeige"
 msgid "How the app shows its windows."
 msgstr "Wie die App ihre Fenster anzeigt."
 
-#: crates/sam-gtk/src/perms.rs:641 crates/sam-runner/src/verify.rs:322
-#: crates/sam-runner/src/verify.rs:336 crates/sam-runner/src/verify.rs:348
-#: crates/sam-runner/src/verify.rs:358 crates/sam-runner/src/verify.rs:372
+#: crates/sam-gtk/src/perms.rs:641 crates/sam-runner/src/verify.rs:327
+#: crates/sam-runner/src/verify.rs:341 crates/sam-runner/src/verify.rs:353
+#: crates/sam-runner/src/verify.rs:363 crates/sam-runner/src/verify.rs:377
 msgid "Sound and devices"
 msgstr "Ton und Geräte"
 
@@ -4497,7 +4514,7 @@ msgstr "Ton und Hardware, die die App nutzen darf."
 
 #: crates/sam-gtk/src/perms.rs:656 crates/sam-runner/src/verify.rs:66
 #: crates/sam-runner/src/verify.rs:77 crates/sam-runner/src/verify.rs:107
-#: crates/sam-runner/src/verify.rs:136 crates/sam-runner/src/verify.rs:160
+#: crates/sam-runner/src/verify.rs:141 crates/sam-runner/src/verify.rs:165
 msgid "Files"
 msgstr "Dateien"
 
@@ -4538,9 +4555,9 @@ msgstr ""
 "Desktop-Dienste, die die App nutzen darf. Braucht den gefilterten "
 "Sitzungsbus."
 
-#: crates/sam-gtk/src/perms.rs:733 crates/sam-runner/src/verify.rs:450
-#: crates/sam-runner/src/verify.rs:493 crates/sam-runner/src/verify.rs:513
-#: crates/sam-runner/src/verify.rs:525
+#: crates/sam-gtk/src/perms.rs:733 crates/sam-runner/src/verify.rs:455
+#: crates/sam-runner/src/verify.rs:498 crates/sam-runner/src/verify.rs:518
+#: crates/sam-runner/src/verify.rs:530
 msgid "D-Bus"
 msgstr "D-Bus"
 
@@ -4595,9 +4612,9 @@ msgstr "Der Systembus steuert Hardware, Netzwerk und Energieverwaltung."
 msgid "The app can talk to every system service."
 msgstr "Die App kann mit jedem Systemdienst sprechen."
 
-#: crates/sam-gtk/src/perms.rs:800 crates/sam-runner/src/verify.rs:538
-#: crates/sam-runner/src/verify.rs:548 crates/sam-runner/src/verify.rs:561
-#: crates/sam-runner/src/verify.rs:571 crates/sam-runner/src/verify.rs:591
+#: crates/sam-gtk/src/perms.rs:800 crates/sam-runner/src/verify.rs:543
+#: crates/sam-runner/src/verify.rs:553 crates/sam-runner/src/verify.rs:566
+#: crates/sam-runner/src/verify.rs:576 crates/sam-runner/src/verify.rs:596
 msgid "Sockets and environment"
 msgstr "Sockets und Umgebung"
 
@@ -5500,7 +5517,7 @@ msgstr "Trotzdem starten"
 
 #. Keep the {placeholders}; their order may change.
 #: crates/sam-jail-cli/src/bin/sam-jail-run.rs:241
-#: crates/sam-sandbox/src/lib.rs:1758 crates/sam-sandbox/src/lib.rs:1821
+#: crates/sam-sandbox/src/lib.rs:1791 crates/sam-sandbox/src/lib.rs:1854
 msgid ""
 "SAM cannot pass on {path}: its name is not valid text. Rename it, then start "
 "the app again."
@@ -6556,7 +6573,7 @@ msgstr ""
 "ohne SAMs Vermittler“, womit sie Code außerhalb der Sandbox in den Tonserver "
 "laden kann"
 
-#: crates/sam-runner/src/doctor.rs:311 crates/sam-sandbox/src/lib.rs:2335
+#: crates/sam-runner/src/doctor.rs:311 crates/sam-sandbox/src/lib.rs:2383
 msgid "No sound server found. Audio may not work."
 msgstr "Kein Tonserver gefunden. Ton funktioniert eventuell nicht."
 
@@ -8004,7 +8021,7 @@ msgstr ""
 "Online-Konten und Downloads zusätzlicher Inhalte nicht. Einzelspieler-Spiele "
 "laufen ohne ihn gut."
 
-#: crates/sam-runner/src/repair.rs:88 crates/sam-runner/src/verify.rs:254
+#: crates/sam-runner/src/repair.rs:88 crates/sam-runner/src/verify.rs:259
 msgid "No internet"
 msgstr "Kein Internet"
 
@@ -8696,134 +8713,134 @@ msgstr "Dein Persönlicher Ordner"
 msgid "Your home folder stays private"
 msgstr "Dein Persönlicher Ordner bleibt privat"
 
-#: crates/sam-runner/src/verify.rs:178
+#: crates/sam-runner/src/verify.rs:183
 msgid "Autostart entries cannot be created"
 msgstr "Autostart-Einträge lassen sich nicht anlegen"
 
-#: crates/sam-runner/src/verify.rs:182
+#: crates/sam-runner/src/verify.rs:187
 msgid "Menu entries cannot be created"
 msgstr "Menüeinträge lassen sich nicht anlegen"
 
-#: crates/sam-runner/src/verify.rs:196
+#: crates/sam-runner/src/verify.rs:201
 msgid "System files are read-only"
 msgstr "Systemdateien sind nur lesbar"
 
-#: crates/sam-runner/src/verify.rs:204
+#: crates/sam-runner/src/verify.rs:209
 msgid "System settings are read-only"
 msgstr "Systemeinstellungen sind nur lesbar"
 
-#: crates/sam-runner/src/verify.rs:212
+#: crates/sam-runner/src/verify.rs:217
 msgid "Password hashes are unreadable"
 msgstr "Passwort-Hashes sind nicht lesbar"
 
-#: crates/sam-runner/src/verify.rs:220
+#: crates/sam-runner/src/verify.rs:225
 msgid "Private /tmp"
 msgstr "Privates /tmp"
 
-#: crates/sam-runner/src/verify.rs:230
+#: crates/sam-runner/src/verify.rs:235
 msgid "Private shared memory"
 msgstr "Privater gemeinsamer Speicher"
 
-#: crates/sam-runner/src/verify.rs:245
+#: crates/sam-runner/src/verify.rs:250
 msgid "Internet connection"
 msgstr "Internetverbindung"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/verify.rs:261
+#: crates/sam-runner/src/verify.rs:266
 msgid "Local service on port {port} reachable"
 msgstr "Lokaler Dienst auf Port {port} erreichbar"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/verify.rs:275
+#: crates/sam-runner/src/verify.rs:280
 msgid "Other local services hidden (port {other})"
 msgstr "Andere lokale Dienste verborgen (Port {other})"
 
-#: crates/sam-runner/src/verify.rs:312
+#: crates/sam-runner/src/verify.rs:317
 msgid "X server outside the sandbox unreachable"
 msgstr "X-Server außerhalb der Sandbox nicht erreichbar"
 
-#: crates/sam-runner/src/verify.rs:334
+#: crates/sam-runner/src/verify.rs:339
 msgid "Cameras and screen streams through PipeWire stay hidden"
 msgstr "Kameras und Bildschirmübertragungen über PipeWire bleiben verborgen"
 
-#: crates/sam-runner/src/verify.rs:348
+#: crates/sam-runner/src/verify.rs:353
 msgid "GPU"
 msgstr "GPU"
 
-#: crates/sam-runner/src/verify.rs:397
+#: crates/sam-runner/src/verify.rs:402
 msgid "Keyboards and mice stay hidden"
 msgstr "Tastaturen und Mäuse bleiben verborgen"
 
-#: crates/sam-runner/src/verify.rs:478
+#: crates/sam-runner/src/verify.rs:483
 msgid "Desktop portal"
 msgstr "Desktop-Portal"
 
-#: crates/sam-runner/src/verify.rs:482
+#: crates/sam-runner/src/verify.rs:487
 msgid "Service manager (systemd)"
 msgstr "Dienstverwaltung (systemd)"
 
-#: crates/sam-runner/src/verify.rs:486
+#: crates/sam-runner/src/verify.rs:491
 msgid "Passwords and keyring"
 msgstr "Passwörter und Schlüsselbund"
 
-#: crates/sam-runner/src/verify.rs:488
+#: crates/sam-runner/src/verify.rs:493
 msgid "Window manager (KWin)"
 msgstr "Fensterverwaltung (KWin)"
 
-#: crates/sam-runner/src/verify.rs:513
+#: crates/sam-runner/src/verify.rs:518
 msgid "Unfiltered session bus unreachable"
 msgstr "Ungefilterter Sitzungsbus nicht erreichbar"
 
-#: crates/sam-runner/src/verify.rs:611 crates/sam-runner/src/verify.rs:617
-#: crates/sam-runner/src/verify.rs:623 crates/sam-runner/src/verify.rs:629
-#: crates/sam-runner/src/verify.rs:635 crates/sam-runner/src/verify.rs:641
+#: crates/sam-runner/src/verify.rs:616 crates/sam-runner/src/verify.rs:622
+#: crates/sam-runner/src/verify.rs:628 crates/sam-runner/src/verify.rs:634
+#: crates/sam-runner/src/verify.rs:640 crates/sam-runner/src/verify.rs:646
 msgid "Security"
 msgstr "Sicherheit"
 
-#: crates/sam-runner/src/verify.rs:617
+#: crates/sam-runner/src/verify.rs:622
 msgid "Syscall filter"
 msgstr "Systemaufruf-Filter"
 
-#: crates/sam-runner/src/verify.rs:623
+#: crates/sam-runner/src/verify.rs:628
 msgid "Typing into the terminal is blocked"
 msgstr "Eingaben ins Terminal sind gesperrt"
 
-#: crates/sam-runner/src/verify.rs:629
+#: crates/sam-runner/src/verify.rs:634
 msgid "Cannot gain privileges"
 msgstr "Kann keine Rechte erlangen"
 
-#: crates/sam-runner/src/verify.rs:635
+#: crates/sam-runner/src/verify.rs:640
 msgid "No special capabilities"
 msgstr "Keine besonderen Fähigkeiten"
 
-#: crates/sam-runner/src/verify.rs:641
+#: crates/sam-runner/src/verify.rs:646
 msgid "Own process list"
 msgstr "Eigene Prozessliste"
 
-#: crates/sam-runner/src/verify.rs:651
+#: crates/sam-runner/src/verify.rs:656
 msgid "Nested sandboxes allowed"
 msgstr "Verschachtelte Sandboxen erlaubt"
 
-#: crates/sam-runner/src/verify.rs:653
+#: crates/sam-runner/src/verify.rs:658
 msgid "Nested sandboxes blocked"
 msgstr "Verschachtelte Sandboxen gesperrt"
 
-#: crates/sam-runner/src/verify.rs:820
+#: crates/sam-runner/src/verify.rs:825
 msgid "in place"
 msgstr "vorhanden"
 
-#: crates/sam-runner/src/verify.rs:823
+#: crates/sam-runner/src/verify.rs:828
 msgid ""
 "the desktop did not set it up, so the app would get every Wayland function"
 msgstr ""
 "der Desktop hat ihn nicht eingerichtet, daher bekäme die App jede Wayland-"
 "Funktion"
 
-#: crates/sam-runner/src/verify.rs:832
+#: crates/sam-runner/src/verify.rs:837
 msgid "Privileged Wayland functions hidden"
 msgstr "Privilegierte Wayland-Funktionen verborgen"
 
-#: crates/sam-runner/src/verify.rs:855
+#: crates/sam-runner/src/verify.rs:860
 msgid ""
 "SAM's sandbox helper (sam-jail-run) was not found, so the sandbox cannot be "
 "checked"
@@ -8831,24 +8848,24 @@ msgstr ""
 "SAMs Sandbox-Helfer (sam-jail-run) wurde nicht gefunden, deshalb kann die "
 "Sandbox nicht geprüft werden"
 
-#: crates/sam-runner/src/verify.rs:872
+#: crates/sam-runner/src/verify.rs:877
 msgid "no stdout"
 msgstr "keine Standardausgabe"
 
-#: crates/sam-runner/src/verify.rs:876
+#: crates/sam-runner/src/verify.rs:881
 msgid "no stderr"
 msgstr "keine Fehlerausgabe"
 
-#: crates/sam-runner/src/verify.rs:898
+#: crates/sam-runner/src/verify.rs:903
 msgid "the sandbox check did not finish within 30 seconds"
 msgstr "die Sandbox-Prüfung wurde nicht innerhalb von 30 Sekunden fertig"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/verify.rs:911
+#: crates/sam-runner/src/verify.rs:916
 msgid "the sandbox did not start: {reason}"
 msgstr "die Sandbox ist nicht gestartet: {reason}"
 
-#: crates/sam-runner/src/verify.rs:920
+#: crates/sam-runner/src/verify.rs:925
 msgid "reading the check report"
 msgstr "der Prüfbericht wird gelesen"
 
@@ -8914,18 +8931,18 @@ msgstr "der Server hat {got} Bytes statt {expected} gesendet"
 msgid "the assembled file does not match the published checksum"
 msgstr "die zusammengesetzte Datei passt nicht zur veröffentlichten Prüfsumme"
 
-#: crates/sam-sandbox/src/lib.rs:1703
+#: crates/sam-sandbox/src/lib.rs:1736
 msgid "Bubblewrap is not installed. Install the 'bubblewrap' package."
 msgstr "Bubblewrap ist nicht installiert. Installiere das Paket „bubblewrap“."
 
-#: crates/sam-sandbox/src/lib.rs:1711
+#: crates/sam-sandbox/src/lib.rs:1744
 msgid "xdg-dbus-proxy not found: filtered session D-Bus will be disabled"
 msgstr ""
 "xdg-dbus-proxy nicht gefunden: Der gefilterte Sitzungs-D-Bus wird "
 "abgeschaltet"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:1735
+#: crates/sam-sandbox/src/lib.rs:1768
 msgid ""
 "the extra Bubblewrap arguments end with {option}, which needs more values; "
 "SAM does not start the app until the setting is complete"
@@ -8934,7 +8951,7 @@ msgstr ""
 "braucht; SAM startet die App erst, wenn die Einstellung vollständig ist"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:1739
+#: crates/sam-sandbox/src/lib.rs:1772
 msgid ""
 "the extra Bubblewrap arguments hold {word} where an option belongs, which "
 "Bubblewrap would run instead of the app; SAM does not start the app until "
@@ -8945,7 +8962,7 @@ msgstr ""
 "startet die App erst, wenn die Einstellung berichtigt ist"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:1743
+#: crates/sam-sandbox/src/lib.rs:1776
 msgid ""
 "the extra Bubblewrap arguments hold {option}, an option SAM does not know; "
 "SAM does not start the app until the setting is changed"
@@ -8954,7 +8971,7 @@ msgstr ""
 "SAM nicht kennt; SAM startet die App erst, wenn die Einstellung geändert ist"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:1766
+#: crates/sam-sandbox/src/lib.rs:1799
 msgid ""
 "SAM cannot pass on {path}: its name holds \"..\". Set the folder without \".."
 "\", then start the app again."
@@ -8963,7 +8980,7 @@ msgstr ""
 "ohne \"..\" an und starte die App dann erneut."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:1778
+#: crates/sam-sandbox/src/lib.rs:1811
 msgid ""
 "the home folder is not set (HOME is \"{home}\"); SAM does not start apps "
 "without one"
@@ -8971,17 +8988,17 @@ msgstr ""
 "der Home-Ordner ist nicht gesetzt (HOME ist „{home}“); ohne ihn startet SAM "
 "keine Apps"
 
-#: crates/sam-sandbox/src/lib.rs:1789
+#: crates/sam-sandbox/src/lib.rs:1822
 msgid "bubblewrap (bwrap) is not installed"
 msgstr "bubblewrap (bwrap) ist nicht installiert"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2140
+#: crates/sam-sandbox/src/lib.rs:2173
 msgid "{key} folder does not exist on the host; not bound"
 msgstr "Der Ordner {key} existiert auf dem System nicht; nicht eingebunden"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2144
+#: crates/sam-sandbox/src/lib.rs:2177
 msgid ""
 "{key} folder is set to {path}, which shows more than a user folder (the "
 "home, a folder above it, a system or SAM folder, or a protected place); not "
@@ -8992,23 +9009,25 @@ msgstr ""
 "oder SAM-Ordner oder einen geschützten Ort); nicht eingebunden"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2187
+#: crates/sam-sandbox/src/lib.rs:2226
 msgid ""
 "{path} lies inside {folder}, which the app can already change, so SAM does "
 "not bind it a second time."
-msgstr "{path} liegt in {folder}, das die App schon ändern kann, deshalb bindet SAM es nicht ein zweites Mal ein."
+msgstr ""
+"{path} liegt in {folder}, das die App schon ändern kann, deshalb bindet SAM "
+"es nicht ein zweites Mal ein."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2213
+#: crates/sam-sandbox/src/lib.rs:2250
 msgid "granted access to the opened folder {path}"
 msgstr "Zugriff auf den geöffneten Ordner {path} erteilt"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2218
+#: crates/sam-sandbox/src/lib.rs:2255
 msgid "granted access to the opened file {path}"
 msgstr "Zugriff auf die geöffnete Datei {path} erteilt"
 
-#: crates/sam-sandbox/src/lib.rs:2333
+#: crates/sam-sandbox/src/lib.rs:2381
 msgid ""
 "SAM's sound relay is not running, so the app has no sound (the sound "
 "server's own connection would let it load code outside the sandbox). The "
@@ -9019,7 +9038,7 @@ msgstr ""
 "laden). Die Startmeldung sagt, warum."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2396
+#: crates/sam-sandbox/src/lib.rs:2444
 msgid ""
 "Not shown as game controllers, as they also report themselves as a keyboard "
 "or mouse: {nodes}"
@@ -9028,7 +9047,7 @@ msgstr ""
 "melden: {nodes}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2402
+#: crates/sam-sandbox/src/lib.rs:2450
 msgid ""
 "Not shown as game controllers, as udev has no record of what they are: "
 "{nodes}"
@@ -9036,7 +9055,7 @@ msgstr ""
 "Nicht als Controller gezeigt, weil udev nicht verzeichnet, was sie sind: "
 "{nodes}"
 
-#: crates/sam-sandbox/src/lib.rs:2408
+#: crates/sam-sandbox/src/lib.rs:2456
 msgid ""
 "No game controller is plugged in; controllers connected later are not seen "
 "until the app restarts"
@@ -9044,19 +9063,19 @@ msgstr ""
 "Kein Gamecontroller angeschlossen; später angeschlossene Controller sieht "
 "die App erst nach einem Neustart"
 
-#: crates/sam-sandbox/src/lib.rs:2421
+#: crates/sam-sandbox/src/lib.rs:2469
 msgid "Bluetooth needs the system D-Bus; not granted"
 msgstr "Bluetooth braucht den System-D-Bus; nicht erteilt"
 
-#: crates/sam-sandbox/src/lib.rs:2434
+#: crates/sam-sandbox/src/lib.rs:2482
 msgid "Input method needs the session D-Bus; not granted"
 msgstr "Die Eingabemethode braucht den Sitzungs-D-Bus; nicht erteilt"
 
-#: crates/sam-sandbox/src/lib.rs:2457
+#: crates/sam-sandbox/src/lib.rs:2505
 msgid "session D-Bus socket not found"
 msgstr "Socket des Sitzungs-D-Bus nicht gefunden"
 
-#: crates/sam-sandbox/src/lib.rs:2466
+#: crates/sam-sandbox/src/lib.rs:2514
 msgid ""
 "filtered D-Bus requested but no proxy is running (install xdg-dbus-proxy); "
 "session bus disabled"
@@ -9065,7 +9084,7 @@ msgstr ""
 "proxy); Sitzungsbus abgeschaltet"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2521
+#: crates/sam-sandbox/src/lib.rs:2569
 msgid ""
 "{path} is reached through a link in a folder the app can change; it is not "
 "passed into the sandbox. List the socket by its real place."
@@ -9075,7 +9094,7 @@ msgstr ""
 "seinem tatsächlichen Ort an."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2535
+#: crates/sam-sandbox/src/lib.rs:2583
 msgid ""
 "{path} lies below a folder the app can change, so the app could swap it for "
 "another socket during the start; this setting does not pass it in. Where the "
@@ -9087,12 +9106,12 @@ msgstr ""
 "sie den Socket weiterhin dort."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2542
+#: crates/sam-sandbox/src/lib.rs:2590
 msgid "{path} is not a socket; it is not passed into the sandbox"
 msgstr "{path} ist kein Socket; er wird nicht in die Sandbox weitergegeben"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2553
+#: crates/sam-sandbox/src/lib.rs:2601
 msgid ""
 "{path} leads elsewhere: {why}. It is not passed into the sandbox; list that "
 "socket by its real place if the app needs it."

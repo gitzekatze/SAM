@@ -102,14 +102,13 @@ fn read_only_write_grants(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warnin
                 None => crate::util::expand_home(c),
             };
             let found = crate::places::start_place_of_write_grant(&grant, &home)?;
-            Some(
-                Warning::warn(
-                    "start-place-read-only",
-                    "Shown read-only",
-                    crate::places::read_only_grant_note(c, &found),
-                )
-                .with_key("filesystem.custom_write"),
-            )
+            let note = crate::places::read_only_grant_note(c, &found);
+            let w = if crate::places::is_sams_place(&found) {
+                Warning::warn("start-place-read-only", "Not shown", note)
+            } else {
+                Warning::warn("start-place-read-only", "Shown read-only", note)
+            };
+            Some(w.with_key("filesystem.custom_write"))
         })
         .collect()
 }
@@ -960,6 +959,12 @@ mod tests {
         let mut p = PermissionSet::strict_gui();
         p.filesystem.custom_write = vec!["~/work".into()];
         assert!(!codes(&evaluate(&p, &ctx)).contains(&"start-place-read-only"));
+        // In SAM's own folders: said to be not shown, not read-only.
+        p.filesystem.custom_write = vec!["~/.config/sam/apps".into()];
+        let w = evaluate(&p, &ctx);
+        let hit = find(&w, "start-place-read-only").expect("named");
+        assert!(hit.message.contains("SAM's own folders"), "{}", hit.message);
+        assert!(!hit.message.contains("read-only"), "{}", hit.message);
     }
 
     /// The X11 warning disappears when the user turns it off in the preferences.
