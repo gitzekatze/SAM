@@ -331,6 +331,32 @@ pub fn is_sams_place(found: &StartPlaceGrant) -> bool {
     Path::new(&found.place).file_name() == Some("sam".as_ref())
 }
 
+/// Whether `real` (a path with its links resolved) is one of SAM's own
+/// folders (`sam_dirs`: its settings, its data and its unpack folder,
+/// wherever they are kept) or lies inside one. The sandbox hides what lies
+/// there, and SAM's sandbox check and start texts ask this same question,
+/// so they never expect a folder the sandbox does not show (independent
+/// review of decision 9: SAM's data kept in `~/Games/sam`).
+pub fn inside_sams_folders(real: &Path, sam_dirs: &[PathBuf]) -> bool {
+    sam_dirs
+        .iter()
+        .map(|d| resolve(d))
+        .any(|d| real.starts_with(&d))
+}
+
+/// Whether the sandbox leaves out the extra writable folder bound at
+/// `bound` (its links resolved once) for lying in SAM's own folders: in
+/// one of `sam_dirs`, or in a start place named `sam` (`place`, what
+/// [`start_place_of_bound_write_grant`] found). The sandbox decides each
+/// writable grant with this, and the sandbox check expects what it says.
+pub fn write_grant_in_sams_folders(
+    bound: &Path,
+    place: Option<&StartPlaceGrant>,
+    sam_dirs: &[PathBuf],
+) -> bool {
+    inside_sams_folders(bound, sam_dirs) || place.is_some_and(is_sams_place)
+}
+
 /// What SAM says about an extra folder (`shown`, as the person wrote it)
 /// inside SAM's own folders, which it does not show.
 pub fn inside_sams_folders_note(shown: &str) -> String {
@@ -433,5 +459,38 @@ mod tests {
             note.contains("~/.bashrc") && note.contains("read-only"),
             "{note}"
         );
+    }
+
+    /// A writable grant counts as in SAM's own folders when it lies in one
+    /// of them wherever it is kept (`~/Games/sam`, also reached through a
+    /// link), or in a start place named `sam`; a folder that only holds
+    /// SAM's folder, or whose name only begins like it, does not
+    /// (independent review of decision 9).
+    #[test]
+    fn a_write_grant_in_sams_folders_is_found_wherever_they_are_kept() {
+        let t = tempfile::tempdir().unwrap();
+        let home = std::fs::canonicalize(t.path()).unwrap().join("u");
+        std::fs::create_dir_all(home.join("Games/sam/saves")).unwrap();
+        std::os::unix::fs::symlink(home.join("Games"), home.join("g")).unwrap();
+        let sam_dirs = [home.join("g/sam")];
+        let in_sam = |g: &str, place: Option<&StartPlaceGrant>| {
+            write_grant_in_sams_folders(&resolve(&home.join(g)), place, &sam_dirs)
+        };
+        for inside in ["Games/sam", "Games/sam/saves", "g/sam/saves/new"] {
+            assert!(in_sam(inside, None), "{inside}");
+        }
+        for outside in ["Games", "Games/sam2", "work"] {
+            assert!(!in_sam(outside, None), "{outside}");
+        }
+        let sams = StartPlaceGrant {
+            place: ".config/sam".into(),
+            inside: true,
+        };
+        assert!(in_sam("work", Some(&sams)), "a start place named sam");
+        let fish = StartPlaceGrant {
+            place: ".config/fish".into(),
+            inside: true,
+        };
+        assert!(!in_sam("work", Some(&fish)));
     }
 }

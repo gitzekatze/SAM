@@ -141,6 +141,17 @@ impl Paths {
             expand_home(cfg_location)
         }
     }
+    /// SAM's own folders, which no app ever sees: its settings, its data
+    /// and its unpack folder (`cfg_location`, config
+    /// `extraction.location`). The sandbox hides them, and the sandbox
+    /// check expects them hidden, from this one list.
+    pub fn sam_dirs(&self, cfg_location: &str) -> Vec<PathBuf> {
+        vec![
+            self.config_dir.clone(),
+            self.data_dir.clone(),
+            self.extracted_root(cfg_location),
+        ]
+    }
 }
 
 /// The runtime folder of rooted paths: `ROOT/run`, unless that is too long

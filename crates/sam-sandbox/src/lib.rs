@@ -1342,11 +1342,10 @@ fn refused_host_path(p: &Path, home: &Path) -> bool {
 /// Whether `real` (a resolved path) is one of SAM's folders or inside one.
 /// A folder that only holds one may be shown: SAM's folder is hidden
 /// inside it, wherever the sandbox shows it.
+/// The same answer SAM's sandbox check and start texts take
+/// ([`sam_core::places::inside_sams_folders`]).
 fn inside_sam(ctx: &LaunchContext, real: &Path) -> bool {
-    ctx.sam_dirs
-        .iter()
-        .map(|d| resolve(d))
-        .any(|d| real.starts_with(&d))
+    sam_core::places::inside_sams_folders(real, &ctx.sam_dirs)
 }
 
 /// An extra writable folder (`filesystem.custom_write`) as this start
@@ -1429,9 +1428,13 @@ fn write_grants(ctx: &LaunchContext) -> Vec<WriteGrant> {
     found
         .into_iter()
         .map(|(written, bound, place)| {
-            let how = if inside_sam(ctx, &bound)
-                || place.as_ref().is_some_and(sam_core::places::is_sams_place)
-            {
+            // One answer for the sandbox and its check (independent review
+            // of decision 9: the check missed SAM's folders kept elsewhere).
+            let how = if sam_core::places::write_grant_in_sams_folders(
+                &bound,
+                place.as_ref(),
+                &ctx.sam_dirs,
+            ) {
                 WriteBind::InsideSam
             } else if let Some(place) = place {
                 WriteBind::ReadOnly(place)
@@ -1652,6 +1655,28 @@ fn guard_home(a: &mut Args, home: &Path, fsp: &FilesystemPerms, views: &Views) {
 /// the real start file (audit D-M2, S-F13).
 pub fn opened_paths(ctx: &LaunchContext) -> Vec<(PathBuf, bool)> {
     opened_paths_in(ctx, &Views::base(ctx))
+}
+
+/// The extra folders (`filesystem.custom_read`, then `custom_write`, as
+/// the person wrote them) that this start shows the app, for what SAM
+/// tells the person: one inside SAM's own folders is left out, as the
+/// sandbox leaves it out (a writable one is not bound, a read-only one is
+/// covered by the empty folder in place of SAM's). Listed anyway, a
+/// terminal app's start line named a folder the app never sees
+/// (independent review of decision 9).
+pub fn shown_extra_folders(ctx: &LaunchContext) -> Vec<String> {
+    let reads = ctx
+        .permissions
+        .filesystem
+        .custom_read
+        .iter()
+        .filter(|c| !inside_sam(ctx, &grant_path(c)))
+        .cloned();
+    let writes = write_grants(ctx)
+        .into_iter()
+        .filter(|g| !matches!(g.how, WriteBind::InsideSam))
+        .map(|g| g.written);
+    reads.chain(writes).collect()
 }
 
 /// [`opened_paths`] against the grants `views` ([`Views::base`]) worked out

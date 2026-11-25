@@ -629,8 +629,17 @@ How these stay protected with the home writable:
   already change (another writable extra folder, a folder opened writable
   on the command line, the writable home) is not bound a second time: the
   app could otherwise turn a part of its way into a link to a start place
-  after SAM looked. An extra folder inside SAM's own folders is not shown
-  at all.
+  after SAM looked. This holds against the app itself, not against a
+  second program: another sandbox, or a copy of the app started with other
+  settings (with `~/work` writable, say), that can already write a folder
+  above a grant can swap a part of its way for a link in the short time
+  between SAM's look and Bubblewrap's mount, and Bubblewrap follows that
+  link, so a start place could be bound writable. This is a known gap,
+  older than this rule (SAM had the same race before), and such a program
+  can usually already write into the start place another way: through a
+  link inside it that is not granted, which SAM does not lock yet. Binding
+  each grant through an open handle, which closes the race, is planned.
+  An extra folder inside SAM's own folders is not shown at all.
 - **User folders are only what they are.** `user-dirs.dirs` says where
   Documents, Downloads and the others are. A folder set there to the home,
   a folder above it, a system folder, a key folder, a start place or a

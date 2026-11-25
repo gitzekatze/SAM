@@ -646,7 +646,7 @@ fn real_main(cli: Cli) -> Result<()> {
             };
             out.emit(
                 &json!({"app": summary, "entry": e, "warnings": warnings, "selection": selection, "hints": hints, "repair_steps": steps, "repair_effects": effects, "compat_changes": compat_changes, "private_home": app.paths.app_home(&e.id), "running": app.running(&e.id).len(),
-                    "check_current": e.last_check.as_ref().is_some_and(|c| c.key == sam_runner::verify::check_key(&e, &app.config, &host)),
+                    "check_current": e.last_check.as_ref().is_some_and(|c| c.key == sam_runner::verify::check_key(&e, &app.config, &app.paths, &host)),
                     "review_fingerprint": sam_storage::review_fingerprint(&e)?}),
                 || print_info(&e, &summary, &warnings, selection.as_ref()),
             );

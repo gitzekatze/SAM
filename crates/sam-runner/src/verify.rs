@@ -52,7 +52,7 @@ fn rank(a: Access) -> u8 {
 }
 
 /// The checks for an app, with what each should find.
-pub fn plan(p: &PermissionSet, cfg: &Config, host: &HostInfo) -> ProbePlan {
+pub fn plan(p: &PermissionSet, cfg: &Config, paths: &Paths, host: &HostInfo) -> ProbePlan {
     let mut v: Vec<ProbeCheck> = Vec::new();
     let fs = &p.filesystem;
     let home_level = if fs.home {
@@ -115,21 +115,34 @@ pub fn plan(p: &PermissionSet, cfg: &Config, host: &HostInfo) -> ProbePlan {
             },
         ));
     }
+    // SAM's own folders, the list the sandbox hides.
+    let sam_dirs = paths.sam_dirs(&cfg.extraction.location);
     for (list, want) in [
         (&fs.custom_read, Access::ReadOnly),
         (&fs.custom_write, Access::ReadWrite),
     ] {
         for raw in list {
             let path = sam_core::util::expand_home(raw);
+            let bound = sam_core::places::resolve(&path);
             // A writable folder in a start place is shown read-only, also
             // inside a writable home (owner decision 9 of 2026-11-23).
-            let in_start_place = sam_core::places::start_place_of_write_grant(&path, &host.home);
+            let in_start_place =
+                sam_core::places::start_place_of_bound_write_grant(&path, &bound, &host.home);
+            // In SAM's own folders, wherever they are kept, nothing is
+            // shown: asked as the sandbox asks it, so the check never
+            // expects a folder the sandbox leaves out (independent review
+            // of decision 9: SAM's data kept in `~/Games/sam`).
+            let in_sams = if want == Access::ReadWrite {
+                sam_core::places::write_grant_in_sams_folders(
+                    &bound,
+                    in_start_place.as_ref(),
+                    &sam_dirs,
+                )
+            } else {
+                sam_core::places::inside_sams_folders(&bound, &sam_dirs)
+            };
             if path.is_dir() {
-                let want = if in_start_place
-                    .as_ref()
-                    .is_some_and(sam_core::places::is_sams_place)
-                {
-                    // In SAM's own folders: never shown.
+                let want = if in_sams {
                     Access::Hidden
                 } else if in_start_place.is_some() {
                     Access::ReadOnly
@@ -728,8 +741,8 @@ fn list_dev(dir: &str, prefix: &str) -> Vec<PathBuf> {
 /// passing check with the same key needs no repeat. An updated kernel or
 /// Bubblewrap, or a rebuilt SAM (all development builds carry the same
 /// version number), is checked again (audit: the key left them out).
-pub fn check_key(app: &AppEntry, cfg: &Config, host: &HostInfo) -> String {
-    let planned = plan(&app.profile.permissions, cfg, host);
+pub fn check_key(app: &AppEntry, cfg: &Config, paths: &Paths, host: &HostInfo) -> String {
+    let planned = plan(&app.profile.permissions, cfg, paths, host);
     check_key_of(app, cfg, host, &planned)
 }
 
@@ -842,7 +855,7 @@ fn wayland_context_result(made: bool, failed: bool) -> Option<ProbeResult> {
 
 /// Runs the sandbox check for an app.
 pub fn verify(app: &AppEntry, cfg: &Config, paths: &Paths, host: &HostInfo) -> Result<Outcome> {
-    let plan = plan(&app.profile.permissions, cfg, host);
+    let plan = plan(&app.profile.permissions, cfg, paths, host);
     // The key of the plan that runs, not of one made afterwards.
     let key = check_key_of(app, cfg, host, &plan);
     let prepared = prepare(
@@ -963,6 +976,17 @@ mod tests {
         h
     }
 
+    /// SAM's own folders where no test grants anything; a case that needs
+    /// them somewhere sets its own.
+    fn sam_paths() -> Paths {
+        Paths {
+            config_dir: PathBuf::from("/nonexistent/sam-test/config"),
+            data_dir: PathBuf::from("/nonexistent/sam-test/data"),
+            applications_dir: PathBuf::from("/nonexistent/sam-test/applications"),
+            runtime_root: None,
+        }
+    }
+
     fn folder(plan: &ProbePlan, title: &str) -> Access {
         match plan
             .checks
@@ -997,7 +1021,7 @@ mod tests {
         let plan_of = |f: &dyn Fn(&mut PermissionSet)| {
             let mut p = PermissionSet::strict_gui();
             f(&mut p);
-            plan(&p, &cfg, &h)
+            plan(&p, &cfg, &sam_paths(), &h)
         };
         // Private home, Documents read-only.
         let pl = plan_of(&|p| p.filesystem.documents = Perm::Ro);
@@ -1056,7 +1080,7 @@ mod tests {
         // the home's check, not a folder check of its own.
         let mut h2 = h.clone();
         h2.xdg_dirs.insert("desktop".into(), h2.home.clone());
-        let pl = plan(&PermissionSet::strict_gui(), &cfg, &h2);
+        let pl = plan(&PermissionSet::strict_gui(), &cfg, &sam_paths(), &h2);
         assert!(!pl.checks.iter().any(|c| c.title == "Desktop folder"));
         let pl = plan_of(&|p| p.filesystem.custom_write = vec![inside.clone()]);
         assert_eq!(
@@ -1088,6 +1112,50 @@ mod tests {
         }
     }
 
+    /// An extra folder inside SAM's own folders kept in a place of the
+    /// person's choosing (SAM's data in `~/Games/sam`) is expected hidden,
+    /// read-only or writable, with or without the whole home: the sandbox
+    /// does not show it, and the check asks SAM's folders as the sandbox
+    /// does. Before, only `~/.config/sam` and `~/.local/share/sam` were
+    /// known, so the check expected the folder shown and failed a sandbox
+    /// that was right (independent review of decision 9). A folder next to
+    /// SAM's stays as granted.
+    #[test]
+    fn the_check_expects_no_folder_inside_sams_folders_wherever_they_are_kept() {
+        let t = tempfile::tempdir().unwrap();
+        let h = host_in(t.path());
+        let cfg = Config::default();
+        let paths = Paths {
+            data_dir: h.home.join("Games/sam"),
+            ..sam_paths()
+        };
+        let title = |p: &Path| format!("Extra folder {}", sam_core::util::tildify(p));
+        let saves = h.home.join("Games/sam/saves");
+        let shared = h.home.join("Games/sam/shared");
+        let next_to = h.home.join("Games/other");
+        for d in [&saves, &shared, &next_to] {
+            fs::create_dir_all(d).unwrap();
+        }
+        for home in [false, true] {
+            let mut p = PermissionSet::strict_gui();
+            p.filesystem.home = home;
+            p.filesystem.home_access = Perm::Rw;
+            p.filesystem.custom_write = vec![
+                saves.to_string_lossy().into_owned(),
+                next_to.to_string_lossy().into_owned(),
+            ];
+            p.filesystem.custom_read = vec![shared.to_string_lossy().into_owned()];
+            let pl = plan(&p, &cfg, &paths, &h);
+            assert_eq!(folder(&pl, &title(&saves)), Access::Hidden, "home {home}");
+            assert_eq!(folder(&pl, &title(&shared)), Access::Hidden, "home {home}");
+            assert_eq!(
+                folder(&pl, &title(&next_to)),
+                Access::ReadWrite,
+                "home {home}"
+            );
+        }
+    }
+
     /// Network, display, sound, the session bus, the SSH agent, variables
     /// and the security layers: the check expects each only where both the
     /// setting and this computer provide it.
@@ -1101,13 +1169,13 @@ mod tests {
         // Network: "This computer only" plans "No internet"; full never "No network".
         let mut q = p.clone();
         q.network.mode = NetworkMode::Localhost;
-        assert!(plan(&q, &cfg, &h)
+        assert!(plan(&q, &cfg, &sam_paths(), &h)
             .checks
             .iter()
             .any(|c| c.id == "net" && c.title == "No internet"));
         q.network.mode = NetworkMode::Full;
         assert!(!matches!(
-            plan(&q, &cfg, &h)
+            plan(&q, &cfg, &sam_paths(), &h)
                 .checks
                 .iter()
                 .find(|c| c.id == "net")
@@ -1116,7 +1184,7 @@ mod tests {
         ));
         q.network.mode = NetworkMode::None;
         assert!(matches!(
-            test_of(&plan(&q, &cfg, &h), "net"),
+            test_of(&plan(&q, &cfg, &sam_paths(), &h), "net"),
             ProbeTest::NoNetwork
         ));
 
@@ -1126,7 +1194,7 @@ mod tests {
         q.display.x11 = true;
         q.audio.enabled = true;
         let expects = |q: &PermissionSet, h: &HostInfo| {
-            let pl = plan(q, &cfg, h);
+            let pl = plan(q, &cfg, &sam_paths(), h);
             let w = matches!(test_of(&pl, "wayland"), ProbeTest::Wayland { expect: true });
             let x = matches!(test_of(&pl, "x11"), ProbeTest::X11 { expect: true });
             let a = matches!(test_of(&pl, "audio"), ProbeTest::Audio { expect: true });
@@ -1172,7 +1240,7 @@ mod tests {
         // with its proxy installed.
         let bus = |q: &PermissionSet, h: &HostInfo| {
             matches!(
-                test_of(&plan(q, &cfg, h), "bus"),
+                test_of(&plan(q, &cfg, &sam_paths(), h), "bus"),
                 ProbeTest::SessionBus { expect: true }
             )
         };
@@ -1200,7 +1268,7 @@ mod tests {
         // SSH agent: setting and agent together.
         let agent = |q: &PermissionSet, h: &HostInfo| {
             matches!(
-                test_of(&plan(q, &cfg, h), "ssh-agent"),
+                test_of(&plan(q, &cfg, &sam_paths(), h), "ssh-agent"),
                 ProbeTest::Env {
                     expect: Some(_),
                     ..
@@ -1219,7 +1287,7 @@ mod tests {
         for n in ["_OK", "Ok1", "1BAD", "BAD-NAME", ""] {
             q.environment.set.insert(n.to_string(), "v".into());
         }
-        let pl = plan(&q, &cfg, &h);
+        let pl = plan(&q, &cfg, &sam_paths(), &h);
         let named: Vec<_> = pl
             .checks
             .iter()
@@ -1229,7 +1297,7 @@ mod tests {
         assert_eq!(named, ["Variable Ok1", "Variable _OK"]);
 
         // The GPU: setting and device together (whatever this computer has).
-        let gpu = |q: &PermissionSet| match test_of(&plan(q, &cfg, &h), "gpu") {
+        let gpu = |q: &PermissionSet| match test_of(&plan(q, &cfg, &sam_paths(), &h), "gpu") {
             ProbeTest::Present { expect, .. } => *expect,
             t => panic!("{t:?}"),
         };
@@ -1242,7 +1310,7 @@ mod tests {
         h.sockets.dbus_system = Some("/run/dbus/system_bus_socket".into());
         let sysbus = |q: &PermissionSet| {
             matches!(
-                test_of(&plan(q, &cfg, &h), "sysbus"),
+                test_of(&plan(q, &cfg, &sam_paths(), &h), "sysbus"),
                 ProbeTest::Present { expect: true, .. }
             )
         };
@@ -1254,7 +1322,7 @@ mod tests {
         // Nested sandboxes: blocked unless allowed.
         let blocked = |q: &PermissionSet| {
             matches!(
-                test_of(&plan(q, &cfg, &h), "userns"),
+                test_of(&plan(q, &cfg, &sam_paths(), &h), "userns"),
                 ProbeTest::UserNamespaces { blocked: true }
             )
         };
@@ -1266,7 +1334,7 @@ mod tests {
 
         // Security layers: settings, configuration and the kernel together.
         let layers = |q: &PermissionSet, c: &Config, h: &HostInfo| {
-            let pl = plan(q, c, h);
+            let pl = plan(q, c, &sam_paths(), h);
             (
                 matches!(
                     test_of(&pl, "landlock"),
@@ -1328,7 +1396,7 @@ mod tests {
         const KWIN: &str = "org.kde.KWin";
         // Name → expected reachable, for every name the plan checks.
         let names = |q: &PermissionSet| -> Vec<(String, bool)> {
-            plan(q, &cfg, &h)
+            plan(q, &cfg, &sam_paths(), &h)
                 .checks
                 .into_iter()
                 .filter_map(|c| match c.test {
@@ -1426,7 +1494,7 @@ mod tests {
         no_proxy.tools.xdg_dbus_proxy = None;
         let mut f = PermissionSet::strict_gui();
         f.dbus.session.mode = DbusMode::Filtered;
-        assert!(!plan(&f, &cfg, &no_proxy)
+        assert!(!plan(&f, &cfg, &sam_paths(), &no_proxy)
             .checks
             .iter()
             .any(|c| matches!(c.test, ProbeTest::BusName { .. })));
@@ -1441,7 +1509,7 @@ mod tests {
         let app = AppEntry::default();
         let cfg = Config::default();
         let host = sam_core::sandbox::sample_context().host;
-        let key = |h: &HostInfo| check_key(&app, &cfg, h);
+        let key = |h: &HostInfo| check_key(&app, &cfg, &sam_paths(), h);
         let same = key(&host);
         assert_eq!(key(&host.clone()), same, "the same computer");
         type Change = fn(&mut HostInfo);
@@ -1484,7 +1552,7 @@ mod tests {
             version: None,
         });
         let key = |h: &HostInfo| {
-            let planned = plan(&app.profile.permissions, &cfg, h);
+            let planned = plan(&app.profile.permissions, &cfg, &sam_paths(), h);
             check_key_with(
                 &app,
                 &cfg,
@@ -1517,7 +1585,7 @@ mod tests {
         let h = host_in(t.path());
         let (cfg, app) = (Config::default(), AppEntry::default());
         let key = |h: &HostInfo| {
-            let planned = plan(&app.profile.permissions, &cfg, h);
+            let planned = plan(&app.profile.permissions, &cfg, &sam_paths(), h);
             check_key_with(&app, &cfg, h, None, None, &planned)
         };
         let before = key(&h);
@@ -1580,13 +1648,18 @@ mod tests {
             version: None,
         });
         let expect = |h: &HostInfo| {
-            plan(&PermissionSet::strict_gui(), &Config::default(), h)
-                .checks
-                .into_iter()
-                .find_map(|c| match c.test {
-                    ProbeTest::SessionBus { expect } => Some(expect),
-                    _ => None,
-                })
+            plan(
+                &PermissionSet::strict_gui(),
+                &Config::default(),
+                &sam_paths(),
+                h,
+            )
+            .checks
+            .into_iter()
+            .find_map(|c| match c.test {
+                ProbeTest::SessionBus { expect } => Some(expect),
+                _ => None,
+            })
         };
         assert_eq!(expect(&h), Some(true), "the socket without an address");
         h.sockets.dbus_session = None;
@@ -1618,7 +1691,7 @@ mod tests {
         let cfg = Config::default();
         let mut p = PermissionSet::strict_gui();
         let abstract_names = |p: &PermissionSet, h: &HostInfo| -> Vec<(String, String)> {
-            plan(p, &cfg, h)
+            plan(p, &cfg, &sam_paths(), h)
                 .checks
                 .into_iter()
                 .filter_map(|c| match c.test {

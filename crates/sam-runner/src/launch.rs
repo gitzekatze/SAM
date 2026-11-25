@@ -509,11 +509,7 @@ pub fn prepare(
         tracer: opts.tracer.clone(),
         extra_binds: opts.extra_binds.clone(),
         appdir_overlay: None,
-        sam_dirs: vec![
-            paths.config_dir.clone(),
-            paths.data_dir.clone(),
-            paths.extracted_root(&cfg.extraction.location),
-        ],
+        sam_dirs: paths.sam_dirs(&cfg.extraction.location),
         sam_programs: sam_core::util::own_programs(),
         room_socket: None,
     };
@@ -1183,7 +1179,7 @@ fn run_once(
         // SAFETY: only async-signal-safe calls (setsid, ioctl).
         unsafe { cmd.pre_exec(Pty::become_controlling_terminal) };
         if mode == TerminalMode::Relay && app.metadata.terminal && !opts.quiet {
-            errln!("{}", terminal_banner(app, &prepared));
+            errln!("{}", terminal_banner(app, &prepared.context));
         }
     } else {
         cmd.stdin(if pty::is_tty(0) {
@@ -1599,8 +1595,7 @@ fn learn_names(
 }
 
 /// The line a terminal program's start shows first: what it can reach.
-fn terminal_banner(app: &AppEntry, prepared: &Prepared) -> String {
-    let ctx = &prepared.context;
+fn terminal_banner(app: &AppEntry, ctx: &LaunchContext) -> String {
     let fs = &ctx.permissions.filesystem;
     let mut sees: Vec<String> = Vec::new();
     if fs.home {
@@ -1613,7 +1608,9 @@ fn terminal_banner(app: &AppEntry, prepared: &Prepared) -> String {
             }
         }
     }
-    sees.extend(fs.custom_read.iter().chain(&fs.custom_write).cloned());
+    // Only what the sandbox shows: never a grant inside SAM's own folders
+    // (independent review of decision 9).
+    sees.extend(sam_sandbox::shown_extra_folders(ctx));
     sees.extend(
         sam_sandbox::opened_paths(ctx)
             .iter()
@@ -2900,6 +2897,35 @@ mod tests {
             !paths.runtime_dir(&app.id).exists(),
             "nothing was set up for a start"
         );
+    }
+
+    /// A terminal app's start line names the extra folders the sandbox
+    /// shows, never one inside SAM's own folders, which the sandbox leaves
+    /// out wherever SAM keeps them (SAM's data in `~/Games/sam`): read-only
+    /// or writable, it was listed as seen (independent review of
+    /// decision 9).
+    #[test]
+    fn a_terminal_apps_start_line_names_only_the_folders_it_sees() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = std::fs::canonicalize(tmp.path()).unwrap().join("home");
+        let at = |rel: &str| home.join(rel).to_string_lossy().into_owned();
+        for d in ["Games/sam/saves", "Games/sam/shared", "work", "notes"] {
+            std::fs::create_dir_all(home.join(d)).unwrap();
+        }
+        let mut ctx = sam_core::sandbox::sample_context();
+        ctx.host.home = home.clone();
+        ctx.owd = home.clone();
+        ctx.sam_dirs = vec![home.join("Games/sam")];
+        ctx.permissions.filesystem.custom_write = vec![at("Games/sam/saves"), at("work")];
+        ctx.permissions.filesystem.custom_read = vec![at("Games/sam/shared"), at("notes")];
+        let app = AppEntry {
+            name: "Tool".into(),
+            ..Default::default()
+        };
+        let line = terminal_banner(&app, &ctx);
+        assert!(line.contains(&at("work")), "{line}");
+        assert!(line.contains(&at("notes")), "{line}");
+        assert!(!line.contains(&at("Games/sam")), "{line}");
     }
 
     /// Bubblewrap setup errors are told apart from errors of the app itself.
