@@ -757,7 +757,12 @@ only") would quit at once and end the whole sandbox with it, with no time
 to save (`closing_a_this_computer_only_app_gives_it_time_to_save`). An app
 that does not quit within the 10 seconds is ended, and SAM still finishes
 its launch: the last look at the start places, the record and the log
-(`closing_an_app_that_ignores_it_still_finishes_its_launch`).
+(`closing_an_app_that_ignores_it_still_finishes_its_launch`). Closing
+waits for and signals only the launches running when it began, each
+through a handle on that very process (a pidfd, on Linux 5.3 and later),
+so a launch started meanwhile is left alone and a process that got an
+ended launcher's process number is never hit
+(`a_launch_started_while_closing_is_left_alone`).
 
 An app started with its input from a pipe or a file (`cat data.json |
 sam-jail run jq .`, `< file`, a script), or with its output going to a

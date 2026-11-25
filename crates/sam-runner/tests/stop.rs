@@ -4,6 +4,9 @@
 //! `sam-jail-run`, like menu entries and the window do. Uses a fake `$HOME`.
 //! Skipped when Bubblewrap cannot run here or SAM's helper is not found.
 //! Runs the same on every computer (testenv::isolate_command).
+//! A launch started while closing runs uses stand-ins for the runners
+//! (shells that hold their launch's lock as sam-jail-run does) and runs
+//! everywhere, without Bubblewrap.
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
 
 use std::fs;
@@ -134,4 +137,111 @@ fn stop_closes_running_apps() {
     app.stop(&id).unwrap();
     child.wait().unwrap();
     assert_eq!(app.stop(&id).unwrap(), 0);
+}
+
+/// A stand-in for a launch's runner (sam-jail-run): a shell that holds its
+/// launch's `running.lock` open and locked, in the launch folder named
+/// after its process number, as a real launch does. `script` runs in it,
+/// with `marks` as `$0`.
+fn stand_in_runner(
+    base: &std::path::Path,
+    marks: &std::path::Path,
+    script: &str,
+) -> (Child, std::path::PathBuf) {
+    use std::os::fd::AsRawFd;
+    // Made under another name first: the folder's name needs the
+    // process number, known once it runs.
+    let pending = base.join("pending");
+    fs::create_dir_all(&pending).unwrap();
+    let lock = fs::File::create(pending.join("running.lock")).unwrap();
+    // SAFETY: `lock` is an open file; flock only takes its descriptor.
+    assert_eq!(unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) }, 0);
+    // The shell keeps the locked file open as its input.
+    let child = Command::new("sh")
+        .arg("-c")
+        .arg(script)
+        .arg(marks)
+        .stdin(Stdio::from(lock))
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let dir = base.join(format!("l{}-0", child.id()));
+    fs::rename(&pending, &dir).unwrap();
+    (child, dir)
+}
+
+/// Closing an app closes the launches running when it began and waits
+/// only for those: a launch started meanwhile is neither asked to quit nor
+/// waited for, so closing ends once the earlier launch has (review B2 S6,
+/// R85: closing waited for every launch of the app, so a quick start again
+/// kept it waiting until it failed after 28 seconds, and its signals went
+/// to the earlier runner's process number long after the check).
+#[test]
+fn a_launch_started_while_closing_is_left_alone() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    let img = root.join("Again-1.0-x86_64.AppImage");
+    build(&img, &FixtureSpec::hello("Again")).unwrap();
+    let app = Sam::with_paths(Paths::rooted(&root.join("sam"))).unwrap();
+    let id = app
+        .add(
+            &img,
+            &AddOptions {
+                launcher: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .entry
+        .id;
+    let base = app.paths.runtime_dir(&id);
+    let marks = root.join("marks");
+    fs::create_dir_all(&marks).unwrap();
+    // The earlier launch takes two seconds to finish once asked.
+    let (mut first, first_dir) = stand_in_runner(
+        &base,
+        &marks,
+        "trap 'sleep 2; exit 0' TERM; while :; do sleep 0.1; done",
+    );
+    assert_eq!(app.running(&id), [first.id()]);
+    let (paths, query) = (app.paths.clone(), id.clone());
+    let closing = std::thread::spawn(move || {
+        let t = Instant::now();
+        let closed = Sam::with_paths(paths)
+            .unwrap()
+            .stop(&query)
+            .map_err(|e| e.to_string());
+        (closed, t.elapsed())
+    });
+    // The next launch starts once the closing has chosen its launches.
+    let end = Instant::now() + Duration::from_secs(10);
+    while !first_dir.join(sam_runner::launch::STOP_MARKER).exists() {
+        assert!(Instant::now() < end, "the closing never chose the launch");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let (mut second, second_dir) = stand_in_runner(
+        &base,
+        &marks,
+        "trap 'touch \"$0/second-asked\"' TERM; while :; do sleep 0.1; done",
+    );
+    let (closed, took) = closing.join().unwrap();
+    // A signal reaches the shell's trap after its current pause.
+    std::thread::sleep(Duration::from_millis(300));
+    let second_runs = second.try_wait().unwrap().is_none();
+    let second_asked = marks.join("second-asked").exists();
+    let second_marked = second_dir.join(sam_runner::launch::STOP_MARKER).exists();
+    let _ = second.kill();
+    let _ = second.wait();
+    let _ = first.kill();
+    let first_ended = first.wait().unwrap();
+    assert_eq!(closed, Ok(1), "the earlier launch was closed");
+    assert!(
+        took < Duration::from_secs(8),
+        "closing waited for the later launch: {took:?}"
+    );
+    assert!(first_ended.success(), "the earlier launch quit by itself");
+    assert!(second_runs, "the later launch was ended");
+    assert!(!second_asked, "the later launch was asked to quit");
+    assert!(!second_marked, "the later launch was marked as closed");
 }
