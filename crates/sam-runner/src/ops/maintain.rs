@@ -1244,7 +1244,9 @@ impl Sam {
     /// update source written into it, and unless `check_only` downloads the
     /// new version (only the changed parts when possible), checks it, and
     /// puts it next to the old one under its published name. The old file
-    /// moves to `<data>/update-backups/sam/`. SAM must be restarted.
+    /// moves to `<data>/update-backups/sam/`. SAM must be restarted. It
+    /// works from a copy of `appimage` in SAM's own folder, and only one
+    /// update of SAM runs at a time; a second is refused at once.
     pub fn self_update(&self, appimage: &Path, check_only: bool) -> Result<SelfUpdate> {
         self.self_update_with_keys(appimage, check_only, crate::release_key::RELEASE_KEYS)
     }
@@ -1264,7 +1266,50 @@ impl Sam {
                 )
             );
         }
-        let Some(p) = crate::updates::newest(appimage)? else {
+        if check_only {
+            // A check only reads the update information and the checksum
+            // (nothing is mapped) and writes nothing, so it needs neither
+            // the lock nor a copy.
+            return self.self_update_from(appimage, appimage, true, keys);
+        }
+        // One update of SAM at a time, from start to end: a second one (the
+        // window and the command line at once) shares `downloads/sam` and
+        // `update-backups/sam` and would delete the first one's files, the
+        // backup of the old SAM among them (review B2 S6, R95).
+        let Some(_held) = crate::app_lock::for_self_update(&self.paths)? else {
+            bail!(
+                "{}",
+                sam_core::i18n::tr(
+                    "SAM is already updating itself. Wait until that is done, then try again."
+                )
+            );
+        };
+        // Like an app's update, SAM's update works from a copy of its
+        // AppImage in SAM's own folder, which nothing else can change: the
+        // update information, the checksum, the old blocks of a partial
+        // download (mapped into memory, where a file shortened meanwhile
+        // crashes SAM) and the running version's signature all come from
+        // that copy. The file in the person's folder is only moved into
+        // the backups at the end (review B2 S6, R87).
+        let work = self.download_folder("sam.installed")?;
+        let installed = work.join("sam.AppImage");
+        let result = fingerprint::copy_with_fingerprint(appimage, &installed, 0o700)
+            .and_then(|_| self.self_update_from(appimage, &installed, false, keys));
+        let _ = remove_tree(&work);
+        result
+    }
+
+    /// [`self_update_with_keys`](Self::self_update_with_keys), reading SAM's
+    /// running version from `installed` (the copy, or `appimage` itself for
+    /// a check); `appimage` is the file that is replaced.
+    fn self_update_from(
+        &self,
+        appimage: &Path,
+        installed: &Path,
+        check_only: bool,
+        keys: &[&str],
+    ) -> Result<SelfUpdate> {
+        let Some(p) = crate::updates::newest(installed)? else {
             return Ok(SelfUpdate {
                 state: "current".into(),
                 latest: None,
@@ -1316,7 +1361,7 @@ impl Sam {
         let name = update_file_name(p.filename.as_deref(), &old_name, dir);
         let target = dir.join(&name);
         let tmp = self.download_folder("sam")?.join(&name);
-        let fetched = crate::updates::download_update(&p, appimage, &tmp)?;
+        let fetched = crate::updates::download_update(&p, installed, &tmp)?;
         let placed = (|| -> Result<()> {
             if !inspect(&tmp)?.is_appimage() {
                 bail!(
@@ -1328,7 +1373,7 @@ impl Sam {
             // with an older release than the one running.
             let new_sig = self.check_signature(&tmp, true);
             crate::release_key::check(&new_sig, keys)?;
-            let running = self.check_signature(appimage, true);
+            let running = self.check_signature(installed, true);
             if let Some((was, now)) = older_signed_version(Some(&running), &new_sig) {
                 return Err(older_version_error(was, now).into());
             }

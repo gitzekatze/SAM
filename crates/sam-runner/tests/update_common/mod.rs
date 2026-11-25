@@ -28,6 +28,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         rng = self.headers.get("Range")
         with open(log, "a") as f:
             f.write(f"{self.tag}{self.path} {rng}\n")
+        # A test's hook: a file "swap-on-request" next to the served folder
+        # holds two paths; the first request moves the first file over the
+        # second (a file replaced while SAM is working).
+        hook = os.path.join(os.path.dirname(root), "swap-on-request")
+        if os.path.exists(hook):
+            src, dst = open(hook).read().split("\n")[:2]
+            os.replace(src, dst)
+            os.remove(hook)
         # /redirect/NAME sends the client to NAME on the plain HTTP server.
         if self.path.startswith("/redirect/"):
             self.send_response(302)
