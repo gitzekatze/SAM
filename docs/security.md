@@ -1191,11 +1191,13 @@ switch with the same word the assessment uses (a test compares them,
 **One rule for asking.** A change that adds anything rated *Think twice* or
 *Dangerous* asks first, wherever it is made: a switch in the window, the
 Permission Manager for several apps at once, a preset, or the command line
-(`sam-jail set`, `profile set`, `group set` refuse it without `--yes`). The
-rule is worked out from the settings themselves, so it holds even when the
-window's list of permissions fails to load. Raw Bubblewrap arguments count
-by what they say: other arguments ask again, even when the app already had
-some.
+(`sam-jail set`, `profile set`, `group set` refuse it without `--yes`). A
+first-run hint rated *Think twice* or *Dangerous* asks in the same way
+(`sam-jail hints APP --apply ID` refuses it without `--yes`), and a hint is
+never rated below what applying it adds. The rule is worked out from the
+settings themselves, so it holds even when the window's list of
+permissions fails to load. Raw Bubblewrap arguments count by what they
+say: other arguments ask again, even when the app already had some.
 
 **Settings nobody has confirmed** do not start. SAM's recommendation is
 partly chosen from what the app says about itself (its name and

@@ -241,6 +241,47 @@ fn a_hint_applies_only_what_was_asked_for() {
     );
 }
 
+/// `hints APP --apply ID` applies a hint rated Think twice or Dangerous
+/// only with --yes, as `set` does: without it the network hint is refused
+/// with `hint-needs-yes`, names the hint and changes nothing; with it the
+/// network is on. A Medium hint ("files") needs no --yes (owner decision
+/// 13 of 2026-11-23: one command gave the app the network unasked).
+#[test]
+fn a_risky_hint_is_applied_only_with_yes() {
+    let e = Env::new();
+    let game = e.fixture("apps", "Racer", "Game;");
+    let id = e.add(&game, true);
+    let network = e.json(&["hints", &id], None)["hints"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|h| h["id"] == "network")
+        .cloned()
+        .expect("a game without network is offered it");
+    assert!(
+        network["risk"] == "high" || network["risk"] == "dangerous",
+        "{network}"
+    );
+    let before = e.json(&["get", &id], None);
+    let o = e.run(&["--json", "hints", &id, "--apply", "network"], None);
+    assert!(!o.status.success(), "refused without --yes");
+    let v: Value = serde_json::from_slice(&o.stdout).unwrap();
+    assert_eq!(v["code"], "hint-needs-yes", "{v}");
+    let msg = v["error"].as_str().unwrap();
+    assert!(
+        msg.contains(network["title"].as_str().unwrap()) && msg.contains("--yes"),
+        "{msg}"
+    );
+    assert_eq!(e.json(&["get", &id], None), before, "nothing changed");
+
+    e.json(&["hints", &id, "--apply", "files"], None);
+    assert_eq!(e.json(&["get", &id, "filesystem.downloads"], None), "rw");
+    assert_eq!(e.json(&["get", &id, "network.mode"], None), "none");
+
+    e.json(&["hints", &id, "--apply", "network", "--yes"], None);
+    assert_eq!(e.json(&["get", &id, "network.mode"], None), "full");
+}
+
 /// `menu list` on the terminal names an unsandboxed menu entry that starts
 /// the app, and after `menu hide` the hidden one; it says that no other
 /// entry starts the app only when there is none.

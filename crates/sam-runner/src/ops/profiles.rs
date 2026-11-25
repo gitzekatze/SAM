@@ -302,43 +302,7 @@ impl Sam {
             on_trial: as_repair,
             ..Default::default()
         };
-        match &sug.action {
-            FixAction::Set { key, value } => {
-                undo.before
-                    .push((key.clone(), e.profile.permissions.get_key(key)?));
-                e.profile.permissions.set_key(key, value)?
-            }
-            FixAction::Add { key, value } => {
-                let mut list: Vec<String> = serde_json::from_value(
-                    e.profile.permissions.get_key(key)?,
-                )
-                .with_context(|| sam_core::i18n::trf("{key} is not a list", &[("key", &key)]))?;
-                if !list.contains(value) {
-                    list.push(value.clone());
-                    undo.added = Some(value.clone());
-                }
-                e.profile
-                    .permissions
-                    .set_key(key, &serde_json::to_string(&list)?)?;
-            }
-            FixAction::Compat => {
-                if !e.profile.compatibility_mode {
-                    e.profile.before_compat = Some(e.profile.permissions.clone());
-                }
-                e.profile.compatibility_mode = true;
-                e.profile.permissions = compatibility_profile(&e.profile.permissions);
-            }
-            FixAction::AddArg { value } => {
-                if !e.profile.args.contains(value) {
-                    e.profile.args.push(value.clone());
-                    undo.added = Some(value.clone());
-                }
-            }
-            FixAction::None => bail!(
-                "“{}” is an explanation only; there is nothing to apply",
-                sug.title
-            ),
-        }
+        crate::repair::apply_step(&mut e, sug, &mut undo)?;
         e.profile.preset = None;
         if as_repair && !e.repairs_applied.contains(&sug.id) {
             e.repairs_applied.push(sug.id.clone());

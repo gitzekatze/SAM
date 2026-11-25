@@ -144,7 +144,7 @@ dotted form shown there (`network.mode`, `audio.pipewire`, …).
 | `args APP --stdin` | the launch arguments (JSON array on stdin) |
 | `review APP` | app summary |
 | `verify APP` or `verify PATH --permissions-stdin` | `{report, record}`: every check with expected and observed result |
-| `hints APP [--apply ID]` | `{hints}` |
+| `hints APP [--apply ID] [--yes]` | `{hints}`; a hint rated *Think twice* or *Dangerous*, or one that turns on compatibility mode, is refused with the code `hint-needs-yes` unless `--yes` is given |
 | `repair APP [--next/--undo/--apply ID]` | `{applied, findings, steps, applied_steps, can_undo}` |
 | `selftest [APP…]` | `{results}` |
 | `menu list/hide/restore APP` | `{visible, hidden}` |

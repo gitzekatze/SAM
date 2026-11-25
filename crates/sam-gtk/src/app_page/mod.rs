@@ -953,6 +953,37 @@ mod tests {
         );
     }
 
+    /// The window confirms a hint for the command line with --yes exactly
+    /// when it has asked: a hint rated Think twice or Dangerous, or one
+    /// that turns on compatibility mode, but not a Medium one (owner
+    /// decision 13 of 2026-11-23: `hints --apply` refuses a risky hint
+    /// without --yes). A repair step is always confirmed, as before.
+    #[test]
+    fn the_window_confirms_a_hint_exactly_when_it_asked() {
+        use super::data::{apply_args, asks_first};
+        let hint =
+            |risk: &str, kind: &str| json!({"id": "h", "risk": risk, "action": {"kind": kind}});
+        assert!(asks_first(&hint("high", "set")));
+        assert!(asks_first(&hint("dangerous", "set")));
+        assert!(asks_first(&hint("medium", "compat")));
+        assert!(!asks_first(&hint("medium", "set")));
+        assert!(!asks_first(&hint("low", "add-arg")));
+        for (risk, kind) in [("high", "set"), ("medium", "set"), ("medium", "compat")] {
+            let asked = asks_first(&hint(risk, kind));
+            let args = apply_args("app-1", "h", false, asked);
+            assert_eq!(&args[..4], ["hints", "app-1", "--apply", "h"]);
+            assert_eq!(
+                args.iter().any(|a| a == "--yes"),
+                asked,
+                "{risk} {kind}: {args:?}"
+            );
+        }
+        assert_eq!(
+            apply_args("app-1", "x11", true, false),
+            ["repair", "app-1", "--apply", "x11", "--yes"]
+        );
+    }
+
     /// "Confirm Settings" names what the changed settings let the app do
     /// before it may start again: full home and X11 written into the record
     /// from outside appear in the question (audit G-F12/13: one click

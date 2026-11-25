@@ -128,6 +128,14 @@ fn hints(e: &AppEntry, chromium_blocked: bool) -> Vec<Suggestion> {
     // A step tried at a start that did not help is not offered again,
     // here either (only the ladder knew, so it came back as a hint).
     out.retain(|st| !e.tried_repairs.contains(&st.id));
+    // A hint is never labelled lower than what applying it adds: the
+    // network next to a keyring or home already allowed is Dangerous
+    // together ("can send what it reads"), not just Think twice. The
+    // window and `hints --apply` ask by this label (owner decision 13 of
+    // 2026-11-23).
+    for st in &mut out {
+        st.risk = st.risk.max(level_added(e, st));
+    }
     out
 }
 
@@ -661,6 +669,70 @@ pub fn compat_step() -> Suggestion {
         FixAction::Compat,
         RiskLevel::Dangerous,
     )
+}
+
+/// Makes the change the hint or repair step `sug` stands for in the app's
+/// settings, and notes in `undo` what taking back exactly this step needs
+/// (the counterpart of [`revert_step`]). One place for it, so the risk
+/// label of a hint is checked against what applying it really changes
+/// (owner decision 13 of 2026-11-23).
+pub fn apply_step(
+    e: &mut AppEntry,
+    sug: &Suggestion,
+    undo: &mut sam_core::model::AppliedRepair,
+) -> anyhow::Result<()> {
+    use anyhow::Context;
+    match &sug.action {
+        FixAction::Set { key, value } => {
+            undo.before
+                .push((key.clone(), e.profile.permissions.get_key(key)?));
+            e.profile.permissions.set_key(key, value)?
+        }
+        FixAction::Add { key, value } => {
+            let mut list: Vec<String> = serde_json::from_value(e.profile.permissions.get_key(key)?)
+                .with_context(|| sam_core::i18n::trf("{key} is not a list", &[("key", &key)]))?;
+            if !list.contains(value) {
+                list.push(value.clone());
+                undo.added = Some(value.clone());
+            }
+            e.profile
+                .permissions
+                .set_key(key, &serde_json::to_string(&list)?)?;
+        }
+        FixAction::Compat => {
+            if !e.profile.compatibility_mode {
+                e.profile.before_compat = Some(e.profile.permissions.clone());
+            }
+            e.profile.compatibility_mode = true;
+            e.profile.permissions = sam_profile::compatibility_profile(&e.profile.permissions);
+        }
+        FixAction::AddArg { value } => {
+            if !e.profile.args.contains(value) {
+                e.profile.args.push(value.clone());
+                undo.added = Some(value.clone());
+            }
+        }
+        FixAction::None => anyhow::bail!(
+            "“{}” is an explanation only; there is nothing to apply",
+            sug.title
+        ),
+    }
+    Ok(())
+}
+
+/// The highest level among what applying `st` adds to the app's settings
+/// that asks first (Think twice or Dangerous); Low when it adds none of
+/// that, or cannot be applied at all (then it grants nothing either).
+fn level_added(e: &AppEntry, st: &Suggestion) -> RiskLevel {
+    let mut after = e.clone();
+    if apply_step(&mut after, st, &mut Default::default()).is_err() {
+        return RiskLevel::Low;
+    }
+    sam_core::risk::new_risks(&e.profile.permissions, &after.profile.permissions)
+        .iter()
+        .map(|i| i.level)
+        .max()
+        .unwrap_or(RiskLevel::Low)
 }
 
 /// Puts back exactly what the applied repair step `r` changed (already
@@ -1332,6 +1404,95 @@ mod tests {
             ids(first_run_hints(&app(true))),
             ids(hints(&app(true), chromium_sandbox_blocked()))
         );
+    }
+
+    /// A first-run hint is never labelled lower than what applying it
+    /// grants: for every hint SAM offers (apps built to trigger each one,
+    /// alone and next to a home, a keyring or the network already
+    /// allowed, on a computer that blocks Chromium's own sandbox and on
+    /// one that does not), the hint's rating is at least the highest level
+    /// the change adds. The window and `hints --apply` ask by that rating
+    /// (owner decision 13 of 2026-11-23), so a hint labelled too low would
+    /// be applied without a question.
+    #[test]
+    fn a_hint_is_never_rated_below_what_it_grants() {
+        use sam_core::model::Requirements;
+        let mut seen = std::collections::BTreeSet::new();
+        let mut raised = Vec::new();
+        for category in ["game", "communication", "utility"] {
+            for (electron, network) in [(false, false), (false, true), (true, false)] {
+                for elf_count in [0, 1] {
+                    // What the app already has: nothing, its home, the
+                    // network, or the keyring and its session bus.
+                    for had in 0..4 {
+                        let mut e = AppEntry {
+                            category: category.into(),
+                            ..Default::default()
+                        };
+                        let p = &mut e.profile.permissions;
+                        *p = PermissionSet::strict_gui();
+                        p.dbus.session.mode = DbusMode::Filtered;
+                        match had {
+                            1 => p.filesystem.home = true,
+                            2 => p.network.mode = NetworkMode::Full,
+                            3 => p.integrations.keyring = true,
+                            _ => {}
+                        }
+                        e.detection = Some(sam_core::DependencyReport {
+                            elf_count,
+                            requirements: Requirements {
+                                electron,
+                                network,
+                                ..Default::default()
+                            },
+                            ..Default::default()
+                        });
+                        for blocked in [false, true] {
+                            for h in hints(&e, blocked) {
+                                let mut after = e.clone();
+                                apply_step(&mut after, &h, &mut Default::default())
+                                    .unwrap_or_else(|err| panic!("{}: {err:#}", h.id));
+                                let added = sam_core::risk::new_risks(
+                                    &e.profile.permissions,
+                                    &after.profile.permissions,
+                                );
+                                for item in &added {
+                                    assert!(
+                                        h.risk >= item.level,
+                                        "the hint {:?} is rated {:?} but adds {:?} ({:?}) for {category}, had {had}",
+                                        h.id,
+                                        h.risk,
+                                        item.title,
+                                        item.level
+                                    );
+                                }
+                                if matches!(h.action, FixAction::Compat) {
+                                    assert!(h.risk >= RiskLevel::High, "{}", h.id);
+                                }
+                                if added.iter().any(|i| i.level == RiskLevel::Dangerous) {
+                                    raised.push(h.id.clone());
+                                }
+                                seen.insert(h.id);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // Every hint SAM can offer came up here; a new one is added above.
+        let all = [
+            "chromium-no-sandbox",
+            "files",
+            "gpu",
+            "keyring",
+            "network",
+            "x11",
+        ];
+        assert_eq!(seen.iter().map(String::as_str).collect::<Vec<_>>(), all);
+        // The network next to a home or keyring, and the keyring next to
+        // the network, are Dangerous together: such hints came up.
+        assert!(raised.iter().any(|id| id == "network"), "{raised:?}");
+        assert!(raised.iter().any(|id| id == "keyring"), "{raised:?}");
     }
 
     /// The graphics hint is only for a windowed app that has no graphics
