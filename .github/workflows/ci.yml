@@ -35,6 +35,10 @@ jobs:
   changes:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    # To ask whether the pull request is a draft now (see DRAFT below).
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       code: ${{ steps.check.outputs.code }}
     steps:
@@ -45,8 +49,17 @@ jobs:
       - id: check
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-          DRAFT: ${{ github.event.pull_request.draft || false }}
+          PR: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ github.token }}
         run: |
+          # Whether the pull request is a draft now, asked of GitHub: the
+          # event's own record is frozen, so a run started while it was a
+          # draft and re-run after it was marked ready would skip again.
+          # When the answer cannot be had, every job runs.
+          DRAFT=false
+          if [ -n "$PR" ]; then
+            DRAFT=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq .draft 2>/dev/null) || DRAFT=false
+          fi
           docs='^(docs/|[^/]+\.md$|scripts/site\.py$|\.github/ISSUE_TEMPLATE/)'
           # Documents SAM builds in or its checks read: they count as code.
           code_docs='^docs/((guide|architecture|permissions)\.md|syscalls-reviewed\.txt|contracts\.toml|functions\.toml)$'
