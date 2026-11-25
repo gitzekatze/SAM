@@ -82,6 +82,38 @@ SAM gives it a terminal of its own: it cannot type commands into your shell, rea
 Besides the folders allowed below, it sees its private home and the files and folders you name when you start it (for example: hx notes.txt). \
 Not covered: output that misleads you (a fake prompt, a link whose text hides where it goes) and security bugs in your terminal program.";
 
+/// Extra writable folders that SAM shows read-only because they are a
+/// start place or lie inside one (`~/.config/fish/conf.d`): the window and
+/// `sam-jail info` say so before the start, with the words of the launch
+/// note (owner decision 9 of 2026-11-23). The rating stays as it is: the
+/// grant still names a sensitive place.
+fn read_only_write_grants(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
+    let home = ctx
+        .host
+        .map(|h| h.home.clone())
+        .unwrap_or_else(crate::util::home_dir);
+    p.filesystem
+        .custom_write
+        .iter()
+        .filter_map(|c| {
+            let grant = match c.strip_prefix("~/") {
+                Some(rest) => home.join(rest),
+                None if c == "~" => home.clone(),
+                None => crate::util::expand_home(c),
+            };
+            let found = crate::places::start_place_of_write_grant(&grant, &home)?;
+            Some(
+                Warning::warn(
+                    "start-place-read-only",
+                    "Shown read-only",
+                    crate::places::read_only_grant_note(c, &found),
+                )
+                .with_key("filesystem.custom_write"),
+            )
+        })
+        .collect()
+}
+
 pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
     let mut w = Vec::new();
     let ignored = crate::permissions::blocked_wildcards(&p.dbus.session);
@@ -141,6 +173,7 @@ pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
             "SSH keys, GnuPG keys or other credential stores are visible to the app.",
         ));
     }
+    w.extend(read_only_write_grants(p, ctx));
     for path in p
         .filesystem
         .custom_write
@@ -885,6 +918,48 @@ mod tests {
         let w = evaluate(&p, &ctx);
         let hit = find(&w, "audio-missing").expect("audio-missing");
         assert!(hit.message.contains("pipewire-pulse"), "{}", hit.message);
+    }
+
+    /// An extra writable folder inside a start place gets a warning that
+    /// SAM shows it read-only, named in the window and in `info` before the
+    /// start; an ordinary extra folder does not (owner decision 9 of
+    /// 2026-11-23).
+    #[test]
+    fn a_write_grant_inside_a_start_place_is_said_to_be_read_only() {
+        let t = tempfile::tempdir().unwrap();
+        let mut host = working_host();
+        host.home = std::fs::canonicalize(t.path()).unwrap().join("u");
+        for d in [".config/fish/conf.d", "work"] {
+            std::fs::create_dir_all(host.home.join(d)).unwrap();
+        }
+        std::os::unix::fs::symlink(host.home.join(".config/fish"), host.home.join("fishlink"))
+            .unwrap();
+        let ctx = WarningContext {
+            host: Some(&host),
+            ..WarningContext::all_enabled()
+        };
+        for grant in ["~/.config/fish/conf.d", "~/fishlink/conf.d"] {
+            let mut p = PermissionSet::strict_gui();
+            p.filesystem.custom_write = vec![grant.into(), "~/work".into()];
+            let w = evaluate(&p, &ctx);
+            let hits: Vec<&Warning> = w
+                .iter()
+                .filter(|w| w.code == "start-place-read-only")
+                .collect();
+            assert_eq!(hits.len(), 1, "{grant}: {:?}", codes(&w));
+            let hit = hits[0];
+            assert_eq!(hit.key.as_deref(), Some("filesystem.custom_write"));
+            assert_eq!(hit.severity, Severity::Warning);
+            assert!(
+                hit.message.contains(grant) && hit.message.contains("~/.config/fish"),
+                "{}",
+                hit.message
+            );
+            assert!(hit.message.contains("read-only"), "{}", hit.message);
+        }
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.custom_write = vec!["~/work".into()];
+        assert!(!codes(&evaluate(&p, &ctx)).contains(&"start-place-read-only"));
     }
 
     /// The X11 warning disappears when the user turns it off in the preferences.

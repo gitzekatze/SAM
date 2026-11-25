@@ -19,7 +19,7 @@ use std::path::{Component, Path, PathBuf};
 
 use anyhow::{Context, Result};
 use sam_core::permissions::*;
-use sam_core::places::{PROTECTED_RO, SENSITIVE_DOTFILES};
+use sam_core::places::{protected_places, resolve, start_place_of_write_grant, SENSITIVE_DOTFILES};
 use sam_core::util::expand_home;
 use sam_core::{BubblewrapStatus, HostInfo, LaunchContext, SandboxCommand};
 
@@ -211,64 +211,6 @@ const PROTECTED_CREATE_FILES: &[&str] = &[
     // audit S-F16, which assumed otherwise).
     ".config/user-dirs.dirs",
 ];
-
-/// The protected places relative to the home: `PROTECTED_RO`, and the same
-/// places under `XDG_CONFIG_HOME` and `XDG_DATA_HOME` when those point to
-/// other folders inside the home (desktops and programs follow them, so
-/// `~/cfg/autostart` starts programs as `~/.config/autostart` does; audit
-/// S-F6).
-fn protected_places(home: &Path) -> Vec<String> {
-    let var = |v: &str| std::env::var_os(v).map(PathBuf::from);
-    protected_places_with(home, var("XDG_CONFIG_HOME"), var("XDG_DATA_HOME"))
-}
-
-fn protected_places_with(
-    home: &Path,
-    config: Option<PathBuf>,
-    data: Option<PathBuf>,
-) -> Vec<String> {
-    let mut out: Vec<String> = PROTECTED_RO.iter().map(|p| p.to_string()).collect();
-    // Compared as written and by where they lead: the variable may name
-    // the home's real place (`/home/u` a link to `/data/u`), and a link on
-    // the way (`~/cfg` to `~/dotfiles/cfg`) must stay watched as well as
-    // the folder it leads to, since the desktop follows the name (review
-    // B2 R53). A name that is not text or holds `..` stops the start
-    // ([`odd_config_folder`]).
-    let homes = [home.to_path_buf(), resolve(home)];
-    for (dir, default) in [(config, ".config/"), (data, ".local/share/")] {
-        let Some(dir) = dir else {
-            continue;
-        };
-        let mut rels: Vec<String> = Vec::new();
-        for d in [dir.clone(), resolve(&dir)] {
-            for h in &homes {
-                let Some(r) = d
-                    .strip_prefix(h)
-                    .ok()
-                    .filter(|r| r.components().all(|c| matches!(c, Component::Normal(_))))
-                    .and_then(Path::to_str)
-                else {
-                    continue;
-                };
-                let r = r.trim_end_matches('/').to_string();
-                if !r.is_empty() && format!("{r}/") != default && !rels.contains(&r) {
-                    rels.push(r);
-                }
-            }
-        }
-        for rel in rels {
-            for p in PROTECTED_RO {
-                if let Some(rest) = p.strip_prefix(default) {
-                    let alt = format!("{rel}/{rest}");
-                    if !out.contains(&alt) {
-                        out.push(alt);
-                    }
-                }
-            }
-        }
-    }
-    out
-}
 
 /// `XDG_CONFIG_HOME` or `XDG_DATA_HOME` when its name is not valid text or
 /// holds `..`: the start places below it could not be named, or not
@@ -1211,8 +1153,13 @@ impl Views {
         for c in &fsp.custom_read {
             grants.push((grant_path(c), false));
         }
+        // An extra writable folder in a start place counts read-only, as
+        // it is mounted ([`write_grant_in_start_place`]): so the checks of
+        // what this start can write (`writes_start_places`, the home
+        // watch, the pins) agree with the mounts.
         for c in &fsp.custom_write {
-            grants.push((grant_path(c), true));
+            let rw = write_grant_in_start_place(ctx, c).is_none();
+            grants.push((grant_path(c), rw));
         }
         Views { grants }
     }
@@ -1382,21 +1329,20 @@ fn inside_sam(ctx: &LaunchContext, real: &Path) -> bool {
         .any(|d| real.starts_with(&d))
 }
 
+/// The start place an extra writable folder `c` lies in, if any: such a
+/// folder is bound read-only, with or without the whole home (owner
+/// decision 9 of 2026-11-23). The one answer for the mounts and the views.
+fn write_grant_in_start_place(
+    ctx: &LaunchContext,
+    c: &str,
+) -> Option<sam_core::places::StartPlaceGrant> {
+    start_place_of_write_grant(&expand_home(c), &ctx.host.home)
+}
+
 /// A granted folder as it is bound: with `~` expanded and links resolved,
 /// so the checks see what the app sees.
 fn grant_path(c: &str) -> PathBuf {
     resolve(&expand_home(c))
-}
-
-/// `p` with links resolved as far as it exists (the rest appended).
-fn resolve(p: &Path) -> PathBuf {
-    if let Ok(r) = fs::canonicalize(p) {
-        return r;
-    }
-    match (p.parent(), p.file_name()) {
-        (Some(parent), Some(name)) if parent != p => resolve(parent).join(name),
-        _ => p.to_path_buf(),
-    }
 }
 
 /// Step 1 of the protections inside the shown parts of the real home: the
@@ -2140,9 +2086,21 @@ impl Section<'_> {
             let path = grant_path(c);
             mount(&path, &|m| m.op2("--ro-bind-try", &path, &path));
         }
+        // One inside a start place (`~/.config/fish/conf.d`) read-only,
+        // with or without the whole home: without it the place itself is
+        // not shown, so `guard_home` does not lock it, and a file planted
+        // there ran at the next shell outside the sandbox (owner decision 9
+        // of 2026-11-23).
         for c in &fsp.custom_write {
             let path = grant_path(c);
-            mount(&path, &|m| m.op2("--bind-try", &path, &path));
+            let op = match write_grant_in_start_place(ctx, c) {
+                Some(found) => {
+                    notes.push(sam_core::places::read_only_grant_note(c, &found));
+                    "--ro-bind-try"
+                }
+                None => "--bind-try",
+            };
+            mount(&path, &|m| m.op2(op, &path, &path));
         }
         // Files and folders named on the command line, one by one.
         for (path, rw) in self.opened.clone() {
@@ -4424,6 +4382,8 @@ mod tests {
 /// without any test noticing.
 #[cfg(test)]
 mod guard_tests {
+    use sam_core::places::{protected_places_with, PROTECTED_RO};
+
     /// Whether the sandbox shows `p`, as named or as reached.
     fn visible_in_sandbox(p: &Path, ctx: &LaunchContext) -> bool {
         let v = Views::base(ctx);
@@ -5463,6 +5423,92 @@ mod guard_tests {
         let d = home.join("Docs").to_string_lossy().into_owned();
         assert!(has_seq(&a, &["--bind-try", &r, &r]), "{a:?}");
         assert!(has_seq(&a, &["--symlink", &r, &d]), "{a:?}");
+    }
+
+    /// An extra writable folder that is a start place, lies inside one or
+    /// is where one really is, is bound read-only, with or without the
+    /// whole home, as named, through a link to the place and with `..`;
+    /// the views count it read-only and the start says so. An ordinary
+    /// extra folder stays writable (owner decision 9 of 2026-11-23: a
+    /// writable `~/.config/fish/conf.d` let an app plant a file run at the
+    /// next shell outside the sandbox).
+    #[test]
+    fn a_writable_grant_inside_a_start_place_is_bound_read_only() {
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap().join("u");
+        for d in [
+            ".config/fish/conf.d",
+            ".config/autostart",
+            "work",
+            "dotfiles/git/hooks",
+        ] {
+            fs::create_dir_all(home.join(d)).unwrap();
+        }
+        std::os::unix::fs::symlink(home.join(".config/fish"), home.join("fishlink")).unwrap();
+        // `~/.config/git` kept in a dotfiles folder: its real place counts.
+        std::os::unix::fs::symlink(home.join("dotfiles/git"), home.join(".config/git")).unwrap();
+        let s = |p: PathBuf| p.to_string_lossy().into_owned();
+        let conf_d = s(home.join(".config/fish/conf.d"));
+        let work = s(home.join("work"));
+        let hooks = s(home.join("dotfiles/git/hooks"));
+        let autostart = s(home.join(".config/autostart"));
+        for full_home in [false, true] {
+            for (grant, bound) in [
+                (conf_d.clone(), conf_d.clone()),
+                (s(home.join("fishlink/conf.d")), conf_d.clone()),
+                (s(home.join("work/../.config/fish/conf.d")), conf_d.clone()),
+                (hooks.clone(), hooks.clone()),
+                (s(home.join(".config/git/hooks")), hooks.clone()),
+                (autostart.clone(), autostart.clone()),
+            ] {
+                let mut p = if full_home {
+                    full_rw()
+                } else {
+                    PermissionSet::strict_gui()
+                };
+                p.filesystem.custom_write = vec![grant.clone(), work.clone()];
+                let ctx = ctx_for(&p, &home);
+                let cmd = Bubblewrap.build(&ctx).unwrap();
+                let a = &cmd.args;
+                let case = format!("{grant} (whole home: {full_home})");
+                assert!(
+                    has_seq(a, &["--ro-bind-try", &bound, &bound]),
+                    "{case}: {a:?}"
+                );
+                assert!(
+                    !has_seq(a, &["--bind-try", &bound, &bound]),
+                    "{case}: {a:?}"
+                );
+                assert!(has_seq(a, &["--bind-try", &work, &work]), "{case}: {a:?}");
+                let views = Views::base(&ctx);
+                assert!(!views.writable(Path::new(&bound)), "{case}");
+                assert!(views.writable(Path::new(&work)), "{case}");
+                assert!(
+                    cmd.notes
+                        .iter()
+                        .any(|n| n.contains(&grant) && n.contains("SAM shows it read-only")),
+                    "{case}: {:?}",
+                    cmd.notes
+                );
+                // Only the grant in the start place is named, not `work`.
+                assert_eq!(
+                    cmd.notes
+                        .iter()
+                        .filter(|n| n.contains("SAM shows it read-only"))
+                        .count(),
+                    1,
+                    "{case}: {:?}",
+                    cmd.notes
+                );
+            }
+        }
+        // Without the whole home nothing else shows a start place writable:
+        // the home watch is not needed, and agrees with the mounts.
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.custom_write = vec![conf_d.clone(), autostart.clone()];
+        let ctx = ctx_for(&p, &home);
+        assert!(!writes_start_places(&ctx));
+        assert!(HomeWatch::before(&ctx).is_none());
     }
 
     /// Only a start that shows a start place writable is watched and

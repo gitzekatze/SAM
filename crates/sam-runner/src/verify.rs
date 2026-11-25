@@ -121,8 +121,14 @@ pub fn plan(p: &PermissionSet, cfg: &Config, host: &HostInfo) -> ProbePlan {
     ] {
         for raw in list {
             let path = sam_core::util::expand_home(raw);
+            // A writable folder in a start place is shown read-only, also
+            // inside a writable home (owner decision 9 of 2026-11-23).
+            let in_start_place =
+                sam_core::places::start_place_of_write_grant(&path, &host.home).is_some();
             if path.is_dir() {
-                let want = if rank(home_level) > rank(want) && path.starts_with(&host.home) {
+                let want = if in_start_place {
+                    Access::ReadOnly
+                } else if rank(home_level) > rank(want) && path.starts_with(&host.home) {
                     home_level
                 } else {
                     want
@@ -1058,6 +1064,23 @@ mod tests {
             ),
             Access::ReadWrite
         );
+        // A writable folder inside a start place is shown read-only, with
+        // or without the whole home (owner decision 9 of 2026-11-23).
+        let conf_d = h.home.join(".config/fish/conf.d");
+        fs::create_dir_all(&conf_d).unwrap();
+        let conf_d = conf_d.to_string_lossy().into_owned();
+        for home in [false, true] {
+            let pl = plan_of(&|p| {
+                p.filesystem.home = home;
+                p.filesystem.home_access = Perm::Rw;
+                p.filesystem.custom_write = vec![conf_d.clone()];
+            });
+            let title = format!(
+                "Extra folder {}",
+                sam_core::util::tildify(Path::new(&conf_d))
+            );
+            assert_eq!(folder(&pl, &title), Access::ReadOnly, "home {home}");
+        }
     }
 
     /// Network, display, sound, the session bus, the SSH agent, variables

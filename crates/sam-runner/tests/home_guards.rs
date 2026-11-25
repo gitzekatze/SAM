@@ -10,6 +10,10 @@
 //!   the other user folders are (`~/.config/user-dirs.dirs`) stays
 //!   read-only: rewritten, it could point the person's file dialogs at a
 //!   folder the app chose (threat model row 44).
+//! - a writable extra folder inside a start place (`~/.config/fish/conf.d`)
+//!   stays read-only, without, with a read-only and with a writable whole
+//!   home, while an ordinary writable extra folder takes the app's file
+//!   (owner decision 9 of 2026-11-23).
 //!
 //! In its own file because it sets `HOME` for the test process.
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
@@ -36,6 +40,8 @@ for base in "$H/.local/share/samroot" "$H/link/share/samroot"; do
   mkdir -p "$base/data/apps" 2>/dev/null && echo planted > "$base/data/apps/PLANTED" 2>/dev/null
 done
 [ -d "$H/.local/share" ] && [ -d "$H/.config" ] && [ -d "$H/.cache" ] && echo STD=yes || echo STD=no
+echo x > "$H/.config/fish/conf.d/evil.fish" 2>/dev/null && echo FISH=written || echo FISH=refused
+echo x > "$H/work/ok.txt" 2>/dev/null && echo WORK=written || echo WORK=refused
 echo END=1
 "#;
 
@@ -62,6 +68,8 @@ fn the_home_protections_hold_whatever_else_is_granted() {
     let home = root.join("home/tester");
     fs::create_dir_all(home.join(".config/autostart")).unwrap();
     fs::create_dir_all(home.join(".ssh")).unwrap();
+    fs::create_dir_all(home.join(".config/fish/conf.d")).unwrap();
+    fs::create_dir_all(home.join("work")).unwrap();
     fs::write(home.join(".ssh/id_ed25519"), "SECRET KEY").unwrap();
     let user_dirs = "XDG_DOCUMENTS_DIR=\"$HOME/Documents\"\n";
     fs::write(home.join(".config/user-dirs.dirs"), user_dirs).unwrap();
@@ -162,4 +170,27 @@ fn the_home_protections_hold_whatever_else_is_granted() {
     // Night run: a private home has the folders every home has.
     let r = start(PermissionSet::strict_gui());
     assert_eq!(r["STD"], "yes", "{r:?}");
+
+    // Owner decision 9 of 2026-11-23: a writable folder inside a start
+    // place is shown read-only, with or without the whole home; without
+    // it, `conf.d/evil.fish` ran at the next shell outside the sandbox.
+    // (The start with the whole home writable above wrote `~/work` too.)
+    let _ = fs::remove_file(home.join("work/ok.txt"));
+    for whole_home in [None, Some(Access::Ro), Some(Access::Rw)] {
+        let mut p = PermissionSet::strict_gui();
+        if let Some(access) = whole_home {
+            p.filesystem.home = true;
+            p.filesystem.home_access = access;
+        }
+        p.filesystem.custom_write = vec!["~/.config/fish/conf.d".into(), "~/work".into()];
+        let r = start(p);
+        assert_eq!(r["FISH"], "refused", "{whole_home:?}: {r:?}");
+        assert!(
+            !home.join(".config/fish/conf.d/evil.fish").exists(),
+            "{whole_home:?}"
+        );
+        assert_eq!(r["WORK"], "written", "control, {whole_home:?}: {r:?}");
+        assert!(home.join("work/ok.txt").is_file(), "{whole_home:?}");
+        fs::remove_file(home.join("work/ok.txt")).unwrap();
+    }
 }

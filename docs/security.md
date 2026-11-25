@@ -612,6 +612,14 @@ How these stay protected with the home writable:
   these places (`~/.config`, `~/.local`, a dotfiles folder that `~/.bashrc`
   links into, a user folder) gets the same protections as the whole home:
   the places are made first, locked, and watched while the app runs.
+- **Extra folders inside a start place stay read-only.** An extra folder
+  granted read and write that is a start place, lies inside one
+  (`~/.config/fish/conf.d`) or is where one really is (a dotfiles folder
+  that `~/.config/fish` links to) is shown read-only, with or without the
+  whole home. It is checked as written, through links and with `..`, also
+  below `XDG_CONFIG_HOME` and `XDG_DATA_HOME`. The start notes it, and the
+  app page and `sam-jail info` warn before the start; the folder's rating
+  stays as it is.
 - **User folders are only what they are.** `user-dirs.dirs` says where
   Documents, Downloads and the others are. A folder set there to the home,
   a folder above it, a system folder, a key folder, a start place or a
