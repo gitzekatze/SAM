@@ -7285,17 +7285,17 @@ msgstr ""
 "das AppImage {file} fehlt, deshalb ist die entpackte Kopie die einzige, die "
 "übrig ist; sie bleibt erhalten"
 
-#: crates/sam-runner/src/ops/maintain.rs:807
+#: crates/sam-runner/src/ops/maintain.rs:809
 msgid "update it"
 msgstr "sie aktualisieren"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:811
+#: crates/sam-runner/src/ops/maintain.rs:813
 msgid "the AppImage {file} is missing; relocate it first"
 msgstr "das AppImage {file} fehlt; zeig SAM zuerst seinen neuen Ort"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:874
+#: crates/sam-runner/src/ops/maintain.rs:881
 msgid ""
 "{file} changed outside SAM since it was last unpacked, so SAM does not "
 "update it: another program may have replaced it. Use Unpack Again and look "
@@ -7306,29 +7306,30 @@ msgstr ""
 "ersetzt. Nutze „Erneut entpacken“ und sieh dir die App zuerst an."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:883
+#: crates/sam-runner/src/ops/maintain.rs:890
 msgid "{app} is already the newest published version"
 msgstr "{app} ist bereits die neueste veröffentlichte Version"
 
-#: crates/sam-runner/src/ops/maintain.rs:894
-#: crates/sam-runner/src/ops/maintain.rs:1107
-#: crates/sam-runner/src/ops/maintain.rs:1311
+#: crates/sam-runner/src/ops/maintain.rs:901
+#: crates/sam-runner/src/ops/maintain.rs:1182
+#: crates/sam-runner/src/ops/maintain.rs:1276
+#: crates/sam-runner/src/ops/maintain.rs:1437
 msgid "no folder"
 msgstr "kein Ordner"
 
-#: crates/sam-runner/src/ops/maintain.rs:928
-#: crates/sam-runner/src/ops/maintain.rs:1324
+#: crates/sam-runner/src/ops/maintain.rs:935
+#: crates/sam-runner/src/ops/maintain.rs:1450
 msgid "the downloaded file is not an AppImage; it was deleted"
 msgstr "die heruntergeladene Datei ist kein AppImage; sie wurde gelöscht"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:937
+#: crates/sam-runner/src/ops/maintain.rs:944
 msgid "the downloaded update was not installed and was deleted: {reason}"
 msgstr ""
 "das heruntergeladene Update wurde nicht installiert und gelöscht: {reason}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:979
+#: crates/sam-runner/src/ops/maintain.rs:986
 msgid ""
 "The signing key changed: the installed version was {before}, the new file is "
 "{now}. Accept the change only if you trust it: SAM then installs exactly "
@@ -7340,7 +7341,7 @@ msgstr ""
 "heruntergeladene."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:997
+#: crates/sam-runner/src/ops/maintain.rs:1004
 msgid ""
 "The installed version was {before}, but the signature of the new file cannot "
 "be checked, so SAM cannot tell whether it comes from the same developer. "
@@ -7355,13 +7356,15 @@ msgstr ""
 "vertraust: SAM installiert dann genau diese Datei, nie eine später "
 "heruntergeladene."
 
-#: crates/sam-runner/src/ops/maintain.rs:1025
-#: crates/sam-runner/src/ops/maintain.rs:1347
+#: crates/sam-runner/src/ops/maintain.rs:1048
+#: crates/sam-runner/src/ops/maintain.rs:1091
+#: crates/sam-runner/src/ops/maintain.rs:1101
+#: crates/sam-runner/src/ops/maintain.rs:1473
 msgid "putting the new version in place"
 msgstr "die neue Version wird an ihren Platz gesetzt"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:1057
+#: crates/sam-runner/src/ops/maintain.rs:1131
 msgid ""
 "Updated; this is the newest published version. Only the changed parts were "
 "downloaded ({part} of {whole} MB)."
@@ -7370,27 +7373,30 @@ msgstr ""
 "geänderten Teile wurden heruntergeladen ({part} von {whole} MB)."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:1061
+#: crates/sam-runner/src/ops/maintain.rs:1135
 msgid "Updated; this is the newest published version ({size} MB downloaded)."
 msgstr ""
 "Aktualisiert; dies ist die neueste veröffentlichte Version ({size} MB "
 "heruntergeladen)."
 
-#: crates/sam-runner/src/ops/maintain.rs:1076
+#: crates/sam-runner/src/ops/maintain.rs:1150
+#: crates/sam-runner/src/ops/maintain.rs:1209
+#: crates/sam-runner/src/ops/maintain.rs:1325
+#: crates/sam-runner/src/ops/maintain.rs:1334
 msgid "go back"
 msgstr "zur früheren Version zurückgehen"
 
-#: crates/sam-runner/src/ops/maintain.rs:1077
+#: crates/sam-runner/src/ops/maintain.rs:1151
 msgid "there is no earlier version to go back to"
 msgstr "es gibt keine frühere Version, zu der man zurückkehren könnte"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:1083
+#: crates/sam-runner/src/ops/maintain.rs:1158
 msgid "the earlier version is no longer there ({file})"
 msgstr "die frühere Version ist nicht mehr da ({file})"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:1096
+#: crates/sam-runner/src/ops/maintain.rs:1171
 msgid ""
 "the earlier version is not in SAM's backup folder ({file}); SAM does not "
 "move it"
@@ -7398,18 +7404,18 @@ msgstr ""
 "die frühere Version liegt nicht in SAMs Sicherungsordner ({file}); SAM "
 "verschiebt sie nicht"
 
-#: crates/sam-runner/src/ops/maintain.rs:1108
-#: crates/sam-runner/src/ops/maintain.rs:1121
+#: crates/sam-runner/src/ops/maintain.rs:1183
+#: crates/sam-runner/src/ops/maintain.rs:1196
 msgid "no name"
 msgstr "kein Name"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:1112
+#: crates/sam-runner/src/ops/maintain.rs:1187
 msgid "{file} exists again; move it away first"
 msgstr "{file} existiert wieder; verschieb es zuerst"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:1161
+#: crates/sam-runner/src/ops/maintain.rs:1253
 msgid ""
 "{file} changed outside SAM since it was last unpacked, so SAM does not go "
 "back: another program may have replaced it. Use Unpack Again and look at the "
@@ -7420,24 +7426,24 @@ msgstr ""
 "es vielleicht ersetzt. Nutze „Erneut entpacken“ und sieh dir die App zuerst "
 "an."
 
-#: crates/sam-runner/src/ops/maintain.rs:1262
+#: crates/sam-runner/src/ops/maintain.rs:1388
 msgid ""
 "SAM is not running from an AppImage; update it with your package manager"
 msgstr ""
 "SAM läuft nicht aus einem AppImage; aktualisiere es mit deiner "
 "Paketverwaltung"
 
-#: crates/sam-runner/src/ops/maintain.rs:1272
+#: crates/sam-runner/src/ops/maintain.rs:1398
 msgid "SAM is up to date."
 msgstr "SAM ist auf dem neuesten Stand."
 
-#: crates/sam-runner/src/ops/maintain.rs:1284
-#: crates/sam-runner/src/ops/maintain.rs:1299
+#: crates/sam-runner/src/ops/maintain.rs:1410
+#: crates/sam-runner/src/ops/maintain.rs:1425
 msgid "A newer version"
 msgstr "Eine neuere Version"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:1287
+#: crates/sam-runner/src/ops/maintain.rs:1413
 msgid ""
 "{version} is published. This SAM cannot yet check where an update comes "
 "from, so it does not update itself: download the new version from the "
@@ -7448,26 +7454,26 @@ msgstr ""
 "neue Version von der Veröffentlichungsseite herunter."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:1302
+#: crates/sam-runner/src/ops/maintain.rs:1428
 #: crates/sam-runner/src/updates.rs:267
 msgid "{version} is published."
 msgstr "{version} ist veröffentlicht."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:1356
+#: crates/sam-runner/src/ops/maintain.rs:1482
 msgid "only the changed parts were downloaded ({part} of {whole} MB)"
 msgstr ""
 "nur die geänderten Teile wurden heruntergeladen ({part} von {whole} MB)"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:1371
+#: crates/sam-runner/src/ops/maintain.rs:1497
 msgid "SAM was updated; {how}. Restart SAM to use the new version."
 msgstr ""
 "SAM wurde aktualisiert; {how}. Starte SAM neu, um die neue Version zu "
 "verwenden."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:1387
+#: crates/sam-runner/src/ops/maintain.rs:1513
 msgid ""
 "{app} is being changed right now (unpacked again, updated or removed). Start "
 "it when that is done."
@@ -7476,7 +7482,7 @@ msgstr ""
 "Starte sie, wenn das fertig ist."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:1404
+#: crates/sam-runner/src/ops/maintain.rs:1530
 msgid ""
 "The download was signed on {now}, before the installed version ({was}): it "
 "is an older version, which may have security holes that were fixed since. It "
@@ -7488,6 +7494,20 @@ msgstr ""
 "inzwischen behoben sind. Er wurde gelöscht, nichts wurde geändert. Um "
 "absichtlich zu einer früheren Version zurückzugehen, nutze nach einem Update "
 "„Rückgängig“."
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-runner/src/ops/maintain.rs:1742
+msgid ""
+"An earlier attempt to go back was interrupted: the earlier version is still "
+"at {earlier}, and {file} may hold the newer one. SAM changes nothing, so "
+"that neither version is lost. Move the version you want to keep out of SAM's "
+"backup folder and relocate the app to it."
+msgstr ""
+"Ein früherer Versuch, zur früheren Version zurückzugehen, wurde "
+"unterbrochen: Die frühere Version liegt noch unter {earlier}, und {file} "
+"enthält vielleicht die neuere. SAM ändert nichts, damit keine der beiden "
+"Versionen verloren geht. Verschiebe die Version, die du behalten willst, aus "
+"SAMs Sicherungsordner und zeig SAM ihren neuen Ort."
 
 #. Keep the {placeholders}; their order may change.
 #: crates/sam-runner/src/ops/mod.rs:388

@@ -325,3 +325,102 @@ fn a_failed_going_back_leaves_both_versions_where_they_were() {
         assert_eq!(e.update_backup.unwrap().file, kept, "{newer_name}");
     }
 }
+
+/// The names in `dir`, sorted.
+fn names_in(dir: &std::path::Path) -> Vec<String> {
+    let mut v: Vec<String> = fs::read_dir(dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    v.sort();
+    v
+}
+
+/// Regression (review B2 S6, R86): when putting the earlier version in
+/// place failed and putting the current one back failed too (a full disk:
+/// two failing copies), the earlier version stayed at `.going-back` and the
+/// newer copy at the backup's name. The next go back renamed the newer file
+/// over `.going-back`, so the earlier version was lost and the newer one
+/// installed as "earlier". Here the state those failures (or a power loss)
+/// leave is made by hand; going back and updating now stop, name both
+/// files and change nothing.
+#[test]
+fn an_interrupted_going_back_never_loses_the_earlier_version() {
+    let tmp = tempfile::tempdir().unwrap();
+    // Both versions with the same name, as many projects publish.
+    let (sam, id, v2, kept) = updated_by_hand_as(tmp.path(), true, "Tool-1.0-x86_64.AppImage");
+    let (newer, earlier) = (fs::read(&v2).unwrap(), fs::read(&kept).unwrap());
+    let aside = kept.with_file_name(".going-back");
+    fs::rename(&kept, &aside).unwrap();
+    fs::write(&kept, &newer).unwrap();
+    let record = sam.resolve(&id).unwrap();
+
+    let Err(err) = sam.undo_update(&id) else {
+        panic!("went back over an interrupted go back");
+    };
+    let msg = format!("{err:#}");
+    assert!(msg.contains("interrupted"), "{msg}");
+    assert!(
+        msg.contains(".going-back"),
+        "names the earlier version: {msg}"
+    );
+    assert_eq!(fs::read(&aside).unwrap(), earlier, "the earlier version");
+    assert_eq!(fs::read(&kept).unwrap(), newer, "the newer copy");
+    assert_eq!(fs::read(&v2).unwrap(), newer, "the app's file");
+    let after = sam.resolve(&id).unwrap();
+    assert_eq!(after.source_path, record.source_path);
+    assert_eq!(after.update_backup, record.update_backup);
+
+    // An update would delete the old backups, the earlier version with them.
+    let Err(err) = sam.update(&id, false) else {
+        panic!("updated over an interrupted go back");
+    };
+    assert!(format!("{err:#}").contains("interrupted"), "{err:#}");
+    assert_eq!(fs::read(&aside).unwrap(), earlier, "still there");
+}
+
+/// Regression (review B2 S6, R86, R89): going back removed the current
+/// file before the earlier version was in place and recorded. When saving
+/// the record failed (here: the record's folder is read-only), the app's
+/// folder held the earlier version while the record still named the newer
+/// one. Now a failure before the record is saved leaves both versions and
+/// the record as they were, also when both have the same file name.
+#[test]
+fn a_going_back_whose_record_cannot_be_saved_changes_nothing() {
+    use std::os::unix::fs::PermissionsExt;
+    for newer_name in ["Tool-2.0-x86_64.AppImage", "Tool-1.0-x86_64.AppImage"] {
+        let tmp = tempfile::tempdir().unwrap();
+        let (sam, id, v2, kept) = updated_by_hand_as(tmp.path(), true, newer_name);
+        let (newer, earlier) = (fs::read(&v2).unwrap(), fs::read(&kept).unwrap());
+        let record = sam.resolve(&id).unwrap();
+        let records = sam.paths.apps_dir();
+        fs::set_permissions(&records, fs::Permissions::from_mode(0o555)).unwrap();
+        let locked = fs::File::create(records.join("probe")).is_err();
+        let result = sam.undo_update(&id);
+        fs::set_permissions(&records, fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(locked, "a read-only folder must lock: run as a normal user");
+        assert!(
+            result.is_err(),
+            "{newer_name}: the record could not be saved"
+        );
+        assert_eq!(names_in(v2.parent().unwrap()), [newer_name], "{newer_name}");
+        assert_eq!(
+            fs::read(&v2).unwrap(),
+            newer,
+            "{newer_name}: the newer version"
+        );
+        assert_eq!(
+            names_in(kept.parent().unwrap()),
+            [kept.file_name().unwrap().to_string_lossy()],
+            "{newer_name}: nothing left over"
+        );
+        assert_eq!(
+            fs::read(&kept).unwrap(),
+            earlier,
+            "{newer_name}: the earlier one"
+        );
+        let after = sam.resolve(&id).unwrap();
+        assert_eq!(after.source_path, record.source_path, "{newer_name}");
+        assert_eq!(after.update_backup, record.update_backup, "{newer_name}");
+    }
+}

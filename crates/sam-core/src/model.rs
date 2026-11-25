@@ -468,7 +468,8 @@ pub struct AppEntry {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct UpdateBackup {
-    /// The kept file (in `<data>/update-backups/<id>/`).
+    /// The kept file (in `<data>/update-backups/<id>/`, directly or in a
+    /// folder of its own there).
     pub file: PathBuf,
     /// Where it was before the update. Shown only: going back puts the
     /// kept file into the app's current folder under the kept file's name,
