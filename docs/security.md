@@ -961,12 +961,13 @@ downloads a file, and only when you ask:
   a crash or a power loss. The earlier kept version is deleted only once
   the app's record names the new one, and a failure before that (a full
   disk, a read-only folder) leaves the old AppImage, its record and the
-  earlier kept version as they were. Going back works in the same order
-  and never replaces an earlier version that an interrupted run left
-  aside. What such a run leaves, SAM repairs when it can tell the files
-  apart; otherwise going back and updating stop and say where both files
-  are. A half-written copy left by a stopped SAM is removed at the app's
-  next update or go back. The sandbox is unpacked from the checked
+  earlier kept version as they were. Going back works in the same order:
+  before its record is saved, nothing in the backup folder is renamed or
+  overwritten. An earlier version that an older SAM left aside is
+  repaired when SAM can tell the files apart; otherwise going back and
+  updating stop and say where both files are. A half-written copy left by
+  a stopped SAM is removed at the app's next update or go back. The
+  sandbox is unpacked from the checked
   download in SAM's own folder, not from the AppImage's folder, where
   another app could swap the file in that moment; a file swapped there
   afterwards is noticed like any changed AppImage.

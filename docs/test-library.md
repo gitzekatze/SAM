@@ -389,7 +389,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-457 tests.
+460 tests.
 
 | Promise | Test |
 |---|---|
@@ -491,13 +491,13 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | The app's ports are offered on this computer's loopback addresses only, for IPv4 and IPv6 alike, never on every address (audit L-F7). | [`the_apps_ports_listen_on_loopback_only`](../crates/sam-runner/src/netns.rs#L204) |
 | Local services whose clients would hand an app control or secrets are never taken over automatically. | [`well_known_local_services_are_never_taken_over`](../crates/sam-runner/src/netns.rs#L237) |
 | An app without AppRun starts the program its menu entry names, found inside the app; a name that points outside it is never used. | [`the_entry_from_exec_stays_inside_the_app`](../crates/sam-runner/src/ops/add.rs#L533) |
-| A change works on the app's record as it is once it holds the app, not on the copy read when the change was asked for: another change may have saved in between (review L2). | [`a_change_works_on_the_record_as_it_is_under_the_lock`](../crates/sam-runner/src/ops/maintain.rs#L1925) |
-| ⟲ Regression (audit U-L4): the data of an app whose record SAM could not read (damaged, or written by a newer SAM) was listed as left over, and "remove leftover data" deleted the app's private home. | [`data_of_an_unreadable_record_is_not_offered_for_deletion`](../crates/sam-runner/src/ops/maintain.rs#L1949) |
-| A download that waited for an answer about an update for more than a week (the question was never answered) is deleted when updates are checked; a younger one stays for its answer. | [`a_download_never_answered_is_deleted_after_a_week`](../crates/sam-runner/src/ops/maintain.rs#L1992) |
-| An update keeps its published name only when that is a plain AppImage name no other file has: the update server chooses it, and a name like `sudo` in ~/.local/bin would replace a command outside any sandbox (review 2026-11-23, U-2). | [`only_a_plain_appimage_name_is_taken_from_an_update`](../crates/sam-runner/src/ops/maintain.rs#L2016) |
-| The unpack location can be any folder, for example `~/Documents`. | [`a_shared_unpack_folder_keeps_everything_that_is_not_sams`](../crates/sam-runner/src/ops/maintain.rs#L2062) |
-| Updates are downloaded into a fresh folder inside SAM's data folder that only SAM's user can enter (audit U-H4): never the AppImage's folder, never one with leftovers. | [`a_download_folder_is_fresh_private_and_sams_own`](../crates/sam-runner/src/ops/maintain.rs#L2138) |
-| Across file systems (a download in SAM's folder, the AppImage on another drive) a move is a copy: into a new file with the same permissions, never through a link planted at the target and never over a file that is there (audit U-H4: `fs::copy` followed links). | [`a_move_across_drives_never_writes_through_a_link`](../crates/sam-runner/src/ops/maintain.rs#L2158) |
+| A change works on the app's record as it is once it holds the app, not on the copy read when the change was asked for: another change may have saved in between (review L2). | [`a_change_works_on_the_record_as_it_is_under_the_lock`](../crates/sam-runner/src/ops/maintain.rs#L1924) |
+| ⟲ Regression (audit U-L4): the data of an app whose record SAM could not read (damaged, or written by a newer SAM) was listed as left over, and "remove leftover data" deleted the app's private home. | [`data_of_an_unreadable_record_is_not_offered_for_deletion`](../crates/sam-runner/src/ops/maintain.rs#L1948) |
+| A download that waited for an answer about an update for more than a week (the question was never answered) is deleted when updates are checked; a younger one stays for its answer. | [`a_download_never_answered_is_deleted_after_a_week`](../crates/sam-runner/src/ops/maintain.rs#L1991) |
+| An update keeps its published name only when that is a plain AppImage name no other file has: the update server chooses it, and a name like `sudo` in ~/.local/bin would replace a command outside any sandbox (review 2026-11-23, U-2). | [`only_a_plain_appimage_name_is_taken_from_an_update`](../crates/sam-runner/src/ops/maintain.rs#L2015) |
+| The unpack location can be any folder, for example `~/Documents`. | [`a_shared_unpack_folder_keeps_everything_that_is_not_sams`](../crates/sam-runner/src/ops/maintain.rs#L2061) |
+| Updates are downloaded into a fresh folder inside SAM's data folder that only SAM's user can enter (audit U-H4): never the AppImage's folder, never one with leftovers. | [`a_download_folder_is_fresh_private_and_sams_own`](../crates/sam-runner/src/ops/maintain.rs#L2137) |
+| Across file systems (a download in SAM's folder, the AppImage on another drive) a move is a copy: into a new file with the same permissions, never through a link planted at the target and never over a file that is there (audit U-H4: `fs::copy` followed links). | [`a_move_across_drives_never_writes_through_a_link`](../crates/sam-runner/src/ops/maintain.rs#L2157) |
 | When SAM's recommendation improves, the user's own changes are kept. | [`user_changes_survive_better_recommendation`](../crates/sam-runner/src/ops/mod.rs#L644) |
 | An update signed with the same key but earlier than the installed version is an older version; later, equal, another key, unsigned or without a time is not judged here. | [`an_older_signed_version_is_recognized`](../crates/sam-runner/src/ops/mod.rs#L750) |
 | An update signed with another key, or not signed at all, is noticed. | [`key_changes_are_noticed`](../crates/sam-runner/src/ops/mod.rs#L791) |
@@ -830,6 +830,9 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | ⟲ Regression (review B2 S6, R86, R89): going back removed the current file before the earlier version was in place and recorded. | [`a_going_back_whose_record_cannot_be_saved_changes_nothing`](../crates/sam-runner/tests/update.rs#L388) |
 | Review of the fix for R86: a go back that SAM was stopped in (killed, a power loss) left the earlier version at `.going-back`, and from then on every go back and update refused. | [`a_go_back_stopped_midway_still_lets_the_app_go_back_and_update`](../crates/sam-runner/tests/update.rs#L435) |
 | Review of the fix for R89: a SAM stopped while writing the new version left a hidden, executable copy of the app in the person's folder for good. | [`leftover_incoming_files_of_the_app_are_removed_and_nothing_else`](../crates/sam-runner/tests/update.rs#L489) |
+| Second review of the fix for R86: with the same name for both versions (the common case), going back wrote the newer copy over the earlier version's kept name before the record was saved, so a stop while copying left a state that blocked every later go back. | [`a_same_name_go_back_stopped_before_its_record_was_saved_loses_nothing`](../crates/sam-runner/tests/update.rs#L546) |
+| Second review of the fix for R86: a `.going-back` left by an older SAM was deleted as a second copy when the app's current file had the same content. | [`a_public_copy_of_the_earlier_version_never_makes_sam_delete_its_own`](../crates/sam-runner/tests/update.rs#L600) |
+| Second review of the fix for R86: with different names, a go back stopped after the earlier version took its name but before the record was saved left a complete copy there, and every later go back refused ("exists again"). | [`a_go_back_stopped_after_placing_under_a_new_name_goes_on`](../crates/sam-runner/tests/update.rs#L627) |
 | Updates download only changes check them and refuse tampering. | [`updates_download_only_changes_check_them_and_refuse_tampering`](../crates/sam-runner/tests/update_server.rs#L212) |
 | ⟲ Regressions (audit U-H4, U-H3): updates were downloaded next to the AppImage under a guessable name (`.<name>.sam-download`) with tools that follow links, so an app with write access to that folder (often Downloads) could plant a link there and SAM wrote the update through it into any file of the person. | [`an_update_writes_through_no_planted_link_and_keeps_the_sandbox`](../crates/sam-runner/tests/update_server.rs#L373) |
 | ⟲ Regression (audit U-H5): when the new version had the same file name as the old one, going back moved the current file onto the kept old version (destroying it), then "restored" the new file and reported that the app was back. | [`going_back_with_an_unchanged_file_name_keeps_both_versions`](../crates/sam-runner/tests/update_server.rs#L468) |
@@ -1054,4 +1057,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 967 automated Rust tests plus 8 scripted checks.
+Total: 970 automated Rust tests plus 8 scripted checks.

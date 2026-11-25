@@ -427,11 +427,11 @@ fn a_going_back_whose_record_cannot_be_saved_changes_nothing() {
 
 /// Review of the fix for R86: a go back that SAM was stopped in (killed,
 /// a power loss) left the earlier version at `.going-back`, and from then
-/// on every go back and update refused. Now SAM moves it out of the backup
-/// folder before unpacking, and repairs what such a stop can leave: here
+/// on every go back and update refused. Going back no longer moves the
+/// earlier version aside, and SAM repairs what an older run left: here
 /// (made by hand) a stop after the record was saved, where `.going-back`
-/// is a second copy of the app's current file, and a stop right after the
-/// earlier version stepped aside, where its kept name is still free.
+/// is a second copy of the version put in place, and a stop right after
+/// the earlier version stepped aside, where its kept name is still free.
 #[test]
 fn a_go_back_stopped_midway_still_lets_the_app_go_back_and_update() {
     use sam_intake::fingerprint::sha256_file;
@@ -532,4 +532,120 @@ fn leftover_incoming_files_of_the_app_are_removed_and_nothing_else() {
         );
         assert_eq!(fs::read_to_string(&victim).unwrap(), "the person's file");
     }
+}
+
+/// Second review of the fix for R86: with the same name for both versions
+/// (the common case), going back wrote the newer copy over the earlier
+/// version's kept name before the record was saved, so a stop while
+/// copying left a state that blocked every later go back. Now nothing in
+/// the backup folder is renamed or overwritten before the save. Here the
+/// states a stop at each step before the save leaves (made by hand): a
+/// half-written kept copy in a fresh folder, then also a half-written
+/// incoming file in the app's folder. The app still goes back and
+/// forward, updates are not blocked, and nothing is lost or left over.
+#[test]
+fn a_same_name_go_back_stopped_before_its_record_was_saved_loses_nothing() {
+    for step in ["copy of the current version", "copy of the earlier version"] {
+        let tmp = tempfile::tempdir().unwrap();
+        let (sam, id, v2, kept) = updated_by_hand_as(tmp.path(), true, "Tool-1.0-x86_64.AppImage");
+        let (newer, earlier) = (fs::read(&v2).unwrap(), fs::read(&kept).unwrap());
+        let root = kept.parent().unwrap();
+        let fresh = root.join("kept-1-a");
+        fs::create_dir_all(&fresh).unwrap();
+        let name = v2.file_name().unwrap();
+        if step == "copy of the current version" {
+            fs::write(fresh.join(name), &newer[..newer.len() / 2]).unwrap();
+        } else {
+            fs::write(fresh.join(name), &newer).unwrap();
+            let incoming = v2.with_file_name(format!(".sam-incoming-{id}-1-a"));
+            fs::write(incoming, &earlier[..earlier.len() / 2]).unwrap();
+        }
+
+        let e = sam
+            .undo_update(&id)
+            .unwrap_or_else(|e| panic!("{step}: going back was refused: {e:#}"));
+        assert_eq!(fs::read(&e.source_path).unwrap(), earlier, "{step}: back");
+        let way = e.update_backup.unwrap().file;
+        assert_eq!(fs::read(&way).unwrap(), newer, "{step}: the newer one kept");
+        assert_eq!(
+            names_in(v2.parent().unwrap()),
+            [name.to_string_lossy()],
+            "{step}"
+        );
+        assert!(!fresh.exists(), "{step}: the stopped run's folder is gone");
+        let e = sam
+            .undo_update(&id)
+            .unwrap_or_else(|e| panic!("{step}: going forward was refused: {e:#}"));
+        assert_eq!(fs::read(&e.source_path).unwrap(), newer, "{step}: forward");
+        let way = e.update_backup.unwrap().file;
+        assert_eq!(
+            fs::read(&way).unwrap(),
+            earlier,
+            "{step}: the earlier one kept"
+        );
+        let err = sam.update(&id, false).unwrap_err();
+        assert!(
+            !format!("{err:#}").contains("interrupted"),
+            "{step}: {err:#}"
+        );
+    }
+}
+
+/// Second review of the fix for R86: a `.going-back` left by an older SAM
+/// was deleted as a second copy when the app's current file had the same
+/// content. Another app that can write to the AppImage's folder can put a
+/// public copy of the earlier version there, and that alone must never make
+/// SAM delete its own checked copy. It is deleted only when it is also the
+/// version that go back put in place; here it is not, so SAM refuses.
+#[test]
+fn a_public_copy_of_the_earlier_version_never_makes_sam_delete_its_own() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (sam, id, v2, kept) = updated_by_hand_as(tmp.path(), true, "Tool-1.0-x86_64.AppImage");
+    let (newer, earlier) = (fs::read(&v2).unwrap(), fs::read(&kept).unwrap());
+    let aside = kept.with_file_name(".going-back");
+    fs::rename(&kept, &aside).unwrap();
+    fs::write(&kept, &newer).unwrap();
+    // Another app drops the earlier version over the app's file.
+    fs::write(&v2, &earlier).unwrap();
+
+    let err = sam.undo_update(&id).unwrap_err();
+    assert!(format!("{err:#}").contains("interrupted"), "{err:#}");
+    assert_eq!(
+        fs::read(&aside).unwrap(),
+        earlier,
+        "SAM's checked copy stays"
+    );
+    assert_eq!(fs::read(&kept).unwrap(), newer);
+}
+
+/// Second review of the fix for R86: with different names, a go back
+/// stopped after the earlier version took its name but before the record
+/// was saved left a complete copy there, and every later go back refused
+/// ("exists again"). That copy is now taken as the go back's own, since
+/// the same file is about to be put there; any other file at that name
+/// still stops going back and is left alone.
+#[test]
+fn a_go_back_stopped_after_placing_under_a_new_name_goes_on() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (sam, id, v2, kept) = updated_by_hand(tmp.path(), true);
+    let earlier = fs::read(&kept).unwrap();
+    let back_to = v2.with_file_name(kept.file_name().unwrap());
+
+    fs::write(&back_to, "the person's own file").unwrap();
+    let err = sam.undo_update(&id).unwrap_err();
+    assert!(format!("{err:#}").contains("exists again"), "{err:#}");
+    assert_eq!(
+        fs::read_to_string(&back_to).unwrap(),
+        "the person's own file"
+    );
+
+    fs::write(&back_to, &earlier).unwrap();
+    let e = sam
+        .undo_update(&id)
+        .unwrap_or_else(|e| panic!("going back was refused: {e:#}"));
+    assert_eq!(fs::read(&e.source_path).unwrap(), earlier);
+    assert_eq!(
+        names_in(v2.parent().unwrap()),
+        [back_to.file_name().unwrap().to_string_lossy()]
+    );
 }
