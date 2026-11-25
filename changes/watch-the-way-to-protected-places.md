@@ -11,3 +11,9 @@
   on the way inside the home, and the first part of the way that does not
   exist, and puts them back or moves aside what the app left there, while
   the app runs and after it ends.
+- A folder on that way that the app swaps for a link of its own is moved
+  aside, so the way leads nowhere rather than into the app's folder. A
+  place that is only on the way (such as a sync folder a link points
+  into) is never deleted: when it cannot be moved aside, SAM says it is
+  still there. A launch next to a running one also keeps watching every
+  place the running one watches.

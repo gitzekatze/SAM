@@ -476,6 +476,21 @@ impl HomeWatch {
                 }
             }
         }
+        // And every other place a launch alongside recorded: what the app
+        // there already changed (a link replaced, a missing place made) is
+        // no longer on today's way, yet must stay watched here as well.
+        for o in &running {
+            for a in &o.absent {
+                if !w.absent.contains(a) && !w.links.iter().any(|(l, _)| l == a) {
+                    w.absent.push(a.clone());
+                }
+            }
+            for (l, t) in &o.links {
+                if !w.absent.contains(l) && !w.links.iter().any(|(x, _)| x == l) {
+                    w.links.push((l.clone(), t.clone()));
+                }
+            }
+        }
         Some(w)
     }
 
@@ -560,10 +575,24 @@ impl HomeWatch {
     /// in the name), and the links are put back. Returns what was moved.
     pub fn settle(&self, aside: &Path) -> Vec<MovedAside> {
         let mut moved = Vec::new();
+        // The protected places themselves (and the folders above them, and
+        // the key folders): what cannot be moved from them is deleted. A
+        // place only on the way a link leads (`~/Sync`, which the person's
+        // sync tool may create while an app runs) is never deleted: it is
+        // moved aside or said to be still there (review of PR 128).
+        let named: Vec<String> = {
+            let places = protected_places(&self.home);
+            let above = ancestors_of(places.iter().map(String::as_str));
+            places
+                .into_iter()
+                .chain(above)
+                .chain([".ssh".to_string(), ".gnupg".to_string()])
+                .collect()
+        };
         // Never gives up silently (regression, audit L-F2: after 1000 names
         // per place, with SAM's folder on another drive or a full disk, the
         // file simply stayed, and nothing said so).
-        let put_aside = |rel: &str| -> Option<(PathBuf, Aside)> {
+        let put_aside = |rel: &str, may_delete: bool| -> Option<(PathBuf, Aside)> {
             let from = self.home.join(rel);
             let name = rel.replace('/', "__");
             // A free name in `dir`; the same place moved again keeps both.
@@ -594,12 +623,50 @@ impl HomeWatch {
                     }
                 }
             }
-            Some(if remove_any(&from) {
+            Some(if may_delete && remove_any(&from) {
                 (from, Aside::Deleted)
             } else {
                 (from, Aside::Failed)
             })
         };
+        // A folder on the way to a watched place that is now a link: the app
+        // renamed the folder and put a link of its own in its place, so a
+        // link it holds with the same text, or a place it made, leads where
+        // the app chooses (review of PR 128). Moved aside first, so that
+        // the way leads nowhere rather than into the app's folder. At
+        // the start every folder before a watched place was a real folder
+        // or a watched link (the way is recorded as Linux follows it).
+        let mut swapped: Vec<String> = Vec::new();
+        for rel in self.absent.iter().chain(self.links.iter().map(|(r, _)| r)) {
+            let parts: Vec<Component> = Path::new(rel).components().collect();
+            let mut at = PathBuf::new();
+            for c in parts.iter().take(parts.len().saturating_sub(1)) {
+                at.push(c);
+                let Some(p) = at.to_str() else {
+                    break;
+                };
+                if self.links.iter().any(|(l, _)| l == p) {
+                    break;
+                }
+                if fs::symlink_metadata(self.home.join(&at))
+                    .is_ok_and(|m| m.file_type().is_symlink())
+                {
+                    if !swapped.iter().any(|s| s == p) {
+                        swapped.push(p.to_string());
+                    }
+                    break;
+                }
+            }
+        }
+        for rel in &swapped {
+            if let Some((to, how)) = put_aside(rel, false) {
+                moved.push(MovedAside {
+                    place: rel.clone(),
+                    to,
+                    how,
+                });
+            }
+        }
         for rel in &self.absent {
             // Inside a link's target or a moved folder only once.
             if fs::symlink_metadata(self.home.join(rel)).is_ok()
@@ -608,7 +675,7 @@ impl HomeWatch {
                     .iter()
                     .any(|o| o != rel && rel.starts_with(&format!("{o}/")))
             {
-                if let Some((to, how)) = put_aside(rel) {
+                if let Some((to, how)) = put_aside(rel, named.contains(rel)) {
                     moved.push(MovedAside {
                         place: rel.clone(),
                         to,
@@ -622,7 +689,7 @@ impl HomeWatch {
             let same = fs::read_link(&path).is_ok_and(|t| &t == target);
             if !same {
                 if fs::symlink_metadata(&path).is_ok() {
-                    if let Some((to, how)) = put_aside(rel) {
+                    if let Some((to, how)) = put_aside(rel, named.contains(rel)) {
                         moved.push(MovedAside {
                             place: rel.clone(),
                             to,
@@ -4906,6 +4973,75 @@ mod guard_tests {
             places.contains(&"cfg") && places.contains(&".dotfiles"),
             "{m:?}"
         );
+    }
+
+    /// A folder on the way to a watched link that the app swaps for a link
+    /// of its own is moved aside, also when the link it holds has the same
+    /// text; a launch alongside another takes over every place that one
+    /// recorded, also those no longer on today's way; and a place only on
+    /// the way is never deleted, only moved aside or reported (review of
+    /// PR 128).
+    #[test]
+    fn a_way_turned_into_a_link_is_undone_and_never_by_deleting() {
+        use std::os::unix::fs::PermissionsExt;
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap().join("home");
+        for d in ["dots", "stow/zsh"] {
+            fs::create_dir_all(home.join(d)).unwrap();
+        }
+        fs::write(home.join("stow/zsh/zshrc"), "echo mine\n").unwrap();
+        let link = |to: &str, at: &Path| std::os::unix::fs::symlink(to, at).unwrap();
+        link("dots/zsh/zshrc", &home.join(".zshrc"));
+        link("../stow/zsh", &home.join("dots/zsh"));
+        let ctx = ctx_for(&full_rw(), &home);
+        let w = HomeWatch::before(&ctx).unwrap();
+        let zsh = ("dots/zsh".to_string(), PathBuf::from("../stow/zsh"));
+        assert!(w.links.contains(&zsh), "{w:?}");
+        // The app renames `~/dots`, builds the same link in a folder of
+        // its own and puts a link to that folder in the place of `~/dots`.
+        fs::rename(home.join("dots"), home.join("dots-old")).unwrap();
+        for d in ["p/dots", "p/stow/zsh"] {
+            fs::create_dir_all(home.join(d)).unwrap();
+        }
+        fs::write(home.join("p/stow/zsh/zshrc"), "echo pwned\n").unwrap();
+        link("../stow/zsh", &home.join("p/dots/zsh"));
+        link("p/dots", &home.join("dots"));
+        let m = w.settle(&t.path().join("aside"));
+        assert!(m.iter().any(|m| m.place == "dots"), "{m:?}");
+        assert!(
+            !fs::read_to_string(home.join(".zshrc")).is_ok_and(|s| s.contains("pwned")),
+            "{m:?}"
+        );
+        // A launch alongside: every place the other one recorded.
+        let other = HomeWatch {
+            home: home.clone(),
+            absent: vec!["gone/way".into()],
+            links: vec![("old/link".into(), PathBuf::from("x"))],
+        };
+        let w2 = HomeWatch::before_alongside(&ctx, &[other]).unwrap();
+        assert!(w2.absent.contains(&"gone/way".to_string()), "{w2:?}");
+        assert!(
+            w2.links
+                .contains(&("old/link".to_string(), PathBuf::from("x"))),
+            "{w2:?}"
+        );
+        // A place only on the way that cannot be moved (SAM's folder is a
+        // file, the home cannot be changed) is reported, never deleted.
+        let locked = fs::canonicalize(t.path()).unwrap().join("locked");
+        fs::create_dir_all(&locked).unwrap();
+        link(".dotfiles/zprofile", &locked.join(".zprofile"));
+        let w3 = HomeWatch::before(&ctx_for(&full_rw(), &locked)).unwrap();
+        assert!(w3.absent.contains(&".dotfiles".to_string()), "{w3:?}");
+        fs::create_dir(locked.join(".dotfiles")).unwrap();
+        fs::write(locked.join(".dotfiles/zprofile"), "echo pwned\n").unwrap();
+        let blocked = t.path().join("blocked");
+        fs::write(&blocked, "").unwrap();
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o555)).unwrap();
+        let m = w3.settle(&blocked.join("aside"));
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
+        let it = m.iter().find(|m| m.place == ".dotfiles").unwrap();
+        assert_eq!(it.how, Aside::Failed, "{m:?}");
+        assert!(locked.join(".dotfiles/zprofile").exists(), "never deleted");
     }
 
     /// Next to a shown system path, links to the system's data and settings
