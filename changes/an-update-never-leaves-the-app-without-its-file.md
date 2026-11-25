@@ -13,6 +13,9 @@
   older SAM left aside while going back is repaired when SAM can tell the
   files apart; otherwise going back and updating stop and say where both
   files are, so you can choose which one to keep.
+- An update or a go back that SAM was stopped in after recording it is
+  finished at the app's next update or go back, from SAM's own checked
+  copy, so the version it was putting in place is never lost.
 - A half-written copy that a stopped SAM left in the AppImage's folder
-  (hidden, named `.sam-incoming-…`) is removed at the app's next update or
-  go back.
+  (hidden, named `.sam-incoming-…`) is removed at the app's next update,
+  go back, relocation or removal.

@@ -487,6 +487,30 @@ pub struct UpdateBackup {
     /// (then the sandbox still holds the kept version).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub placed_sha256: Option<String>,
+    /// An update or a go back that is recorded but not finished: the
+    /// version it puts in the AppImage's place and unpacks. Written before
+    /// the record names the new state and cleared once the version is
+    /// unpacked; a stop in between is finished from SAM's own copy at the
+    /// next update or go back (review B2 S6, R86, R89).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub placing: Option<Placing>,
+}
+
+/// The version an unfinished update or go back puts in place.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct Placing {
+    /// SAM's own checked copy of it, in SAM's data folder.
+    pub file: PathBuf,
+    /// SHA-256 of that copy.
+    pub sha256: String,
+    /// The AppImage's path it goes to.
+    pub to: PathBuf,
+    /// SAM checked it as its own (an update, or a kept version with its
+    /// recorded checksum); otherwise it is unpacked like a changed file.
+    pub checked: bool,
+    /// A go back, not an update.
+    pub going_back: bool,
 }
 
 /// Whether a newer version of an AppImage is published.

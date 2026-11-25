@@ -52,6 +52,7 @@ fn undo_puts_the_previous_version_back() {
         replaced_at: 1,
         sha256: None,
         placed_sha256: None,
+        placing: None,
     });
     sam.registry().save(&mut e).unwrap();
     assert!(
@@ -134,6 +135,7 @@ fn updated_by_hand_as(
         original_path: v1.clone(),
         replaced_at: 1,
         placed_sha256: None,
+        placing: None,
     });
     sam.registry().save(&mut e).unwrap();
     (sam, id, v2, kept)
@@ -455,6 +457,7 @@ fn a_go_back_stopped_midway_still_lets_the_app_go_back_and_update() {
         replaced_at: 1,
         sha256: Some(sha256_file(&keep).unwrap()),
         placed_sha256: Some(sha256_file(&v1).unwrap()),
+        placing: None,
     });
     sam.registry().save(&mut e).unwrap();
 
@@ -647,5 +650,214 @@ fn a_go_back_stopped_after_placing_under_a_new_name_goes_on() {
     assert_eq!(
         names_in(v2.parent().unwrap()),
         [back_to.file_name().unwrap().to_string_lossy()]
+    );
+}
+
+/// Third review of the fix for R86: a same-name go back stopped after its
+/// record was saved but before the earlier version took the app's place
+/// left that version named by no record; the next go back removed the
+/// placed copy as a leftover, "went back" to the newer one, and deleted
+/// SAM's copy of the earlier version. Now the record says what is being
+/// put in place until it is unpacked. Here that state is made by hand:
+/// the next go back finishes it from SAM's own copy, and so does the next
+/// update; the earlier version survives either way.
+#[test]
+fn a_same_name_go_back_stopped_after_its_record_was_saved_is_finished() {
+    use sam_intake::fingerprint::sha256_file;
+    for next in ["go back", "update"] {
+        let tmp = tempfile::tempdir().unwrap();
+        let (sam, id, v2, kept) = updated_by_hand_as(tmp.path(), true, "Tool-1.0-x86_64.AppImage");
+        let (newer, earlier) = (fs::read(&v2).unwrap(), fs::read(&kept).unwrap());
+        let fresh = kept.parent().unwrap().join("kept-1-a");
+        fs::create_dir_all(&fresh).unwrap();
+        let newer_kept = fresh.join(v2.file_name().unwrap());
+        fs::write(&newer_kept, &newer).unwrap();
+        // The incoming copy (another app could have swapped it).
+        let incoming = v2.with_file_name(format!(".sam-incoming-{id}-1-a"));
+        fs::write(&incoming, "swapped by another app").unwrap();
+        let mut e = sam.resolve(&id).unwrap();
+        let k = sha256_file(&kept).unwrap();
+        e.update_backup = Some(UpdateBackup {
+            file: newer_kept.clone(),
+            original_path: v2.clone(),
+            replaced_at: 1,
+            sha256: Some(sha256_file(&newer_kept).unwrap()),
+            placed_sha256: Some(k.clone()),
+            placing: Some(sam_core::model::Placing {
+                file: kept.clone(),
+                sha256: k.clone(),
+                to: e.source_path.clone(),
+                checked: true,
+                going_back: true,
+            }),
+        });
+        sam.registry().save(&mut e).unwrap();
+
+        if next == "go back" {
+            let e = sam
+                .undo_update(&id)
+                .unwrap_or_else(|e| panic!("going back was refused: {e:#}"));
+            assert_eq!(
+                fs::read(&e.source_path).unwrap(),
+                earlier,
+                "{next}: reaches it"
+            );
+        } else {
+            let err = sam.update(&id, false).unwrap_err();
+            assert!(!format!("{err:#}").contains("changed outside"), "{err:#}");
+        }
+        let e = sam.resolve(&id).unwrap();
+        assert_eq!(
+            fs::read(&e.source_path).unwrap(),
+            earlier,
+            "{next}: in place"
+        );
+        assert_eq!(e.extraction.unwrap().source.sha256, k, "{next}: unpacked");
+        let b = e.update_backup.unwrap();
+        assert_eq!(b.placing, None, "{next}: finished");
+        assert_eq!(
+            fs::read(&b.file).unwrap(),
+            newer,
+            "{next}: the newer one kept"
+        );
+        assert!(!incoming.exists(), "{next}: no leftover");
+        // And forward again.
+        let e = sam.undo_update(&id).unwrap();
+        assert_eq!(fs::read(&e.source_path).unwrap(), newer, "{next}: forward");
+        assert_eq!(
+            fs::read(e.update_backup.unwrap().file).unwrap(),
+            earlier,
+            "{next}"
+        );
+    }
+}
+
+/// Third review of the fix for R89: an update stopped after its record was
+/// saved but before the new version was in place (or unpacked) left the
+/// old file with a way back to itself, and the next update said another
+/// program had changed it. Now the next update or go back first finishes
+/// it from SAM's checked copy of the download. Here that state is made by
+/// hand; the next update finishes it.
+#[test]
+fn an_update_stopped_after_its_record_was_saved_is_finished_first() {
+    use sam_intake::fingerprint::sha256_file;
+    let tmp = tempfile::tempdir().unwrap();
+    let apps = tmp.path().join("Applications");
+    fs::create_dir_all(&apps).unwrap();
+    let installed = apps.join("Tool-x86_64.AppImage");
+    build(&installed, &FixtureSpec::hello("Tool")).unwrap();
+    let old = fs::read(&installed).unwrap();
+    let paths = Paths::rooted(&tmp.path().join("sam"));
+    let sam = Sam::with_paths(paths.clone()).unwrap();
+    let id = sam
+        .add(
+            &installed,
+            &AddOptions {
+                accept: true,
+                launcher: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .entry
+        .id;
+    let fresh = paths
+        .data_dir
+        .join("update-backups")
+        .join(&id)
+        .join("kept-1-a");
+    fs::create_dir_all(&fresh).unwrap();
+    let way_back = fresh.join("Tool-x86_64.AppImage");
+    fs::write(&way_back, &old).unwrap();
+    let download = fresh.join(".sam-placing");
+    let mut spec = FixtureSpec::hello("Tool");
+    spec.comment = "Tool, version 2".into();
+    build(&download, &spec).unwrap();
+    let new = fs::read(&download).unwrap();
+    let n = sha256_file(&download).unwrap();
+    let mut e = sam.resolve(&id).unwrap();
+    e.update_backup = Some(UpdateBackup {
+        file: way_back.clone(),
+        original_path: installed.clone(),
+        replaced_at: 1,
+        sha256: Some(sha256_file(&way_back).unwrap()),
+        placed_sha256: Some(n.clone()),
+        placing: Some(sam_core::model::Placing {
+            file: download.clone(),
+            sha256: n.clone(),
+            to: e.source_path.clone(),
+            checked: true,
+            going_back: false,
+        }),
+    });
+    sam.registry().save(&mut e).unwrap();
+
+    let err = sam.update(&id, false).unwrap_err();
+    assert!(!format!("{err:#}").contains("changed outside"), "{err:#}");
+    let e = sam.resolve(&id).unwrap();
+    assert_eq!(fs::read(&e.source_path).unwrap(), new, "finished");
+    assert_eq!(e.extraction.unwrap().source.sha256, n, "unpacked");
+    assert!(!e.content_changed_outside, "SAM's own change");
+    let b = e.update_backup.unwrap();
+    assert_eq!(b.placing, None);
+    assert_eq!(fs::read(&b.file).unwrap(), old, "the way back");
+    assert!(!download.exists(), "the checked download is gone");
+}
+
+/// Third review of the fix for R89: removing the sandbox or relocating the
+/// app left this app's half-written incoming copies in the AppImage's
+/// folder for good. Both remove them now.
+#[test]
+fn removing_or_relocating_an_app_removes_its_incoming_leftovers() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (sam, id, v2, _) = updated_by_hand(tmp.path(), true);
+    let leftover = |dir: &std::path::Path| dir.join(format!(".sam-incoming-{id}-7-beef"));
+    fs::write(leftover(v2.parent().unwrap()), "half").unwrap();
+    let elsewhere = tmp.path().join("Elsewhere");
+    fs::create_dir_all(&elsewhere).unwrap();
+    let moved = elsewhere.join(v2.file_name().unwrap());
+    fs::rename(&v2, &moved).unwrap();
+    sam.relocate(&id, &moved).unwrap();
+    assert!(!leftover(v2.parent().unwrap()).exists(), "relocating");
+
+    fs::write(leftover(&elsewhere), "half").unwrap();
+    sam.remove(&id, false).unwrap();
+    assert!(!leftover(&elsewhere).exists(), "removing");
+}
+
+/// A stopped update is finished only from SAM's own copy as it was
+/// checked: one changed since is never put in place. SAM says so once,
+/// leaves the app's file as it is and drops the mark, so the app is not
+/// blocked for good.
+#[test]
+fn a_stopped_update_whose_own_copy_changed_is_not_finished() {
+    use sam_intake::fingerprint::sha256_file;
+    let tmp = tempfile::tempdir().unwrap();
+    let (sam, id, v2, kept) = updated_by_hand(tmp.path(), true);
+    let current = fs::read(&v2).unwrap();
+    let fresh = kept.parent().unwrap().join("kept-1-a");
+    fs::create_dir_all(&fresh).unwrap();
+    let copy = fresh.join(".sam-placing");
+    fs::write(&copy, "SAM's copy, changed since").unwrap();
+    let mut e = sam.resolve(&id).unwrap();
+    let mut b = e.update_backup.clone().unwrap();
+    b.placing = Some(sam_core::model::Placing {
+        file: copy.clone(),
+        sha256: sha256_file(&kept).unwrap(),
+        to: e.source_path.clone(),
+        checked: true,
+        going_back: false,
+    });
+    e.update_backup = Some(b);
+    sam.registry().save(&mut e).unwrap();
+
+    let err = sam.update(&id, false).unwrap_err();
+    assert!(format!("{err:#}").contains("cannot finish"), "{err:#}");
+    assert_eq!(fs::read(&v2).unwrap(), current, "the app's file stays");
+    let e = sam.resolve(&id).unwrap();
+    assert_eq!(
+        e.update_backup.unwrap().placing,
+        None,
+        "not blocked for good"
     );
 }
