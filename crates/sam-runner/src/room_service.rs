@@ -2702,9 +2702,9 @@ mod process_tests {
     /// is not the file, folder or device SAM checked (device and inode):
     /// the defence against a Bubblewrap that mounts places by name, which
     /// the app could swap while the room is built. The right place passes
-    /// the check (the helper then stops at the missing syscall filter,
-    /// still before the program). Review B2 S2c: without the check no
-    /// test failed.
+    /// the check (the helper then stops at SAM's syscall filter, here an
+    /// empty one on standard input, still before the program). Review B2
+    /// S2c: without the check no test failed.
     #[test]
     fn the_room_helper_refuses_a_place_that_is_not_the_one_sam_checked() {
         use std::os::unix::ffi::OsStrExt;
@@ -2717,7 +2717,7 @@ mod process_tests {
         let ran = tmp.path().join("ran");
         let run = |place: &Path, dev: u64, ino: u64| {
             let spec = tmp.path().join("room.spec");
-            let mut body = b"status=1000\0seccomp=1001\0place=".to_vec();
+            let mut body = b"status=1000\0seccomp=0\0place=".to_vec();
             body.extend_from_slice(format!("{dev}:{ino}:").as_bytes());
             body.extend_from_slice(place.as_os_str().as_bytes());
             body.push(0);
@@ -2726,8 +2726,8 @@ mod process_tests {
             // holds the written file open until it starts its program, and
             // the kernel then refuses to run the helper (ETXTBSY, "Text
             // file busy"): only that refusal is tried again, for at most
-            // 2 seconds.
-            let end = Instant::now() + Duration::from_secs(2);
+            // 10 seconds, as `write_program` does.
+            let end = Instant::now() + Duration::from_secs(10);
             let out = loop {
                 match Command::new(&helper)
                     .arg(&spec)
@@ -2737,7 +2737,10 @@ mod process_tests {
                     .stdin(Stdio::null())
                     .output()
                 {
-                    Err(e) if e.raw_os_error() == Some(libc::ETXTBSY) && Instant::now() < end => {
+                    Err(e)
+                        if e.kind() == std::io::ErrorKind::ExecutableFileBusy
+                            && Instant::now() < end =>
+                    {
                         std::thread::sleep(Duration::from_millis(20));
                     }
                     other => break other.unwrap(),
@@ -2764,7 +2767,10 @@ mod process_tests {
             let (code, err) = run(place, m.dev(), m.ino());
             assert_eq!(code, Some(127), "{err}");
             assert!(!err.contains(&refused), "the right place refused: {err}");
-            assert!(err.contains("syscall filter"), "{err}");
+            assert!(
+                err.contains("a passed syscall filter is not valid"),
+                "{err}"
+            );
         }
         assert!(!ran.exists(), "the program ran");
     }
