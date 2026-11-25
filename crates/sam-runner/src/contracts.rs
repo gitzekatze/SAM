@@ -581,6 +581,21 @@ pub fn skip(reason: &str) -> Result<(), String> {
     verdict
 }
 
+/// For tests that end processes by namespace or by number: they run only
+/// on a computer nobody works at (CI, the test container), which says so
+/// with `SAM_ISOLATED=1`; never on a desktop, where a mistake ends the
+/// person's whole session (incident 2026-11-25). Elsewhere they do not
+/// apply ("not here"); CI's list of such tests keeps them from being lost.
+pub fn isolated_only(what: &str) -> bool {
+    if std::env::var("SAM_ISOLATED").as_deref() == Ok("1") {
+        return true;
+    }
+    not_here(&format!(
+        "{what} runs only on an isolated computer (SAM_ISOLATED=1)"
+    ));
+    false
+}
+
 /// Whether a test may skip: never where a run must prove everything (CI).
 fn judge_skip(required: bool, reason: &str) -> Result<(), String> {
     if required {

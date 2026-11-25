@@ -89,6 +89,18 @@ These limits are real, and SAM says so rather than pretend otherwise.
   compute the checksum too, so this catches scripts, other tools and damaged
   files, not deliberate attacks. Real protection against such programs needs
   them to run in a sandbox as well.
+- **The moment between unplugging a game controller and its removal.**
+  With *Game controllers*, SAM takes an unplugged controller's node out of
+  the running app at once, so a keyboard plugged in later and given the
+  same number never takes its place. A handle the app already holds could
+  otherwise open the node again through `/proc/self/fd`; Landlock closes
+  that way, so SAM takes a node out only where its helper reports Landlock
+  in place and the app cannot make namespaces of its own. Elsewhere an
+  unplug ends the app. What remains are two short times in which a new
+  device would have to appear at the same number: between the unplug and
+  the removal (milliseconds), and at the start, between SAM choosing the
+  controllers and the sandbox being ready to watch (until Bubblewrap and
+  SAM's helper have reported, at most about 5 seconds).
 - **X11.** An app with X11 access can read keystrokes and capture the
   screen of every X11 app. SAM grants X11 only when you allow it or an app
   cannot run without it, and says what it costs.

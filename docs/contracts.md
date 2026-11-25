@@ -20,6 +20,7 @@ where to look.
 |---|---|---|---|
 | [bwrap-core](#bwrap-core) | Bubblewrap | Refuses | fully |
 | [bwrap-disable-userns](#bwrap-disable-userns) | Bubblewrap | Refuses | fully |
+| [bwrap-status-mount-namespace](#bwrap-status-mount-namespace) | Bubblewrap | Loses a feature | fully |
 | [bwrap-rooms](#bwrap-rooms) | Bubblewrap | Loses a feature | partly |
 | [bwrap-overlay](#bwrap-overlay) | Bubblewrap | Loses a feature | fully |
 | [pasta-splice-only](#pasta-splice-only) | passt / pasta | Falls back to less | fully |
@@ -57,7 +58,7 @@ where to look.
 | [printing-ssh-drives](#printing-ssh-drives) | freedesktop.org conventions (XDG folders, menus) | Loses a feature | partly |
 | [xdg-folders](#xdg-folders) | freedesktop.org conventions (XDG folders, menus) | Loses a feature | partly |
 
-16 of 38 contracts are tested fully; for the others the entry says what is not tested, mostly because CI machines have no sound, GPU, Wayland session or desktop services. The quick checks and the early-warning runs cover part of that.
+17 of 39 contracts are tested fully; for the others the entry says what is not tested, mostly because CI machines have no sound, GPU, Wayland session or desktop services. The quick checks and the early-warning runs cover part of that.
 
 ## bwrap-core
 
@@ -84,6 +85,17 @@ Bubblewrap 0.8 or newer understands --disable-userns, which stops an app from cr
 - **Checked first by:** `breakout.rs` (a broken contract stops these tests with its name)
 - **Covers:** `option:--disable-userns`
 - **If it breaks:** Bubblewrap rejects an option it does not know, so the start fails instead of running without the protection. Raise the minimum version in install.md, or offer allow_userns only where the option is missing.
+
+## bwrap-status-mount-namespace
+
+Bubblewrap's first status line (--json-status-fd) names the sandbox's mount namespace ("mnt-namespace", its inode), also inside pasta, and SAM, as the same user, can enter that namespace and the user namespace that owns it to take a game controller's node out of the running sandbox.
+
+- **Component:** Bubblewrap ([releases](https://github.com/containers/bubblewrap/releases))
+- **When it breaks:** one feature is unavailable; the sandbox is unaffected.
+- **SAM functions that rely on it:** [15](functions.md#15)
+- **Quick check:** `bwrap-runs`
+- **Tests:** `an_unplugged_controller_leaves_the_running_sandbox`, `another_device_at_a_controllers_name_is_never_shown`, `an_unplugged_controller_leaves_a_sandbox_inside_pasta`, `the_launcher_takes_an_unplugged_controller_out_of_the_running_app` (fully)
+- **If it breaks:** Without it SAM cannot take an unplugged controller out, so it ends the app instead (device_watch.rs); a game then closes when its controller is unplugged. A renamed field: read it in Sandbox::from_status. A kernel that refuses to enter the namespaces: the tests name the step (user namespace, mount namespace, unmount).
 
 ## bwrap-rooms
 
@@ -261,14 +273,14 @@ The baseline syscall filter loads, and the syscalls it blocks have the numbers l
 
 ## kernel-procfs
 
-/proc shows process status, network tables and kernel facts at these paths; the sandbox check reads them from inside.
+/proc shows process status, network tables, kernel facts and each process's namespaces at these paths; the sandbox check reads them from inside, and the controller watch compares namespaces with SAM's own.
 
 - **Component:** Linux kernel ([releases](https://kernelnewbies.org/LinuxVersions))
 - **When it breaks:** the start goes ahead with a visible warning.
-- **SAM functions that rely on it:** [16](functions.md#16), [20](functions.md#20), [33](functions.md#33)
+- **SAM functions that rely on it:** [15](functions.md#15), [16](functions.md#16), [20](functions.md#20), [33](functions.md#33)
 - **Quick check:** none (only the tests below)
 - **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox`, `a_start_file_left_by_a_killed_launcher_is_still_moved_aside` (partly: Checked only indirectly, through the sandbox check in the matrix test.)
-- **Covers:** `path:/proc`, `path:/proc/`, `path:/proc/self/status`, `path:/proc/self/fd`, `path:/proc/self/fd/0`, `path:/proc/self/fd/1`, `path:/proc/self/fd/2`, `path:/proc/net/*`, `path:/proc/sys/kernel/hostname`, `path:/proc/sys/kernel/osrelease`, `path:/proc/sys/kernel/random/boot_id`
+- **Covers:** `path:/proc`, `path:/proc/`, `path:/proc/self/status`, `path:/proc/self/fd`, `path:/proc/self/fd/0`, `path:/proc/self/fd/1`, `path:/proc/self/fd/2`, `path:/proc/net/*`, `path:/proc/sys/kernel/hostname`, `path:/proc/sys/kernel/osrelease`, `path:/proc/sys/kernel/random/boot_id`, `path:/proc/self/ns/`
 - **If it breaks:** The sandbox check then reports the setting as unknown instead of passed.
 
 ## fs-layout

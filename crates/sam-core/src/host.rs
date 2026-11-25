@@ -302,6 +302,26 @@ pub struct HostInfo {
     #[serde(default)]
     pub extra_lib_dirs: Vec<PathBuf>,
     pub xdg_dirs: BTreeMap<String, PathBuf>,
+    /// Where the input devices are, for game controllers.
+    #[serde(default)]
+    pub input_devices: InputDevices,
+}
+
+/// Where input devices and udev's records of them are: `/dev/input` and
+/// `/run/udev/data`. Tests give stand-ins.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InputDevices {
+    pub nodes: PathBuf,
+    pub udev_data: PathBuf,
+}
+
+impl Default for InputDevices {
+    fn default() -> Self {
+        InputDevices {
+            nodes: "/dev/input".into(),
+            udev_data: "/run/udev/data".into(),
+        }
+    }
 }
 
 impl HostInfo {
@@ -390,6 +410,7 @@ impl HostInfo {
             gpu_devices: gpu_devices(),
             extra_lib_dirs: extra_lib_dirs(&home),
             xdg_dirs: xdg_user_dirs(&home),
+            input_devices: InputDevices::default(),
             home,
         }
     }

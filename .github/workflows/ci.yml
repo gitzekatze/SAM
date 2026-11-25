@@ -192,7 +192,9 @@ jobs:
         # SAM_REQUIRE_SANDBOX: a sandbox test that cannot run here fails
         # instead of skipping, so a green run always tested the sandbox.
         # SAM_SKIP_LOG: every test that says "not here" is written down.
-        run: SAM_REQUIRE_SANDBOX=1 SAM_TEST_GPG=1 SAM_SKIP_LOG="$PWD/target/test-skips.log" PATH="$PWD/target/debug:$PATH" python3 scripts/flaky-check.py --runs 2
+        # SAM_ISOLATED: a fresh virtual machine nobody works at, where tests
+        # that end processes by namespace or number may run.
+        run: SAM_REQUIRE_SANDBOX=1 SAM_ISOLATED=1 SAM_TEST_GPG=1 SAM_SKIP_LOG="$PWD/target/test-skips.log" PATH="$PWD/target/debug:$PATH" python3 scripts/flaky-check.py --runs 2
 
       # A test that does not apply to this machine passes without checking
       # anything. The summary names each one, and the job fails when one is
