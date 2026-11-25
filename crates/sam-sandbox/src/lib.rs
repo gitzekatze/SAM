@@ -3860,6 +3860,18 @@ mod guard_tests {
         let bash = s("dotfiles/bash");
         assert!(at(&a, &["--bind", &bash, &bash]).is_some(), "{a:?}");
         assert!(at(&a, &["--bind", &s("dotfiles"), &s("dotfiles")]).is_none());
+        // SAM's own folder reached through a link (an unpack folder in
+        // `~/Games`, a link into `~/vault`): the folder above where it
+        // lands is pinned too.
+        fs::create_dir_all(home.join("vault/games/sam")).unwrap();
+        link(Path::new("vault/games"), "Games");
+        let mut ctx = ctx_for(&full_rw(), &home);
+        ctx.sam_dirs = vec![home.join("Games/sam")];
+        let a = args_of(&ctx);
+        assert!(
+            at(&a, &["--bind", &s("vault"), &s("vault")]).is_some(),
+            "{a:?}"
+        );
     }
 
     /// The app's way to a host path is followed link by link as Linux

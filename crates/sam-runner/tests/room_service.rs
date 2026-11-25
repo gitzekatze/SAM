@@ -306,6 +306,23 @@ say renamed "$([ -L "$HOME/work/docs" ] && echo yes || echo no)"
 say held "$(rv room --ro-bind "$HOME/work/docs" "$HOME/work/docs" -- /usr/bin/cat "$HOME/work/docs/f")"
 "#;
 
+/// A credential file kept elsewhere through a link (`~/.netrc` into
+/// `~/dotfiles`, as `stow` sets it up), which SAM hides with an empty file
+/// over where the link leads: the app renames the folder above it in its
+/// writable home and asks a room for the folder under its new name. The
+/// room never shows the real file (review B2 S2b: it did).
+/// Since SAM also pins the folders above where a hiding lands (review B2
+/// S3, R50), the rename is refused, and a room asking for the folder
+/// itself is built with the file still hidden (R43).
+const LINKED_CREDENTIAL: &str = r#"
+say control "$(rv room -- /usr/bin/echo ok)"
+say netrc_app "$($P read "$HOME/dotfiles/netrc")"
+say moved "$(mv "$HOME/dotfiles" "$HOME/dotfiles-moved" 2>/dev/null && echo yes || echo no)"
+say netrc_moved_app "$($P read "$HOME/dotfiles-moved/netrc")"
+say netrc_room "$(rv room --ro-bind "$HOME/dotfiles-moved" "$HOME/dotfiles-moved" -- $P read "$HOME/dotfiles-moved/netrc")"
+say netrc_room_here "$(rv room --ro-bind "$HOME/dotfiles" "$HOME/dotfiles" -- $P read "$HOME/dotfiles/netrc")"
+"#;
+
 /// The person's own Bubblewrap arguments that cut the app off the network
 /// count for its rooms too.
 const EXTRA_ARGS: &str = r#"
@@ -1521,6 +1538,56 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
             .map(|f| format!("held: {f}")),
     );
     let _ = std::fs::rename(w.home.join("work-moved"), w.home.join("work-restored"));
+
+    // A credential file kept elsewhere through a link, hidden by SAM where
+    // the link leads: renaming the folder above it shows it to no room.
+    fs::create_dir_all(w.home.join("dotfiles")).unwrap();
+    fs::write(w.home.join("dotfiles/netrc"), rooms_common::SECRET).unwrap();
+    std::os::unix::fs::symlink("dotfiles/netrc", w.home.join(".netrc")).unwrap();
+    let id = w.add("RoomLinkedCredential", LINKED_CREDENTIAL);
+    let log = w.start(
+        &id,
+        |p| {
+            p.filesystem.home = true;
+            p.filesystem.home_access = Access::Rw;
+        },
+        60,
+    );
+    failures.extend(control_built("linked-credential", &log));
+    failures.extend(
+        check(
+            &log,
+            &[
+                ("netrc_app", "blocked"),
+                ("moved", "no"),
+                ("netrc_moved_app", "blocked"),
+                ("netrc_room", "blocked|refused"),
+                ("netrc_room_here", "blocked"),
+            ],
+        )
+        .into_iter()
+        .map(|f| format!("linked-credential: {f}")),
+    );
+    // The folder above the hidden file is pinned: no room is refused for
+    // a hidden file that could move (R43).
+    if log.lines().any(|l| {
+        l.starts_with("sam-room: refused") && l.contains("could move a protected or hidden place")
+    }) {
+        failures.push(
+            "linked-credential: a room was refused although the hidden file cannot move".into(),
+        );
+    }
+    // The app moved `dotfiles` (or did not): remove whichever exists, and
+    // make sure the secret is gone before the next scenario starts.
+    let _ = fs::remove_file(w.home.join(".netrc"));
+    let _ = fs::remove_dir_all(w.home.join("dotfiles-moved"));
+    let _ = fs::remove_dir_all(w.home.join("dotfiles"));
+    for left in [".netrc", "dotfiles-moved", "dotfiles"] {
+        assert!(
+            fs::symlink_metadata(w.home.join(left)).is_err(),
+            "linked-credential: {left} is still in the test home"
+        );
+    }
 
     // The person's own Bubblewrap arguments that cut the network.
     let id = w.add("RoomExtraArgs", EXTRA_ARGS);
