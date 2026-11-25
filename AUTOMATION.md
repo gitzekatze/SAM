@@ -178,7 +178,8 @@ enforcement active; target tags matching `v*`; rules "Restrict creations",
    new-dependency check, workflow safety check, kill switch, this page.
 2. **Proposals:** Claude opens draft pull requests for early-warning
    issues, upstream changes and failed runs on `main`; the owner merges
-   all of them.
+   all of them. A draft gets only CI's quick checks (formatting, linters,
+   the generated pages); marking it ready for review runs every job.
 3. **Low-risk automatic merging:** generated pages, handbook, website,
    formatting, after weeks of clean proposals.
 4. **Dependency updates and bug-fix proposals**, still merged by the owner.
