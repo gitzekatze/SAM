@@ -472,6 +472,24 @@ impl AppPage {
         }
     }
 
+    /// The review fingerprint of the app as this page shows it (from
+    /// `info`); empty when the page has none, which no record matches.
+    pub(super) fn shown_fingerprint(&self) -> String {
+        self.info
+            .borrow()
+            .as_ref()
+            .map(|i| util::str_of(i, "review_fingerprint").to_string())
+            .unwrap_or_default()
+    }
+
+    /// `review` for what this page shows: refused when the app changed
+    /// since the page drew it, so no button confirms a notice or a setting
+    /// the person never saw (review L4). The refusal is reported and the
+    /// page drawn again, as for any failed command.
+    pub(super) fn review_args(&self) -> Vec<String> {
+        review_args(&self.app_id, &self.shown_fingerprint())
+    }
+
     /// Runs a command that changes the app, then reloads.
     pub(super) fn simple(self: &Rc<Self>, args: Vec<String>, ok_text: &str) {
         self.simple_with(args, ok_text, false)
@@ -619,4 +637,10 @@ impl AppPage {
             app.refresh_apps().await;
         });
     }
+}
+
+/// The arguments of `review` for app `id` as shown with the review
+/// fingerprint `seen`.
+pub(super) fn review_args(id: &str, seen: &str) -> Vec<String> {
+    vec!["review".into(), id.into(), "--seen".into(), seen.into()]
 }

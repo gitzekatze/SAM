@@ -296,7 +296,14 @@ pub(crate) enum Cmd {
         stdin: bool,
     },
     /// Mark an app's profile as reviewed.
-    Review { app: String },
+    Review {
+        app: String,
+        /// Confirm only the state shown: the `review_fingerprint` from
+        /// `sam-jail info` when it was shown. Refused when the app changed
+        /// since (a notice, a setting, or the AppImage).
+        #[arg(long, value_name = "FINGERPRINT")]
+        seen: Option<String>,
+    },
     /// Re-extract the AppImage (after updates or failures).
     Reextract {
         app: String,
