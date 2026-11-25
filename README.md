@@ -84,7 +84,7 @@ repository.
   the reason for each), and <!-- fact:apps_refused -->1<!-- /fact --> built for another processor
   is turned away with a clear message
   ([report of <!-- fact:apps_date -->2026-11-20<!-- /fact -->](docs/reports/real-apps-2026-11-20.md)).
-- **<!-- fact:tests -->1,006<!-- /fact --> automated tests guard <!-- fact:functions -->42<!-- /fact --> functions.**
+- **<!-- fact:tests -->1,008<!-- /fact --> automated tests guard <!-- fact:functions -->42<!-- /fact --> functions.**
   [Functions and their proofs](docs/functions.md) shows which tests prove
   which function. A fixed bug gets a test that fails without the fix.
 - **Every security promise is attacked by a test, most from inside a real sandbox.**
@@ -151,7 +151,9 @@ warning before they apply.
   also reports itself as one), USB, all input devices.
 - **Desktop integration:** passwords and keyring, media controls, screen
   sharing, "show in folder", input methods (Fcitx5, IBus).
-- **Advanced:** sockets, environment variables, a writable app folder for
+- **Advanced:** sockets (a key agent, such as the SSH agent or GnuPG's,
+  is rated dangerous: the app could sign, decrypt or log in as you),
+  environment variables, a writable app folder for
   portable apps, syscall filters, nested namespaces.
 
 ### Making apps work

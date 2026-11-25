@@ -648,7 +648,7 @@ How these stay protected with the home writable:
   out (the app could have made that link, to the session bus or another
   program's socket), and so is one whose link leads to a socket SAM rates
   *Dangerous* (Docker, the system or session bus, the sound server's own
-  socket) unless you listed that socket by name
+  socket, a key agent) unless you listed that socket by name
   (`an_app_cannot_turn_its_extra_socket_into_a_link_to_another_one`). One
   that lies below a folder the app may change is left out too: SAM checks
   the socket before the start and Bubblewrap takes it by name a moment
@@ -1179,8 +1179,8 @@ The preview and the unpacked app use the same desktop file
 |---|---|---|
 | **Low** | Harmless | fonts, icons, locales, time zone (read-only), Wayland, filtered D-Bus, "This computer only", the app's own ports |
 | **Medium** | Harmless | GPU, sound, folder access, all of `/usr`, nested namespaces, names the app may own, passed-through variables |
-| **High** | Think twice | network, X11, whole home read-only, webcam, SSH agent, keyring (also a password service allowed by name), direct PipeWire, raw sound devices (ALSA), local services the app may reach, a passed-through variable that holds a secret, the syscall filter or Landlock switched off, single functions of a service |
-| **Dangerous** | Dangerous | whole home read/write, full session D-Bus, system D-Bus, raw input and USB devices, exposed keys, raw Bubblewrap arguments, compatibility mode, sound without SAM's relay (also the sound server's socket as an extra socket), a service that can act outside the sandbox allowed by name or one of its functions (a terminal that runs any command it is sent included), a wildcard over the portal, an extra folder that is a system folder, the home, a folder above it or `/tmp` (however it is written), and the network together with your home, keys or passwords (it can send what it reads) |
+| **High** | Think twice | network, X11, whole home read-only, webcam, keyring (also a password service allowed by name), direct PipeWire, raw sound devices (ALSA), local services the app may reach, a passed-through variable that holds a secret, the syscall filter or Landlock switched off, single functions of a service |
+| **Dangerous** | Dangerous | whole home read/write, full session D-Bus, system D-Bus, raw input and USB devices, exposed keys, raw Bubblewrap arguments, compatibility mode, the SSH agent and any key agent as an extra socket (GnuPG's agent, an SSH agent at its usual places: the app can decrypt, sign or log in to other computers as you), sound without SAM's relay (also the sound server's socket as an extra socket), a service that can act outside the sandbox allowed by name or one of its functions (a terminal that runs any command it is sent included), a wildcard over the portal, an extra folder that is a system folder, the home, a folder above it or `/tmp` (however it is written), and the network together with your home, keys (a key agent included) or passwords (it can send what it reads) |
 
 An app's risk is the level of its riskiest permission. SAM shows the level
 with the permission that sets it, for example *High risk · Network +1*. The

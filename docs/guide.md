@@ -109,7 +109,7 @@ How the app talks to other programs. **Filtered** (recommended) allows file dial
 
 ### Sockets and environment
 
-The SSH agent, printing, **extra sockets** (only real socket files are passed in), variables passed through from your desktop, and **environment variables** set as `NAME=value`.
+The SSH agent, printing, **extra sockets** (only real socket files are passed in), variables passed through from your desktop, and **environment variables** set as `NAME=value`. A key agent is *dangerous*: the SSH agent, and an extra socket of GnuPG's agent or of an SSH agent (OpenSSH's, GNOME Keyring's, 1Password's, Bitwarden's and others). While your keys are unlocked, the app can use them to decrypt, sign or log in to other computers as you.
 
 ### Advanced
 

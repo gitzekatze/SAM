@@ -407,20 +407,58 @@ pub fn secret_bus_name(name: &str) -> bool {
         .any(|s| bus_pattern_matches(name, s) || name.starts_with(&format!("{s}.")))
 }
 
-/// Sockets that give whoever can connect control over the computer or
-/// a way around the sandbox's D-Bus filter. Compared without `.` and
-/// repeated `/`, which the kernel skips: `/run/dbus//system_bus_socket` is
-/// the system bus (review 2026-11-23).
-pub fn dangerous_socket(path: &str) -> Option<String> {
+/// A socket path as the kernel reads it: without `.` and repeated `/`.
+fn socket_path_norm(path: &str) -> String {
     let p = path.trim();
     let lead = if p.starts_with('/') { "/" } else { "" };
-    let norm = format!(
+    format!(
         "{lead}{}",
         p.split('/')
             .filter(|c| !c.is_empty() && *c != ".")
             .collect::<Vec<_>>()
             .join("/")
-    );
+    )
+}
+
+/// Why a key agent's socket is dangerous.
+const KEY_AGENT_WHY: &str = crate::i18n::n_(
+    "is a key agent: the app can use your unlocked keys to decrypt, sign or log in to other computers as you",
+);
+
+/// Whether a socket is a key agent's: GnuPG's agent or an SSH agent at
+/// its usual places. Whoever connects uses the keys the agent holds
+/// unlocked, without knowing them: it decrypts, signs or logs in to other
+/// computers as you, so a key agent is rated Dangerous and counts as
+/// reading your keys (owner decision 11 of 2026-11-23).
+pub fn key_agent_socket(path: &str) -> bool {
+    let norm = socket_path_norm(path);
+    let names = [
+        // GnuPG's agent, also its `.ssh`, `.extra` and `.browser` sockets.
+        "S.gpg-agent",
+        // systemd's `ssh-agent.socket`, `bitwarden-ssh-agent.sock` and
+        // `ssh-agent` in any other name.
+        "ssh-agent",
+        "openssh_agent",
+        // GNOME Keyring's and gcr's SSH agents.
+        "keyring/ssh",
+        "gcr/ssh",
+        ".1password/agent.sock",
+    ];
+    // OpenSSH's own: `/tmp/ssh-XXXX/agent.<pid>`.
+    let components: Vec<&str> = norm.split('/').collect();
+    names.iter().any(|n| norm.contains(n))
+        || components
+            .windows(2)
+            .any(|w| w[0].starts_with("ssh-") && w[1].starts_with("agent."))
+}
+
+/// Sockets that give whoever can connect control over the computer, a
+/// way around the sandbox's D-Bus filter, or your unlocked keys. Compared
+/// without `.` and repeated `/`, which the kernel skips:
+/// `/run/dbus//system_bus_socket` is the system bus (review 2026-11-23).
+pub fn dangerous_socket(path: &str) -> Option<String> {
+    let p = path.trim();
+    let norm = socket_path_norm(p);
     let bad: &[(&str, &str)] = &[
         (
             "docker.sock",
@@ -453,7 +491,9 @@ pub fn dangerous_socket(path: &str) -> Option<String> {
     ];
     bad.iter()
         .find(|(needle, _)| norm.contains(needle))
-        .map(|(_, why)| format!("{p} {}", crate::i18n::tr(why)))
+        .map(|(_, why)| *why)
+        .or_else(|| key_agent_socket(p).then_some(KEY_AGENT_WHY))
+        .map(|why| format!("{p} {}", crate::i18n::tr(why)))
 }
 
 /// True when a bus-name pattern (`org.kde.*`, `org.kde*`, exact) covers `name`.
@@ -1214,7 +1254,7 @@ pub fn permission_catalog() -> Vec<PermissionInfo> {
         perm!("integrations.input_method", "Desktop integration", "Input method",
             "Typing through Fcitx5 or IBus (their sandbox frontends), for example for Chinese, Japanese or Korean, and emoji pickers.", Low),
         perm!("sockets.ssh_agent", "Sockets", "SSH agent",
-            "Lets the app use keys loaded in your SSH agent.", High, advanced),
+            "Lets the app use the keys loaded in your SSH agent: it can log in to other computers and sign as you while the keys are unlocked.", Dangerous, advanced),
         perm!("sockets.cups", "Sockets", "Printing",
             "Access to the CUPS printing service.", Low, advanced),
         perm!("sockets.custom", "Sockets", "Extra sockets",
