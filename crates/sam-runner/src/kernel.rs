@@ -360,7 +360,8 @@ fn baseline_syscalls(allow_userns: bool) -> Vec<(&'static str, i64)> {
         ]);
         // open_tree and mount_setattr in one call (Linux 6.15): blocked
         // like the two it combines (review R67). The libc crate has no
-        // name for it yet; its number is the same on every processor.
+        // name for it yet; its number is 467 on x86_64, i386 and aarch64,
+        // the only processors the filter supports (see `listed_calls`).
         v.push(("open_tree_attr", 467));
     }
     v
@@ -1136,7 +1137,19 @@ mod tests {
         assert_eq!(errnos(Some(&strict), &calls[13..]), [eperm], "strict");
         // open_tree_attr through its 32-bit number (review R67).
         let tree: Vec<fn() -> libc::c_long> = vec![|| call32(467, -1i32 as u32, 0, 0)];
+        let open_tree = errnos(None, &tree);
+        assert_ne!(open_tree, [eperm], "the kernel's own answer");
         assert_eq!(errnos(Some(&spec), &tree), [eperm], "32-bit open_tree_attr");
+        let nested_tree = SeccompSpec {
+            i386: true,
+            allow_userns: true,
+            ..SeccompSpec::default()
+        };
+        assert_eq!(
+            errnos(Some(&nested_tree), &tree),
+            open_tree,
+            "nested, 32-bit"
+        );
         // Nested sandboxes: the namespace calls as without the filter.
         let nested = SeccompSpec {
             i386: true,
