@@ -23,6 +23,10 @@ fn a_config_folder_whose_name_is_not_text_stops_the_start() {
             e.contains("not valid text") && e.contains("cfg-"),
             "{var}: {e}"
         );
+        // A name that holds `..` stops it too, with its own message.
+        std::env::set_var(var, ctx.host.home.join("x/../cfg"));
+        let e = Bubblewrap.build(&ctx).unwrap_err().to_string();
+        assert!(e.contains("holds") && e.contains("x/../cfg"), "{var}: {e}");
         std::env::remove_var(var);
     }
 }

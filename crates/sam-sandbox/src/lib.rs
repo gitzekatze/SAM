@@ -228,32 +228,41 @@ fn protected_places_with(
     data: Option<PathBuf>,
 ) -> Vec<String> {
     let mut out: Vec<String> = PROTECTED_RO.iter().map(|p| p.to_string()).collect();
-    // Compared by where they lead too: the variable may name the home's
-    // real place (`/home/u` a link to `/data/u`) or hold `..` (review B2
-    // R53). A name that is not text stops the start ([`odd_config_folder`]).
+    // Compared as written and by where they lead: the variable may name
+    // the home's real place (`/home/u` a link to `/data/u`), and a link on
+    // the way (`~/cfg` to `~/dotfiles/cfg`) must stay watched as well as
+    // the folder it leads to, since the desktop follows the name (review
+    // B2 R53). A name that is not text or holds `..` stops the start
+    // ([`odd_config_folder`]).
     let homes = [home.to_path_buf(), resolve(home)];
     for (dir, default) in [(config, ".config/"), (data, ".local/share/")] {
         let Some(dir) = dir else {
             continue;
         };
-        let rel = [resolve(&dir), dir].into_iter().find_map(|d| {
-            homes
-                .iter()
-                .find_map(|h| d.strip_prefix(h).ok().map(Path::to_path_buf))
-                .filter(|r| r.components().all(|c| matches!(c, Component::Normal(_))))
-        });
-        let Some(rel) = rel.as_deref().and_then(Path::to_str) else {
-            continue;
-        };
-        let rel = rel.trim_end_matches('/').to_string();
-        if rel.is_empty() || format!("{rel}/") == default {
-            continue;
+        let mut rels: Vec<String> = Vec::new();
+        for d in [dir.clone(), resolve(&dir)] {
+            for h in &homes {
+                let Some(r) = d
+                    .strip_prefix(h)
+                    .ok()
+                    .filter(|r| r.components().all(|c| matches!(c, Component::Normal(_))))
+                    .and_then(Path::to_str)
+                else {
+                    continue;
+                };
+                let r = r.trim_end_matches('/').to_string();
+                if !r.is_empty() && format!("{r}/") != default && !rels.contains(&r) {
+                    rels.push(r);
+                }
+            }
         }
-        for p in PROTECTED_RO {
-            if let Some(rest) = p.strip_prefix(default) {
-                let alt = format!("{rel}/{rest}");
-                if !out.contains(&alt) {
-                    out.push(alt);
+        for rel in rels {
+            for p in PROTECTED_RO {
+                if let Some(rest) = p.strip_prefix(default) {
+                    let alt = format!("{rel}/{rest}");
+                    if !out.contains(&alt) {
+                        out.push(alt);
+                    }
                 }
             }
         }
@@ -261,14 +270,15 @@ fn protected_places_with(
     out
 }
 
-/// `XDG_CONFIG_HOME` or `XDG_DATA_HOME` when its name is not valid text:
-/// the start places below it could not be named, so they would go
-/// unprotected (independent review of PR 131).
+/// `XDG_CONFIG_HOME` or `XDG_DATA_HOME` when its name is not valid text or
+/// holds `..`: the start places below it could not be named, or not
+/// without `..`, which a record of them may not hold, so they would go
+/// unprotected (independent reviews of PR 131 and PR 134).
 pub fn odd_config_folder(config: Option<&Path>, data: Option<&Path>) -> Option<PathBuf> {
     [config, data]
         .into_iter()
         .flatten()
-        .find(|d| d.to_str().is_none())
+        .find(|d| d.to_str().is_none() || d.components().any(|c| matches!(c, Component::ParentDir)))
         .map(Path::to_path_buf)
 }
 
@@ -583,11 +593,20 @@ impl HomeWatch {
         };
         // A place is always below the home: `home.join` of an absolute
         // path would leave it, and of an empty one is the home itself.
-        // Only plain names: a damaged record with `..` would let `settle`
-        // rename or delete outside the home (review B2 R54).
-        let rel = |p: PathBuf| {
-            (!p.as_os_str().is_empty() && p.components().all(|c| matches!(c, Component::Normal(_))))
-                .then(|| p.to_str().map(String::from))?
+        // Only plain names are acted on: one with `..` would let `settle`
+        // rename or delete outside the home (review B2 R54). An older SAM
+        // wrote such names for an `XDG_CONFIG_HOME` holding `..`, so that
+        // line alone is left out (`Some(None)`) and the rest of the record
+        // still counts (independent review of PR 134); any other damage
+        // makes the whole record unreadable (`None`).
+        let place = |p: PathBuf| -> Option<Option<String>> {
+            let all = |ok: fn(&Component) -> bool| {
+                !p.as_os_str().is_empty() && p.components().all(|c| ok(&c))
+            };
+            if all(|c| matches!(c, Component::Normal(_))) {
+                return Some(Some(p.to_str()?.to_string()));
+            }
+            all(|c| matches!(c, Component::Normal(_) | Component::ParentDir)).then_some(None)
         };
         let mut home = None;
         let mut w = HomeWatch::default();
@@ -595,9 +614,10 @@ impl HomeWatch {
             let mut parts = line.split(' ');
             match (parts.next(), parts.next(), parts.next(), parts.next()) {
                 (Some("home"), Some(h), None, None) => home = Some(unhex(h)?),
-                (Some("absent"), Some(a), None, None) => w.absent.push(rel(unhex(a)?)?),
+                (Some("absent"), Some(a), None, None) => w.absent.extend(place(unhex(a)?)?),
                 (Some("link"), Some(l), Some(t), None) => {
-                    w.links.push((rel(unhex(l)?)?, unhex(t)?));
+                    let target = unhex(t)?;
+                    w.links.extend(place(unhex(l)?)?.map(|l| (l, target)));
                 }
                 (Some("home" | "absent" | "link"), ..) => return None,
                 _ => {}
@@ -1657,10 +1677,19 @@ impl Bubblewrap {
             var("XDG_CONFIG_HOME").as_deref(),
             var("XDG_DATA_HOME").as_deref(),
         ) {
+            if odd.to_str().is_none() {
+                anyhow::bail!(
+                    "{}",
+                    sam_core::i18n::trf(
+                        "SAM cannot pass on {path}: its name is not valid text. Rename it, then start the app again.",
+                        &[("path", &odd.display())]
+                    )
+                );
+            }
             anyhow::bail!(
                 "{}",
                 sam_core::i18n::trf(
-                    "SAM cannot pass on {path}: its name is not valid text. Rename it, then start the app again.",
+                    "SAM cannot pass on {path}: its name holds \"..\". Set the folder without \"..\", then start the app again.",
                     &[("path", &odd.display())]
                 )
             );
@@ -4442,7 +4471,8 @@ mod guard_tests {
     /// ones, and the new places are on the list (audit S-F6).
     #[test]
     fn start_places_follow_other_config_and_data_folders() {
-        let home = Path::new("/home/u");
+        let t = tempfile::tempdir().unwrap();
+        let home = &fs::canonicalize(t.path()).unwrap().join("u");
         let p = protected_places_with(home, Some(home.join("cfg")), Some(home.join("data/")));
         for want in [
             "cfg/autostart",
@@ -4516,16 +4546,50 @@ mod guard_tests {
             format!("{kind} {hex}")
         };
         let home_line = line("home", "/home/u");
-        for bad in ["../x", ".config/../../x", "./x", "/x"] {
+        // A place with `..` (an older SAM wrote such names) is left out;
+        // the rest of the record still counts. Any other damage makes the
+        // whole record unreadable.
+        let good = line("absent", ".config/x");
+        for bad in ["./x", "/x", ""] {
             assert!(
                 HomeWatch::from_lines([home_line.as_str(), line("absent", bad).as_str()]).is_none(),
                 "{bad} accepted"
             );
         }
-        assert!(
-            HomeWatch::from_lines([home_line.as_str(), line("absent", ".config/x").as_str()])
-                .is_some()
+        for bad in ["../x", ".config/../../x", "x/../cfg/autostart"] {
+            let w = HomeWatch::from_lines([
+                home_line.as_str(),
+                line("absent", bad).as_str(),
+                format!("{} {}", line("link", bad), &line("", "/x")[1..]).as_str(),
+                good.as_str(),
+            ])
+            .unwrap();
+            assert_eq!(w.absent, [".config/x"], "{bad}");
+            assert!(w.links.is_empty(), "{bad}");
+        }
+        // A name that holds `..` stops the start as well.
+        assert_eq!(
+            odd_config_folder(Some(&home.join("x/../cfg")), None),
+            Some(home.join("x/../cfg"))
         );
+    }
+
+    /// A config folder reached through a link in the home is protected
+    /// under both names, and the link itself stays watched: the desktop
+    /// follows the name, so an app that swapped the link for its own
+    /// folder would otherwise go unnoticed (independent review of PR 134).
+    #[test]
+    fn a_linked_config_folder_stays_watched_under_both_names() {
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap().join("u");
+        fs::create_dir_all(home.join("dotfiles/cfg")).unwrap();
+        std::os::unix::fs::symlink(home.join("dotfiles/cfg"), home.join("cfg")).unwrap();
+        let p = protected_places_with(&home, Some(home.join("cfg")), None);
+        for want in ["cfg/autostart", "dotfiles/cfg/autostart"] {
+            assert!(p.iter().any(|x| x == want), "{want} missing: {p:?}");
+        }
+        let watched = ancestors_of(p.iter().map(String::as_str));
+        assert!(watched.iter().any(|x| x == "cfg"), "{watched:?}");
     }
 
     /// Paths are resolved through links also where they do not exist yet,
