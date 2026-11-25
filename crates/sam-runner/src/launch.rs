@@ -532,7 +532,9 @@ pub fn prepare(
             .as_ref()
             .map(crate::home_shared::Shared::running)
             .unwrap_or_default();
-        sam_sandbox::prepare_home_protection(&ctx);
+        // Not where a running launch saw nothing: its watch would move it
+        // aside at once (review B2 R52).
+        sam_sandbox::prepare_home_protection_alongside(&ctx, &others);
         // After the folders above are made, so they do not count as new.
         home_watch = sam_sandbox::HomeWatch::before_alongside(&ctx, &others);
         if let (Some(s), Some(w)) = (&shared, &home_watch) {
