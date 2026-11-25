@@ -560,7 +560,10 @@ impl AppPage {
                         app.launch(&me.app_id);
                     }
                 }
-                Err(e) => app.report_error(&e),
+                Err(e) => match stale_hint_notice(&e) {
+                    Some(text) => app.toast(&text),
+                    None => app.report_error(&e),
+                },
             }
             me.reload();
             app.refresh_registered().await;
@@ -644,6 +647,16 @@ impl AppPage {
 pub(super) fn asks_first(sug: &Value) -> bool {
     let risk = util::str_of(sug, "risk");
     risk == "high" || risk == "dangerous" || util::str_of(sug, "action.kind") == "compat"
+}
+
+/// What the window says when the command line refuses a hint for a yes
+/// the window did not give: the page showed an older, lower rating (the
+/// settings changed since). SAM draws the page again, so the next click
+/// asks first; the command line's advice to add --yes does not fit here.
+pub(super) fn stale_hint_notice(e: &crate::backend::CliError) -> Option<String> {
+    e.is("hint-needs-yes").then(|| {
+        crate::i18n::tr("The rating of this hint changed. SAM shows the page again; apply it once more to be asked first.")
+    })
 }
 
 /// The command that applies hint or repair step `id` to app `app_id`.

@@ -982,6 +982,14 @@ mod tests {
             apply_args("app-1", "x11", true, false),
             ["repair", "app-1", "--apply", "x11", "--yes"]
         );
+        // A refusal for a rating the page did not show yet: a short
+        // notice, then the page is drawn again; other errors as before.
+        use crate::backend::CliError;
+        let stale = super::data::stale_hint_notice(&CliError::coded("hint-needs-yes", "x"));
+        assert!(stale.is_some_and(|t| !t.contains("--yes")));
+        assert!(
+            super::data::stale_hint_notice(&CliError::coded("change-needs-yes", "x")).is_none()
+        );
     }
 
     /// "Confirm Settings" names what the changed settings let the app do

@@ -313,8 +313,7 @@ fn real_main(cli: Cli) -> Result<()> {
                         .into_iter()
                         .find(|s| s.id == id)
                         .with_context(|| format!("no hint '{id}' for {}", e.display_name()))?;
-                    hint_allowed(&sug, &e.profile.permissions, yes)?;
-                    app.apply_suggestion(&query, &sug, false)?
+                    app.apply_suggestion(&query, &sug, false, yes)?
                 }
                 None => e,
             };
@@ -368,7 +367,7 @@ fn real_main(cli: Cli) -> Result<()> {
                     )
                 })?;
                 may_apply(&sug, yes)?;
-                app.apply_suggestion(&query, &sug, true)?;
+                app.apply_suggestion(&query, &sug, true, yes)?;
                 Some(sug.title)
             } else {
                 None
@@ -1783,35 +1782,6 @@ fn may_apply(sug: &sam_core::model::Suggestion, yes: bool) -> anyhow::Result<()>
     Ok(())
 }
 
-/// A first-run hint rated Think twice or Dangerous, or one that turns on
-/// compatibility mode, is applied only with `--yes`, as the window asks
-/// before it (owner decision 13 of 2026-11-23: `hints --apply network`
-/// gave the app the network with no question, while `set network.mode
-/// full` asks). The refusal names the hint and what it allows.
-fn hint_allowed(
-    sug: &sam_core::model::Suggestion,
-    p: &sam_core::permissions::PermissionSet,
-    yes: bool,
-) -> anyhow::Result<()> {
-    let risky = sug.risk >= sam_core::risk::RiskLevel::High
-        || matches!(sug.action, sam_core::model::FixAction::Compat);
-    if risky && !yes {
-        return Err(sam_core::error::CodedError::new(
-            "hint-needs-yes",
-            sam_core::i18n::trf(
-                "SAM applies \"{title}\" ({level}) only after a yes. {effect} Look at it, then apply it with --yes, or in SAM's window, which asks.",
-                &[
-                    ("title", &sug.title),
-                    ("level", &sug.risk.words()),
-                    ("effect", &sam_runner::repair::effect(sug, p)),
-                ],
-            ),
-        )
-        .into());
-    }
-    Ok(())
-}
-
 /// What `selftest` says about one start that `seconds` long: status, the
 /// detail shown and, for a failure, what the app's output suggests. "ok"
 /// when the app started in its sandbox and ended well or kept running
@@ -1966,7 +1936,7 @@ mod main_tests {
 
 #[cfg(test)]
 mod repair_tests {
-    use super::{compat_allowed, hint_allowed, may_apply};
+    use super::{compat_allowed, may_apply};
 
     /// Compatibility mode goes on only with --yes, and the refusal says why
     /// (audit D-H5); turning it off needs nothing.
@@ -2001,43 +1971,5 @@ mod repair_tests {
         assert!(may_apply(&sug, true).is_ok());
         sug.from_app_output = false;
         assert!(may_apply(&sug, false).is_ok());
-    }
-
-    /// A hint rated Think twice or Dangerous, or one that turns on
-    /// compatibility mode, needs --yes, and the refusal names the hint and
-    /// what it turns on; a Medium hint does not (owner decision 13 of
-    /// 2026-11-23).
-    #[test]
-    fn a_risky_hint_needs_yes_and_says_what_it_allows() {
-        let p = sam_core::permissions::PermissionSet::strict_gui();
-        let mut sug = Suggestion {
-            id: "network".into(),
-            title: "No internet".into(),
-            explanation: "The app has no network access.".into(),
-            action: FixAction::Set {
-                key: "network.mode".into(),
-                value: "full".into(),
-            },
-            risk: sam_core::risk::RiskLevel::High,
-            from_app_output: false,
-        };
-        let err = hint_allowed(&sug, &p, false).unwrap_err();
-        assert_eq!(sam_core::error::code_of(&err), Some("hint-needs-yes"));
-        let text = format!("{err:#}");
-        assert!(text.contains("\"No internet\""), "{text}");
-        assert!(text.contains("Turns on"), "says what it allows: {text}");
-        assert!(text.contains("--yes"), "{text}");
-        assert!(hint_allowed(&sug, &p, true).is_ok());
-        sug.risk = sam_core::risk::RiskLevel::Dangerous;
-        assert!(hint_allowed(&sug, &p, false).is_err());
-        sug.risk = sam_core::risk::RiskLevel::Medium;
-        assert!(hint_allowed(&sug, &p, false).is_ok(), "Medium applies");
-        sug.action = FixAction::Compat;
-        let err = hint_allowed(&sug, &p, false).unwrap_err();
-        assert_eq!(
-            sam_core::error::code_of(&err),
-            Some("hint-needs-yes"),
-            "compatibility mode asks whatever its label"
-        );
     }
 }

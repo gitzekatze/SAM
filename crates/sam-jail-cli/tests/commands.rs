@@ -282,6 +282,27 @@ fn a_risky_hint_is_applied_only_with_yes() {
     assert_eq!(e.json(&["get", &id, "network.mode"], None), "full");
 }
 
+/// A risky first-run hint needs --yes through `repair --apply` as well:
+/// `repair APP --apply network` found the hint and applied it unasked
+/// (review of owner decision 13 of 2026-11-23). Without --yes it is
+/// refused with `hint-needs-yes` and nothing changes; with it the network
+/// is on.
+#[test]
+fn a_risky_hint_needs_yes_through_repair_too() {
+    let e = Env::new();
+    let game = e.fixture("apps", "Kart", "Game;");
+    let id = e.add(&game, true);
+    let before = e.json(&["get", &id], None);
+    let o = e.run(&["--json", "repair", &id, "--apply", "network"], None);
+    assert!(!o.status.success(), "refused without --yes");
+    let v: Value = serde_json::from_slice(&o.stdout).unwrap();
+    assert_eq!(v["code"], "hint-needs-yes", "{v}");
+    assert_eq!(e.json(&["get", &id], None), before, "nothing changed");
+
+    e.json(&["repair", &id, "--apply", "network", "--yes"], None);
+    assert_eq!(e.json(&["get", &id, "network.mode"], None), "full");
+}
+
 /// `menu list` on the terminal names an unsandboxed menu entry that starts
 /// the app, and after `menu hide` the hidden one; it says that no other
 /// entry starts the app only when there is none.

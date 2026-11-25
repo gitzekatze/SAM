@@ -4,11 +4,15 @@
   gives the app the network, the keyring or X11, while `sam-jail set`
   asks for `--yes` for the same change. Now a hint rated *Think twice* or
   *Dangerous*, or one that turns on compatibility mode, is refused
-  without `--yes` (code `hint-needs-yes`). The message names the hint and
-  what it turns on. A harmless hint, such as Downloads, still applies at
-  once.
+  without `--yes` (code `hint-needs-yes`). The message names the hint,
+  what it turns on and what it adds. A harmless hint, such as Downloads,
+  still applies at once.
+- The same holds when such a hint is applied with `sam-jail repair APP
+  --apply ID`. Other repair steps work as before.
 - SAM's window asks before such a hint, as before, and then confirms it
-  for the command line.
-- A hint is never rated below what applying it adds: the network next to
-  a home or keyring the app already has is *Dangerous* together, so the
-  hint says so.
+  for the command line. If the hint's rating changed since the page was
+  drawn, the window shows the page again so the next click asks.
+- A hint or repair step is never rated below what applying it adds: the
+  network next to a home or keyring the app already has is *Dangerous*
+  together, and turning off the syscall filter is *Think twice*, so the
+  window asks first.

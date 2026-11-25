@@ -100,7 +100,8 @@ pub(crate) enum Cmd {
         #[arg(long, conflicts_with_all = ["apply", "next", "undo"])]
         undo_step: Option<String>,
         /// Also apply a step suggested by what the app printed (the app
-        /// controls that text); without it such a step is only shown.
+        /// controls that text), or a first-run hint rated Think twice or
+        /// Dangerous; without it such a step is only shown.
         #[arg(long)]
         yes: bool,
     },

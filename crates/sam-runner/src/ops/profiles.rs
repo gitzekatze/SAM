@@ -287,13 +287,19 @@ impl Sam {
 
     /// Apply a first-run hint, log finding or repair step. Repair steps
     /// (`as_repair`) are remembered so "Undo repairs" can revert them all.
+    /// A first-run hint rated Think twice or Dangerous, or one that turns
+    /// on compatibility mode, needs `confirmed` (the person said yes),
+    /// judged here on the record that is changed and saved, so no caller
+    /// can skip it (owner decision 13 of 2026-11-23).
     pub fn apply_suggestion(
         &self,
         query: &str,
         sug: &Suggestion,
         as_repair: bool,
+        confirmed: bool,
     ) -> Result<AppEntry> {
         let mut e = self.resolve(query)?;
+        crate::repair::confirm_hint(&e, sug, confirmed)?;
         if as_repair && e.repair_backup.is_none() {
             e.repair_backup = Some(e.profile.clone());
         }
