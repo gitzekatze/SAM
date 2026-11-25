@@ -443,6 +443,17 @@ you picked. The sandbox check confirms that the socket is absent.
 
 - **D-Bus** goes through `xdg-dbus-proxy`. The app sees only the names it is
   allowed to talk to.
+- **Desktop services reach only their own objects.** The filter gives a
+  program's unique name (`:1.10`) the rules of every name it holds, and one
+  program often holds many: on KDE Plasma 6, plasmashell runs the
+  notification service and also Klipper's clipboard history and the shell's
+  script runner. So for the services SAM allows by default or through a
+  switch (notifications, the tray watcher, the input methods' sandbox
+  frontends, the screen saver, power management, the file manager) the app
+  gets calls and signals on that service's own object paths only, which the
+  filter checks for the unique name too. The keyring switch reaches its
+  whole service, and any other name you allow yourself reaches the whole
+  program behind it (see `dbus.session.deny` in the settings reference).
 - **Its own name:** an app may own the D-Bus name it really asks for. SAM
   learns it from the D-Bus filter's own record of what it refused (never
   from what the app prints) and allows it when nobody on this computer uses
