@@ -122,24 +122,96 @@ pub fn appimage_inside(name: &std::ffi::OsStr) -> PathBuf {
     }
 }
 
-/// How many values follow a Bubblewrap option, as bwrap 0.13's `--help`
-/// lists them: for showing an option and its values on one line, and for
-/// checking the person's raw arguments (an option missing its values took
-/// SAM's own arguments after it).
+/// Every option of Bubblewrap 0.11 to 0.13 with the number of values that
+/// follow it, as its `--help` lists them. The one list for showing an
+/// option with its values on one line, for checking the person's raw
+/// arguments (an option missing its values took SAM's own arguments after
+/// it) and for reading a room's arguments (a test in `room_rules` keeps its
+/// kinds to the same numbers).
+pub const BWRAP_OPTIONS: &[(&str, usize)] = &[
+    ("--unshare-all", 0),
+    ("--unshare-user", 0),
+    ("--unshare-user-try", 0),
+    ("--unshare-ipc", 0),
+    ("--unshare-pid", 0),
+    ("--unshare-net", 0),
+    ("--unshare-uts", 0),
+    ("--unshare-cgroup", 0),
+    ("--unshare-cgroup-try", 0),
+    ("--share-net", 0),
+    ("--disable-userns", 0),
+    ("--assert-userns-disabled", 0),
+    ("--clearenv", 0),
+    ("--new-session", 0),
+    ("--die-with-parent", 0),
+    ("--as-pid-1", 0),
+    ("--level-prefix", 0),
+    ("--not-a-security-boundary", 0),
+    ("--help", 0),
+    ("--version", 0),
+    ("--args", 1),
+    ("--argv0", 1),
+    ("--userns", 1),
+    ("--userns2", 1),
+    ("--pidns", 1),
+    ("--uid", 1),
+    ("--gid", 1),
+    ("--hostname", 1),
+    ("--chdir", 1),
+    ("--unsetenv", 1),
+    ("--lock-file", 1),
+    ("--sync-fd", 1),
+    ("--remount-ro", 1),
+    ("--overlay-src", 1),
+    ("--tmp-overlay", 1),
+    ("--ro-overlay", 1),
+    ("--exec-label", 1),
+    ("--file-label", 1),
+    ("--proc", 1),
+    ("--dev", 1),
+    ("--tmpfs", 1),
+    ("--mqueue", 1),
+    ("--dir", 1),
+    ("--perms", 1),
+    ("--size", 1),
+    ("--seccomp", 1),
+    ("--add-seccomp-fd", 1),
+    ("--block-fd", 1),
+    ("--userns-block-fd", 1),
+    ("--info-fd", 1),
+    ("--json-status-fd", 1),
+    ("--cap-add", 1),
+    ("--cap-drop", 1),
+    ("--bind", 2),
+    ("--bind-try", 2),
+    ("--dev-bind", 2),
+    ("--dev-bind-try", 2),
+    ("--ro-bind", 2),
+    ("--ro-bind-try", 2),
+    ("--bind-fd", 2),
+    ("--ro-bind-fd", 2),
+    ("--file", 2),
+    ("--bind-data", 2),
+    ("--ro-bind-data", 2),
+    ("--symlink", 2),
+    ("--setenv", 2),
+    ("--chmod", 2),
+    ("--overlay", 3),
+];
+
+/// How many values follow `option` ([`BWRAP_OPTIONS`]); `None` for an
+/// option SAM does not know.
+pub fn bwrap_values(option: &str) -> Option<usize> {
+    BWRAP_OPTIONS
+        .iter()
+        .find(|(name, _)| *name == option)
+        .map(|(_, n)| *n)
+}
+
+/// [`bwrap_values`] for showing a command: an unknown option counts as one
+/// without values.
 pub fn bwrap_arity(option: &str) -> usize {
-    match option {
-        "--overlay" => 3,
-        "--bind" | "--bind-try" | "--ro-bind" | "--ro-bind-try" | "--dev-bind"
-        | "--dev-bind-try" | "--bind-fd" | "--ro-bind-fd" | "--symlink" | "--setenv" | "--file"
-        | "--bind-data" | "--ro-bind-data" | "--chmod" => 2,
-        "--proc" | "--dev" | "--tmpfs" | "--mqueue" | "--dir" | "--perms" | "--size"
-        | "--hostname" | "--chdir" | "--unsetenv" | "--uid" | "--gid" | "--userns"
-        | "--userns2" | "--pidns" | "--args" | "--argv0" | "--lock-file" | "--sync-fd"
-        | "--remount-ro" | "--overlay-src" | "--tmp-overlay" | "--ro-overlay" | "--exec-label"
-        | "--file-label" | "--cap-add" | "--cap-drop" | "--seccomp" | "--add-seccomp-fd"
-        | "--block-fd" | "--userns-block-fd" | "--info-fd" | "--json-status-fd" => 1,
-        _ => 0,
-    }
+    bwrap_values(option).unwrap_or(0)
 }
 
 /// A fully built command line, ready to spawn.

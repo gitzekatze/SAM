@@ -1629,16 +1629,27 @@ impl Bubblewrap {
     /// The bwrap command line for this launch.
     pub fn build(&self, ctx: &LaunchContext) -> Result<SandboxCommand> {
         // The person's raw arguments come right before SAM's last ones
-        // (`--remount-ro /`): an option there missing its values would take
-        // them, and the root would stay writable without a word (review B2
-        // R58).
-        if let Some(open) = missing_values(&ctx.permissions.advanced.extra_bwrap_args) {
+        // (`--remount-ro /`, then its helper): an option there missing its
+        // values would take them, and a word where an option belongs would
+        // run instead of the app; either way the root would stay writable
+        // without a word (review B2 R58, independent review of PR 133).
+        if let Some(problem) = raw_problem(&ctx.permissions.advanced.extra_bwrap_args) {
             anyhow::bail!(
                 "{}",
-                sam_core::i18n::trf(
-                    "the extra Bubblewrap arguments end with {option}, which needs more values; SAM does not start the app until the setting is complete",
-                    &[("option", &open)]
-                )
+                match problem {
+                    RawProblem::Unfinished(option) => sam_core::i18n::trf(
+                        "the extra Bubblewrap arguments end with {option}, which needs more values; SAM does not start the app until the setting is complete",
+                        &[("option", &option)]
+                    ),
+                    RawProblem::NotAnOption(word) => sam_core::i18n::trf(
+                        "the extra Bubblewrap arguments hold {word} where an option belongs, which Bubblewrap would run instead of the app; SAM does not start the app until the setting is fixed",
+                        &[("word", &word)]
+                    ),
+                    RawProblem::Unknown(option) => sam_core::i18n::trf(
+                        "the extra Bubblewrap arguments hold {option}, an option SAM does not know; SAM does not start the app until the setting is changed",
+                        &[("option", &option)]
+                    ),
+                }
             );
         }
         // Without a real home folder, "the home" is `/` or a relative path:
@@ -2571,13 +2582,32 @@ const SYSTEM_LIB_DIRS: &[&str] = &[
     "/lib/aarch64-linux-gnu",
 ];
 
-/// The option the list `args` ends inside of, still missing values.
-fn missing_values(args: &[String]) -> Option<String> {
+/// What is wrong with the person's raw Bubblewrap arguments, read the way
+/// Bubblewrap reads them, each option with its values.
+#[derive(Debug, PartialEq, Eq)]
+enum RawProblem {
+    /// The list ends inside this option, still missing values: they would
+    /// be taken from SAM's own arguments after it.
+    Unfinished(String),
+    /// A word where an option belongs (or `--`): Bubblewrap would take it
+    /// as the program to run, before SAM's read-only root and its helper.
+    NotAnOption(String),
+    /// An option SAM does not know: how many values follow is unknown.
+    Unknown(String),
+}
+
+/// The first problem in the raw arguments `args`, if any.
+fn raw_problem(args: &[String]) -> Option<RawProblem> {
     let mut i = 0;
-    while i < args.len() {
-        let n = sam_core::sandbox::bwrap_arity(&args[i]);
+    while let Some(word) = args.get(i) {
+        if word == "--" || !word.starts_with("--") {
+            return Some(RawProblem::NotAnOption(word.clone()));
+        }
+        let Some(n) = sam_core::sandbox::bwrap_values(word) else {
+            return Some(RawProblem::Unknown(word.clone()));
+        };
         if i + n >= args.len() && n > 0 {
-            return Some(args[i].clone());
+            return Some(RawProblem::Unfinished(word.clone()));
         }
         i += 1 + n;
     }
@@ -3549,16 +3579,22 @@ mod tests {
     fn raw_arguments_missing_a_value_stop_the_start() {
         let mut ctx = sample_context();
         let refused = |ctx: &LaunchContext| {
-            Bubblewrap
-                .build(ctx)
-                .err()
-                .is_some_and(|e| e.to_string().contains("needs more values"))
+            Bubblewrap.build(ctx).err().is_some_and(|e| {
+                let e = e.to_string();
+                e.contains("needs more values")
+                    || e.contains("where an option belongs")
+                    || e.contains("SAM does not know")
+            })
         };
         for raw in [
             &["--ro-bind-try"][..],
             &["--ro-bind-try", "/a"],
             &["--setenv", "A", "1", "--chdir"],
             &["--overlay", "/u", "/w"],
+            &["--ro-bind", "/a", "/b", "/c"],
+            &["--"],
+            &["--unshare-ipc", "--", "/bin/sh"],
+            &["--setenv", "A", "1", "--not-yet-an-option", "x"],
         ] {
             ctx.permissions.advanced.extra_bwrap_args = raw.iter().map(|s| s.to_string()).collect();
             assert!(refused(&ctx), "{raw:?}");
@@ -3573,6 +3609,23 @@ mod tests {
             let a = args_of(&ctx);
             assert!(has_seq(&a, &["--remount-ro", "/", "--"]), "{raw:?}");
         }
+        // Each problem by its kind.
+        let problem =
+            |raw: &[&str]| raw_problem(&raw.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+        assert_eq!(
+            problem(&["--ro-bind", "/a", "/b", "/c"]),
+            Some(RawProblem::NotAnOption("/c".into()))
+        );
+        assert_eq!(problem(&["--"]), Some(RawProblem::NotAnOption("--".into())));
+        assert_eq!(
+            problem(&["--nope"]),
+            Some(RawProblem::Unknown("--nope".into()))
+        );
+        assert_eq!(
+            problem(&["--setenv", "A", "1", "--chdir"]),
+            Some(RawProblem::Unfinished("--chdir".into()))
+        );
+        assert_eq!(problem(&["--setenv", "A", "--chdir"]), None);
     }
 
     /// With "this computer only", the network namespace is left to pasta.
