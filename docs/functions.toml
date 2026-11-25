@@ -282,6 +282,7 @@ tests = [
   "the_proxy_record_names_what_the_app_wanted_to_own",
   "the_apps_own_words_never_give_it_a_bus_name",
   "the_filter_refuses_x32_odd_sockets_and_the_siblings",
+  "a_socket_pair_opens_only_the_listed_families_too",
   "the_filter_reaches_bubblewrap_as_whole_instructions",
   "an_app_cannot_open_the_kernels_rarely_used_doors",
   "own_names_that_are_refused",

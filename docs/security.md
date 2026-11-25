@@ -139,7 +139,9 @@ blocks:
   channel): no virtual-machine (`AF_VSOCK`, which no network setting
   stops), raw-packet or kernel-crypto sockets. Bluetooth sockets only with
   the *Bluetooth* switch. As in Flatpak, a refused type answers "not
-  supported", so programs fall back;
+  supported", so programs fall back. The same limit holds for pairs of
+  sockets (`socketpair`, which makes its sockets the same way;
+  `a_socket_pair_opens_only_the_listed_families_too`);
 - every call through the x32 ABI (a niche x86-64 mode with its own call
   numbers, which no AppImage uses).
 
