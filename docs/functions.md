@@ -41,7 +41,7 @@
 | 25 | [The diagnose run finds missing files and suggests only what helps.](#25) | sam-runner | 10 | ✅ 🆕 1 new test since the report |
 | 26 | [Compatibility mode as a last resort, with its cost explained, and it can be undone.](#26) | sam-runner | 4 | ✅ 🆕 1 new test since the report |
 | 27 | [SAM notices app settings that something else changed and asks before starting the app.](#27) | sam-gtk, sam-runner, sam-storage | 14 | ✅ 🆕 10 new tests since the report |
-| 28 | [Updates use HTTPS only, check and replace only the AppImage SAM unpacked and unpack what they checked, keep the old version so it can be restored, refuse a changed signing key until you accept it (the yes covers only the file you were shown), and never install a build for another processor.](#28) | sam-runner, sam-detect | 77 | ✅ 🆕 35 new tests since the report |
+| 28 | [Updates use HTTPS only, replace only the AppImage SAM unpacked and unpack what they checked, keep the old version so it can be restored, refuse a changed signing key until you accept it (the yes covers only the file you were shown), and never install a build for another processor.](#28) | sam-runner, sam-detect | 77 | ✅ 🆕 35 new tests since the report |
 | 29 | [SAM notices AppImages that were moved or changed.](#29) | sam-runner, sam-intake | 7 | ✅ 🆕 1 new test since the report |
 | 30 | [Removing an app deletes only SAM's own folders, never your files.](#30) | sam-runner, sam-storage, sam-core | 8 | ✅ 🆕 2 new tests since the report |
 | 31 | [Disk space per app, and freeing space.](#31) | sam-runner | 2 | ✅ 🆕 1 new test since the report |
@@ -1092,7 +1092,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 **Also tried by:** [`tests/gui/app-page-atspi.sh`](../tests/gui/app-page-atspi.sh)
 
 <a id="28"></a>
-### 28. Updates use HTTPS only, check and replace only the AppImage SAM unpacked and unpack what they checked, keep the old version so it can be restored, refuse a changed signing key until you accept it (the yes covers only the file you were shown), and never install a build for another processor.
+### 28. Updates use HTTPS only, replace only the AppImage SAM unpacked and unpack what they checked, keep the old version so it can be restored, refuse a changed signing key until you accept it (the yes covers only the file you were shown), and never install a build for another processor.
 
 | Test | Promise | Result |
 |---|---|---|
