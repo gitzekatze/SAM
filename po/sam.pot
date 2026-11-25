@@ -5116,7 +5116,7 @@ msgstr ""
 msgid "loading the seccomp filter"
 msgstr ""
 
-#: crates/sam-runner/src/kernel.rs:732
+#: crates/sam-runner/src/kernel.rs:738
 msgid "seccomp filters are not supported on this architecture"
 msgstr ""
 

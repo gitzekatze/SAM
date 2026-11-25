@@ -1,7 +1,13 @@
+# French translation of SAM - Sandboxed AppImage Manager.
 msgid ""
 msgstr ""
+"Project-Id-Version: sam\n"
 "Report-Msgid-Bugs-To: https://github.com/gitzekatze/SAM/issues\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
 
 #. Keep the {placeholders}; their order may change.
 #: crates/sam-core/src/config.rs:286
@@ -6750,7 +6756,7 @@ msgstr "aucune commande indiquée"
 msgid "loading the seccomp filter"
 msgstr "chargement du filtre seccomp"
 
-#: crates/sam-runner/src/kernel.rs:732
+#: crates/sam-runner/src/kernel.rs:738
 msgid "seccomp filters are not supported on this architecture"
 msgstr "les filtres seccomp ne sont pas pris en charge sur cette architecture"
 
