@@ -135,7 +135,7 @@ futex_waitv	allowed
 futex_wake	allowed
 futimesat	allowed
 get_kernel_syms	allowed
-get_mempolicy	allowed
+get_mempolicy	blocked by the strict filter
 get_robust_list	allowed
 get_thread_area	allowed
 getcpu	allowed
@@ -187,7 +187,7 @@ ioperm	blocked
 iopl	blocked
 ioprio_get	allowed
 ioprio_set	allowed
-kcmp	allowed
+kcmp	blocked by the strict filter
 kexec_file_load	blocked
 kexec_load	blocked
 keyctl	blocked
@@ -269,7 +269,7 @@ openat2	allowed
 pause	allowed
 perf_event_open	blocked
 personality	blocked by the strict filter
-pidfd_getfd	allowed
+pidfd_getfd	blocked by the strict filter
 pidfd_open	allowed
 pidfd_send_signal	allowed
 pipe	allowed
@@ -286,7 +286,7 @@ pread64	allowed
 preadv	allowed
 preadv2	allowed
 prlimit64	allowed
-process_madvise	allowed
+process_madvise	blocked by the strict filter
 process_mrelease	allowed
 process_vm_readv	blocked by the strict filter
 process_vm_writev	blocked by the strict filter
@@ -356,8 +356,8 @@ sendfile64	allowed
 sendmmsg	allowed
 sendmsg	allowed
 sendto	allowed
-set_mempolicy	allowed
-set_mempolicy_home_node	allowed
+set_mempolicy	blocked by the strict filter
+set_mempolicy_home_node	blocked by the strict filter
 set_robust_list	allowed
 set_thread_area	allowed
 set_tid_address	allowed

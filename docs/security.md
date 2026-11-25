@@ -159,8 +159,14 @@ and to the AppImage's own extractor (`an_unpacking_tool_cannot_open_the_kernels_
 `docs/syscalls-reviewed.txt` lists every kernel call with what the filter
 does with it, and a test compares each line with the filter.
 
-The **strict filter** (experimental, opt-in) also blocks `ptrace`, access to
-other processes' memory, `personality` and NUMA memory calls.
+The **strict filter** (experimental, opt-in) also blocks `ptrace` and the
+calls that reach as far into another process (its memory, its descriptors,
+its kernel objects: `process_vm_readv`, `process_vm_writev`,
+`process_madvise`, `pidfd_getfd`, `kcmp`), `personality` and every NUMA
+memory call (`the_strict_filter_blocks_every_call_its_text_names`). A
+process can still open `/proc/<pid>/mem` of a process the kernel's own
+tracing rules let it reach: that is an ordinary file open, which no system
+call filter can tell apart.
 
 ### Nested sandboxes are off by default
 
