@@ -5041,6 +5041,43 @@ exec "$@"
         assert_eq!(built, MAX_ROOMS + 1, "{lines:?}");
     }
 
+    /// A remount over a `-try` place whose source is missing: Bubblewrap
+    /// skips that place and makes the one below it read-only for the app;
+    /// after the start's floor plan leaves the missing one out, the place
+    /// below is read-only for rooms too (review of PR 124).
+    #[test]
+    fn a_remount_over_a_missing_try_place_keeps_the_place_below_read_only() {
+        let tmp = tempfile::tempdir().unwrap();
+        let shown = tmp.path().join("shown");
+        std::fs::create_dir(&shown).unwrap();
+        let missing = tmp.path().join("missing");
+        let (a, b) = (shown.to_str().unwrap(), missing.to_str().unwrap());
+        for try_bind in ["--bind-try", "--ro-bind-try"] {
+            let plan = FloorPlan::from_bwrap_args(&s(&[
+                "--bind",
+                a,
+                "/x",
+                try_bind,
+                b,
+                "/x",
+                "--remount-ro",
+                "/x",
+                "--",
+                "x",
+            ]))
+            .unwrap();
+            let (plan, _) = plan_at_start_with(plan, |_, _| false).unwrap();
+            assert_eq!(
+                plan.entries,
+                vec![Entry::Ro {
+                    src: shown.clone(),
+                    dst: "/x".into()
+                }],
+                "{try_bind}"
+            );
+        }
+    }
+
     /// A place of the app that exists but cannot be opened when the app
     /// starts (here a link to itself; in practice no descriptors left)
     /// never leaves the floor plan quietly: it may be the read-only file
