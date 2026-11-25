@@ -1397,6 +1397,14 @@ impl App {
             let Some(me) = w.upgrade() else { return };
             let m2 = me.clone();
             glib::spawn_future_local(async move { m2.refresh_registered().await });
+            // Not started for a missing protection (B2 R75, R77): the
+            // launcher's notification says which and offers "Start anyway".
+            if code == sam_core::error::EXIT_PROTECTION_MISSING {
+                me.toast(&crate::i18n::tr(
+                    "SAM did not start the app: a protection its settings ask for is missing. The notification lets you start it anyway, this one time.",
+                ));
+                return;
+            }
             if code != 0 {
                 let t = adw::Toast::builder()
                     .title(crate::i18n::trf(

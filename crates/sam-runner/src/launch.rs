@@ -56,6 +56,9 @@ pub struct LaunchOptions {
     /// context refused) is reported instead of stopping the start (B2 R75,
     /// R77). Never saved; each start decides again.
     pub start_anyway: bool,
+    /// Only the command is shown (`sam-jail command`, the app page): a
+    /// missing protection is not a refusal there, the command shows it.
+    pub preview: bool,
 }
 
 /// See [`LaunchOptions::on_missing_layers`].
@@ -265,7 +268,7 @@ struct MissingAtStart<'a> {
 /// only: without its syscall filter and Landlock, or with the
 /// compositor's own socket and every privileged Wayland function.
 fn protection_check(missing: &MissingAtStart, opts: &LaunchOptions) -> Result<()> {
-    if opts.start_anyway || opts.probe.is_some() {
+    if opts.start_anyway || opts.preview || opts.probe.is_some() {
         return Ok(());
     }
     let mut what = Vec::new();
@@ -565,9 +568,9 @@ pub fn prepare(
     let mut sound = None;
     let mut wayland = None;
     let mut wayland_context_failed = false;
-    // What this start could not set up (B2 R75, R77; see `protection_check`).
+    // The Wayland security context's error, if making one failed (B2 R77;
+    // see `protection_check`).
     let mut wayland_error: Option<String> = None;
-    let mut helper_missing = false;
     let home_watch;
     let mut home_record = None;
     let mut moved_at_start = Vec::new();
@@ -583,6 +586,63 @@ pub fn prepare(
     let mut helper_spec: Option<kernel::SandboxSpec> = None;
     let wanted_landlock: bool;
     let wanted_seccomp: bool;
+    // Room service needs SAM's helper in the sandbox (its stand-in for
+    // Bubblewrap), even where the app itself gets no layer from it.
+    let (want_landlock, want_seccomp) = wanted_layers(perms, cfg, host);
+    let wanted = helper_wanted(
+        want_landlock,
+        want_seccomp,
+        perms.advanced.room_service,
+        opts.probe.is_some(),
+    );
+    let helper_found = if wanted.helper {
+        crate::find_helper()
+    } else {
+        None
+    };
+    // The Wayland security context first too, so that a start that cannot
+    // have it stops before anything else is set up for it.
+    if perms.display.wayland && !perms.display.wayland_privileged {
+        if let Some(display) = &host.sockets.wayland {
+            let instance = runtime_dir
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            // The compositor names the app's windows after this ID (KWin
+            // uses it instead of the app's own); it must be the name of
+            // SAM's menu entry, or the taskbar shows a generic icon.
+            match crate::wayland_ctx::start(display, &runtime_dir, &Paths::launcher_id(&app.id), &instance) {
+                Ok(Some(w)) => {
+                    ctx.wayland_socket = Some(w.socket.clone());
+                    wayland = Some(w);
+                }
+                Ok(None) => warnings.push(Warning::info(
+                    "wayland-context-unsupported",
+                    "Wayland functions not restricted",
+                    "This desktop does not support Wayland security contexts, so the app can use every Wayland function it offers, including privileged ones some desktops provide (clipboard history, screen capture).",
+                )),
+                Err(e) => {
+                    wayland_context_failed = true;
+                    wayland_error = Some(format!("{e:#}"));
+                    warnings.push(Warning::warn("wayland-context-failed", "Wayland security context failed", sam_core::i18n::trf("{error}; the app uses the normal Wayland socket", &[("error", &format!("{e:#}"))])));
+                }
+            }
+        }
+    }
+    // A protection the settings ask for and this start could not set up
+    // stops the start, unless the person chose "Start anyway" for this one
+    // start (B2 R75, R77; owner, 2026-11-25). Before anything is taken over
+    // or started for it: the shared home's planted files, the bus filter,
+    // the sound relay (review of the fix).
+    let helper_missing = wanted.helper && helper_found.is_none();
+    protection_check(
+        &MissingAtStart {
+            landlock: helper_missing && want_landlock,
+            seccomp: helper_missing && want_seccomp,
+            wayland: wayland_error.as_deref(),
+        },
+        opts,
+    )?;
     {
         sam_sandbox::write_identity_files(&ctx)?;
         // Launches that can write start places take turns here: each takes
@@ -686,47 +746,12 @@ pub fn prepare(
                 Err(e) => warnings.push(sound_without_relay(&perms.audio, host, &format!("{e:#}"))),
             }
         }
-        if perms.display.wayland && !perms.display.wayland_privileged {
-            if let Some(display) = &host.sockets.wayland {
-                let instance = runtime_dir
-                    .file_name()
-                    .map(|n| n.to_string_lossy().into_owned())
-                    .unwrap_or_default();
-                // The compositor names the app's windows after this ID (KWin
-                // uses it instead of the app's own); it must be the name of
-                // SAM's menu entry, or the taskbar shows a generic icon.
-                match crate::wayland_ctx::start(display, &runtime_dir, &Paths::launcher_id(&app.id), &instance) {
-                    Ok(Some(w)) => {
-                        ctx.wayland_socket = Some(w.socket.clone());
-                        wayland = Some(w);
-                    }
-                    Ok(None) => warnings.push(Warning::info(
-                        "wayland-context-unsupported",
-                        "Wayland functions not restricted",
-                        "This desktop does not support Wayland security contexts, so the app can use every Wayland function it offers, including privileged ones some desktops provide (clipboard history, screen capture).",
-                    )),
-                    Err(e) => {
-                        wayland_context_failed = true;
-                        wayland_error = Some(format!("{e:#}"));
-                        warnings.push(Warning::warn("wayland-context-failed", "Wayland security context failed", sam_core::i18n::trf("{error}; the app uses the normal Wayland socket", &[("error", &format!("{e:#}"))])));
-                    }
-                }
-            }
-        }
-        // Landlock and seccomp are applied by SAM's helper inside the sandbox.
-        let (want_landlock, want_seccomp) = wanted_layers(perms, cfg, host);
+        // Landlock and seccomp are applied by SAM's helper inside the sandbox
+        // (found above, before the protection check).
         wanted_landlock = want_landlock;
         wanted_seccomp = want_seccomp;
-        // Room service needs SAM's helper in the sandbox (its stand-in for
-        // Bubblewrap), even where the app itself gets no layer from it.
-        let wanted = helper_wanted(
-            want_landlock,
-            want_seccomp,
-            perms.advanced.room_service,
-            opts.probe.is_some(),
-        );
         if wanted.helper {
-            match crate::find_helper() {
+            match helper_found {
                 Some(helper) => {
                     let spec = kernel::SandboxSpec {
                         landlock: want_landlock.then(|| {
@@ -749,23 +774,9 @@ pub fn prepare(
                     landlock = want_landlock;
                     seccomp = want_seccomp;
                 }
-                None => {
-                    helper_missing = true;
-                    warnings.extend(helper_missing_warnings(wanted.layers, wanted.rooms));
-                }
+                None => warnings.extend(helper_missing_warnings(wanted.layers, wanted.rooms)),
             }
         }
-        // A protection the settings ask for and this start could not set up
-        // stops the start, unless the person chose "Start anyway" for this
-        // one start (B2 R75, R77; owner, 2026-11-25).
-        protection_check(
-            &MissingAtStart {
-                landlock: helper_missing && want_landlock,
-                seccomp: helper_missing && want_seccomp,
-                wayland: wayland_error.as_deref(),
-            },
-            opts,
-        )?;
     }
 
     // Room service: its socket exists before the sandbox is built (the
@@ -3114,6 +3125,12 @@ mod helper_missing_tests {
                 ..Default::default()
             };
             assert!(protection_check(&missing, &check).is_ok());
+            // `sam-jail command` and the app page show the command only.
+            let preview = LaunchOptions {
+                preview: true,
+                ..Default::default()
+            };
+            assert!(protection_check(&missing, &preview).is_ok());
         }
     }
 }

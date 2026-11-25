@@ -7,6 +7,13 @@
 
 use std::fmt;
 
+/// How SAM's launcher (`sam-jail-run`) ends when it did not start the app
+/// because a protection its settings ask for is missing (B2 R75, R77): its
+/// notification offers "Start anyway", so SAM's window says no more than
+/// that. 75 is "try again later" (`EX_TEMPFAIL`); an app that ends with
+/// 75 itself gets the same words in the window, nothing else.
+pub const EXIT_PROTECTION_MISSING: i32 = 75;
+
 /// An error with a fixed code, such as `signing-key-changed`.
 #[derive(Debug, Clone)]
 pub struct CodedError {
