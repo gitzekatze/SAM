@@ -821,6 +821,8 @@ tests = ["both_forms_of_update_information_are_understood", "update_wildcards_ma
   "an_update_whose_record_cannot_be_saved_changes_nothing",
   "an_interrupted_going_back_never_loses_the_earlier_version",
   "a_going_back_whose_record_cannot_be_saved_changes_nothing",
+  "a_go_back_stopped_midway_still_lets_the_app_go_back_and_update",
+  "leftover_incoming_files_of_the_app_are_removed_and_nothing_else",
   "signing_succeeds_only_with_the_named_fingerprint",
   "a_full_download_stops_at_the_published_length_whatever_the_server_sends",
   "a_mapped_file_is_unmapped_when_dropped",

@@ -963,7 +963,10 @@ downloads a file, and only when you ask:
   disk, a read-only folder) leaves the old AppImage, its record and the
   earlier kept version as they were. Going back works in the same order
   and never replaces an earlier version that an interrupted run left
-  aside: going back and updating then stop and say where both files are. The sandbox is unpacked from the checked
+  aside. What such a run leaves, SAM repairs when it can tell the files
+  apart; otherwise going back and updating stop and say where both files
+  are. A half-written copy left by a stopped SAM is removed at the app's
+  next update or go back. The sandbox is unpacked from the checked
   download in SAM's own folder, not from the AppImage's folder, where
   another app could swap the file in that moment; a file swapped there
   afterwards is noticed like any changed AppImage.

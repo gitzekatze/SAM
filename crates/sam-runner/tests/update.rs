@@ -424,3 +424,112 @@ fn a_going_back_whose_record_cannot_be_saved_changes_nothing() {
         assert_eq!(after.update_backup, record.update_backup, "{newer_name}");
     }
 }
+
+/// Review of the fix for R86: a go back that SAM was stopped in (killed,
+/// a power loss) left the earlier version at `.going-back`, and from then
+/// on every go back and update refused. Now SAM moves it out of the backup
+/// folder before unpacking, and repairs what such a stop can leave: here
+/// (made by hand) a stop after the record was saved, where `.going-back`
+/// is a second copy of the app's current file, and a stop right after the
+/// earlier version stepped aside, where its kept name is still free.
+#[test]
+fn a_go_back_stopped_midway_still_lets_the_app_go_back_and_update() {
+    use sam_intake::fingerprint::sha256_file;
+    // Stopped after the record was saved, while unpacking.
+    let tmp = tempfile::tempdir().unwrap();
+    let (sam, id, v2, kept) = updated_by_hand(tmp.path(), true);
+    let (newer, earlier) = (fs::read(&v2).unwrap(), fs::read(&kept).unwrap());
+    let backups = kept.parent().unwrap();
+    let keep = backups.join(v2.file_name().unwrap());
+    fs::copy(&v2, &keep).unwrap();
+    let aside = backups.join(".going-back");
+    fs::rename(&kept, &aside).unwrap();
+    let v1 = v2.with_file_name("Tool-1.0-x86_64.AppImage");
+    fs::copy(&aside, &v1).unwrap();
+    fs::remove_file(&v2).unwrap();
+    let mut e = sam.resolve(&id).unwrap();
+    e.source_path = fs::canonicalize(&v1).unwrap();
+    e.update_backup = Some(UpdateBackup {
+        file: keep.clone(),
+        original_path: v2.clone(),
+        replaced_at: 1,
+        sha256: Some(sha256_file(&keep).unwrap()),
+        placed_sha256: Some(sha256_file(&v1).unwrap()),
+    });
+    sam.registry().save(&mut e).unwrap();
+
+    let e = sam
+        .undo_update(&id)
+        .unwrap_or_else(|e| panic!("going back was refused: {e:#}"));
+    assert_eq!(fs::read(&e.source_path).unwrap(), newer, "forward again");
+    assert!(!aside.exists(), "the second copy is gone");
+    let e = sam
+        .undo_update(&id)
+        .unwrap_or_else(|e| panic!("going back again was refused: {e:#}"));
+    assert_eq!(fs::read(&e.source_path).unwrap(), earlier, "and back");
+    let err = sam.update(&id, false).unwrap_err();
+    assert!(!format!("{err:#}").contains("interrupted"), "{err:#}");
+
+    // Stopped right after the earlier version stepped aside.
+    let tmp = tempfile::tempdir().unwrap();
+    let (sam, id, _, kept) = updated_by_hand(tmp.path(), true);
+    let earlier = fs::read(&kept).unwrap();
+    fs::rename(&kept, kept.with_file_name(".going-back")).unwrap();
+    let e = sam
+        .undo_update(&id)
+        .unwrap_or_else(|e| panic!("going back was refused: {e:#}"));
+    assert_eq!(fs::read(&e.source_path).unwrap(), earlier, "back");
+}
+
+/// Review of the fix for R89: a SAM stopped while writing the new version
+/// left a hidden, executable copy of the app in the person's folder for
+/// good. An update or a go back of that app now removes such leftovers of
+/// its own (files and links, never what a link points to) and nothing
+/// else: not another app's, not a name SAM does not give, not a folder.
+#[test]
+fn leftover_incoming_files_of_the_app_are_removed_and_nothing_else() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (sam, id, v2, _) = updated_by_hand(tmp.path(), true);
+    let apps = v2.parent().unwrap().to_path_buf();
+    let victim = tmp.path().join("victim.txt");
+    fs::write(&victim, "the person's file").unwrap();
+    let plant = || {
+        fs::write(apps.join(format!(".sam-incoming-{id}-123-abc")), "half").unwrap();
+        let _ = fs::remove_file(apps.join(format!(".sam-incoming-{id}-124-def")));
+        std::os::unix::fs::symlink(&victim, apps.join(format!(".sam-incoming-{id}-124-def")))
+            .unwrap();
+    };
+    let others = [
+        format!(".sam-incoming-{id}-notours"),
+        ".sam-incoming-appimage-other-1a2b-1-a".to_string(),
+        "notes.txt".to_string(),
+    ];
+    for o in &others {
+        fs::write(apps.join(o), "keep").unwrap();
+    }
+    fs::create_dir_all(apps.join(format!(".sam-incoming-{id}-125-beef"))).unwrap();
+
+    for step in ["update", "go back"] {
+        plant();
+        if step == "update" {
+            let _ = sam.update(&id, false);
+        } else {
+            sam.undo_update(&id).unwrap();
+        }
+        let names = names_in(&apps);
+        assert!(
+            !names
+                .iter()
+                .any(|n| n.ends_with("-123-abc") || n.ends_with("-124-def")),
+            "{step}: {names:?}"
+        );
+        for o in &others {
+            assert!(names.contains(o), "{step}: {o} stays");
+        }
+        assert!(
+            apps.join(format!(".sam-incoming-{id}-125-beef")).is_dir(),
+            "{step}"
+        );
+        assert_eq!(fs::read_to_string(&victim).unwrap(), "the person's file");
+    }
+}
