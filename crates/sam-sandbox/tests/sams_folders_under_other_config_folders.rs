@@ -26,13 +26,28 @@ fn at_seq(v: &[String], seq: &[&str]) -> Vec<usize> {
         .collect()
 }
 
-/// Whether an empty folder on `dir` comes after the read-only grant of
-/// `grant` inside it: a later mount covers an earlier one, so an empty
-/// folder before the grant would leave the grant showing what lies there.
+/// Whether an empty folder on `dir` comes after the last bind of `grant`
+/// inside it (any bind onto it, read-only or writable): a later mount
+/// covers an earlier one, so the grant bound again after the empty folder
+/// would show what lies there. Compared with the first bind only, a second
+/// bind after the hiding went unnoticed (independent review of
+/// decision 9).
 fn hidden_after(a: &[String], dir: &str, grant: &str) -> bool {
-    let bind = at_seq(a, &["--ro-bind-try", grant, grant]);
+    let binds: Vec<usize> = a
+        .windows(3)
+        .enumerate()
+        .filter(|(_, w)| {
+            matches!(
+                w[0].as_str(),
+                "--bind" | "--bind-try" | "--ro-bind" | "--ro-bind-try"
+            ) && w[2] == grant
+        })
+        .map(|(i, _)| i)
+        .collect();
     let hide = at_seq(a, &["--tmpfs", dir]);
-    !bind.is_empty() && hide.iter().any(|h| *h > bind[0])
+    binds
+        .last()
+        .is_some_and(|last| hide.iter().any(|h| h > last))
 }
 
 fn s(p: &Path) -> String {
@@ -97,7 +112,7 @@ fn sams_folders_under_other_config_folders_are_hidden_not_only_read_only() {
         .iter()
         .map(|g| s(&home.join(g)))
         .collect();
-    ctx.sam_dirs = paths.sam_dirs("", &home);
+    ctx.sam_dirs = paths.sam_dirs("");
     let a = Bubblewrap.build(&ctx).unwrap().args;
     for d in &named {
         let d = s(d);

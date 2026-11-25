@@ -15,17 +15,23 @@
   writable home) is no longer bound a second time; the app still reaches
   it through the folder above it.
 - An extra folder inside SAM's own folders is not shown, and SAM says so.
-  The sandbox check and a terminal app's start line agree, also when SAM
-  keeps its folders in a place you chose (for example `~/Games/sam`).
+  The sandbox check, the app page and a terminal app's start line agree,
+  also when SAM keeps its folders in a place you chose (for example
+  `~/Games/sam`) or behind a link.
 - The folders where SAM keeps its settings and data unless told otherwise
   (`~/.config/sam`, `~/.local/share/sam`, and the same below another
   config or data folder you set with `XDG_CONFIG_HOME` or `XDG_DATA_HOME`)
   are now hidden from apps also while SAM keeps its own elsewhere, with or
-  without full home access. Before, an app could read them through an
-  extra folder inside them, or through the home when they were below
-  another config folder. A folder by those names that is a link, or that
-  leads to the home or out of it, is kept read-only instead, so an app
-  cannot make SAM hide your home by planting such a link.
+  without full home access, wherever they lead (for example another SAM's
+  `~/.local/share/sam` kept as a link to `~/Sync/sam`). Before, an app
+  could read them through an extra folder inside them, or through the home
+  when they were below another config folder.
+- A folder by those names is kept read-only instead where hiding it would
+  cover too much: where it is your home or a folder above it, or where it
+  is a link and the app is shown only folders inside the place it leads
+  to. So an app cannot make SAM cover your home, or a folder you granted
+  inside that place, with an empty folder by planting such a link. Where
+  the app is shown that place itself, it stays hidden, as before.
 - The sandbox check and a terminal app's start line no longer count a user
   folder (for example Documents) set inside SAM's folders as shown; the
   sandbox never showed it.

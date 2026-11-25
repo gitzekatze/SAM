@@ -19,6 +19,9 @@
 //!   `~/work` granted) and granted itself stays read-only where it leads,
 //!   and the folder between cannot be renamed away (independent review of
 //!   decision 9).
+//! - another SAM's folders kept through a link (`~/.local/share/sam` a link
+//!   to `~/Sync/sam`) stay hidden with the whole home and with a grant of
+//!   `~/Sync` (independent review of decision 9).
 //!
 //! In its own file because it sets `HOME` for the test process.
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
@@ -51,6 +54,9 @@ if [ -e "$H/work/STOW" ]; then
   echo x > "$H/work/dots/tmux/evil.conf" 2>/dev/null && echo STOW=written || echo STOW=refused
   mv "$H/work/dots" "$H/work/dots2" 2>/dev/null && echo STOW_MOVE=done || echo STOW_MOVE=refused
 fi
+grep -q OTHER "$H/Sync/sam/config.toml" 2>/dev/null && echo OTHER_SAM=read || echo OTHER_SAM=hidden
+grep -q OTHER "$H/.local/share/sam/config.toml" 2>/dev/null && echo OTHER_LINK=read || echo OTHER_LINK=hidden
+grep -q NOTE "$H/Sync/note.txt" 2>/dev/null && echo SYNC_NOTE=read || echo SYNC_NOTE=hidden
 echo END=1
 "#;
 
@@ -233,4 +239,30 @@ fn the_home_protections_hold_whatever_else_is_granted() {
         fs::remove_file(home.join("work/ok.txt")).unwrap();
     }
     fs::remove_file(home.join("work/STOW")).unwrap();
+
+    // Another SAM's folders kept through a link (`~/.local/share/sam` a
+    // link to `~/Sync/sam`) while this SAM keeps its own elsewhere stay
+    // hidden, through the link and where it leads, with the whole home and
+    // with a grant of `~/Sync`, which still shows the rest of `~/Sync`.
+    // Taken for an ordinary start place because it was a link, it was only
+    // kept read-only, and the app read the other SAM's settings
+    // (independent review of decision 9).
+    fs::create_dir_all(home.join("Sync/sam")).unwrap();
+    fs::write(home.join("Sync/sam/config.toml"), "OTHER SAM").unwrap();
+    fs::write(home.join("Sync/note.txt"), "NOTE").unwrap();
+    std::os::unix::fs::symlink(home.join("Sync/sam"), home.join(".local/share/sam")).unwrap();
+    for whole_home in [true, false] {
+        let mut p = PermissionSet::strict_gui();
+        if whole_home {
+            p.filesystem.home = true;
+            p.filesystem.home_access = Access::Rw;
+        } else {
+            p.filesystem.custom_read = vec!["~/Sync".into()];
+        }
+        let r = start(p);
+        assert_eq!(r["OTHER_SAM"], "hidden", "{whole_home}: {r:?}");
+        assert_eq!(r["OTHER_LINK"], "hidden", "{whole_home}: {r:?}");
+        assert_eq!(r["SYNC_NOTE"], "read", "control, {whole_home}: {r:?}");
+        assert!(home.join("Sync/sam/config.toml").is_file(), "{whole_home}");
+    }
 }

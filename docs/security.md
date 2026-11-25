@@ -573,12 +573,21 @@ where those point inside the home, even while SAM keeps its own
 elsewhere), whether a
 permission, a folder you open with the app or a path on its command line
 would show them. They are replaced by an empty, throwaway folder, so an app
-cannot change its own permissions or another app's files. A folder by one
-of those names counts only when it is a folder of its own below the home:
-one that is a link, or that leads to the home or out of it, is kept
-read-only like the start places below instead, so an app that planted
-`~/.config/sam` as a link to the home cannot make SAM hide the home or
-other apps' folders.
+cannot change its own permissions or another app's files. Where SAM keeps
+its own folders is hidden wherever it leads. A folder by one of the names
+above is hidden wherever it leads too, also when it is a link (another SAM
+may keep its settings in `~/Sync/sam`, with `~/.local/share/sam` a link
+there: with the whole home or `~/Sync` granted, the app does not see
+them). It is kept read-only like the start places below instead only where
+hiding it would cover too much: where it really is the home or a folder
+above it, or where it leads elsewhere through a link and the app is shown
+only folders inside the place it leads to, never that place itself. So an
+app that plants `~/.config/sam` as a link to the home, or to `~/work` while
+`~/work/project` is granted, cannot make SAM cover the home or that grant
+with an empty folder. Where the app is shown the place such a link leads to
+itself (the whole home, or exactly that folder), SAM cannot tell a planted
+link from another SAM's folder kept there, and the place stays hidden, as
+it always was.
 
 **Read-only whenever anything would show them writable:** SAM's own
 programs, which every menu entry runs outside the sandbox: SAM's AppImage
@@ -650,8 +659,11 @@ How these stay protected with the home writable:
   handle, which closes the race, is planned.
   An extra folder inside SAM's own folders is not shown at all, also inside
   the folders named like them (`~/.config/sam`, `~/.local/share/sam`) while
-  SAM keeps its own elsewhere; the sandbox check and a terminal app's start
-  line count it as not shown.
+  SAM keeps its own elsewhere, wherever they lead; inside one that SAM only
+  keeps read-only because hiding it would cover too much (see *Hidden
+  whenever anything would show them*), it is shown read-only. The sandbox
+  check, the app page and a terminal app's start line take the same answer
+  as the sandbox.
 - **User folders are only what they are.** `user-dirs.dirs` says where
   Documents, Downloads and the others are. A folder set there to the home,
   a folder above it, a system folder, a key folder, a start place or a

@@ -87,9 +87,14 @@ pub fn plan(p: &PermissionSet, cfg: &Config, paths: &Paths, host: &HostInfo) -> 
     }
     // SAM's own folders, the list the sandbox hides: also the folders
     // named like them (`~/.local/share/sam`) while SAM keeps its own
-    // elsewhere, which the sandbox hides by name (independent re-review of
-    // decision 9).
-    let sam_dirs = paths.sam_dirs(&cfg.extraction.location, &host.home);
+    // elsewhere, which the sandbox hides by name unless that would cover
+    // too much, decided for what this start shows as the sandbox decides
+    // it (independent reviews of decision 9).
+    let sam_dirs = sam_core::places::sams_folders(
+        &host.home,
+        &paths.sam_dirs(&cfg.extraction.location),
+        &sam_core::places::shown_folders(p, host),
+    );
     for (key, title, a) in [
         ("documents", "Documents", fs.documents),
         ("downloads", "Downloads", fs.downloads),
@@ -1257,6 +1262,61 @@ mod tests {
             assert_eq!(folder(&pl, &title(&notes)), Access::ReadOnly, "home {home}");
             assert_eq!(folder(&pl, &title(&work)), Access::ReadOnly, "home {home}");
         }
+    }
+
+    /// The check counts another SAM's folders kept through a link
+    /// (`~/.local/share/sam` a link to `~/Sync/sam`) as SAM's, as the
+    /// sandbox does: a folder in them is expected hidden, read-only or
+    /// writable, with the whole home and with a grant of `~/Sync`. While
+    /// every link counted as an ordinary start place, both were expected
+    /// shown, read-only. A start that shows only a folder inside the place
+    /// a link named like SAM's folders leads to (`~/.config/sam` planted as
+    /// a link to `~/work`, `~/work/proj` granted) expects that folder
+    /// read-only, as the sandbox shows it (independent review of
+    /// decision 9).
+    #[test]
+    fn the_check_follows_the_sandbox_for_folders_named_like_sams_behind_links() {
+        let t = tempfile::tempdir().unwrap();
+        let h = host_in(t.path());
+        let cfg = Config::default();
+        let paths = Paths {
+            data_dir: h.home.join("Games/sam"),
+            ..sam_paths()
+        };
+        for d in [
+            ".local/share",
+            ".config",
+            "Sync/sam/apps",
+            "Sync/sam/shared",
+            "work/proj",
+        ] {
+            fs::create_dir_all(h.home.join(d)).unwrap();
+        }
+        std::os::unix::fs::symlink(h.home.join("Sync/sam"), h.home.join(".local/share/sam"))
+            .unwrap();
+        std::os::unix::fs::symlink(h.home.join("work"), h.home.join(".config/sam")).unwrap();
+        let title = |p: &Path| format!("Extra folder {}", sam_core::util::tildify(p));
+        let s = |p: &Path| p.to_string_lossy().into_owned();
+        let apps = h.home.join("Sync/sam/apps");
+        let shared = h.home.join("Sync/sam/shared");
+        for home in [true, false] {
+            let mut p = PermissionSet::strict_gui();
+            p.filesystem.home = home;
+            p.filesystem.home_access = Perm::Rw;
+            p.filesystem.custom_write = vec![s(&apps)];
+            p.filesystem.custom_read = vec![s(&shared)];
+            if !home {
+                p.filesystem.custom_read.push(s(&h.home.join("Sync")));
+            }
+            let pl = plan(&p, &cfg, &paths, &h);
+            assert_eq!(folder(&pl, &title(&apps)), Access::Hidden, "home {home}");
+            assert_eq!(folder(&pl, &title(&shared)), Access::Hidden, "home {home}");
+        }
+        let proj = h.home.join("work/proj");
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.custom_write = vec![s(&proj)];
+        let pl = plan(&p, &cfg, &paths, &h);
+        assert_eq!(folder(&pl, &title(&proj)), Access::ReadOnly);
     }
 
     /// Network, display, sound, the session bus, the SSH agent, variables

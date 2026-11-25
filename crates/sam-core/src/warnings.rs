@@ -64,6 +64,10 @@ pub struct WarningContext<'a> {
     pub warn_full_home: bool,
     /// The app runs in a terminal (`Terminal=true`).
     pub terminal_program: bool,
+    /// Where this SAM keeps its own folders (`Paths::sam_dirs`), so the
+    /// app page decides about an extra folder in SAM's folders as the
+    /// sandbox does.
+    pub sam_dirs: &'a [std::path::PathBuf],
 }
 
 impl WarningContext<'_> {
@@ -88,10 +92,26 @@ Not covered: output that misleads you (a fake prompt, a link whose text hides wh
 /// note (owner decision 9 of 2026-11-23). The rating stays as it is: the
 /// grant still names a sensitive place.
 fn read_only_write_grants(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
-    let home = ctx
-        .host
-        .map(|h| h.home.clone())
-        .unwrap_or_else(crate::util::home_dir);
+    let fallback;
+    let host = match ctx.host {
+        Some(h) => h,
+        None => {
+            fallback = HostInfo {
+                home: crate::util::home_dir(),
+                ..Default::default()
+            };
+            &fallback
+        }
+    };
+    let home = host.home.clone();
+    // SAM's own folders as the sandbox counts them in this start: where
+    // this SAM keeps its own and the folders named like them that count
+    // for what the start shows. Decided by name alone, the page said
+    // "Shown read-only" for a grant in this SAM's own `~/.local/share/sam`
+    // kept as a link, which the sandbox leaves out (independent review of
+    // decision 9).
+    let sams =
+        crate::places::sams_folders(&home, ctx.sam_dirs, &crate::places::shown_folders(p, host));
     p.filesystem
         .custom_write
         .iter()
@@ -101,24 +121,22 @@ fn read_only_write_grants(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warnin
                 None if c == "~" => home.clone(),
                 None => crate::util::expand_home(c),
             };
-            let found = crate::places::start_place_of_write_grant(&grant, &home)?;
-            // Not shown only in a folder that counts as SAM's by name; one
-            // named like it that is a link, or leads to the home or above
-            // it, is shown read-only like any start place (independent
-            // re-review of decision 9).
-            let w = if crate::places::sams_folder_by_name(&home, &found.place) {
-                Warning::warn(
-                    "start-place-read-only",
-                    "Not shown",
-                    crate::places::read_only_grant_note(c, &found),
-                )
-            } else {
-                Warning::warn(
-                    "start-place-read-only",
-                    "Shown read-only",
-                    crate::places::start_place_note(c, &found),
-                )
-            };
+            let bound = crate::places::resolve(&grant);
+            let found = crate::places::start_place_of_bound_write_grant(&grant, &bound, &home)?;
+            let w =
+                if crate::places::write_grant_in_sams_folders(&bound, Some(&found), &sams, &home) {
+                    Warning::warn(
+                        "start-place-read-only",
+                        "Not shown",
+                        crate::places::inside_sams_folders_note(c),
+                    )
+                } else {
+                    Warning::warn(
+                        "start-place-read-only",
+                        "Shown read-only",
+                        crate::places::start_place_note(c, &found),
+                    )
+                };
             Some(w.with_key("filesystem.custom_write"))
         })
         .collect()
@@ -976,6 +994,57 @@ mod tests {
         let hit = find(&w, "start-place-read-only").expect("named");
         assert!(hit.message.contains("SAM's own folders"), "{}", hit.message);
         assert!(!hit.message.contains("read-only"), "{}", hit.message);
+    }
+
+    /// The app page decides about an extra writable folder in a place named
+    /// like SAM's folders as the sandbox does, with where this SAM keeps
+    /// its own (independent review of decision 9): this SAM's own
+    /// `~/.local/share/sam` kept as a link to `~/Sync/sam` is not shown,
+    /// through the link or by its real place, where the page said "Shown
+    /// read-only" while the sandbox left the folder out; a folder by that
+    /// name that SAM only keeps read-only (`~/.config/sam` planted as a link
+    /// to the home) is shown read-only, and so is the same link's folder
+    /// for a SAM that keeps its own elsewhere and a start that shows only a
+    /// folder inside it.
+    #[test]
+    fn the_app_page_says_what_the_sandbox_does_with_a_grant_in_sams_folders() {
+        let t = tempfile::tempdir().unwrap();
+        let mut host = working_host();
+        host.home = std::fs::canonicalize(t.path()).unwrap().join("u");
+        let home = host.home.clone();
+        for d in ["Sync/sam/apps", ".local/share", ".config", "work"] {
+            std::fs::create_dir_all(home.join(d)).unwrap();
+        }
+        std::os::unix::fs::symlink(home.join("Sync/sam"), home.join(".local/share/sam")).unwrap();
+        std::os::unix::fs::symlink(&home, home.join(".config/sam")).unwrap();
+        let at = |rel: &str| home.join(rel).to_string_lossy().into_owned();
+        let said = |own: &[std::path::PathBuf], grant: &str| {
+            let ctx = WarningContext {
+                host: Some(&host),
+                sam_dirs: own,
+                ..WarningContext::all_enabled()
+            };
+            let mut p = PermissionSet::strict_gui();
+            p.filesystem.custom_write = vec![grant.to_string()];
+            let w = evaluate(&p, &ctx);
+            let hit = find(&w, "start-place-read-only")
+                .unwrap_or_else(|| panic!("{grant}: {:?}", codes(&w)));
+            hit.message.clone()
+        };
+        let own = [t.path().join("elsewhere"), home.join(".local/share/sam")];
+        for grant in [at(".local/share/sam/apps"), at("Sync/sam/apps")] {
+            let m = said(&own, &grant);
+            assert!(m.contains("SAM's own folders"), "{grant}: {m}");
+            assert!(!m.contains("read-only"), "{grant}: {m}");
+        }
+        let m = said(&own, &at("work"));
+        assert!(
+            m.contains("read-only") && m.contains("~/.config/sam"),
+            "{m}"
+        );
+        let elsewhere = [t.path().join("elsewhere")];
+        let m = said(&elsewhere, &at(".local/share/sam/apps"));
+        assert!(m.contains("read-only"), "{m}");
     }
 
     /// The X11 warning disappears when the user turns it off in the preferences.

@@ -141,30 +141,20 @@ impl Paths {
             expand_home(cfg_location)
         }
     }
-    /// SAM's own folders, which no app ever sees: its settings, its data
-    /// and its unpack folder (`cfg_location`, config
-    /// `extraction.location`), and the folders under `home` where SAM
-    /// keeps them unless told otherwise (`~/.config/sam`,
-    /// `~/.local/share/sam`, also under `XDG_CONFIG_HOME` and
-    /// `XDG_DATA_HOME`: [`crate::places::sams_folders_by_name`]), which
-    /// the sandbox also hides by name. The sandbox hides them, its check
-    /// expects them hidden and a terminal app's start line leaves them out,
-    /// all from this one list. Without the folders by name, with SAM's
-    /// data kept in `~/Games/sam`, the sandbox hid a grant inside
-    /// `~/.local/share/sam` while its check expected it shown (independent
-    /// re-review of decision 9).
-    pub fn sam_dirs(&self, cfg_location: &str, home: &Path) -> Vec<PathBuf> {
-        let mut dirs = vec![
+    /// Where this SAM keeps its own folders, which no app ever sees,
+    /// wherever they lead: its settings, its data and its unpack folder
+    /// (`cfg_location`, config `extraction.location`). Each start adds the
+    /// folders named like them (`~/.config/sam`, `~/.local/share/sam`, also
+    /// under `XDG_CONFIG_HOME` and `XDG_DATA_HOME`) that count as SAM's for
+    /// what it shows ([`crate::places::sams_folders`]): the sandbox hides
+    /// that list, its check expects it hidden and a terminal app's start
+    /// line leaves it out (independent reviews of decision 9).
+    pub fn sam_dirs(&self, cfg_location: &str) -> Vec<PathBuf> {
+        vec![
             self.config_dir.clone(),
             self.data_dir.clone(),
             self.extracted_root(cfg_location),
-        ];
-        for d in crate::places::sams_folders_by_name(home) {
-            if !dirs.contains(&d) {
-                dirs.push(d);
-            }
-        }
-        dirs
+        ]
     }
 }
 
@@ -308,7 +298,8 @@ mod tests {
     /// otherwise (`~/.config/sam`, `~/.local/share/sam`), also while it
     /// keeps its own elsewhere (`SAM_DATA_DIR=~/Games/sam`), which the
     /// sandbox hides by name; each once (independent re-review of
-    /// decision 9).
+    /// decision 9). Where it keeps its own comes first; each start adds
+    /// the folders by name.
     #[test]
     fn sams_folders_hold_its_own_and_the_folders_named_like_them() {
         let t = tempfile::tempdir().unwrap();
@@ -319,7 +310,17 @@ mod tests {
             applications_dir: home.join(".local/share/applications"),
             runtime_root: None,
         };
-        let dirs = p.sam_dirs("", &home);
+        let own = p.sam_dirs("");
+        assert_eq!(
+            own,
+            vec![
+                home.join(".config/sam"),
+                home.join("Games/sam"),
+                home.join("Games/sam/extracted")
+            ]
+        );
+        let places = crate::places::protected_places_with(&home, None, None);
+        let dirs = crate::places::sams_folders_in(&home, &own, &[], &places);
         for d in [
             ".config/sam",
             "Games/sam",
