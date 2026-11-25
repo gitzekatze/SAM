@@ -2148,6 +2148,17 @@ impl Section<'_> {
                 continue;
             }
             let real = resolve(&sp);
+            // Checked here, bound by name later: in a folder the app can
+            // change, a running copy of it could swap the socket for a
+            // link to another one (the session bus) in between, and the
+            // bind would follow that link (review B2 R55).
+            if real.ancestors().skip(1).any(app_can_change) {
+                notes.push(sam_core::i18n::trf(
+                    "{path} is in a folder the app can change, so the app could swap it for another socket during the start; it is not passed into the sandbox. Keep the socket in a folder the app cannot write.",
+                    &[("path", &sp.display())],
+                ));
+                continue;
+            }
             if !is_socket(&real) {
                 notes.push(sam_core::i18n::trf(
                     "{path} is not a socket; it is not passed into the sandbox",
@@ -3537,6 +3548,45 @@ mod tests {
         ctx.extra_binds = vec![(shared.clone(), "/run/x".into(), false)];
         let a = args_of(&ctx);
         assert!(has_seq(&a, &["--bind-try", &target_s, &listed_s]), "{a:?}");
+    }
+
+    /// Review B2 R55: SAM checks an extra socket when it builds the
+    /// command, and Bubblewrap binds it by name later. A socket in a folder
+    /// the app can change (or below one) could be swapped for a link to the
+    /// session bus in between by a running copy of the app, so it is not
+    /// passed in, with a note. The same socket in a folder the app may only
+    /// read is passed in.
+    #[test]
+    fn an_extra_socket_in_a_folder_the_app_can_change_is_not_passed_in() {
+        let t = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(t.path()).unwrap();
+        let shared = root.join("shared");
+        fs::create_dir_all(shared.join("deep")).unwrap();
+        let sock = shared.join("deep/app.sock");
+        let _l = std::os::unix::net::UnixListener::bind(&sock).unwrap();
+        let sock_s = sock.display().to_string();
+        let bound = |ctx: &LaunchContext| has_seq(&args_of(ctx), &["--bind-try", &sock_s, &sock_s]);
+        let mut ctx = sample_context();
+        ctx.permissions.sockets.custom = vec![sock_s.clone()];
+        ctx.permissions.filesystem.custom_read = vec![shared.display().to_string()];
+        assert!(bound(&ctx), "read-only: passed in");
+        for writable in [shared.join("deep"), shared.clone()] {
+            ctx.permissions.filesystem.custom_read.clear();
+            ctx.permissions.filesystem.custom_write = vec![writable.display().to_string()];
+            assert!(!bound(&ctx), "{} is writable", writable.display());
+            let cmd = Bubblewrap.build(&ctx).unwrap();
+            assert!(
+                cmd.notes
+                    .iter()
+                    .any(|n| n.contains(&sock_s) && n.contains("can change")),
+                "{:?}",
+                cmd.notes
+            );
+        }
+        // Also when only an extra bind makes the folder writable.
+        ctx.permissions.filesystem.custom_write.clear();
+        ctx.extra_binds = vec![(shared.clone(), "/run/x".into(), true)];
+        assert!(!bound(&ctx), "writable through an extra bind");
     }
 
     /// An extra socket whose link leads to a socket SAM calls dangerous
