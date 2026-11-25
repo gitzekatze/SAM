@@ -161,8 +161,23 @@ and to the AppImage's own extractor (`an_unpacking_tool_cannot_open_the_kernels_
 `docs/syscalls-reviewed.txt` lists every kernel call with what the filter
 does with it, and a test compares each line with the filter.
 
-The **strict filter** (experimental, opt-in) also blocks `ptrace`, access to
-other processes' memory, `personality` and NUMA memory calls.
+The **strict filter** (experimental, opt-in) also blocks `ptrace` and the
+calls that reach as far into another process (its memory, its descriptors,
+its kernel objects: `process_vm_readv`, `process_vm_writev`,
+`process_madvise`, `pidfd_getfd`, `kcmp`), `personality` and every NUMA
+memory call (`the_strict_filter_blocks_every_call_its_text_names`).
+
+What no system call filter can block: `/proc/<pid>/mem` (another
+process's memory) and `/proc/<pid>/fd` (its open files) are ordinary file
+opens, allowed wherever the kernel's own tracing rules allow them. Every
+app runs in its own process namespace (`--unshare-pid`), so it sees and
+reaches only its own processes there, never the desktop's or another
+app's, with or without the strict filter.
+
+Graphics drivers built on Mesa use `kcmp` to check whether two handles of
+the graphics card are the same. Under the strict filter that check is
+refused, and some drivers print a warning about it; the app works as
+before.
 
 ### Nested sandboxes are off by default
 

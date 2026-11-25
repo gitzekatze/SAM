@@ -367,16 +367,26 @@ fn baseline_syscalls(allow_userns: bool) -> Vec<(&'static str, i64)> {
     v
 }
 
-/// Additionally blocked by the strict filter.
+/// Additionally blocked by the strict filter: `ptrace` and every call
+/// that reaches into another process as far (its memory, its descriptors,
+/// its kernel objects), `personality`, and every NUMA memory call (review
+/// R68: the help text promised these, six were missing). The full promise
+/// is written in `docs/security.md`, section "strict filter".
 fn strict_extra_syscalls() -> Vec<(&'static str, i64)> {
     calls![
         libc::SYS_ptrace,
         libc::SYS_process_vm_writev,
         libc::SYS_process_vm_readv,
+        libc::SYS_process_madvise,
+        libc::SYS_pidfd_getfd,
+        libc::SYS_kcmp,
         libc::SYS_personality,
         libc::SYS_mbind,
         libc::SYS_move_pages,
         libc::SYS_migrate_pages,
+        libc::SYS_get_mempolicy,
+        libc::SYS_set_mempolicy,
+        libc::SYS_set_mempolicy_home_node,
     ]
 }
 
@@ -451,8 +461,11 @@ pub const SOCKET_FAMILIES: &[i32] = &[
 ///   TIPC sockets, for one; review R66).
 /// - without nested sandboxes, `clone3` answers "not implemented".
 ///
-/// These only refuse; whatever passes goes on to seccompiler's filter,
-/// which checks the architecture first and ends 32-bit callers.
+/// It starts with the architecture: a call of another one (a 32-bit call
+/// of an app without [`i386_branch`]) ends the process before any number
+/// is compared, since a 32-bit number can be a different call here (41 is
+/// `dup` there, `socket` here; review R71). The rest only refuses;
+/// whatever passes goes on to seccompiler's filter.
 fn front_filter(spec: &SeccompSpec) -> seccompiler::BpfProgram {
     use seccompiler::sock_filter;
     const LD_W_ABS: u16 = 0x20; // BPF_LD | BPF_W | BPF_ABS
@@ -460,9 +473,18 @@ fn front_filter(spec: &SeccompSpec) -> seccompiler::BpfProgram {
     const JSET_K: u16 = 0x45; // BPF_JMP | BPF_JSET | BPF_K
     const RET_K: u16 = 0x06; // BPF_RET | BPF_K
     const RET_ERRNO: u32 = 0x0005_0000; // SECCOMP_RET_ERRNO
+    const RET_KILL_PROCESS: u32 = 0x8000_0000; // SECCOMP_RET_KILL_PROCESS
     const NR: u32 = 0; // seccomp_data.nr
+    const ARCH: u32 = 4; // seccomp_data.arch
     const ARG0: u32 = 16; // seccomp_data.args[0], low half (little endian)
     const X32: u32 = 0x4000_0000;
+    // AUDIT_ARCH_AARCH64 or AUDIT_ARCH_X86_64 (the filter supports only
+    // these two; see `listed_calls`).
+    const NATIVE: u32 = if cfg!(target_arch = "aarch64") {
+        0xC000_00B7
+    } else {
+        0xC000_003E
+    };
     let op = |code, k, jt, jf| sock_filter { code, jt, jf, k };
     let mut families: Vec<u32> = SOCKET_FAMILIES.iter().map(|f| *f as u32).collect();
     if spec.bluetooth {
@@ -470,6 +492,9 @@ fn front_filter(spec: &SeccompSpec) -> seccompiler::BpfProgram {
     }
     let n = families.len() as u8;
     let mut f = vec![
+        op(LD_W_ABS, ARCH, 0, 0),
+        op(JEQ_K, NATIVE, 1, 0),
+        op(RET_K, RET_KILL_PROCESS, 0, 0),
         op(LD_W_ABS, NR, 0, 0),
         op(JSET_K, X32, 0, 1),
         op(RET_K, RET_ERRNO | libc::EPERM as u32, 0, 0),
@@ -561,10 +586,16 @@ const I386_CALLS: &[(&str, u32)] = &[
     ("ptrace", 26),
     ("process_vm_readv", 347),
     ("process_vm_writev", 348),
+    ("process_madvise", 440),
+    ("pidfd_getfd", 438),
+    ("kcmp", 349),
     ("personality", 136),
     ("mbind", 274),
     ("move_pages", 317),
     ("migrate_pages", 294),
+    ("get_mempolicy", 275),
+    ("set_mempolicy", 276),
+    ("set_mempolicy_home_node", 450),
 ];
 
 /// 32-bit x86 numbers of the calls with a closer look.
@@ -696,9 +727,11 @@ fn listed_calls(spec: &SeccompSpec) -> Result<seccompiler::BpfProgram> {
     if spec.strict {
         list.extend(strict_extra_syscalls().into_iter().map(|(_, n)| n));
     }
-    // x32 calls never get here (`front_filter`); 32-bit calls through
-    // int 0x80 fail the architecture check and end the process, unless
-    // the app is a 32-bit one (`i386_branch` answered them already).
+    // Neither x32 calls nor calls of another architecture get here: the
+    // first end at `front_filter`'s x32 check, the second at its
+    // architecture check (a 32-bit app's 32-bit calls were answered by
+    // `i386_branch` before that). Seccompiler's own check below is a
+    // second one for the same architecture.
     let mut rules: BTreeMap<i64, Vec<SeccompRule>> =
         list.into_iter().map(|s| (s, vec![])).collect();
     // Terminal input injection into the parent's tty (TIOCSTI, TIOCLINUX).
@@ -870,6 +903,28 @@ mod tests {
         unsafe { libc::socket(family, kind, proto) as libc::c_long }
     }
 
+    /// Review R71: the hand-written architecture check that opens
+    /// [`front_filter`] is the one seccompiler builds for this processor
+    /// (same field, same number, same end), for the processor the test
+    /// runs on. A wrong number would end every call of every app there.
+    /// CI runs it on x86_64; the aarch64 number is checked wherever the
+    /// tests run on an aarch64 machine.
+    #[test]
+    fn the_filter_checks_the_architecture_seccompiler_checks() {
+        for spec in [
+            SeccompSpec::default(),
+            SeccompSpec {
+                strict: true,
+                bluetooth: true,
+                ..SeccompSpec::default()
+            },
+        ] {
+            let front = front_filter(&spec);
+            let listed = listed_calls(&spec).unwrap();
+            assert_eq!(front[..3], listed[..3], "the architecture check");
+        }
+    }
+
     /// The filter, applied by the real kernel in a child process: every
     /// call through the x32 ABI is refused (audit S-F9; x32 `ptrace` has its
     /// own number), the siblings of blocked calls are blocked too (S-F10),
@@ -939,6 +994,41 @@ mod tests {
             ..SeccompSpec::default()
         };
         assert_eq!(errnos(Some(&nested), &calls[12..]), control[12..]);
+    }
+
+    /// Review R68: the strict filter promised to block access to other
+    /// processes and the NUMA memory calls, but let through
+    /// `process_madvise`, `pidfd_getfd` (another process's descriptors,
+    /// the same right as `ptrace`), `kcmp` and three NUMA calls. Each
+    /// answers as without the filter under the baseline, and "not
+    /// permitted" under the strict filter; the control shows the kernel
+    /// never says that itself here.
+    #[test]
+    fn the_strict_filter_blocks_every_call_its_text_names() {
+        let calls: Vec<fn() -> libc::c_long> = vec![
+            || raw(libc::SYS_process_madvise, -1, 0),
+            || raw(libc::SYS_pidfd_getfd, -1, 0),
+            || raw(libc::SYS_kcmp, 0, 0),
+            || raw(libc::SYS_get_mempolicy, 0, 0),
+            || raw(libc::SYS_set_mempolicy, 0, 0), // MPOL_DEFAULT: no change
+            || raw(libc::SYS_set_mempolicy_home_node, 0, 0),
+        ];
+        let control = errnos(None, &calls);
+        assert!(!control.contains(&libc::EPERM), "{control:?}");
+        assert_eq!(
+            errnos(Some(&SeccompSpec::default()), &calls),
+            control,
+            "the baseline leaves them"
+        );
+        let strict = SeccompSpec {
+            strict: true,
+            ..SeccompSpec::default()
+        };
+        assert_eq!(
+            errnos(Some(&strict), &calls),
+            [libc::EPERM; 6],
+            "control {control:?}"
+        );
     }
 
     /// `socketpair(family, type, protocol, NULL)`: no place for the pair,
@@ -1210,6 +1300,16 @@ mod tests {
             libc::WIFSIGNALED(ended) && libc::WTERMSIG(ended) == libc::SIGSYS,
             "a 64-bit app's 32-bit call ends it: {ended:#x}"
         );
+        // Also the 32-bit numbers that are socket (41, `dup` there) and
+        // clone3 (435) here: no answer, the end (review R71).
+        let twins: [fn() -> libc::c_long; 2] = [|| call32(41, 5, 0, 0), || call32(435, 0, 0, 0)];
+        for (n, call) in twins.into_iter().enumerate() {
+            let (_, ended) = errnos_and_status(Some(&SeccompSpec::default()), &[call]);
+            assert!(
+                libc::WIFSIGNALED(ended) && libc::WTERMSIG(ended) == libc::SIGSYS,
+                "32-bit twin {n} ends a 64-bit app: {ended:#x}"
+            );
+        }
         let spec = SeccompSpec {
             i386: true,
             ..SeccompSpec::default()
@@ -1277,6 +1377,19 @@ mod tests {
             ..SeccompSpec::default()
         };
         assert_eq!(errnos(Some(&strict), &calls[13..]), [eperm], "strict");
+        // The six calls the strict filter gained (review R68), each through
+        // its own 32-bit number, with arguments that change nothing.
+        let reach: Vec<fn() -> libc::c_long> = vec![
+            || call32(440, -1i32 as u32, 0, 0), // process_madvise(-1)
+            || call32(438, -1i32 as u32, 0, 0), // pidfd_getfd(-1)
+            || call32(349, 0, 0, 0),            // kcmp: no process 0
+            || call32(275, 0, 0, 0),            // get_mempolicy(NULL)
+            || call32(276, 0, 0, 0),            // set_mempolicy(MPOL_DEFAULT)
+            || call32(450, 0, 0, 0),            // set_mempolicy_home_node, no pages
+        ];
+        let open_reach = errnos(None, &reach);
+        assert!(!open_reach.contains(&eperm), "{open_reach:?}");
+        assert_eq!(errnos(Some(&strict), &reach), [eperm; 6], "strict, 32-bit");
         // open_tree_attr through its 32-bit number (review R67).
         let tree: Vec<fn() -> libc::c_long> = vec![|| call32(467, -1i32 as u32, 0, 0)];
         let open_tree = errnos(None, &tree);
