@@ -1439,3 +1439,75 @@ fn consent_to_a_new_key_covers_only_the_file_that_was_shown() {
         .args(["--kill", "all"])
         .status();
 }
+
+/// Regression (review B2 S6, R88): the update check read the update address
+/// from whatever file was in the AppImage's place, never compared with what
+/// SAM unpacked (only the update itself compared it). Another app with
+/// write access to that folder, but without network, could put its own
+/// file there, naming an address of its choice with its data in it: SAM,
+/// outside every sandbox, sent that address when the person checked for
+/// updates, and could offer that app's page as the download page. Now the
+/// check reads the file once and asks no server unless it is the file SAM
+/// unpacked; the unchanged file is still checked as before.
+#[test]
+fn an_update_check_of_a_swapped_appimage_asks_no_server() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let tmp = tempfile::tempdir().unwrap();
+    let Some((server, url)) = server_or_skip(tmp.path()) else {
+        return;
+    };
+    let apps = tmp.path().join("Downloads");
+    fs::create_dir_all(&apps).unwrap();
+    let installed = apps.join("Tool-1.0-x86_64.AppImage");
+    appimage(&installed, &url, "1.0");
+    let v2 = tmp.path().join("v2.AppImage");
+    appimage(&v2, &url, "2.0");
+    publish(&server, &v2, "Tool-2.0-x86_64.AppImage");
+    let (sam, id) = add_reviewed(tmp.path(), &installed);
+
+    // The file SAM unpacked is checked as before.
+    let checks = sam.check_updates(Some(&id), false).unwrap();
+    assert_eq!(
+        checks[0].1.state,
+        UpdateState::Available,
+        "{}",
+        checks[0].1.detail
+    );
+    let log = fs::read_to_string(&server.log).unwrap_or_default();
+    assert!(
+        log.contains("/Tool-x86_64.AppImage.zsync"),
+        "the unchanged file's update address was asked:\n{log}"
+    );
+
+    // Another app puts its own file in the AppImage's place; its update
+    // address carries data out to a server of its choice.
+    let leak = format!(
+        "https://127.0.0.1:{}/leak/secret-data/Tool.zsync",
+        server.port
+    );
+    let planted = tmp.path().join("planted.AppImage");
+    appimage(&planted, &leak, "planted");
+    fs::copy(&planted, &installed).unwrap();
+    fs::write(&server.log, "").unwrap();
+
+    let checks = sam.check_updates(Some(&id), false).unwrap();
+    let status = &checks[0].1;
+    assert_eq!(status.state, UpdateState::Failed, "{}", status.detail);
+    assert!(
+        status.detail.contains("changed outside SAM"),
+        "the status says why: {}",
+        status.detail
+    );
+    assert_eq!(status.download_page, None, "no download page is offered");
+    let log = fs::read_to_string(&server.log).unwrap_or_default();
+    assert!(
+        log.is_empty(),
+        "the swapped file's update address was not asked:\n{log}"
+    );
+    let stored = sam.resolve(&id).unwrap().update.unwrap();
+    assert_eq!(
+        stored.state,
+        UpdateState::Failed,
+        "the app page shows the same"
+    );
+}

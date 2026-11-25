@@ -20,6 +20,7 @@ use sam_detect::update_info::{self, UpdateSource};
 // SHA-1 only because the zsync format names the published file by it; it
 // catches damaged downloads, not tampering (the signature check does that).
 use sha1::{Digest, Sha1};
+use sha2::Sha256;
 
 /// The most read from a GitHub release description. It holds the release
 /// notes and about 2 KB per file, so a release with a few hundred files
@@ -64,10 +65,50 @@ fn curl(max_secs: u64) -> Result<Command> {
     Ok(cmd)
 }
 
-/// Checks `appimage` against its published version.
+/// Checks `appimage` against its published version, whatever file it is.
+/// SAM checks its apps with [`check_unpacked`]; this one is for a file
+/// SAM itself holds.
 pub fn check(appimage: &Path) -> UpdateStatus {
+    check_read(appimage, None)
+}
+
+/// Checks `appimage` against its published version, but only when it is
+/// still the file SAM unpacked last (`unpacked_sha256`). The update address
+/// comes from the AppImage itself, and this check runs outside every
+/// sandbox: another app that can write to the AppImage's folder could put
+/// its own file there, naming its own server, and SAM would send that
+/// address (a way out for data from an app without network) and offer that
+/// app's page as the download page. So a file that changed outside SAM is
+/// not checked; no server is asked (review B2 S6, R88).
+pub fn check_unpacked(appimage: &Path, unpacked_sha256: &str) -> UpdateStatus {
+    check_read(appimage, Some(unpacked_sha256))
+}
+
+fn check_read(appimage: &Path, unpacked_sha256: Option<&str>) -> UpdateStatus {
     let now = sam_core::util::now();
-    let Some(source) = update_info::read(appimage) else {
+    let failed = |detail: String| UpdateStatus {
+        state: UpdateState::Failed,
+        detail,
+        checked_at: now,
+        ..Default::default()
+    };
+    // One read: the checksum compared below and the address used later
+    // come from the same bytes, so the file cannot be swapped in between.
+    let read = match ReadOnce::of(appimage) {
+        Ok(r) => r,
+        Err(e) => {
+            return failed(sam_core::i18n::trf(
+                "The update check failed: {error}",
+                &[("error", &format!("{e:#}"))],
+            ))
+        }
+    };
+    if unpacked_sha256.is_some_and(|want| !read.sha256.eq_ignore_ascii_case(want)) {
+        return failed(sam_core::i18n::tr(
+            "The AppImage changed outside SAM since it was last unpacked, so SAM does not check it for updates. Use Unpack Again and look at the app first.",
+        ));
+    }
+    let Some(source) = read.source else {
         return UpdateStatus {
             state: UpdateState::Unsupported,
             detail: sam_core::i18n::tr("This AppImage does not say where updates are published."),
@@ -75,20 +116,48 @@ pub fn check(appimage: &Path) -> UpdateStatus {
             ..Default::default()
         };
     };
-    match check_source(appimage, &source) {
+    match check_source(&read.sha1, &source) {
         Ok(mut s) => {
             s.checked_at = now;
             s
         }
-        Err(e) => UpdateStatus {
-            state: UpdateState::Failed,
-            detail: sam_core::i18n::trf(
-                "The update check failed: {error}",
-                &[("error", &format!("{e:#}"))],
-            ),
-            checked_at: now,
-            ..Default::default()
-        },
+        Err(e) => failed(sam_core::i18n::trf(
+            "The update check failed: {error}",
+            &[("error", &format!("{e:#}"))],
+        )),
+    }
+}
+
+/// An AppImage read once, through one open file: its SHA-256 (to compare
+/// with what SAM unpacked), its SHA-1 (to compare with the published file)
+/// and the update information in its first bytes.
+struct ReadOnce {
+    sha256: String,
+    sha1: String,
+    source: Option<UpdateSource>,
+}
+
+impl ReadOnce {
+    fn of(path: &Path) -> Result<ReadOnce> {
+        let mut f = File::open(path)?;
+        let (mut h256, mut h1) = (Sha256::new(), Sha1::new());
+        let mut head = Vec::new();
+        let mut buf = vec![0u8; 1 << 20];
+        loop {
+            let n = f.read(&mut buf)?;
+            if n == 0 {
+                break;
+            }
+            h256.update(&buf[..n]);
+            h1.update(&buf[..n]);
+            let keep = update_info::HEAD_BYTES.saturating_sub(head.len()).min(n);
+            head.extend_from_slice(&buf[..keep]);
+        }
+        Ok(ReadOnce {
+            sha256: sam_core::util::hex(&h256.finalize()),
+            sha1: sam_core::util::hex(&h1.finalize()),
+            source: update_info::from_head(&head),
+        })
     }
 }
 
@@ -112,13 +181,16 @@ pub struct Published {
 /// What the source publishes: `Ok(None)` when one of the published files
 /// is exactly `appimage` (it is current).
 pub fn newest(appimage: &Path) -> Result<Option<Published>> {
-    let source = update_info::read(appimage).context(sam_core::i18n::tr(
+    let read = ReadOnce::of(appimage)?;
+    let source = read.source.context(sam_core::i18n::tr(
         "this AppImage does not say where updates are published",
     ))?;
-    newest_from(appimage, &source)
+    newest_from(&read.sha1, &source)
 }
 
-fn newest_from(appimage: &Path, source: &UpdateSource) -> Result<Option<Published>> {
+/// What `source` publishes, compared with the local file's SHA-1 `local`
+/// (taken by the caller from the same read as `source`).
+fn newest_from(local: &str, source: &UpdateSource) -> Result<Option<Published>> {
     // Candidate .zsync files: one fixed address, or every matching file of
     // a GitHub release (releases often hold rebuilds or variants side by side).
     let (zsyncs, release, page) = match source {
@@ -162,11 +234,10 @@ fn newest_from(appimage: &Path, source: &UpdateSource) -> Result<Option<Publishe
             (urls, Some(tag_name), page)
         }
     };
-    let local = sha1_of(appimage)?;
     let mut first = None;
     for url in &zsyncs {
         let h = zsync_header(&fetch(url, Some(16 * 1024))?)?;
-        if h.sha1.eq_ignore_ascii_case(&local) {
+        if h.sha1.eq_ignore_ascii_case(local) {
             return Ok(None);
         }
         if first.is_none() {
@@ -245,8 +316,8 @@ fn arch_rank(name: &str, host: &str) -> u8 {
     }
 }
 
-fn check_source(appimage: &Path, source: &UpdateSource) -> Result<UpdateStatus> {
-    Ok(match newest_from(appimage, source)? {
+fn check_source(local_sha1: &str, source: &UpdateSource) -> Result<UpdateStatus> {
+    Ok(match newest_from(local_sha1, source)? {
         None => UpdateStatus {
             state: UpdateState::Current,
             detail: sam_core::i18n::tr("This is the newest published version."),
@@ -753,6 +824,29 @@ mod tests {
             "34aa973cd4c4daa4f61eeb2bdbad27316534016f",
             "SHA-1 of a million a"
         );
+    }
+
+    /// The update check reads an AppImage once and takes both checksums of
+    /// the whole file from that read, also past the first 8 MiB it keeps
+    /// for the update information (review B2 S6, R88): a checksum of only
+    /// the kept part would let a file changed further on pass as the one
+    /// SAM unpacked.
+    #[test]
+    fn the_update_check_hashes_the_whole_file_in_one_read() {
+        let t = tempfile::tempdir().unwrap();
+        let f = t.path().join("big.AppImage");
+        let mut data = vec![b'a'; update_info::HEAD_BYTES + (1 << 20) + 7];
+        let last = data.len() - 1;
+        data[last] = b'b';
+        std::fs::write(&f, &data).unwrap();
+        let read = ReadOnce::of(&f).unwrap();
+        assert_eq!(read.sha1, sha1_of(&f).unwrap(), "SHA-1 of the whole file");
+        assert_eq!(
+            read.sha256,
+            sam_intake::fingerprint::sha256_file(&f).unwrap(),
+            "SHA-256 of the whole file"
+        );
+        assert!(read.source.is_none(), "no ELF file, no update information");
     }
 
     /// The header of a zsync file is read (file name, size, checksum).

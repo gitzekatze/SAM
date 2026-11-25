@@ -750,6 +750,8 @@ impl Sam {
     /// Checks whether newer versions are published, for one app or all,
     /// and stores the result with each app. With `if_due`, only when
     /// `updates.check_on_start` is on, and only apps not checked for a day.
+    /// An AppImage that changed outside SAM since it was unpacked is not
+    /// checked (see [`crate::updates::check_unpacked`]).
     pub fn check_updates(
         &self,
         query: Option<&str>,
@@ -776,7 +778,9 @@ impl Sam {
             if !e.source_path.exists() {
                 continue;
             }
-            let status = crate::updates::check(&e.source_path);
+            // Only the file SAM unpacked is checked: a swapped one would make
+            // SAM ask a server of another app's choosing (review B2 S6, R88).
+            let status = crate::updates::check_unpacked(&e.source_path, unpacked_sha256(&e));
             // The check takes a while: save onto the record as it is now.
             reg.update(&e.id, |fresh| fresh.update = Some(status.clone()))?;
             out.push((e.id.clone(), status));

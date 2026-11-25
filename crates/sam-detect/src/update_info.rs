@@ -28,16 +28,30 @@ pub enum UpdateSource {
     },
 }
 
+/// How much of the start of an AppImage holds its `.upd_info` section (in
+/// the runtime, which comes first).
+pub const HEAD_BYTES: usize = 8 * 1024 * 1024;
+
 /// Reads and parses `.upd_info`. `None` when the AppImage has none, or
 /// uses a form SAM does not know.
 pub fn read(path: &Path) -> Option<UpdateSource> {
     let mut head = Vec::new();
     File::open(path)
         .ok()?
-        .take(8 * 1024 * 1024)
+        .take(HEAD_BYTES as u64)
         .read_to_end(&mut head)
         .ok()?;
-    let elf = goblin::elf::Elf::parse(&head).ok()?;
+    from_head(&head)
+}
+
+/// Parses `.upd_info` from the first bytes of an AppImage (at most
+/// [`HEAD_BYTES`] are looked at). For a caller that has already read the
+/// file and checked what it read: the address then comes from exactly the
+/// bytes that were checked, not from a second read that another program
+/// could change in between (review B2 S6, R88).
+pub fn from_head(head: &[u8]) -> Option<UpdateSource> {
+    let head = head.get(..HEAD_BYTES).unwrap_or(head);
+    let elf = goblin::elf::Elf::parse(head).ok()?;
     let sh = elf
         .section_headers
         .iter()
