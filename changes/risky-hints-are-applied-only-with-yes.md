@@ -8,7 +8,9 @@
   what it turns on and what it adds. A harmless hint, such as Downloads,
   still applies at once.
 - The same holds when such a hint is applied with `sam-jail repair APP
-  --apply ID`. Other repair steps work as before.
+  --apply ID` or reached with `--next`: a repair step with the same id as
+  a hint SAM offers for that app (for example `x11`) is the same change and
+  needs `--yes` too. Other repair steps work as before.
 - SAM's window asks before such a hint, as before, and then confirms it
   for the command line. If the hint's rating changed since the page was
   drawn, the window shows the page again so the next click asks.

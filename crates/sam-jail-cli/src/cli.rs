@@ -101,7 +101,7 @@ pub(crate) enum Cmd {
         undo_step: Option<String>,
         /// Also apply a step suggested by what the app printed (the app
         /// controls that text), or a first-run hint rated Think twice or
-        /// Dangerous; without it such a step is only shown.
+        /// Dangerous; without it such a step is refused.
         #[arg(long)]
         yes: bool,
     },
