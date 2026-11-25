@@ -758,7 +758,7 @@ msgstr ""
 msgid "path has no parent"
 msgstr ""
 
-#: crates/sam-core/src/util.rs:420 crates/sam-runner/src/updates.rs:698
+#: crates/sam-core/src/util.rs:443 crates/sam-runner/src/updates.rs:698
 #. Keep the {placeholders}; their order may change.
 msgid "{program} did not finish within {seconds} seconds and was stopped"
 msgstr ""
@@ -2759,7 +2759,7 @@ msgstr ""
 msgid "Could not start sam-jail-run: {error}"
 msgstr ""
 
-#: crates/sam-gtk/src/backend.rs:347
+#: crates/sam-gtk/src/backend.rs:356
 msgid "Unknown error"
 msgstr ""
 
@@ -3866,7 +3866,7 @@ msgstr ""
 
 #: crates/sam-gtk/src/window.rs:1642
 #. Keep the {placeholders}; their order may change.
-msgid "This window is SAM {version} (interface {interface}), but the command line tool it uses, {program}, is {found}.\n\nInstall matching versions of both, or point SAM_CLI at the right sam-jail. Until then, SAM may show wrong or missing information."
+msgid "This window is SAM {version} (interface {interface}), but the command line tool it uses, {program}, is {found}.\n\nInstall matching versions of both. Until then, SAM may show wrong or missing information."
 msgstr ""
 
 #: crates/sam-gtk/src/window.rs:1644
@@ -4756,24 +4756,24 @@ msgstr ""
 msgid "message too large"
 msgstr ""
 
-#: crates/sam-runner/src/dbus_proxy.rs:184
+#: crates/sam-runner/src/dbus_proxy.rs:193
 msgid "xdg-dbus-proxy is not installed, so SAM cannot give the app filtered access to desktop services (file dialogs, notifications, the tray). Install the package xdg-dbus-proxy, or turn the app's session bus to No access."
 msgstr ""
 
-#: crates/sam-runner/src/dbus_proxy.rs:195
+#: crates/sam-runner/src/dbus_proxy.rs:204
 msgid "no session bus address"
 msgstr ""
 
-#: crates/sam-runner/src/dbus_proxy.rs:232
+#: crates/sam-runner/src/dbus_proxy.rs:242
 msgid "starting xdg-dbus-proxy"
 msgstr ""
 
-#: crates/sam-runner/src/dbus_proxy.rs:271
+#: crates/sam-runner/src/dbus_proxy.rs:281
 #. Keep the {placeholders}; their order may change.
 msgid "xdg-dbus-proxy exited early ({status})"
 msgstr ""
 
-#: crates/sam-runner/src/dbus_proxy.rs:283
+#: crates/sam-runner/src/dbus_proxy.rs:293
 msgid "xdg-dbus-proxy did not create its socket in time"
 msgstr ""
 

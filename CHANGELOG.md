@@ -449,8 +449,9 @@ under *What's new* already.
   buttons line up at the top, and every button explains itself on hover.
 - While an app runs, its page says that changed settings apply at the next
   start and offers "Restart".
-- Diagnostics: `SAM_DBUS_LOG=FILE` makes SAM's D-Bus proxy log every call;
-  `scripts/dbus-log-summary.py FILE` lists unanswered and blocked calls.
+- Diagnostics: in developer builds, `SAM_DBUS_LOG=FILE` makes SAM's D-Bus
+  proxy log every call; `scripts/dbus-log-summary.py FILE` lists unanswered
+  and blocked calls.
 
 ### Permissions of All Apps
 

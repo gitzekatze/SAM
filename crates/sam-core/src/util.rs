@@ -1,6 +1,6 @@
 //! Small helpers shared across crates.
 
-use std::ffi::OsStr;
+use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -237,6 +237,29 @@ fn programs_beside(exe: Option<&Path>, appimage: Option<PathBuf>) -> Vec<PathBuf
         new
     });
     out
+}
+
+/// The value of a developer variable (`SAM_CLI`, `SAM_RUN`,
+/// `SAM_LOCALE_DIR`, `SAM_DBUS_LOG`), only in a developer (debug) build.
+/// These variables point SAM at other programs, other translations or a
+/// log file; they exist for working on SAM itself. A release build ignores
+/// them and uses its own programs next to it, the installed translations
+/// and no D-Bus log, so a forgotten developer setting, or a variable
+/// something else put into the desktop's environment, never changes what
+/// an installed SAM runs, shows or records (owner decision 16 of
+/// 2026-11-23).
+pub fn developer_var(name: &str) -> Option<OsString> {
+    developer_var_in(name, cfg!(debug_assertions))
+}
+
+/// [`developer_var`] for a build that is (`developer_build`) or is not a
+/// developer build: the variable's value when it is one and the value is
+/// not empty, otherwise nothing.
+pub fn developer_var_in(name: &str, developer_build: bool) -> Option<OsString> {
+    if !developer_build {
+        return None;
+    }
+    std::env::var_os(name).filter(|v| !v.is_empty())
 }
 
 /// Finds a program SAM may run: the first one on `$PATH` that the user
@@ -770,6 +793,25 @@ mod tests {
             vec![gui.clone(), bin.join("sam-jail-run")]
         );
         assert!(programs_beside(None, None).is_empty());
+    }
+
+    /// A release build ignores a developer variable that is set; only a
+    /// developer build takes it, and an empty value means "not set"
+    /// (owner decision 16 of 2026-11-23). The variable's name is this
+    /// test's own, so no other test reads it.
+    #[test]
+    fn a_release_build_ignores_developer_variables() {
+        const VAR: &str = "SAM_TEST_DEVELOPER_VARIABLE";
+        let planted = OsString::from("/home/ann/.local/planted/sam-jail");
+        std::env::set_var(VAR, &planted);
+        let release = developer_var_in(VAR, false);
+        let developer = developer_var_in(VAR, true);
+        std::env::set_var(VAR, "");
+        let empty = developer_var_in(VAR, true);
+        std::env::remove_var(VAR);
+        assert_eq!(release, None, "a release build took a developer variable");
+        assert_eq!(developer, Some(planted));
+        assert_eq!(empty, None);
     }
 
     /// Reading a file from an untrusted app returns at once for anything
