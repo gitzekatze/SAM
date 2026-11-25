@@ -1532,6 +1532,9 @@ mod tests {
             "/home/me/.gnupg/S.gpg-agent",
             "/tmp/ssh-XXXXabc123/agent.4242",
             "/tmp//ssh-q1w2e3/./agent.77",
+            // OpenSSH's default place since 10.1 (review of decision 11).
+            "/home/me/.ssh/agent/s.AbCdEf123",
+            "~/.ssh/agent/s.x",
             "/run/user/1000/ssh-agent.socket",
             "/home/me/.bitwarden-ssh-agent.sock",
             "/run/user/1000/openssh_agent",

@@ -325,6 +325,7 @@ tests = [
   "a_way_through_forty_links_is_followed_and_one_through_more_is_not",
   "an_extra_socket_that_leads_to_a_dangerous_one_is_not_passed_in",
   "an_app_cannot_turn_its_extra_socket_into_a_link_to_another_one",
+  "an_extra_socket_is_passed_in_only_as_dangerous_as_its_name",
   "a_wildcard_over_the_portal_is_dangerous",
   "a_terminal_that_runs_commands_is_dangerous_to_reach",
   "notes_about_a_missing_bus_come_only_when_it_is_missing",

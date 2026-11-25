@@ -444,22 +444,31 @@ pub fn key_agent_socket(path: &str) -> bool {
         "gcr/ssh",
         ".1password/agent.sock",
     ];
-    // OpenSSH's own: `/tmp/ssh-XXXX/agent.<pid>`.
+    // OpenSSH's own: by default `~/.ssh/agent/s.<random>` (OpenSSH 10.1
+    // and later), with `-T` `/tmp/ssh-XXXX/agent.<pid>`.
     let components: Vec<&str> = norm.split('/').collect();
     names.iter().any(|n| norm.contains(n))
-        || components
-            .windows(2)
-            .any(|w| w[0].starts_with("ssh-") && w[1].starts_with("agent."))
+        || components.windows(2).any(|w| {
+            (w[0].starts_with("ssh-") && w[1].starts_with("agent."))
+                || (w[0] == ".ssh" && w[1] == "agent")
+        })
 }
 
 /// Sockets that give whoever can connect control over the computer, a
-/// way around the sandbox's D-Bus filter, or your unlocked keys. Compared
-/// without `.` and repeated `/`, which the kernel skips:
-/// `/run/dbus//system_bus_socket` is the system bus (review 2026-11-23).
+/// way around the sandbox's D-Bus filter, or your unlocked keys, with the
+/// reason in words. Compared without `.` and repeated `/`, which the
+/// kernel skips: `/run/dbus//system_bus_socket` is the system bus (review
+/// 2026-11-23).
 pub fn dangerous_socket(path: &str) -> Option<String> {
     let p = path.trim();
-    let norm = socket_path_norm(p);
-    let bad: &[(&str, &str)] = &[
+    dangerous_socket_reason(p).map(|why| format!("{p} {}", crate::i18n::tr(why)))
+}
+
+/// Why a socket is dangerous, untranslated, if it is: two names are
+/// dangerous in the same way when their reasons are the same.
+pub fn dangerous_socket_reason(path: &str) -> Option<&'static str> {
+    let norm = socket_path_norm(path);
+    let bad: &[(&str, &'static str)] = &[
         (
             "docker.sock",
             crate::i18n::n_("controls Docker, which equals full control of the computer"),
@@ -492,8 +501,7 @@ pub fn dangerous_socket(path: &str) -> Option<String> {
     bad.iter()
         .find(|(needle, _)| norm.contains(needle))
         .map(|(_, why)| *why)
-        .or_else(|| key_agent_socket(p).then_some(KEY_AGENT_WHY))
-        .map(|why| format!("{p} {}", crate::i18n::tr(why)))
+        .or_else(|| key_agent_socket(path).then_some(KEY_AGENT_WHY))
 }
 
 /// True when a bus-name pattern (`org.kde.*`, `org.kde*`, exact) covers `name`.
