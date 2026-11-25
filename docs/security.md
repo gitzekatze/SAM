@@ -894,7 +894,15 @@ SAM opens* is on (off by default). It uses `curl`, HTTPS only (redirects
 included), with a generic user agent and without reading a `~/.curlrc`
 (where a setting could switch off certificate checks or send requests
 elsewhere); nothing about you or your apps is sent, and nothing is
-downloaded or installed.
+downloaded or installed. Only the AppImage SAM unpacked is checked: SAM
+reads the file once, compares its checksum with what it unpacked last and
+takes the update address from exactly the bytes it compared. A file
+replaced outside SAM (for example by another app with access to that
+folder) is not checked, and no server is asked, because its update address
+could carry that app's data out to a server of its choice; the app page
+says that the file changed outside SAM. Use *Unpack Again* and look at the
+app first. Anything that is not a plain file of the unpacked size is not
+read at all, and an app SAM has not unpacked yet is not checked.
 
 **Updating** (*Update Now*, `sam-jail update`) is the one time SAM
 downloads a file, and only when you ask:

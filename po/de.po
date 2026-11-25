@@ -9073,6 +9073,24 @@ msgstr ""
 "SAM aktualisiert sich bereits selbst. Warte, bis das erledigt ist, und "
 "versuche es dann noch einmal."
 
+#: crates/sam-runner/src/ops/maintain.rs:790
+msgid ""
+"SAM has not unpacked this app yet, so it does not check it for updates. Use "
+"Unpack Again and look at the app first."
+msgstr ""
+"SAM hat diese App noch nicht entpackt, daher sucht SAM keine "
+"Aktualisierungen dafür. Nutze „Erneut entpacken“ und sieh dir die App zuerst "
+"an."
+
+#: crates/sam-runner/src/updates.rs:98
+msgid ""
+"The AppImage changed outside SAM since it was last unpacked, so SAM does not "
+"check it for updates. Use Unpack Again and look at the app first."
+msgstr ""
+"Das AppImage wurde außerhalb von SAM geändert, seit es zuletzt entpackt "
+"wurde, daher sucht SAM keine Aktualisierungen dafür. Nutze „Erneut "
+"entpacken“ und sieh dir die App zuerst an."
+
 #~ msgid "To start it anyway this one time: sam-jail run --start-anyway APP"
 #~ msgstr ""
 #~ "Um sie dieses eine Mal trotzdem zu starten: sam-jail run --start-anyway "
