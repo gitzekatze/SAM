@@ -45,7 +45,11 @@ broken=$(add Broken failing)
 "$bin/sam-jail" run "$broken" >/dev/null 2>&1 || true
 repaired=$(add Repaired failing)
 "$bin/sam-jail" run "$repaired" >/dev/null 2>&1 || true
-"$bin/sam-jail" repair "$repaired" --next >/dev/null 2>&1 || true
+# A step rated Think twice or Dangerous waits for a yes; only that one
+# is given here, as in the window.
+r=$("$bin/sam-jail" --json repair "$repaired" --next 2>&1) || case $r in
+  *'"step-needs-yes"'*) "$bin/sam-jail" repair "$repaired" --next --yes >/dev/null 2>&1 || true ;;
+esac
 tampered=$(add Tampered)
 # Something other than SAM changes the record: SAM shows "Changed outside SAM".
 python3 -I -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); d["profile"]["permissions"]["network"]["mode"]="full"; json.dump(d,open(p,"w"))' "$SAM_DATA_DIR/apps/$tampered.json"

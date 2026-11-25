@@ -290,7 +290,9 @@ impl Sam {
     /// A first-run hint rated Think twice or Dangerous, or one that turns
     /// on compatibility mode, needs `confirmed` (the person said yes),
     /// judged here on the record that is changed and saved, so no caller
-    /// can skip it (owner decision 13 of 2026-11-23).
+    /// can skip it (owner decision 13 of 2026-11-23). Any other repair step
+    /// rated Think twice or Dangerous, or one that turns on compatibility
+    /// mode, needs it as well (owner decision A of 2026-11-25).
     pub fn apply_suggestion(
         &self,
         query: &str,
@@ -300,6 +302,7 @@ impl Sam {
     ) -> Result<AppEntry> {
         let mut e = self.resolve(query)?;
         crate::repair::confirm_hint(&e, sug, confirmed)?;
+        crate::repair::confirm_step(&e, &self.config, &self.paths, sug, confirmed)?;
         if as_repair && e.repair_backup.is_none() {
             e.repair_backup = Some(e.profile.clone());
         }

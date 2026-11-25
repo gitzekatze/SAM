@@ -1,6 +1,6 @@
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
-.TH sam-jail-repair 1 2026-11-19 "SAM 0.1.0" "SAM - Sandboxed AppImage Manager"
+.TH sam-jail-repair 1 2026-11-25 "SAM 0.1.0" "SAM - Sandboxed AppImage Manager"
 .SH NAME
 sam\-jail\-repair \- Repair an app that does not start or misbehaves: list steps, apply one, or undo
 .SH SYNOPSIS
@@ -22,7 +22,7 @@ Restore the profile from before the first repair step
 Switch off one applied repair step (by id), keeping the others
 .TP
 \fB\-\-yes\fR
-Also apply a step suggested by what the app printed (the app controls that text), or a first\-run hint rated Think twice or Dangerous; without it such a step is refused
+Also apply a step rated Think twice or Dangerous, one that turns on compatibility mode, or one suggested by what the app printed (the app controls that text); without it such a step is refused
 .TP
 \fB\-h\fR, \fB\-\-help\fR
 Print help

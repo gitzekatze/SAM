@@ -666,7 +666,7 @@ msgstr ""
 msgid "Read-only access to GTK/Qt/KDE theme configuration so apps match your desktop."
 msgstr ""
 
-#: crates/sam-core/src/permissions.rs:1311 crates/sam-core/src/risk.rs:396 crates/sam-runner/src/doctor.rs:342 crates/sam-runner/src/doctor.rs:344 crates/sam-runner/src/doctor.rs:351 crates/sam-runner/src/repair.rs:933
+#: crates/sam-core/src/permissions.rs:1311 crates/sam-core/src/risk.rs:396 crates/sam-runner/src/doctor.rs:342 crates/sam-runner/src/doctor.rs:344 crates/sam-runner/src/doctor.rs:351 crates/sam-runner/src/repair.rs:979
 msgid "Writable app folder"
 msgstr ""
 
@@ -2234,7 +2234,7 @@ msgstr ""
 msgid "Confirm Settings"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:493 crates/sam-runner/src/ops/profiles.rs:396
+#: crates/sam-gtk/src/app_page/render.rs:493 crates/sam-runner/src/ops/profiles.rs:399
 #. Keep the {placeholders}; their order may change.
 msgid "{app} changed since this page showed it. Look at it again, then confirm."
 msgstr ""
@@ -5854,17 +5854,17 @@ msgstr ""
 msgid "sandbox check failed: {list}"
 msgstr ""
 
-#: crates/sam-runner/src/ops/profiles.rs:339
+#: crates/sam-runner/src/ops/profiles.rs:342
 #. Keep the {placeholders}; their order may change.
 msgid "the repair step '{step_id}' is not applied"
 msgstr ""
 
-#: crates/sam-runner/src/ops/profiles.rs:366
+#: crates/sam-runner/src/ops/profiles.rs:369
 #. Keep the {placeholders}; their order may change.
 msgid "no repair steps to undo for {app}"
 msgstr ""
 
-#: crates/sam-runner/src/ops/profiles.rs:432
+#: crates/sam-runner/src/ops/profiles.rs:435
 #. Keep the {placeholders}; their order may change.
 msgid "the preset “{preset}” changed after it was checked; nothing was applied. Check it again."
 msgstr ""
@@ -6365,61 +6365,61 @@ msgstr ""
 msgid "{key} is not a list"
 msgstr ""
 
-#: crates/sam-runner/src/repair.rs:767
+#: crates/sam-runner/src/repair.rs:813
 #. Keep the {placeholders}; their order may change.
 msgid "SAM applies \"{title}\" ({level}) only after a yes. {effect} Look at it, then apply it with --yes, or in SAM's window, which asks."
 msgstr ""
 
-#: crates/sam-runner/src/repair.rs:776
+#: crates/sam-runner/src/repair.rs:822
 #. Keep the {placeholders}; their order may change.
 msgid "SAM applies \"{title}\" ({level}) only after a yes. {effect} It adds {items}. Look at it, then apply it with --yes, or in SAM's window, which asks."
 msgstr ""
 
-#: crates/sam-runner/src/repair.rs:796
+#: crates/sam-runner/src/repair.rs:842
 msgid "damaged repair record"
 msgstr ""
 
-#: crates/sam-runner/src/repair.rs:898
+#: crates/sam-runner/src/repair.rs:944
 msgid "Show all of /usr"
 msgstr ""
 
-#: crates/sam-runner/src/repair.rs:898
+#: crates/sam-runner/src/repair.rs:944
 msgid "Most crashes at start are a system file hidden by SAM's minimal view."
 msgstr ""
 
-#: crates/sam-runner/src/repair.rs:905
+#: crates/sam-runner/src/repair.rs:951
 msgid "Turn on X11"
 msgstr ""
 
-#: crates/sam-runner/src/repair.rs:905
+#: crates/sam-runner/src/repair.rs:951
 msgid "For apps without Wayland support, or whose window does not appear."
 msgstr ""
 
-#: crates/sam-runner/src/repair.rs:912
+#: crates/sam-runner/src/repair.rs:958
 msgid "Turn on GPU acceleration"
 msgstr ""
 
-#: crates/sam-runner/src/repair.rs:912
+#: crates/sam-runner/src/repair.rs:958
 msgid "Some apps refuse to start without hardware graphics."
 msgstr ""
 
-#: crates/sam-runner/src/repair.rs:919
+#: crates/sam-runner/src/repair.rs:965
 msgid "Allow nested namespaces"
 msgstr ""
 
-#: crates/sam-runner/src/repair.rs:919
+#: crates/sam-runner/src/repair.rs:965
 msgid "Needed by apps that start their own sandbox (Chromium, Electron, WebKit)."
 msgstr ""
 
-#: crates/sam-runner/src/repair.rs:926
+#: crates/sam-runner/src/repair.rs:972
 msgid "Turn off the baseline syscall filter"
 msgstr ""
 
-#: crates/sam-runner/src/repair.rs:926
+#: crates/sam-runner/src/repair.rs:972
 msgid "Rarely needed: some apps use kernel interfaces the filter blocks."
 msgstr ""
 
-#: crates/sam-runner/src/repair.rs:933
+#: crates/sam-runner/src/repair.rs:979
 msgid "For apps that save next to themselves."
 msgstr ""
 

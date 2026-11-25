@@ -741,8 +741,8 @@ fn level_added(e: &AppEntry, st: &Suggestion) -> RiskLevel {
 /// judged on the settings `e` it is applied to, so a page drawn before a
 /// change cannot apply it with an older, lower label. Refused with
 /// `hint-needs-yes`, naming the hint, what it turns on and what it adds
-/// (owner decision 13 of 2026-11-23). Other repair steps are not judged
-/// here.
+/// (owner decision 13 of 2026-11-23). Other repair steps are judged by
+/// [`confirm_step`].
 pub fn confirm_hint(e: &AppEntry, sug: &Suggestion, confirmed: bool) -> anyhow::Result<()> {
     if confirmed {
         return Ok(());
@@ -756,6 +756,54 @@ pub fn confirm_hint(e: &AppEntry, sug: &Suggestion, confirmed: bool) -> anyhow::
     if level < RiskLevel::High && !compat {
         return Ok(());
     }
+    Err(needs_yes(e, sug, level, "hint-needs-yes"))
+}
+
+/// Applying any other repair step rated Think twice or Dangerous, or one
+/// that turns on compatibility mode, waits for a yes (`confirmed`) as
+/// well: a step of the ladder, also one reached with `repair --next`, and
+/// a finding of the last start. `sam-jail set` and risky hints already
+/// asked for `--yes`; `repair --apply seccomp-baseline` turned off the
+/// syscall filter unasked (owner decision A of 2026-11-25). Judged like a
+/// hint, on the settings `e` it is applied to: the highest of its own
+/// label, its label in the ladder SAM offers now and what applying it
+/// adds, so a lower label handed in for a step SAM lists, or for one that
+/// changes a setting, cannot skip the yes (the command line and the window
+/// hand in SAM's own copy, found by id). Refused with `step-needs-yes`.
+/// First-run hints are left to [`confirm_hint`].
+pub fn confirm_step(
+    e: &AppEntry,
+    cfg: &Config,
+    paths: &sam_core::Paths,
+    sug: &Suggestion,
+    confirmed: bool,
+) -> anyhow::Result<()> {
+    if confirmed || first_run_hints(e).iter().any(|h| h.id == sug.id) {
+        return Ok(());
+    }
+    let listed = ladder(e, cfg, paths).into_iter().find(|s| s.id == sug.id);
+    let level = listed
+        .as_ref()
+        .map_or(sug.risk, |s| s.risk.max(sug.risk))
+        .max(level_added(e, sug));
+    // Compatibility mode asks whatever its label, also where it adds
+    // nothing rated Think twice to settings that are wide already.
+    let compat = matches!(sug.action, FixAction::Compat);
+    if level < RiskLevel::High && !compat {
+        return Ok(());
+    }
+    Err(needs_yes(e, sug, level, "step-needs-yes"))
+}
+
+/// The refusal for a hint or repair step that waits for a yes: names it,
+/// its level, what it turns on or off and what it adds, and the two ways
+/// to say yes.
+fn needs_yes(
+    e: &AppEntry,
+    sug: &Suggestion,
+    level: RiskLevel,
+    code: &'static str,
+) -> anyhow::Error {
     let mut after = e.clone();
     let added = match apply_step(&mut after, sug, &mut Default::default()) {
         Ok(()) => sam_core::risk::new_risks(&e.profile.permissions, &after.profile.permissions),
@@ -783,7 +831,7 @@ pub fn confirm_hint(e: &AppEntry, sug: &Suggestion, confirmed: bool) -> anyhow::
             ],
         )
     };
-    Err(sam_core::error::CodedError::new("hint-needs-yes", text).into())
+    sam_core::error::CodedError::new(code, text).into()
 }
 
 /// Puts back exactly what the applied repair step `r` changed (already
@@ -1672,6 +1720,113 @@ mod tests {
         assert_eq!(network.risk, RiskLevel::Dangerous);
         let text = format!("{:#}", confirm_hint(&reader, &network, false).unwrap_err());
         assert!(text.contains("Can send what it reads"), "{text}");
+    }
+
+    /// A repair step rated Think twice or Dangerous, or one that turns on
+    /// compatibility mode, needs a yes like a risky hint, and the refusal
+    /// names the step, what it changes and the two ways to say yes; a step
+    /// rated Some access or Harmless does not. Judged by the highest of
+    /// its own label, its label in the ladder and what it adds, so a lower
+    /// label handed in skips nothing; a first-run hint is left to
+    /// `confirm_hint` (owner decision A of 2026-11-25: `repair --apply
+    /// seccomp-baseline` turned off the syscall filter unasked).
+    #[test]
+    fn a_risky_repair_step_needs_yes_and_says_what_it_changes() {
+        let mut game = AppEntry {
+            category: "game".into(),
+            ..Default::default()
+        };
+        game.profile.permissions = PermissionSet::strict_gui();
+        let tmp = tempfile::tempdir().unwrap();
+        let (cfg, paths) = (Config::default(), Paths::rooted(tmp.path()));
+        let step = |id: &str| {
+            ladder(&game, &cfg, &paths)
+                .into_iter()
+                .find(|s| s.id == id)
+                .unwrap_or_else(|| panic!("{id} offered"))
+        };
+        let refused = |sug: &Suggestion| {
+            let err = confirm_step(&game, &cfg, &paths, sug, false).unwrap_err();
+            assert_eq!(sam_core::error::code_of(&err), Some("step-needs-yes"));
+            format!("{err:#}")
+        };
+        // The syscall filter: labelled Some access, raised by what it adds.
+        let seccomp = step("seccomp-baseline");
+        let text = refused(&seccomp);
+        assert!(text.contains(&format!("\"{}\"", seccomp.title)), "{text}");
+        assert!(text.contains("Turns off"), "says what it changes: {text}");
+        assert!(text.contains("--yes") && text.contains("window"), "{text}");
+        assert!(confirm_step(&game, &cfg, &paths, &seccomp, true).is_ok());
+        // Handed in with a lower label, it is the same step.
+        let mut low = seccomp.clone();
+        low.risk = RiskLevel::Low;
+        refused(&low);
+        // Compatibility mode, and a change no list offers that adds X11.
+        refused(&step("compat"));
+        let unlisted = Suggestion {
+            id: "not-offered".into(),
+            title: "X11".into(),
+            explanation: String::new(),
+            action: FixAction::Set {
+                key: "display.x11".into(),
+                value: "true".into(),
+            },
+            risk: RiskLevel::Low,
+            from_app_output: false,
+        };
+        refused(&unlisted);
+        // Some access and Harmless apply at once.
+        for id in ["full-usr", "userns"] {
+            assert!(
+                confirm_step(&game, &cfg, &paths, &step(id), false).is_ok(),
+                "{id}"
+            );
+        }
+        // A first-run hint is judged by confirm_hint, with its own code.
+        let network = hints(&game, false)
+            .into_iter()
+            .find(|h| h.id == "network")
+            .expect("offered");
+        assert!(confirm_step(&game, &cfg, &paths, &network, false).is_ok());
+        assert!(confirm_hint(&game, &network, false).is_err());
+        // A step that adds no setting (an argument) keeps the label SAM
+        // gave it: handed in lower, the ladder's label counts.
+        let found = Suggestion {
+            id: "chromium-no-sandbox".into(),
+            title: "Start without Chromium's own sandbox".into(),
+            explanation: String::new(),
+            action: FixAction::AddArg {
+                value: "--no-sandbox".into(),
+            },
+            risk: RiskLevel::High,
+            from_app_output: false,
+        };
+        let mut failed = game.clone();
+        failed.last_launch = Some(sam_core::model::LaunchRecord {
+            findings: vec![found.clone()],
+            ..Default::default()
+        });
+        let mut lowered = found;
+        lowered.risk = RiskLevel::Low;
+        let err = confirm_step(&failed, &cfg, &paths, &lowered, false).unwrap_err();
+        assert_eq!(sam_core::error::code_of(&err), Some("step-needs-yes"));
+        // Compatibility mode under any id and label asks, also where the
+        // settings have all of it but the graphics card (Some access).
+        let mut wide = game.clone();
+        wide.profile.permissions = sam_profile::compatibility_profile(&wide.profile.permissions);
+        wide.profile.permissions.devices.gpu = false;
+        let compat = Suggestion {
+            id: "not-offered".into(),
+            action: FixAction::Compat,
+            risk: RiskLevel::Low,
+            ..unlisted
+        };
+        assert!(
+            level_added(&wide, &compat) < RiskLevel::High,
+            "adds only Some access"
+        );
+        let err = confirm_step(&wide, &cfg, &paths, &compat, false).unwrap_err();
+        assert_eq!(sam_core::error::code_of(&err), Some("step-needs-yes"));
     }
 
     /// The graphics hint is only for a windowed app that has no graphics
