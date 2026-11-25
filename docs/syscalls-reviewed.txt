@@ -54,7 +54,7 @@ capset	allowed
 chdir	allowed
 chmod	allowed
 chown	allowed
-chroot	blocked
+chroot	blocked unless nested sandboxes
 clock_adjtime	blocked
 clock_adjtime64	allowed
 clock_getres	allowed
