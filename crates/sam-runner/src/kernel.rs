@@ -367,16 +367,26 @@ fn baseline_syscalls(allow_userns: bool) -> Vec<(&'static str, i64)> {
     v
 }
 
-/// Additionally blocked by the strict filter.
+/// Additionally blocked by the strict filter: `ptrace` and every call
+/// that reaches into another process as far (its memory, its descriptors,
+/// its kernel objects), `personality`, and every NUMA memory call (review
+/// R68: the help text promised these, six were missing). The full promise
+/// is written in `docs/security.md`, section "strict filter".
 fn strict_extra_syscalls() -> Vec<(&'static str, i64)> {
     calls![
         libc::SYS_ptrace,
         libc::SYS_process_vm_writev,
         libc::SYS_process_vm_readv,
+        libc::SYS_process_madvise,
+        libc::SYS_pidfd_getfd,
+        libc::SYS_kcmp,
         libc::SYS_personality,
         libc::SYS_mbind,
         libc::SYS_move_pages,
         libc::SYS_migrate_pages,
+        libc::SYS_get_mempolicy,
+        libc::SYS_set_mempolicy,
+        libc::SYS_set_mempolicy_home_node,
     ]
 }
 
@@ -576,10 +586,16 @@ const I386_CALLS: &[(&str, u32)] = &[
     ("ptrace", 26),
     ("process_vm_readv", 347),
     ("process_vm_writev", 348),
+    ("process_madvise", 440),
+    ("pidfd_getfd", 438),
+    ("kcmp", 349),
     ("personality", 136),
     ("mbind", 274),
     ("move_pages", 317),
     ("migrate_pages", 294),
+    ("get_mempolicy", 275),
+    ("set_mempolicy", 276),
+    ("set_mempolicy_home_node", 450),
 ];
 
 /// 32-bit x86 numbers of the calls with a closer look.
@@ -980,6 +996,41 @@ mod tests {
         assert_eq!(errnos(Some(&nested), &calls[12..]), control[12..]);
     }
 
+    /// Review R68: the strict filter promised to block access to other
+    /// processes and the NUMA memory calls, but let through
+    /// `process_madvise`, `pidfd_getfd` (another process's descriptors,
+    /// the same right as `ptrace`), `kcmp` and three NUMA calls. Each
+    /// answers as without the filter under the baseline, and "not
+    /// permitted" under the strict filter; the control shows the kernel
+    /// never says that itself here.
+    #[test]
+    fn the_strict_filter_blocks_every_call_its_text_names() {
+        let calls: Vec<fn() -> libc::c_long> = vec![
+            || raw(libc::SYS_process_madvise, -1, 0),
+            || raw(libc::SYS_pidfd_getfd, -1, 0),
+            || raw(libc::SYS_kcmp, 0, 0),
+            || raw(libc::SYS_get_mempolicy, 0, 0),
+            || raw(libc::SYS_set_mempolicy, 0, 0), // MPOL_DEFAULT: no change
+            || raw(libc::SYS_set_mempolicy_home_node, 0, 0),
+        ];
+        let control = errnos(None, &calls);
+        assert!(!control.contains(&libc::EPERM), "{control:?}");
+        assert_eq!(
+            errnos(Some(&SeccompSpec::default()), &calls),
+            control,
+            "the baseline leaves them"
+        );
+        let strict = SeccompSpec {
+            strict: true,
+            ..SeccompSpec::default()
+        };
+        assert_eq!(
+            errnos(Some(&strict), &calls),
+            [libc::EPERM; 6],
+            "control {control:?}"
+        );
+    }
+
     /// `socketpair(family, type, protocol, NULL)`: no place for the pair,
     /// so the kernel never hands one out.
     fn pair(family: i32, kind: i32) -> libc::c_long {
@@ -1326,6 +1377,19 @@ mod tests {
             ..SeccompSpec::default()
         };
         assert_eq!(errnos(Some(&strict), &calls[13..]), [eperm], "strict");
+        // The six calls the strict filter gained (review R68), each through
+        // its own 32-bit number, with arguments that change nothing.
+        let reach: Vec<fn() -> libc::c_long> = vec![
+            || call32(440, -1i32 as u32, 0, 0), // process_madvise(-1)
+            || call32(438, -1i32 as u32, 0, 0), // pidfd_getfd(-1)
+            || call32(349, 0, 0, 0),            // kcmp: no process 0
+            || call32(275, 0, 0, 0),            // get_mempolicy(NULL)
+            || call32(276, 0, 0, 0),            // set_mempolicy(MPOL_DEFAULT)
+            || call32(450, 0, 0, 0),            // set_mempolicy_home_node, no pages
+        ];
+        let open_reach = errnos(None, &reach);
+        assert!(!open_reach.contains(&eperm), "{open_reach:?}");
+        assert_eq!(errnos(Some(&strict), &reach), [eperm; 6], "strict, 32-bit");
         // open_tree_attr through its 32-bit number (review R67).
         let tree: Vec<fn() -> libc::c_long> = vec![|| call32(467, -1i32 as u32, 0, 0)];
         let open_tree = errnos(None, &tree);
