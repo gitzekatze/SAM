@@ -122,6 +122,26 @@ pub fn appimage_inside(name: &std::ffi::OsStr) -> PathBuf {
     }
 }
 
+/// How many values follow a Bubblewrap option, as bwrap 0.13's `--help`
+/// lists them: for showing an option and its values on one line, and for
+/// checking the person's raw arguments (an option missing its values took
+/// SAM's own arguments after it).
+pub fn bwrap_arity(option: &str) -> usize {
+    match option {
+        "--overlay" => 3,
+        "--bind" | "--bind-try" | "--ro-bind" | "--ro-bind-try" | "--dev-bind"
+        | "--dev-bind-try" | "--bind-fd" | "--ro-bind-fd" | "--symlink" | "--setenv" | "--file"
+        | "--bind-data" | "--ro-bind-data" | "--chmod" => 2,
+        "--proc" | "--dev" | "--tmpfs" | "--mqueue" | "--dir" | "--perms" | "--size"
+        | "--hostname" | "--chdir" | "--unsetenv" | "--uid" | "--gid" | "--userns"
+        | "--userns2" | "--pidns" | "--args" | "--argv0" | "--lock-file" | "--sync-fd"
+        | "--remount-ro" | "--overlay-src" | "--tmp-overlay" | "--ro-overlay" | "--exec-label"
+        | "--file-label" | "--cap-add" | "--cap-drop" | "--seccomp" | "--add-seccomp-fd"
+        | "--block-fd" | "--userns-block-fd" | "--info-fd" | "--json-status-fd" => 1,
+        _ => 0,
+    }
+}
+
 /// A fully built command line, ready to spawn.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SandboxCommand {

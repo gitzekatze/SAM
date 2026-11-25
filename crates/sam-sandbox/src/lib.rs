@@ -1598,6 +1598,19 @@ impl Bubblewrap {
 
     /// The bwrap command line for this launch.
     pub fn build(&self, ctx: &LaunchContext) -> Result<SandboxCommand> {
+        // The person's raw arguments come right before SAM's last ones
+        // (`--remount-ro /`): an option there missing its values would take
+        // them, and the root would stay writable without a word (review B2
+        // R58).
+        if let Some(open) = missing_values(&ctx.permissions.advanced.extra_bwrap_args) {
+            anyhow::bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "the extra Bubblewrap arguments end with {option}, which needs more values; SAM does not start the app until the setting is complete",
+                    &[("option", &open)]
+                )
+            );
+        }
         // Without a real home folder, "the home" is `/` or a relative path:
         // full home access would then bind the whole computer (audit S-F12).
         let home = &ctx.host.home;
@@ -2527,6 +2540,19 @@ const SYSTEM_LIB_DIRS: &[&str] = &[
     "/lib/x86_64-linux-gnu",
     "/lib/aarch64-linux-gnu",
 ];
+
+/// The option the list `args` ends inside of, still missing values.
+fn missing_values(args: &[String]) -> Option<String> {
+    let mut i = 0;
+    while i < args.len() {
+        let n = sam_core::sandbox::bwrap_arity(&args[i]);
+        if i + n >= args.len() && n > 0 {
+            return Some(args[i].clone());
+        }
+        i += 1 + n;
+    }
+    None
+}
 
 /// `(system copy, place inside the sandbox)` for every bundled library in
 /// `advanced.system_libraries`. Only plain library names count, the
@@ -3484,6 +3510,39 @@ mod tests {
             .output()
             .unwrap();
         assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "ran");
+    }
+
+    /// Extra Bubblewrap arguments that end with an option missing its
+    /// values stop the start: the option would take SAM's `--remount-ro /`
+    /// after it, and the root would stay writable (review B2 R58).
+    #[test]
+    fn raw_arguments_missing_a_value_stop_the_start() {
+        let mut ctx = sample_context();
+        let refused = |ctx: &LaunchContext| {
+            Bubblewrap
+                .build(ctx)
+                .err()
+                .is_some_and(|e| e.to_string().contains("needs more values"))
+        };
+        for raw in [
+            &["--ro-bind-try"][..],
+            &["--ro-bind-try", "/a"],
+            &["--setenv", "A", "1", "--chdir"],
+            &["--overlay", "/u", "/w"],
+        ] {
+            ctx.permissions.advanced.extra_bwrap_args = raw.iter().map(|s| s.to_string()).collect();
+            assert!(refused(&ctx), "{raw:?}");
+        }
+        for raw in [
+            &["--ro-bind-try", "/a", "/b"][..],
+            &["--unshare-ipc"],
+            &["--setenv", "A", "--chdir"],
+        ] {
+            ctx.permissions.advanced.extra_bwrap_args = raw.iter().map(|s| s.to_string()).collect();
+            assert!(!refused(&ctx), "{raw:?}");
+            let a = args_of(&ctx);
+            assert!(has_seq(&a, &["--remount-ro", "/", "--"]), "{raw:?}");
+        }
     }
 
     /// With "this computer only", the network namespace is left to pasta.
