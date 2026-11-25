@@ -8874,7 +8874,7 @@ msgstr ""
 "proxy) ; bus de session désactivé"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2349
+#: crates/sam-sandbox/src/lib.rs:2351
 msgid ""
 "{path} is reached through a link in a folder the app can change; it is not "
 "passed into the sandbox. List the socket by its real place."
@@ -8884,12 +8884,24 @@ msgstr ""
 "emplacement réel."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2357
+#: crates/sam-sandbox/src/lib.rs:2365
+msgid ""
+"{path} lies below a folder the app can change, so the app could swap it for "
+"another socket during the start; this setting does not pass it in. Where the "
+"app may use that folder, it still reaches the socket there."
+msgstr ""
+"{path} se trouve sous un dossier que l’application peut modifier, elle "
+"pourrait donc l’échanger contre un autre socket pendant le démarrage ; ce "
+"réglage ne le transmet pas. Là où l’application peut utiliser ce dossier, "
+"elle atteint toujours le socket à cet endroit."
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-sandbox/src/lib.rs:2372
 msgid "{path} is not a socket; it is not passed into the sandbox"
 msgstr "{path} n’est pas un socket ; il n’est pas transmis au bac à sable"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2368
+#: crates/sam-sandbox/src/lib.rs:2383
 msgid ""
 "{path} leads elsewhere: {why}. It is not passed into the sandbox; list that "
 "socket by its real place if the app needs it."
@@ -8983,6 +8995,16 @@ msgstr ""
 #: crates/sam-storage/src/lib.rs:641
 msgid "unknown flat preset key '{other}'"
 msgstr "clé « {other} » inconnue dans le modèle plat"
+
+#~ msgid ""
+#~ "{path} is in a folder the app can change, so the app could swap it for "
+#~ "another socket during the start; it is not passed into the sandbox. Keep "
+#~ "the socket in a folder the app cannot write."
+#~ msgstr ""
+#~ "{path} se trouve dans un dossier que l’application peut modifier, elle "
+#~ "pourrait donc l’échanger contre un autre socket pendant le démarrage ; il "
+#~ "n’est pas transmis au bac à sable. Place le socket dans un dossier où "
+#~ "l’application ne peut pas écrire."
 
 #~ msgid ""
 #~ "Bus names that stay blocked even when a preset or another setting allows "

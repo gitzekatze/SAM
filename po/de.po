@@ -8785,7 +8785,7 @@ msgstr ""
 "proxy); Sitzungsbus abgeschaltet"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2349
+#: crates/sam-sandbox/src/lib.rs:2351
 msgid ""
 "{path} is reached through a link in a folder the app can change; it is not "
 "passed into the sandbox. List the socket by its real place."
@@ -8795,12 +8795,24 @@ msgstr ""
 "seinem tatsächlichen Ort an."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2357
+#: crates/sam-sandbox/src/lib.rs:2365
+msgid ""
+"{path} lies below a folder the app can change, so the app could swap it for "
+"another socket during the start; this setting does not pass it in. Where the "
+"app may use that folder, it still reaches the socket there."
+msgstr ""
+"{path} liegt unter einem Ordner, den die App ändern kann; die App könnte ihn "
+"während des Starts gegen einen anderen Socket tauschen. Diese Einstellung "
+"gibt ihn daher nicht weiter. Wo die App diesen Ordner nutzen darf, erreicht "
+"sie den Socket weiterhin dort."
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-sandbox/src/lib.rs:2372
 msgid "{path} is not a socket; it is not passed into the sandbox"
 msgstr "{path} ist kein Socket; er wird nicht in die Sandbox weitergegeben"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2368
+#: crates/sam-sandbox/src/lib.rs:2383
 msgid ""
 "{path} leads elsewhere: {why}. It is not passed into the sandbox; list that "
 "socket by its real place if the app needs it."
@@ -8891,6 +8903,16 @@ msgstr ""
 #: crates/sam-storage/src/lib.rs:641
 msgid "unknown flat preset key '{other}'"
 msgstr "unbekannter Schlüssel „{other}“ in der flachen Vorlage"
+
+#~ msgid ""
+#~ "{path} is in a folder the app can change, so the app could swap it for "
+#~ "another socket during the start; it is not passed into the sandbox. Keep "
+#~ "the socket in a folder the app cannot write."
+#~ msgstr ""
+#~ "{path} liegt in einem Ordner, den die App ändern kann; die App könnte ihn "
+#~ "während des Starts gegen einen anderen Socket tauschen. Er wird nicht in "
+#~ "die Sandbox weitergegeben. Lege den Socket in einen Ordner, in den die "
+#~ "App nicht schreiben kann."
 
 #~ msgid ""
 #~ "Bus names that stay blocked even when a preset or another setting allows "

@@ -8797,7 +8797,7 @@ msgstr ""
 "proxy); bus de sesión desactivado"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2349
+#: crates/sam-sandbox/src/lib.rs:2351
 msgid ""
 "{path} is reached through a link in a folder the app can change; it is not "
 "passed into the sandbox. List the socket by its real place."
@@ -8807,12 +8807,24 @@ msgstr ""
 "ubicación real."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2357
+#: crates/sam-sandbox/src/lib.rs:2365
+msgid ""
+"{path} lies below a folder the app can change, so the app could swap it for "
+"another socket during the start; this setting does not pass it in. Where the "
+"app may use that folder, it still reaches the socket there."
+msgstr ""
+"{path} está bajo una carpeta que la aplicación puede modificar, así que la "
+"aplicación podría cambiarlo por otro socket durante el inicio; este ajuste "
+"no lo pasa. Donde la aplicación puede usar esa carpeta, sigue alcanzando el "
+"socket allí."
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-sandbox/src/lib.rs:2372
 msgid "{path} is not a socket; it is not passed into the sandbox"
 msgstr "{path} no es un socket; no se pasa al entorno aislado"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2368
+#: crates/sam-sandbox/src/lib.rs:2383
 msgid ""
 "{path} leads elsewhere: {why}. It is not passed into the sandbox; list that "
 "socket by its real place if the app needs it."
@@ -8903,6 +8915,16 @@ msgstr ""
 #: crates/sam-storage/src/lib.rs:641
 msgid "unknown flat preset key '{other}'"
 msgstr "clave «{other}» desconocida en la plantilla plana"
+
+#~ msgid ""
+#~ "{path} is in a folder the app can change, so the app could swap it for "
+#~ "another socket during the start; it is not passed into the sandbox. Keep "
+#~ "the socket in a folder the app cannot write."
+#~ msgstr ""
+#~ "{path} está en una carpeta que la aplicación puede modificar, así que la "
+#~ "aplicación podría cambiarlo por otro socket durante el inicio; no se pasa "
+#~ "al entorno aislado. Guarda el socket en una carpeta en la que la "
+#~ "aplicación no pueda escribir."
 
 #~ msgid ""
 #~ "Bus names that stay blocked even when a preset or another setting allows "
