@@ -55,10 +55,34 @@ fn rank(a: Access) -> u8 {
 pub fn plan(p: &PermissionSet, cfg: &Config, paths: &Paths, host: &HostInfo) -> ProbePlan {
     let mut v: Vec<ProbeCheck> = Vec::new();
     let fs = &p.filesystem;
-    let home_level = if fs.home {
-        level(fs.home_access)
-    } else {
+    // SAM's own folders, the list the sandbox hides: also the folders
+    // named like them (`~/.local/share/sam`) while SAM keeps its own
+    // elsewhere, which the sandbox hides by name unless that would cover
+    // too much, decided for what this start shows as the sandbox decides
+    // it (independent reviews of decision 9). The check's start has no
+    // extra binds of SAM's (`verify` passes none), so this is the list
+    // the sandbox takes for it.
+    let sam_dirs = sam_core::places::sams_folders(
+        &host.home,
+        &paths.sam_dirs(&cfg.extraction.location),
+        &sam_core::places::shown_folders(p, host),
+    );
+    // With the whole home writable, a protected place the sandbox does not
+    // hide that really is the home (`~/.config/sam` planted as a link to
+    // it) is locked read-only where the app reaches it, which is the whole
+    // home: the home and everything shown through it are read-only. The
+    // answer the sandbox's note takes (independent review of decision 9:
+    // the check expected the home writable and failed a sandbox that did
+    // what it should).
+    let home_locked = fs.home
+        && fs.home_access == Perm::Rw
+        && sam_core::places::protected_place_at_home(&host.home, &sam_dirs).is_some();
+    let home_level = if !fs.home {
         Access::Hidden
+    } else if home_locked {
+        Access::ReadOnly
+    } else {
+        level(fs.home_access)
     };
 
     // Files.
@@ -85,16 +109,6 @@ pub fn plan(p: &PermissionSet, cfg: &Config, paths: &Paths, host: &HostInfo) -> 
             },
         ));
     }
-    // SAM's own folders, the list the sandbox hides: also the folders
-    // named like them (`~/.local/share/sam`) while SAM keeps its own
-    // elsewhere, which the sandbox hides by name unless that would cover
-    // too much, decided for what this start shows as the sandbox decides
-    // it (independent reviews of decision 9).
-    let sam_dirs = sam_core::places::sams_folders(
-        &host.home,
-        &paths.sam_dirs(&cfg.extraction.location),
-        &sam_core::places::shown_folders(p, host),
-    );
     for (key, title, a) in [
         ("documents", "Documents", fs.documents),
         ("downloads", "Downloads", fs.downloads),
@@ -119,6 +133,16 @@ pub fn plan(p: &PermissionSet, cfg: &Config, paths: &Paths, host: &HostInfo) -> 
                 home_level
             } else {
                 level(a)
+            };
+        // With the whole home writable the sandbox binds no user folder of
+        // its own: one in the home is shown through it, so read-only at
+        // most where the home is locked read-only (independent review of
+        // decision 9).
+        let want =
+            if home_locked && path.starts_with(&host.home) && rank(want) > rank(Access::ReadOnly) {
+                Access::ReadOnly
+            } else {
+                want
             };
         v.push(c(
             key,
@@ -1236,7 +1260,13 @@ mod tests {
     /// below any start place reached through a link, which is what the
     /// sandbox does. Before, both were expected hidden, with the sandbox
     /// hiding every grant in the home (independent re-review of
-    /// decision 9).
+    /// decision 9). With the whole home writable, the sandbox locks the
+    /// link read-only where the app reaches it, which is the whole home:
+    /// the check expects the home and the user folders in it read-only,
+    /// also Documents set to read and write; without the planted link, or
+    /// without the whole home, they stay as their settings say
+    /// (independent review of decision 9: the check expected the home
+    /// writable).
     #[test]
     fn the_check_never_takes_the_home_for_sams_folder_through_a_link() {
         let t = tempfile::tempdir().unwrap();
@@ -1262,6 +1292,34 @@ mod tests {
             assert_eq!(folder(&pl, &title(&notes)), Access::ReadOnly, "home {home}");
             assert_eq!(folder(&pl, &title(&work)), Access::ReadOnly, "home {home}");
         }
+        // The whole home writable: read-only where the link leads to it.
+        let whole = |documents: Perm| {
+            let mut p = PermissionSet::strict_gui();
+            p.filesystem.home = true;
+            p.filesystem.home_access = Perm::Rw;
+            p.filesystem.documents = documents;
+            plan(&p, &cfg, &paths, &h)
+        };
+        for documents in [Perm::None, Perm::Rw] {
+            let pl = whole(documents);
+            assert_eq!(
+                folder(&pl, "Your home folder"),
+                Access::ReadOnly,
+                "{documents:?}"
+            );
+            assert_eq!(folder(&pl, "Documents"), Access::ReadOnly, "{documents:?}");
+            assert_eq!(folder(&pl, "Pictures"), Access::ReadOnly, "{documents:?}");
+        }
+        // Without the whole home, Documents is as its setting says.
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.documents = Perm::Rw;
+        let pl = plan(&p, &cfg, &paths, &h);
+        assert_eq!(folder(&pl, "Documents"), Access::ReadWrite);
+        // Without the planted link, the writable home is writable.
+        fs::remove_file(h.home.join(".config/sam")).unwrap();
+        let pl = whole(Perm::Rw);
+        assert_eq!(folder(&pl, "Your home folder"), Access::ReadWrite);
+        assert_eq!(folder(&pl, "Documents"), Access::ReadWrite);
     }
 
     /// The check counts another SAM's folders kept through a link

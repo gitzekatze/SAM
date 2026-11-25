@@ -244,6 +244,22 @@ pub struct StartPlaceGrant {
     /// The folder lies inside the place; `false`: it is the place itself
     /// (as named or where the place really is).
     pub inside: bool,
+    /// The place really is the home or a folder above it, links resolved
+    /// (`~/.config/sam` planted as a link to the home): every folder there
+    /// counts as part of it, and SAM's words say where the place leads.
+    /// Called "inside ~/.config/sam", a grant of `~/work` puzzled the
+    /// person (independent review of decision 9).
+    pub home_or_above: bool,
+}
+
+/// Whether a place under `home` that really is at `real` (links resolved)
+/// is the home or a folder above it, compared with the home as named and
+/// where it really is (`real_home`). Such a place holds everything in the
+/// home: SAM never hides it as one of its own folders by name
+/// ([`sams_folder_by_name`]), and its words say where it leads
+/// ([`StartPlaceGrant::home_or_above`]).
+fn is_home_or_above(home: &Path, real_home: &Path, real: &Path) -> bool {
+    real_home.starts_with(real) || home.starts_with(real)
 }
 
 /// Whether the extra writable folder `grant` (with `~` already expanded)
@@ -288,7 +304,9 @@ pub fn start_place_of_write_grant_in(
     let mut found: Option<StartPlaceGrant> = None;
     for rel in places {
         let at = home.join(rel);
-        let spots = [resolve(&at), real_home.join(rel), at];
+        let real = resolve(&at);
+        let home_or_above = is_home_or_above(home, &real_home, &real);
+        let spots = [real, real_home.join(rel), at];
         for g in &grants {
             for s in &spots {
                 if !g.starts_with(s) {
@@ -301,6 +319,7 @@ pub fn start_place_of_write_grant_in(
                     found = Some(StartPlaceGrant {
                         place: rel.clone(),
                         inside,
+                        home_or_above,
                     });
                 }
             }
@@ -314,9 +333,17 @@ pub fn start_place_of_write_grant_in(
 /// one: the launch note and the warning on the app page and in `sam-jail
 /// info`. Also for a place named like SAM's folders that SAM keeps
 /// read-only instead of hiding it ([`sams_folder_by_name`]), so the words
-/// never say a folder is not shown that the app sees.
+/// never say a folder is not shown that the app sees. Where the place
+/// really is the home or a folder above it, the words say where it leads,
+/// since everything there counts as part of it (independent review of
+/// decision 9).
 pub fn start_place_note(shown: &str, found: &StartPlaceGrant) -> String {
-    if found.inside {
+    if found.home_or_above {
+        crate::i18n::trf(
+            "{place} leads to your home folder or a folder above it, so SAM protects {path} as part of {place} and shows it read-only.",
+            &[("path", &shown), ("place", &format!("~/{}", found.place))],
+        )
+    } else if found.inside {
         crate::i18n::trf(
             "{path} is inside {place}, which SAM protects because changing it can make your computer run programs or change what SAM does; SAM shows it read-only.",
             &[("path", &shown), ("place", &format!("~/{}", found.place))],
@@ -421,7 +448,7 @@ pub fn sams_folder_by_name(home: &Path, rel: &str, own: &[PathBuf], shown: &[Pat
         return true;
     }
     let real_home = resolve(home);
-    if real_home.starts_with(&real) || home.starts_with(&real) {
+    if is_home_or_above(home, &real_home, &real) {
         return false;
     }
     let through_link = real != real_home.join(rel);
@@ -498,6 +525,50 @@ pub fn inside_sams_folders_note(shown: &str) -> String {
     )
 }
 
+/// The protected place (relative to `home`) that really is the home,
+/// links resolved, in a start whose own folders are `sams`
+/// ([`sams_folders`]), if any: `~/.config/sam` planted as a link to the
+/// home, which hiding would cover the whole home with an empty folder
+/// ([`sams_folder_by_name`]), or any other start place leading there. The
+/// sandbox locks each protected place it does not hide read-only where the
+/// app reaches it, so with the whole home writable that lock lands on the
+/// home, and the app sees the whole home read-only (its keys and SAM's own
+/// folders still hidden). The sandbox's note, its check and the app page
+/// take this one answer, so the check expects the home read-only where the
+/// sandbox shows it so (independent review of decision 9: it expected the
+/// home writable and failed). One that the start hides as SAM's is not
+/// named: that hiding lands on the home instead.
+pub fn protected_place_at_home(home: &Path, sams: &[PathBuf]) -> Option<String> {
+    protected_place_at_home_in(home, sams, &protected_places(home))
+}
+
+/// [`protected_place_at_home`] among the protected places `places`.
+pub fn protected_place_at_home_in(
+    home: &Path,
+    sams: &[PathBuf],
+    places: &[String],
+) -> Option<String> {
+    let real_home = resolve(home);
+    places
+        .iter()
+        .find(|rel| {
+            let at = home.join(rel);
+            !sams.contains(&at) && resolve(&at) == real_home
+        })
+        .cloned()
+}
+
+/// What SAM says when the whole home is shown read-only because the
+/// protected place `place` (relative to the home) leads to it
+/// ([`protected_place_at_home`]): the launch note and the warning on the
+/// app page and in `sam-jail info`.
+pub fn home_read_only_note(place: &str) -> String {
+    crate::i18n::trf(
+        "{place} leads to your home folder, so SAM protects your whole home folder as part of {place} and shows it read-only.",
+        &[("place", &format!("~/{place}"))],
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -531,6 +602,7 @@ mod tests {
             Some(StartPlaceGrant {
                 place: place.into(),
                 inside: true,
+                home_or_above: false,
             })
         };
         assert_eq!(found(".config/fish/conf.d"), inside(".config/fish"));
@@ -544,6 +616,7 @@ mod tests {
             Some(StartPlaceGrant {
                 place: place.into(),
                 inside: false,
+                home_or_above: false,
             })
         };
         assert_eq!(found(".config/fish"), itself(".config/fish"));
@@ -622,16 +695,19 @@ mod tests {
         let sams = StartPlaceGrant {
             place: ".config/sam".into(),
             inside: true,
+            home_or_above: false,
         };
         assert!(in_sam("work", Some(&sams)), "a start place in SAM's list");
         let fish = StartPlaceGrant {
             place: ".config/fish".into(),
             inside: true,
+            home_or_above: false,
         };
         assert!(!in_sam("work", Some(&fish)));
         let kept_read_only = StartPlaceGrant {
             place: ".local/share/sam".into(),
             inside: true,
+            home_or_above: false,
         };
         assert!(
             !in_sam("work", Some(&kept_read_only)),
@@ -775,7 +851,8 @@ mod tests {
             vec![elsewhere, at(".local/share/sam"), at("dat/sam")]
         );
         // A writable grant below the link to the home is in a start place,
-        // shown read-only, never left out as SAM's.
+        // shown read-only, never left out as SAM's; the place is known to
+        // lead to the home or above it, and the words say so.
         link(".config/sam", &home);
         let work = at("work");
         let found = start_place_of_write_grant_in(&work, &work, &home, &places);
@@ -784,6 +861,7 @@ mod tests {
             Some(StartPlaceGrant {
                 place: ".config/sam".into(),
                 inside: true,
+                home_or_above: true,
             })
         );
         let sams = sams_folders_in(&home, &[], std::slice::from_ref(&work), &places);
@@ -795,6 +873,79 @@ mod tests {
         ));
         let note = start_place_note("~/work", found.as_ref().unwrap());
         assert!(note.contains("read-only"), "{note}");
+        assert!(
+            note.contains("~/.config/sam leads to your home folder or a folder above it")
+                && note.contains("~/work"),
+            "{note}"
+        );
+        assert!(!note.contains("is inside"), "{note}");
+    }
+
+    /// A protected place that really is the home (`~/.config/sam` planted
+    /// as a link to it, or a start place such as `~/.config/fish` leading
+    /// there) and that the start does not hide as SAM's is named: the
+    /// sandbox's lock on it lands on the whole home, which the app then
+    /// sees read-only, and its note, its check and the app page take this
+    /// answer (independent review of decision 9: the check expected the
+    /// home writable, and a grant in the home was said to be "inside
+    /// ~/.config/sam"). A place the start hides as SAM's (where this SAM
+    /// keeps its own), a link to a folder in the home and a link to a
+    /// folder above the home, which no lock reaches with the whole home
+    /// granted, are not named. A grant in the home counts as part of a
+    /// place leading there, and the words say where that place leads.
+    #[test]
+    fn a_protected_place_that_really_is_the_home_is_named() {
+        let t = tempfile::tempdir().unwrap();
+        let base = std::fs::canonicalize(t.path()).unwrap();
+        let home = base.join("u");
+        for d in [".config/fish", "work"] {
+            std::fs::create_dir_all(home.join(d)).unwrap();
+        }
+        let places = protected_places_with(&home, None, None);
+        let at = |rel: &str| home.join(rel);
+        let link = |rel: &str, target: &Path| {
+            let _ = std::fs::remove_file(at(rel));
+            std::os::unix::fs::symlink(target, at(rel)).unwrap();
+        };
+        let named = |sams: &[PathBuf]| protected_place_at_home_in(&home, sams, &places);
+        // Nothing leads to the home.
+        assert_eq!(named(&[]), None);
+        // `~/.config/sam` planted as a link to the home.
+        link(".config/sam", &home);
+        let whole = std::slice::from_ref(&home);
+        let own = [base.join("elsewhere")];
+        let sams = sams_folders_in(&home, &own, whole, &places);
+        assert_eq!(named(&sams), Some(".config/sam".to_string()));
+        // Hidden as SAM's (where this SAM keeps its own): not named.
+        let own_there = [at(".config/sam")];
+        let sams = sams_folders_in(&home, &own_there, whole, &places);
+        assert_eq!(named(&sams), None);
+        // A link to a folder in the home or above it: not named.
+        link(".config/sam", &at("work"));
+        assert_eq!(named(&[]), None);
+        link(".config/sam", &base);
+        assert_eq!(named(&[]), None);
+        // Any other start place leading to the home is named too.
+        let _ = std::fs::remove_file(at(".config/sam"));
+        std::fs::remove_dir_all(at(".config/fish")).unwrap();
+        link(".config/fish", &home);
+        assert_eq!(named(&[]), Some(".config/fish".to_string()));
+        // A grant in the home lies in that place, which leads to the home.
+        let work = at("work");
+        let found = start_place_of_write_grant_in(&work, &work, &home, &places).unwrap();
+        assert!(found.home_or_above, "{found:?}");
+        let note = start_place_note("~/work", &found);
+        assert!(
+            note.contains("~/.config/fish leads to your home folder or a folder above it"),
+            "{note}"
+        );
+        let note = home_read_only_note(".config/fish");
+        assert!(
+            note.contains("~/.config/fish leads to your home folder")
+                && note.contains("whole home folder")
+                && note.contains("read-only"),
+            "{note}"
+        );
     }
 
     /// [`sams_folder_by_name`] for a start that shows nothing.

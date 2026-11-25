@@ -1625,7 +1625,12 @@ fn guard_home(a: &mut Args, home: &Path, fsp: &FilesystemPerms, views: &Views, s
         // much (the home, or a planted link to a folder of which the start
         // shows only parts) is locked read-only like any protected place
         // (independent reviews of decision 9). Anything there that is not
-        // a folder stays read-only too.
+        // a folder stays read-only too. A place that really is the home
+        // (`~/.config/sam` planted as a link to it) is locked where the app
+        // reaches it, which is the whole home: with the whole home
+        // writable, the app sees it read-only, as the start's note, the
+        // sandbox check and the app page say
+        // ([`sam_core::places::protected_place_at_home`]).
         let hide = sams.contains(&path);
         for c in views.mount_points(&path) {
             if hide && c.is_dir() {
@@ -2281,7 +2286,8 @@ impl Section<'_> {
                 WriteBind::Writable => "--bind-try",
                 WriteBind::ReadOnly(found) => {
                     // Read-only words also for a place named like SAM's
-                    // folders that only counts as a start place (a link).
+                    // folders that only counts as a start place (a link),
+                    // saying where it leads when that is the home or above.
                     notes.push(sam_core::places::start_place_note(&g.written, found));
                     "--ro-bind-try"
                 }
@@ -2342,6 +2348,17 @@ impl Section<'_> {
             mount(&p, &|m| m.op2("--bind", &p, &p));
         }
         let sams = &self.sams;
+        // With the whole home writable, a protected place this start does
+        // not hide that really is the home (`~/.config/sam` planted as a
+        // link to it) is locked read-only where the app reaches it, which
+        // is the whole home (`guard_home`): the start says so, from the
+        // answer the sandbox check and the app page take (independent
+        // review of decision 9: the home turned read-only without a word).
+        if fsp.home && fsp.home_access == Access::Rw {
+            if let Some(place) = sam_core::places::protected_place_at_home(&home, sams) {
+                notes.push(sam_core::places::home_read_only_note(&place));
+            }
+        }
         // Stable: at equal depth, the order above stays (a pin after the
         // grant it is in).
         mounts.sort_by_key(|(d, _)| *d);
@@ -5998,6 +6015,12 @@ mod guard_tests {
     /// shown read-only as below any start place, not left out. Before,
     /// with SAM's folders kept elsewhere, every grant in the home was
     /// hidden and the home covered (independent re-review of decision 9).
+    /// With the whole home writable, the link is locked read-only where
+    /// the app reaches it, which is the whole home: the lock on the home
+    /// comes after the home's own bind and after every bind of a grant in
+    /// it, so the home and those grants are read-only, and the start says
+    /// so in words that name where the link leads, never that `~/work` is
+    /// "inside ~/.config/sam" (independent review of decision 9).
     #[test]
     fn a_link_named_like_sams_folder_never_hides_the_home() {
         let t = tempfile::tempdir().unwrap();
@@ -6041,7 +6064,50 @@ mod guard_tests {
                 vec![notes.clone(), work.clone()],
                 "whole home {whole_home}"
             );
+            let home_s = s(home.clone());
+            let lock = at_seq(&a, &["--ro-bind-try", &home_s, &home_s]);
+            let said = Bubblewrap.build(&ctx).unwrap().notes;
+            let home_note = said
+                .iter()
+                .any(|n| n.contains("~/.config/sam leads to your home folder,"));
+            if whole_home {
+                let home_bind = at_seq(&a, &["--bind", &home_s, &home_s]);
+                assert_eq!(home_bind.len(), 1, "{a:?}");
+                for g in [&notes, &work] {
+                    assert!(
+                        locked_after(&a, &home_s, g) && lock.iter().any(|l| *l > home_bind[0]),
+                        "{g}: {a:?}"
+                    );
+                }
+                assert!(home_note, "{said:?}");
+            } else {
+                assert!(lock.is_empty(), "{a:?}");
+                assert!(!home_note, "{said:?}");
+            }
+            assert!(
+                said.iter().any(|n| n.contains(&work)
+                    && n.contains("~/.config/sam leads to your home folder or a folder above it")),
+                "whole home {whole_home}: {said:?}"
+            );
+            assert!(
+                !said.iter().any(|n| n.contains("is inside")),
+                "whole home {whole_home}: {said:?}"
+            );
         }
+    }
+
+    /// Whether a read-only lock of `dir` onto itself comes after the last
+    /// bind of `grant` (any bind onto it, read-only or writable): a later
+    /// mount covers an earlier one, so the grant is read-only below it.
+    fn locked_after(a: &[String], dir: &str, grant: &str) -> bool {
+        let last = a.windows(3).rposition(|w| {
+            matches!(
+                w[0].as_str(),
+                "--bind" | "--bind-try" | "--ro-bind" | "--ro-bind-try"
+            ) && w[2] == grant
+        });
+        let lock = at_seq(a, &["--ro-bind-try", dir, dir]);
+        last.is_some_and(|last| lock.iter().any(|l| *l > last))
     }
 
     /// Another SAM's folders kept elsewhere through a link

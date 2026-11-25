@@ -589,6 +589,21 @@ itself (the whole home, or exactly that folder), SAM cannot tell a planted
 link from another SAM's folder kept there, and the place stays hidden, as
 it always was.
 
+A link to the home by one of those names is kept read-only where the app
+reaches it, and that is the whole home. So with `~/.config/sam` leading to
+the home and the whole home granted read and write, the app sees the whole
+home read-only: it cannot change any file there, Documents and the other
+user folders and extra folders inside the home included, while keys,
+credential stores and SAM's own folders stay hidden as always. Without the
+whole home, an extra folder you allow the app to write inside the home is
+shown read-only. The same holds for a start place (`~/.config/fish`, say)
+that leads to the home. The start, the app page and `sam-jail info` say
+which link leads to the home, and the sandbox check expects the home
+read-only (`a_link_named_like_sams_folder_never_hides_the_home`,
+`the_check_never_takes_the_home_for_sams_folder_through_a_link`). If you
+did not make such a link, remove it: an app that can write `~/.config` may
+have planted it.
+
 **Read-only whenever anything would show them writable:** SAM's own
 programs, which every menu entry runs outside the sandbox: SAM's AppImage
 file and the `sam-jail-run`, `sam-jail` and `sam-jail-gui` next to the

@@ -87,11 +87,14 @@ Besides the folders allowed below, it sees its private home and the files and fo
 Not covered: output that misleads you (a fake prompt, a link whose text hides where it goes) and security bugs in your terminal program.";
 
 /// Extra writable folders that SAM shows read-only because they are a
-/// start place or lie inside one (`~/.config/fish/conf.d`): the window and
+/// start place or lie inside one (`~/.config/fish/conf.d`), or does not
+/// show at all because they lie inside SAM's own folders: the window and
 /// `sam-jail info` say so before the start, with the words of the launch
 /// note (owner decision 9 of 2026-11-23). The rating stays as it is: the
-/// grant still names a sensitive place.
-fn read_only_write_grants(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
+/// grant still names a sensitive place. Also the whole home, granted
+/// read and write, where a protected place leads to it and the sandbox
+/// shows it read-only (independent review of decision 9).
+fn read_only_grants(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
     let fallback;
     let host = match ctx.host {
         Some(h) => h,
@@ -109,37 +112,58 @@ fn read_only_write_grants(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warnin
     // for what the start shows. Decided by name alone, the page said
     // "Shown read-only" for a grant in this SAM's own `~/.local/share/sam`
     // kept as a link, which the sandbox leaves out (independent review of
-    // decision 9).
+    // decision 9). A start from the window or the menu has no extra binds
+    // of SAM's (only a diagnostic run adds one), so this is the list the
+    // sandbox takes.
     let sams =
         crate::places::sams_folders(&home, ctx.sam_dirs, &crate::places::shown_folders(p, host));
-    p.filesystem
-        .custom_write
-        .iter()
-        .filter_map(|c| {
-            let grant = match c.strip_prefix("~/") {
-                Some(rest) => home.join(rest),
-                None if c == "~" => home.clone(),
-                None => crate::util::expand_home(c),
-            };
-            let bound = crate::places::resolve(&grant);
-            let found = crate::places::start_place_of_bound_write_grant(&grant, &bound, &home)?;
-            let w =
-                if crate::places::write_grant_in_sams_folders(&bound, Some(&found), &sams, &home) {
-                    Warning::warn(
-                        "start-place-read-only",
-                        "Not shown",
-                        crate::places::inside_sams_folders_note(c),
-                    )
-                } else {
-                    Warning::warn(
-                        "start-place-read-only",
-                        "Shown read-only",
-                        crate::places::start_place_note(c, &found),
-                    )
-                };
-            Some(w.with_key("filesystem.custom_write"))
-        })
-        .collect()
+    let mut out = Vec::new();
+    // The whole home read and write, while a protected place the sandbox
+    // does not hide really is the home (`~/.config/sam` planted as a link
+    // to it): the sandbox locks that place where the app reaches it, which
+    // is the whole home. The answer the sandbox's note and its check take.
+    if p.filesystem.home && p.filesystem.home_access == Access::Rw {
+        if let Some(place) = crate::places::protected_place_at_home(&home, &sams) {
+            out.push(
+                Warning::warn(
+                    "home-read-only",
+                    "Shown read-only",
+                    crate::places::home_read_only_note(&place),
+                )
+                .with_key("filesystem.home"),
+            );
+        }
+    }
+    out.extend(p.filesystem.custom_write.iter().filter_map(|c| {
+        let grant = match c.strip_prefix("~/") {
+            Some(rest) => home.join(rest),
+            None if c == "~" => home.clone(),
+            None => crate::util::expand_home(c),
+        };
+        let bound = crate::places::resolve(&grant);
+        let found = crate::places::start_place_of_bound_write_grant(&grant, &bound, &home);
+        // In SAM's own folders also outside any start place
+        // (`~/Games/sam/saves`, where SAM keeps its data): not shown, as
+        // the sandbox leaves it out. Asked only for a folder in a start
+        // place, the page said nothing about it (independent review of
+        // decision 9).
+        let w = if crate::places::write_grant_in_sams_folders(&bound, found.as_ref(), &sams, &home)
+        {
+            Warning::warn(
+                "start-place-read-only",
+                "Not shown",
+                crate::places::inside_sams_folders_note(c),
+            )
+        } else {
+            Warning::warn(
+                "start-place-read-only",
+                "Shown read-only",
+                crate::places::start_place_note(c, &found?),
+            )
+        };
+        Some(w.with_key("filesystem.custom_write"))
+    }));
+    out
 }
 
 pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
@@ -201,7 +225,7 @@ pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
             "SSH keys, GnuPG keys or other credential stores are visible to the app.",
         ));
     }
-    w.extend(read_only_write_grants(p, ctx));
+    w.extend(read_only_grants(p, ctx));
     for path in p
         .filesystem
         .custom_write
@@ -1042,9 +1066,93 @@ mod tests {
             m.contains("read-only") && m.contains("~/.config/sam"),
             "{m}"
         );
+        // The words say where that place leads, not that `~/work` lies
+        // "inside ~/.config/sam" (independent review of decision 9).
+        assert!(
+            m.contains("~/.config/sam leads to your home folder or a folder above it"),
+            "{m}"
+        );
+        assert!(!m.contains("is inside"), "{m}");
         let elsewhere = [t.path().join("elsewhere")];
         let m = said(&elsewhere, &at(".local/share/sam/apps"));
         assert!(m.contains("read-only"), "{m}");
+        // The whole home read and write: the sandbox locks the link where
+        // the app reaches it, the whole home, and the page says so; not
+        // with the home read-only, which needs no word.
+        let home_warning = |access: Access| {
+            let ctx = WarningContext {
+                host: Some(&host),
+                sam_dirs: &elsewhere,
+                ..WarningContext::all_enabled()
+            };
+            let mut p = PermissionSet::strict_gui();
+            p.filesystem.home = true;
+            p.filesystem.home_access = access;
+            find(&evaluate(&p, &ctx), "home-read-only").cloned()
+        };
+        let hit = home_warning(Access::Rw).expect("the home is said to be read-only");
+        assert_eq!(hit.key.as_deref(), Some("filesystem.home"));
+        assert!(
+            hit.message
+                .contains("~/.config/sam leads to your home folder,")
+                && hit.message.contains("whole home folder")
+                && hit.message.contains("read-only"),
+            "{}",
+            hit.message
+        );
+        assert!(home_warning(Access::Ro).is_none());
+        std::fs::remove_file(home.join(".config/sam")).unwrap();
+        assert!(home_warning(Access::Rw).is_none(), "no link, no word");
+    }
+
+    /// An extra writable folder inside SAM's own folders outside any start
+    /// place (`~/Games/sam/saves`, where SAM keeps its data, also reached
+    /// through a link, or SAM's folders outside the home) is said to be
+    /// not shown, as the sandbox leaves it out; a folder next to SAM's gets
+    /// no word. Before, the page asked only about a folder in a start
+    /// place and said nothing about it (independent review of
+    /// decision 9).
+    #[test]
+    fn a_write_grant_in_sams_folders_outside_start_places_is_said_not_shown() {
+        let t = tempfile::tempdir().unwrap();
+        let base = std::fs::canonicalize(t.path()).unwrap();
+        let mut host = working_host();
+        host.home = base.join("u");
+        let home = host.home.clone();
+        for d in ["Games/sam/saves", "Games/other"] {
+            std::fs::create_dir_all(home.join(d)).unwrap();
+        }
+        std::fs::create_dir_all(base.join("data/sam/shared")).unwrap();
+        std::os::unix::fs::symlink(home.join("Games"), home.join("g")).unwrap();
+        let own = [home.join("Games/sam"), base.join("data/sam")];
+        let ctx = WarningContext {
+            host: Some(&host),
+            sam_dirs: &own,
+            ..WarningContext::all_enabled()
+        };
+        let at = |p: std::path::PathBuf| p.to_string_lossy().into_owned();
+        for grant in [
+            "~/Games/sam/saves".to_string(),
+            at(home.join("g/sam/saves")),
+            at(base.join("data/sam/shared")),
+        ] {
+            let mut p = PermissionSet::strict_gui();
+            p.filesystem.custom_write = vec![grant.clone()];
+            let w = evaluate(&p, &ctx);
+            let hit = find(&w, "start-place-read-only")
+                .unwrap_or_else(|| panic!("{grant}: {:?}", codes(&w)));
+            assert_eq!(hit.title, "Not shown", "{grant}");
+            assert_eq!(hit.key.as_deref(), Some("filesystem.custom_write"));
+            assert!(
+                hit.message.contains(&grant) && hit.message.contains("SAM's own folders"),
+                "{grant}: {}",
+                hit.message
+            );
+            assert!(!hit.message.contains("read-only"), "{}", hit.message);
+        }
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.custom_write = vec!["~/Games/other".into()];
+        assert!(!codes(&evaluate(&p, &ctx)).contains(&"start-place-read-only"));
     }
 
     /// The X11 warning disappears when the user turns it off in the preferences.

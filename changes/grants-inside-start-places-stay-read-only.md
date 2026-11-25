@@ -32,6 +32,15 @@
   to. So an app cannot make SAM cover your home, or a folder you granted
   inside that place, with an empty folder by planting such a link. Where
   the app is shown that place itself, it stays hidden, as before.
+- With such a link leading to your home and full home access granted
+  read and write, the app now sees your whole home read-only (keys and
+  SAM's own folders stay hidden). The start, the app page and
+  `sam-jail info` name the link that leads to your home, and the sandbox
+  check expects the home read-only. If you did not make that link, remove
+  it.
+- The app page and `sam-jail info` also say when an extra folder you allow
+  the app to write lies inside SAM's own folders outside any start place
+  (for example `~/Games/sam/saves`): SAM does not show it.
 - The sandbox check and a terminal app's start line no longer count a user
   folder (for example Documents) set inside SAM's folders as shown; the
   sandbox never showed it.
