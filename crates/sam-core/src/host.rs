@@ -677,20 +677,38 @@ pub fn extra_lib_dirs(home: &Path) -> Vec<PathBuf> {
 
 /// The folders of `dirs` that [`extra_lib_dirs`] keeps.
 fn keep_extra_lib_dirs(dirs: Vec<PathBuf>, home: &Path) -> Vec<PathBuf> {
+    keep_extra_lib_dirs_with(dirs, home, &|d| std::fs::canonicalize(d).ok())
+}
+
+/// [`keep_extra_lib_dirs`] with `real` telling where a folder leads. The
+/// read-only bind follows links, so a folder is kept only when both its
+/// name and where it leads pass, and its name holds no `..` (review B2 R60:
+/// `/opt/../run` or a link below `/opt` to `/run` passed as text).
+fn keep_extra_lib_dirs_with(
+    dirs: Vec<PathBuf>,
+    home: &Path,
+    real: &dyn Fn(&Path) -> Option<PathBuf>,
+) -> Vec<PathBuf> {
+    let passes = |d: &Path| {
+        let shown = [
+            "/usr/lib",
+            "/usr/lib32",
+            "/usr/lib64",
+            "/lib",
+            "/lib32",
+            "/lib64",
+        ]
+        .iter()
+        .any(|s| d.starts_with(s));
+        let allowed = ["/opt", "/usr/local"].iter().any(|r| d.starts_with(r));
+        !shown && allowed && !d.starts_with(home)
+    };
     dirs.into_iter()
         .filter(|d| {
-            let shown = [
-                "/usr/lib",
-                "/usr/lib32",
-                "/usr/lib64",
-                "/lib",
-                "/lib32",
-                "/lib64",
-            ]
-            .iter()
-            .any(|s| d.starts_with(s));
-            let allowed = ["/opt", "/usr/local"].iter().any(|r| d.starts_with(r));
-            !shown && allowed && !d.starts_with(home)
+            let plain = d
+                .components()
+                .all(|c| !matches!(c, std::path::Component::ParentDir));
+            plain && passes(d) && passes(&real(d).unwrap_or_else(|| d.clone()))
         })
         .collect()
 }
@@ -967,6 +985,39 @@ mod tests {
         assert_eq!(
             keep("/home/u"),
             ["/opt/cuda/lib64", "/usr/local/lib", "/opt/home/u/lib"]
+        );
+    }
+
+    /// A library folder is judged by its name and by where it leads: a name
+    /// with `..` or a link below /opt into a system area is not shown
+    /// (review B2 R60).
+    #[test]
+    fn library_folders_are_judged_by_where_they_lead() {
+        let real = |d: &Path| -> Option<PathBuf> {
+            match d.to_str()? {
+                "/opt/link" => Some("/run/x".into()),
+                "/opt/tolib" => Some("/usr/lib/x".into()),
+                "/opt/tohome" => Some("/home/u/lib".into()),
+                "/opt/fine" => Some("/opt/real/lib".into()),
+                _ => None,
+            }
+        };
+        let dirs = [
+            "/opt/../run/x",
+            "/opt/link",
+            "/opt/tolib",
+            "/opt/tohome",
+            "/opt/fine",
+            "/opt/cuda",
+        ];
+        let kept = keep_extra_lib_dirs_with(
+            dirs.iter().map(PathBuf::from).collect(),
+            Path::new("/home/u"),
+            &real,
+        );
+        assert_eq!(
+            kept,
+            [PathBuf::from("/opt/fine"), PathBuf::from("/opt/cuda")]
         );
     }
 
