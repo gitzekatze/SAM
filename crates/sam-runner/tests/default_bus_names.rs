@@ -11,6 +11,8 @@
 //! object of another service of the same program, by name and by unique
 //! name. The proxy refuses at once what it does not pass (`AccessDenied`);
 //! what it passes reaches the stand-in, which never answers (`NoReply`).
+//! Any other answer (a name the filter hides: `NameHasNoOwner`) is neither
+//! and fails the test.
 //!
 //! In its own file because it sets `HOME` and the session bus.
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
@@ -29,12 +31,12 @@ use sam_runner::ops::{AddOptions, Sam};
 /// name and by unique name, and says whether the filter refused the call.
 const APP: &str = r#"#!/bin/sh
 try() { # label dest path method
-  if dbus-send --session --print-reply --reply-timeout=2000 --dest="$2" "$3" "$4" 2>&1 \
-       | grep -q 'org.freedesktop.DBus.Error.AccessDenied'; then
-    echo "CALL $1=refused"
-  else
-    echo "CALL $1=passed"
-  fi
+  out=$(dbus-send --session --print-reply --reply-timeout=2000 --dest="$2" "$3" "$4" 2>&1)
+  case "$out" in
+    *org.freedesktop.DBus.Error.AccessDenied*) echo "CALL $1=refused" ;;
+    *org.freedesktop.DBus.Error.NoReply*) echo "CALL $1=passed" ;;
+    *) echo "CALL $1=other: $out" | tr '\n' ' '; echo ;;
+  esac
 }
 while [ $# -ge 3 ]; do
   name=$1 own=$2 other=$3
@@ -144,6 +146,10 @@ fn default_desktop_services_reach_only_their_own_objects() {
     .unwrap();
     let log = fs::read_to_string(rec.log_file.as_ref().unwrap()).unwrap();
     assert!(log.contains("END=1"), "the app ran: {log}");
+    assert!(
+        !log.contains("=other: "),
+        "every call passed or was refused: {log}"
+    );
     for (name, _) in services_checked {
         assert!(
             !log.contains(&format!("OWNER {name}=none")),

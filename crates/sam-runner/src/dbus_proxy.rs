@@ -69,16 +69,18 @@ const SERVICE_PATHS: &[(&str, &[&str])] = &[
         "org.freedesktop.ScreenSaver",
         &["/ScreenSaver", "/org/freedesktop/ScreenSaver"],
     ),
+    // Only its inhibit object: the main one also offers suspend, and on
+    // some desktops shut down.
     (
         "org.freedesktop.PowerManagement",
-        &["/org/freedesktop/PowerManagement/*"],
+        &["/org/freedesktop/PowerManagement/Inhibit"],
     ),
     (
         "org.freedesktop.FileManager1",
         &["/org/freedesktop/FileManager1"],
     ),
-    // The input methods' sandbox frontends (Fcitx 5 runs its controller,
-    // which can change its configuration, on the same connection).
+    // The input methods' sandbox frontends (defence in depth: Fcitx 5 runs
+    // its portal on a connection of its own, apart from its controller).
     (
         "org.freedesktop.portal.Fcitx",
         &["/org/freedesktop/portal/*", "/inputmethod"],
@@ -401,6 +403,11 @@ mod tests {
         assert_eq!(
             super::service_paths("org.kde.StatusNotifierWatcher"),
             Some(&["/StatusNotifierWatcher"][..])
+        );
+        // Inhibiting only, never the main object's suspend or shut down.
+        assert_eq!(
+            super::service_paths("org.freedesktop.PowerManagement"),
+            Some(&["/org/freedesktop/PowerManagement/Inhibit"][..])
         );
     }
 

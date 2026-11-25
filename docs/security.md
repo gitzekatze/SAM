@@ -452,8 +452,8 @@ you picked. The sandbox check confirms that the socket is absent.
   frontends, the screen saver, power management, the file manager) the app
   gets calls and signals on that service's own object paths only, which the
   filter checks for the unique name too. The keyring switch reaches its
-  whole service, and a name you allow yourself reaches the whole program
-  behind it (see `dbus.session.deny` in the settings reference).
+  whole service, and any other name you allow yourself reaches the whole
+  program behind it (see `dbus.session.deny` in the settings reference).
 - **Its own name:** an app may own the D-Bus name it really asks for. SAM
   learns it from the D-Bus filter's own record of what it refused (never
   from what the app prints) and allows it when nobody on this computer uses
