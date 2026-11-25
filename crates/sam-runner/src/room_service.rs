@@ -2722,14 +2722,27 @@ mod process_tests {
             body.extend_from_slice(place.as_os_str().as_bytes());
             body.push(0);
             std::fs::write(&spec, body).unwrap();
-            let out = Command::new(&helper)
-                .arg(&spec)
-                .args(["--", "/bin/sh", "-c", "touch \"$0\""])
-                .arg(&ran)
-                .env_clear()
-                .stdin(Stdio::null())
-                .output()
-                .unwrap();
+            // A child another test forks just while the helper is written
+            // holds the written file open until it starts its program, and
+            // the kernel then refuses to run the helper (ETXTBSY, "Text
+            // file busy"): only that refusal is tried again, for at most
+            // 2 seconds.
+            let end = Instant::now() + Duration::from_secs(2);
+            let out = loop {
+                match Command::new(&helper)
+                    .arg(&spec)
+                    .args(["--", "/bin/sh", "-c", "touch \"$0\""])
+                    .arg(&ran)
+                    .env_clear()
+                    .stdin(Stdio::null())
+                    .output()
+                {
+                    Err(e) if e.raw_os_error() == Some(libc::ETXTBSY) && Instant::now() < end => {
+                        std::thread::sleep(Duration::from_millis(20));
+                    }
+                    other => break other.unwrap(),
+                }
+            };
             (
                 out.status.code(),
                 String::from_utf8_lossy(&out.stderr).into_owned(),
