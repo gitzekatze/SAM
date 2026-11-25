@@ -10,3 +10,8 @@
   other controller nodes. A node udev has no record for is no longer
   passed, as SAM cannot tell what it is.
 - The setting's help says so.
+- When SAM leaves a controller out for one of these reasons, the start's
+  notes name it, instead of saying that no controller is plugged in.
+- Known limit: a controller with a few typing keys of its own (such as a
+  chat pad) that udev does not record as a keyboard is still shown, and
+  the app can read those keys.
