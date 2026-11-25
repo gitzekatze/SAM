@@ -2698,6 +2698,83 @@ mod process_tests {
         assert!(!helper_usable(b""), "none built");
     }
 
+    /// SAM's room helper ends the room before anything else when a place
+    /// is not the file, folder or device SAM checked (device and inode):
+    /// the defence against a Bubblewrap that mounts places by name, which
+    /// the app could swap while the room is built. The right place passes
+    /// the check (the helper then stops at SAM's syscall filter, here an
+    /// empty one on standard input, still before the program). Review B2
+    /// S2c: without the check no test failed.
+    #[test]
+    fn the_room_helper_refuses_a_place_that_is_not_the_one_sam_checked() {
+        use std::os::unix::ffi::OsStrExt;
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        assert!(helper_usable(ROOM_HELPER), "this build has no room helper");
+        let tmp = tempfile::tempdir().unwrap();
+        let helper = tmp.path().join("sam-room-exec");
+        std::fs::write(&helper, ROOM_HELPER).unwrap();
+        std::fs::set_permissions(&helper, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let ran = tmp.path().join("ran");
+        let run = |place: &Path, dev: u64, ino: u64| {
+            let spec = tmp.path().join("room.spec");
+            let mut body = b"status=1000\0seccomp=0\0place=".to_vec();
+            body.extend_from_slice(format!("{dev}:{ino}:").as_bytes());
+            body.extend_from_slice(place.as_os_str().as_bytes());
+            body.push(0);
+            std::fs::write(&spec, body).unwrap();
+            // A child another test forks just while the helper is written
+            // holds the written file open until it starts its program, and
+            // the kernel then refuses to run the helper (ETXTBSY, "Text
+            // file busy"): only that refusal is tried again, for at most
+            // 10 seconds, as `write_program` does.
+            let end = Instant::now() + Duration::from_secs(10);
+            let out = loop {
+                match Command::new(&helper)
+                    .arg(&spec)
+                    .args(["--", "/bin/sh", "-c", "touch \"$0\""])
+                    .arg(&ran)
+                    .env_clear()
+                    .stdin(Stdio::null())
+                    .output()
+                {
+                    Err(e)
+                        if e.kind() == std::io::ErrorKind::ExecutableFileBusy
+                            && Instant::now() < end =>
+                    {
+                        std::thread::sleep(Duration::from_millis(20));
+                    }
+                    other => break other.unwrap(),
+                }
+            };
+            (
+                out.status.code(),
+                String::from_utf8_lossy(&out.stderr).into_owned(),
+            )
+        };
+        let folder = tmp.path().join("place");
+        std::fs::create_dir(&folder).unwrap();
+        for place in [folder.as_path(), Path::new("/dev/null")] {
+            let m = std::fs::symlink_metadata(place).unwrap();
+            let refused = format!(
+                "{} is not the place SAM checked for this room",
+                place.display()
+            );
+            for (dev, ino) in [(m.dev(), m.ino() + 1), (m.dev() + 1, m.ino())] {
+                let (code, err) = run(place, dev, ino);
+                assert_eq!(code, Some(127), "{err}");
+                assert!(err.contains(&refused), "{err}");
+            }
+            let (code, err) = run(place, m.dev(), m.ino());
+            assert_eq!(code, Some(127), "{err}");
+            assert!(!err.contains(&refused), "the right place refused: {err}");
+            assert!(
+                err.contains("a passed syscall filter is not valid"),
+                "{err}"
+            );
+        }
+        assert!(!ran.exists(), "the program ran");
+    }
+
     /// What the launcher keeps for itself is never given to rooms: 128 of
     /// its own, and two for each connection it may have open (the
     /// connection itself, and a second one while its room runs).
