@@ -5429,7 +5429,7 @@ msgstr ""
 msgid "\"This computer only\" needs pasta (package \"passt\"), which is not installed"
 msgstr ""
 
-#: crates/sam-runner/src/ops/add.rs:22 crates/sam-runner/src/ops/overview.rs:332 crates/sam-runner/src/ops/profiles.rs:190
+#: crates/sam-runner/src/ops/add.rs:22 crates/sam-runner/src/ops/overview.rs:333 crates/sam-runner/src/ops/profiles.rs:190
 #. Keep the {placeholders}; their order may change.
 msgid "{file} does not exist"
 msgstr ""
@@ -5735,20 +5735,20 @@ msgstr ""
 msgid "Signature does not match"
 msgstr ""
 
-#: crates/sam-runner/src/ops/overview.rs:376
+#: crates/sam-runner/src/ops/overview.rs:377
 #. Keep the {placeholders}; their order may change.
 msgid "could not hide the menu entry {file}: {error}"
 msgstr ""
 
-#: crates/sam-runner/src/ops/overview.rs:500
+#: crates/sam-runner/src/ops/overview.rs:526
 msgid "Bubblewrap cannot run on this computer"
 msgstr ""
 
-#: crates/sam-runner/src/ops/overview.rs:502
+#: crates/sam-runner/src/ops/overview.rs:528
 msgid "SAM's command line (sam-jail) is not next to this program"
 msgstr ""
 
-#: crates/sam-runner/src/ops/overview.rs:506
+#: crates/sam-runner/src/ops/overview.rs:532
 #. Keep the {placeholders}; their order may change.
 msgid "SAM unpacks AppImages only inside a sandbox, and none can be built here: {reason}. Diagnostics (sam-jail doctor) says what is missing."
 msgstr ""

@@ -1050,8 +1050,14 @@ SAM unpacks AppImages with its own reader and does not run them to do so.
 Only when its reader fails and you agree does the AppImage unpack itself
 (see the end of this section).
 Unpacking happens inside a minimal Bubblewrap sandbox (the AppImage
-read-only, no network, no privileges) whenever Bubblewrap works; the
-unpacking log says whether it was isolated. The only writable place in it
+read-only, no network, no privileges); the unpacking log says whether it
+was isolated. Where Bubblewrap cannot run, or SAM's `sam-jail` is not next
+to the program, SAM refuses to unpack and says which of the two is
+missing, whatever its program is called, so a package that renames SAM's
+programs cannot make it unpack without a sandbox
+(`a_release_build_of_any_name_never_unpacks_without_a_sandbox`). Only a
+developer build of a program that is not SAM's, such as a test, unpacks
+in its own process. The only writable place in it
 is a fresh, empty folder for the unpacked files, never the app's folder
 where SAM keeps its notes, the menu entry and the icon: an unpacking tool
 tricked by a crafted image cannot leave links there for SAM to write

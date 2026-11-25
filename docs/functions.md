@@ -9,13 +9,13 @@
 >
 > Test results are from the newest version report (2026-11-21 05:11:03).
 
-**42 functions:** 3 proven by passing tests, 38 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 961 tests in all.
+**42 functions:** 3 proven by passing tests, 38 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 963 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
 | 1 | [SAM finds AppImages in the folders you choose and shows them, sandboxed or not, without running anything.](#1) | sam-gtk, sam-runner, sam-intake | 11 | ✅ 🆕 3 new tests since the report |
 | 2 | [SAM recognizes the AppImage formats in use today (type 2 with a SquashFS or DwarFS image, and the old, rare type 1, which bsdtar unpacks) and refuses files that aren't AppImages, or are for the wrong processor, with a clear message.](#2) | sam-runner, sam-intake, sam-detect | 10 | ✅ 🆕 1 new test since the report |
-| 3 | [SAM unpacks an AppImage safely: without running it, inside a sandbox, with limits on size, number of files and time, and with a check of free disk space.](#3) | sam-runner, sam-intake | 45 | ✅ 🆕 14 new tests since the report |
+| 3 | [SAM unpacks an AppImage safely: without running it, inside a sandbox, with limits on size, number of files and time, and with a check of free disk space.](#3) | sam-runner, sam-intake | 47 | ✅ 🆕 16 new tests since the report |
 | 4 | [SAM reads the name, icon, description and update source from the app itself, and removes markup or control characters before showing them.](#4) | sam-intake, sam-core | 11 | ✅ 🆕 1 new test since the report |
 | 5 | [A damaged or hostile AppImage can't crash SAM or stop the list.](#5) | sam-intake, sam-detect | 11 | ✅ |
 | 6 | [SAM recommends permissions from what the app is (window app, terminal tool, game, browser and so on), starting as strict as possible.](#6) | sam-jail-cli, sam-detect, sam-profile | 19 | ✅ 🆕 3 new tests since the report |
@@ -148,7 +148,9 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`without_consent_the_appimages_own_unpacker_never_runs`](../crates/sam-intake/tests/damaged.rs#L25) | When SAM's own readers cannot unpack an AppImage, its own unpacker (code from the AppImage) runs only after the user agreed: without consent the unpacking stops and asks, and nothing of the AppImage runs. | ✅ |
 | [`a_menu_start_after_free_space_unpacks_inside_a_sandbox`](../crates/sam-jail-cli/tests/unpack.rs#L104) | A menu start after free space unpacks inside a sandbox. | ✅ |
 | [`without_the_command_line_a_menu_start_refuses_to_unpack`](../crates/sam-jail-cli/tests/unpack.rs#L127) | Without the command line a menu start refuses to unpack. | ✅ |
-| [`sams_programs_never_unpack_without_a_sandbox`](../crates/sam-runner/src/ops/overview.rs#L551) | Sams programs never unpack without a sandbox. | ✅ |
+| [`sams_programs_never_unpack_without_a_sandbox`](../crates/sam-runner/src/ops/overview.rs#L577) | Sams programs never unpack without a sandbox. | ✅ |
+| [`a_release_build_of_any_name_never_unpacks_without_a_sandbox`](../crates/sam-runner/src/ops/overview.rs#L604) | A release build of SAM refuses to unpack without a sandbox whatever its program is called, and the refusal names what is missing. | 🆕 new |
+| [`sams_programs_refuse_without_a_sandbox_in_every_build`](../crates/sam-runner/src/ops/overview.rs#L649) | SAM's own programs refuse to unpack without a sandbox in every build, developer builds included. | 🆕 new |
 | [`a_hostile_unpacking_tool_cannot_plant_links_in_sams_app_folder`](../crates/sam-intake/tests/hostile_extractor.rs#L32) | A hostile unpacking tool cannot plant links in sams app folder. | ✅ |
 | [`nothing_in_the_unpack_sandbox_can_make_a_user_namespace`](../crates/sam-intake/tests/unpack_userns.rs#L47) | Nothing in the unpack sandbox can make a user namespace. | 🆕 new |
 | [`files_sam_writes_never_go_through_a_planted_link`](../crates/sam-core/src/util.rs#L805) | SAM's own files in folders an untrusted program could have touched are written without following links: a planted link is replaced, the file it pointed to stays as it was, and a link in place of a folder becomes a real folder (audit I-F2). | ✅ |
@@ -157,8 +159,8 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`a_named_pipe_is_refused_without_waiting`](../crates/sam-core/src/util.rs#L778) | Reading a file from an untrusted app returns at once for anything that is not a regular file: a named pipe made SAM wait forever (audit I-F9, I-F15). | ✅ |
 | [`the_entry_from_exec_stays_inside_the_app`](../crates/sam-runner/src/ops/add.rs#L533) | An app without AppRun starts the program its menu entry names, found inside the app; a name that points outside it is never used. | ✅ |
 | [`a_shared_unpack_folder_keeps_everything_that_is_not_sams`](../crates/sam-runner/src/ops/maintain.rs#L1747) | The unpack location can be any folder, for example `~/Documents`. | ✅ |
-| [`a_menu_start_unpacks_in_a_sandbox_with_the_cli_next_to_it`](../crates/sam-runner/src/ops/overview.rs#L523) | A menu start unpacks in a sandbox with the cli next to it. | ✅ |
-| [`tests_and_benchmarks_may_unpack_in_their_own_process`](../crates/sam-runner/src/ops/overview.rs#L573) | Tests and benchmarks may unpack in their own process. | ✅ |
+| [`a_menu_start_unpacks_in_a_sandbox_with_the_cli_next_to_it`](../crates/sam-runner/src/ops/overview.rs#L549) | A menu start unpacks in a sandbox with the cli next to it. | ✅ |
+| [`tests_and_benchmarks_may_unpack_in_their_own_process`](../crates/sam-runner/src/ops/overview.rs#L666) | Tests and benchmarks may unpack in their own process. | ✅ |
 | [`two_unpacks_at_once_get_their_own_error_files`](../crates/sam-intake/src/extract.rs#L1186) | Error files opened at the same moment in one process are separate files: an unpack running beside another no longer fails with "File exists" (it did on CI when two tests unpacked at once). | ✅ |
 | [`add_with_progress_reports_from_the_first_step_to_the_end`](../crates/sam-jail-cli/tests/commands.rs#L393) | `add --progress` prints the progress for the window as JSON lines on standard error: the first step and the end always. | 🆕 new |
 | [`progress_lines_pass_new_steps_and_the_end_and_thin_out_the_rest`](../crates/sam-jail-cli/src/main.rs#L1850) | The progress lines: the first report of each step and the last one always pass, more reports of the same step only every 100 ms (the window's bar moves, and the per-file reports do not flood it). | 🆕 new |
