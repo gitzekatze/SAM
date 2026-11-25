@@ -892,14 +892,17 @@ metadata. SAM treats both as untrusted.
   yourself is not used; install it for the whole system instead.
 - **Developer variables.** `SAM_CLI` and `SAM_RUN` (another `sam-jail` or
   `sam-jail-run` for the window), `SAM_LOCALE_DIR` (another folder of
-  translations) and `SAM_DBUS_LOG` (a log of every D-Bus call) work only in
-  developer builds. A release build ignores them, so a forgotten developer
-  setting, or a variable something else put into your desktop's
-  environment, never makes the window run another program outside any
-  sandbox, gives SAM's questions another wording, or writes every app's
+  translations), `SAM_DBUS_LOG` (a log of every D-Bus call) and the test
+  hook `SAM_TRUST_TOOLS_IN` (a folder of stand-in tools SAM may run although
+  you own them) work only in developer builds. A release build ignores
+  them, so a forgotten developer setting, or a variable something else put
+  into your desktop's environment, never makes the window run another
+  program outside any sandbox, makes SAM run a tool you (and so every app)
+  can change, gives SAM's questions another wording, or writes every app's
   D-Bus calls into a file
   (`a_release_build_ignores_developer_variables`,
   `an_installed_window_ignores_a_program_named_in_its_environment`,
+  `a_release_build_trusts_no_folder_of_test_tools`,
   `a_release_build_ignores_a_translation_folder_from_the_environment`,
   `a_release_build_keeps_no_dbus_log`).
 

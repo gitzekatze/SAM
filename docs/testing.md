@@ -136,15 +136,17 @@ Leave `SAM_APPLICATIONS_DIR` unset if you want launchers to show up in your menu
 `SAM_RUNTIME_DIR` moves the per-launch runtime folders (default
 `$XDG_RUNTIME_DIR/sam`); SAM's tests set it, so they never use the real one.
 
-Four more variables work only in developer builds (`cargo build` without
+Five more variables work only in developer builds (`cargo build` without
 `--release`); a release build ignores them, so a forgotten setting in
 your desktop's environment cannot change what an installed SAM runs, shows
 or records:
 `SAM_CLI` and `SAM_RUN` make the window use another `sam-jail` or
 `sam-jail-run`, `SAM_LOCALE_DIR` another folder of compiled translations,
-and `SAM_DBUS_LOG=FILE` makes the D-Bus proxy log every call
-(`scripts/dbus-log-summary.py FILE` sums it up). SAM's scripts that set them
-(`tests/real-apps/`, `tests/gui/desktop-sandbox.sh`) use developer builds.
+`SAM_DBUS_LOG=FILE` makes the D-Bus proxy log every call
+(`scripts/dbus-log-summary.py FILE` sums it up), and `SAM_TRUST_TOOLS_IN`
+names a folder of stand-in tools that SAM's tests may run although the user
+owns them. SAM's scripts and tests that set them (`tests/real-apps/`,
+`tests/gui/desktop-sandbox.sh`, the integration tests) use developer builds.
 
 ## Manual checks and details
 

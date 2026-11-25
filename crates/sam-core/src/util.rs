@@ -240,11 +240,12 @@ fn programs_beside(exe: Option<&Path>, appimage: Option<PathBuf>) -> Vec<PathBuf
 }
 
 /// The value of a developer variable (`SAM_CLI`, `SAM_RUN`,
-/// `SAM_LOCALE_DIR`, `SAM_DBUS_LOG`), only in a developer (debug) build.
-/// These variables point SAM at other programs, other translations or a
-/// log file; they exist for working on SAM itself. A release build ignores
-/// them and uses its own programs next to it, the installed translations
-/// and no D-Bus log, so a forgotten developer setting, or a variable
+/// `SAM_LOCALE_DIR`, `SAM_DBUS_LOG`, the test hook `SAM_TRUST_TOOLS_IN`),
+/// only in a developer (debug) build. These variables point SAM at other
+/// programs, other translations, a log file or a folder of stand-in tools;
+/// they exist for working on SAM itself. A release build ignores them and
+/// uses its own programs next to it, the installed translations, no D-Bus
+/// log and only tools the user cannot change, so a forgotten developer setting, or a variable
 /// something else put into the desktop's environment, never changes what
 /// an installed SAM runs, shows or records (owner decision 16 of
 /// 2026-11-23).
@@ -313,10 +314,18 @@ fn candidates(name: &str) -> Vec<PathBuf> {
 /// write them.
 ///
 /// Tests name a folder of stand-in tools in `SAM_TRUST_TOOLS_IN`; its
-/// programs may run although the user owns them. Whoever sets SAM's
-/// environment can make it run anything anyway (`PATH` itself, for one),
-/// and apps cannot set it.
+/// programs may run although the user owns them. Only a developer build
+/// reads it ([`developer_var`]): a test hook has no business in an
+/// installed SAM, where a forgotten or planted value would let SAM run a
+/// tool the user (and so every app) can change, outside any sandbox
+/// (owner decision 16 of 2026-11-23).
 pub fn may_run(p: &Path) -> bool {
+    may_run_in(p, cfg!(debug_assertions))
+}
+
+/// [`may_run`] for a build that is (`developer_build`) or is not a
+/// developer build.
+fn may_run_in(p: &Path, developer_build: bool) -> bool {
     let Ok(real) = fs::canonicalize(p) else {
         return false;
     };
@@ -325,7 +334,7 @@ pub fn may_run(p: &Path) -> bool {
     let Some(folder) = p.parent().and_then(|d| fs::canonicalize(d).ok()) else {
         return false;
     };
-    if let Some(dir) = std::env::var_os("SAM_TRUST_TOOLS_IN").filter(|d| !d.is_empty()) {
+    if let Some(dir) = developer_var_in("SAM_TRUST_TOOLS_IN", developer_build) {
         if fs::canonicalize(dir).is_ok_and(|d| d == folder) {
             return true;
         }
@@ -1180,6 +1189,30 @@ mod may_run_tests {
         if fs::metadata(shared).is_ok_and(|m| m.permissions().mode() & 0o002 != 0) {
             assert!(!may_run(shared));
         }
+    }
+
+    /// A release build never trusts the folder of stand-in tools that
+    /// tests name in `SAM_TRUST_TOOLS_IN`: a tool there that anyone may
+    /// change is refused, as everywhere else. A developer build (the
+    /// tests) trusts it (owner decision 16 of 2026-11-23). The folder is
+    /// writable for everyone, so the release build refuses it also when
+    /// the test runs as root. No other test here sets the variable.
+    #[test]
+    fn a_release_build_trusts_no_folder_of_test_tools() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let tools = tmp.path().join("tools");
+        fs::create_dir(&tools).unwrap();
+        fs::set_permissions(&tools, fs::Permissions::from_mode(0o777)).unwrap();
+        let bwrap = tools.join("bwrap");
+        fs::write(&bwrap, "#!/bin/sh\n").unwrap();
+        fs::set_permissions(&bwrap, fs::Permissions::from_mode(0o777)).unwrap();
+        std::env::set_var("SAM_TRUST_TOOLS_IN", &tools);
+        let release = may_run_in(&bwrap, false);
+        let developer = may_run_in(&bwrap, true);
+        std::env::remove_var("SAM_TRUST_TOOLS_IN");
+        assert!(!release, "a release build trusted SAM_TRUST_TOOLS_IN");
+        assert!(developer, "the tests' folder of stand-in tools is trusted");
     }
 }
 

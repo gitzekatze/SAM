@@ -758,7 +758,7 @@ msgstr ""
 msgid "path has no parent"
 msgstr ""
 
-#: crates/sam-core/src/util.rs:443 crates/sam-runner/src/updates.rs:698
+#: crates/sam-core/src/util.rs:452 crates/sam-runner/src/updates.rs:698
 #. Keep the {placeholders}; their order may change.
 msgid "{program} did not finish within {seconds} seconds and was stopped"
 msgstr ""
