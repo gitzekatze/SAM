@@ -214,6 +214,8 @@ tests = [
   "every_user_folder_switch_grants_exactly_its_folder",
   "the_user_folders_are_read_from_the_users_config_folder",
   "only_library_folders_outside_the_home_and_system_areas_are_shown",
+  "library_folders_are_judged_by_where_they_lead",
+  "library_folders_follow_real_links",
   "the_loaders_folders_come_from_its_config_files",
   "the_loaders_folders_on_this_computer_are_found",
   "an_app_is_never_told_a_folder_it_cannot_see",

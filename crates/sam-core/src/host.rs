@@ -675,22 +675,75 @@ pub fn extra_lib_dirs(home: &Path) -> Vec<PathBuf> {
     keep_extra_lib_dirs(loader_lib_dirs(), home)
 }
 
+/// The folders below which the loader's extra library folders may be shown.
+const LIB_ROOTS: [&str; 2] = ["/opt", "/usr/local"];
+
 /// The folders of `dirs` that [`extra_lib_dirs`] keeps.
 fn keep_extra_lib_dirs(dirs: Vec<PathBuf>, home: &Path) -> Vec<PathBuf> {
+    let roots: Vec<PathBuf> = LIB_ROOTS.iter().map(PathBuf::from).collect();
+    keep_extra_lib_dirs_with(dirs, home, &roots, &real_place)
+}
+
+/// Where a path really leads, every link followed; `None` when that cannot
+/// be found.
+fn real_place(p: &Path) -> Option<PathBuf> {
+    std::fs::canonicalize(p).ok()
+}
+
+/// [`keep_extra_lib_dirs`] with the allowed `roots` and `real` telling where
+/// a path leads. The read-only bind follows links and `..` as the real
+/// place does, so a folder is kept only when its real place is known and
+/// both its name and its real place pass (review B2 R60: `/opt/../run` or a
+/// link below `/opt` to `/run` passed as text). A root's own real place counts as
+/// allowed too, as on Fedora Atomic, where `/opt` leads to `/var/opt`,
+/// unless it is `/`, a system area or the home.
+fn keep_extra_lib_dirs_with(
+    dirs: Vec<PathBuf>,
+    home: &Path,
+    roots: &[PathBuf],
+    real: &dyn Fn(&Path) -> Option<PathBuf>,
+) -> Vec<PathBuf> {
+    let shown = |d: &Path| {
+        [
+            "/usr/lib",
+            "/usr/lib32",
+            "/usr/lib64",
+            "/lib",
+            "/lib32",
+            "/lib64",
+        ]
+        .iter()
+        .any(|s| d.starts_with(s))
+    };
+    let homes: Vec<PathBuf> = [Some(home.to_path_buf()), real(home)]
+        .into_iter()
+        .flatten()
+        .collect();
+    let in_home = |d: &Path| homes.iter().any(|h| d.starts_with(h));
+    let system = |d: &Path| {
+        d.parent().is_none()
+            || [Path::new("/usr"), Path::new("/var")].contains(&d)
+            || ["/etc", "/run", "/proc", "/sys", "/dev", "/boot", "/root"]
+                .iter()
+                .any(|s| d.starts_with(s))
+    };
+    let real_roots: Vec<PathBuf> = roots
+        .iter()
+        .filter_map(|r| real(r))
+        .filter(|r| !system(r) && !shown(r) && !in_home(r))
+        .collect();
+    let below = |d: &Path, roots: &[PathBuf]| roots.iter().any(|r| d.starts_with(r));
     dirs.into_iter()
         .filter(|d| {
-            let shown = [
-                "/usr/lib",
-                "/usr/lib32",
-                "/usr/lib64",
-                "/lib",
-                "/lib32",
-                "/lib64",
-            ]
-            .iter()
-            .any(|s| d.starts_with(s));
-            let allowed = ["/opt", "/usr/local"].iter().any(|r| d.starts_with(r));
-            !shown && allowed && !d.starts_with(home)
+            let Some(to) = real(d) else {
+                return false;
+            };
+            below(d, roots)
+                && !shown(d)
+                && !in_home(d)
+                && (below(&to, roots) || below(&to, &real_roots))
+                && !shown(&to)
+                && !in_home(&to)
         })
         .collect()
 }
@@ -958,16 +1011,92 @@ mod tests {
             "/opt/home/u/lib",
         ];
         let keep = |home: &str| -> Vec<String> {
-            keep_extra_lib_dirs(dirs.iter().map(PathBuf::from).collect(), Path::new(home))
-                .iter()
-                .map(|d| d.display().to_string())
-                .collect()
+            keep_extra_lib_dirs_with(
+                dirs.iter().map(PathBuf::from).collect(),
+                Path::new(home),
+                &LIB_ROOTS.map(PathBuf::from),
+                &|d| Some(d.to_path_buf()),
+            )
+            .iter()
+            .map(|d| d.display().to_string())
+            .collect()
         };
         assert_eq!(keep("/opt/home/u"), ["/opt/cuda/lib64", "/usr/local/lib"]);
         assert_eq!(
             keep("/home/u"),
             ["/opt/cuda/lib64", "/usr/local/lib", "/opt/home/u/lib"]
         );
+    }
+
+    /// A library folder is judged by its name and by where it leads: a name
+    /// with `..` or a link below /opt that leads into a system area or the
+    /// home, or a folder whose real place is unknown, is not shown (review
+    /// B2 R60).
+    #[test]
+    fn library_folders_are_judged_by_where_they_lead() {
+        let real = |d: &Path| -> Option<PathBuf> {
+            match d.to_str()? {
+                "/opt/link" => Some("/run/x".into()),
+                "/opt/tolib" => Some("/usr/lib/x".into()),
+                "/opt/tohome" => Some("/opt/home/u/lib".into()),
+                "/opt/fine" => Some("/opt/real/lib".into()),
+                "/opt/../run/x" => Some("/run/x".into()),
+                _ => None,
+            }
+        };
+        let dirs = [
+            "/opt/../run/x",
+            "/opt/link",
+            "/opt/tolib",
+            "/opt/tohome",
+            "/opt/fine",
+            "/opt/unknown",
+        ];
+        let kept = keep_extra_lib_dirs_with(
+            dirs.iter().map(PathBuf::from).collect(),
+            Path::new("/opt/home/u"),
+            &LIB_ROOTS.map(PathBuf::from),
+            &real,
+        );
+        assert_eq!(kept, [PathBuf::from("/opt/fine")]);
+    }
+
+    /// The same on a real file system, with the real lookup: a root that
+    /// leads elsewhere (Fedora Atomic's `/opt` to `/var/opt`) still shows
+    /// its folders; a link out of a root, into the home (a home below
+    /// /opt, known by its linked name) or through a root that leads to `/`
+    /// does not.
+    #[test]
+    fn library_folders_follow_real_links() {
+        use std::os::unix::fs::symlink;
+        let tmp = tempfile::tempdir().unwrap();
+        let t = fs::canonicalize(tmp.path()).unwrap();
+        for d in ["opt/fine", "elsewhere", "var/local/lib", "opt/home/lib"] {
+            fs::create_dir_all(t.join(d)).unwrap();
+        }
+        symlink(t.join("elsewhere"), t.join("opt/link")).unwrap();
+        symlink(t.join("opt/home/lib"), t.join("opt/tohome")).unwrap();
+        symlink("/run", t.join("opt/sys")).unwrap();
+        symlink(t.join("var/local"), t.join("local")).unwrap();
+        symlink("/", t.join("rootlink")).unwrap();
+        symlink(t.join("opt/home"), t.join("homelink")).unwrap();
+        let dirs = [
+            "opt/fine",
+            "opt/link",
+            "opt/tohome",
+            "opt/sys",
+            "opt/gone",
+            "local/lib",
+            "rootlink/run",
+        ];
+        let roots = ["opt", "local", "rootlink"].map(|r| t.join(r));
+        let kept = keep_extra_lib_dirs_with(
+            dirs.iter().map(|d| t.join(d)).collect(),
+            &t.join("homelink"),
+            &roots,
+            &real_place,
+        );
+        assert_eq!(kept, [t.join("opt/fine"), t.join("local/lib")]);
     }
 
     /// The loader's folders come from the files in ld.so.conf.d in the
