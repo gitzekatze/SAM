@@ -218,6 +218,8 @@ sam-jail set app filesystem.documents ro    # change one setting
 sam-jail verify app                         # sandbox check
 sam-jail repair app --next                  # try the next repair step
                                             # (one suggested by what the app printed needs --yes)
+sam-jail hints app --apply network --yes    # apply a first-run hint
+                                            # (one rated Think twice or Dangerous needs --yes)
 sam-jail remove app --keep-data             # remove, keep its data
 sam-jail stop app                           # close a running app
 ```

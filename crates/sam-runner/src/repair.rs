@@ -128,6 +128,14 @@ fn hints(e: &AppEntry, chromium_blocked: bool) -> Vec<Suggestion> {
     // A step tried at a start that did not help is not offered again,
     // here either (only the ladder knew, so it came back as a hint).
     out.retain(|st| !e.tried_repairs.contains(&st.id));
+    // A hint is never labelled lower than what applying it adds: the
+    // network next to a keyring or home already allowed is Dangerous
+    // together ("can send what it reads"), not just Think twice. The
+    // window and `hints --apply` ask by this label (owner decision 13 of
+    // 2026-11-23).
+    for st in &mut out {
+        st.risk = st.risk.max(level_added(e, st));
+    }
     out
 }
 
@@ -663,6 +671,121 @@ pub fn compat_step() -> Suggestion {
     )
 }
 
+/// Makes the change the hint or repair step `sug` stands for in the app's
+/// settings, and notes in `undo` what taking back exactly this step needs
+/// (the counterpart of [`revert_step`]). One place for it, so the risk
+/// label of a hint is checked against what applying it really changes
+/// (owner decision 13 of 2026-11-23).
+pub fn apply_step(
+    e: &mut AppEntry,
+    sug: &Suggestion,
+    undo: &mut sam_core::model::AppliedRepair,
+) -> anyhow::Result<()> {
+    use anyhow::Context;
+    match &sug.action {
+        FixAction::Set { key, value } => {
+            undo.before
+                .push((key.clone(), e.profile.permissions.get_key(key)?));
+            e.profile.permissions.set_key(key, value)?
+        }
+        FixAction::Add { key, value } => {
+            let mut list: Vec<String> = serde_json::from_value(e.profile.permissions.get_key(key)?)
+                .with_context(|| sam_core::i18n::trf("{key} is not a list", &[("key", &key)]))?;
+            if !list.contains(value) {
+                list.push(value.clone());
+                undo.added = Some(value.clone());
+            }
+            e.profile
+                .permissions
+                .set_key(key, &serde_json::to_string(&list)?)?;
+        }
+        FixAction::Compat => {
+            if !e.profile.compatibility_mode {
+                e.profile.before_compat = Some(e.profile.permissions.clone());
+            }
+            e.profile.compatibility_mode = true;
+            e.profile.permissions = sam_profile::compatibility_profile(&e.profile.permissions);
+        }
+        FixAction::AddArg { value } => {
+            if !e.profile.args.contains(value) {
+                e.profile.args.push(value.clone());
+                undo.added = Some(value.clone());
+            }
+        }
+        FixAction::None => anyhow::bail!(
+            "“{}” is an explanation only; there is nothing to apply",
+            sug.title
+        ),
+    }
+    Ok(())
+}
+
+/// The highest level among what applying `st` adds to the app's settings
+/// that asks first (Think twice or Dangerous); Low when it adds none of
+/// that, or cannot be applied at all (then it grants nothing either).
+fn level_added(e: &AppEntry, st: &Suggestion) -> RiskLevel {
+    let mut after = e.clone();
+    if apply_step(&mut after, st, &mut Default::default()).is_err() {
+        return RiskLevel::Low;
+    }
+    sam_core::risk::new_risks(&e.profile.permissions, &after.profile.permissions)
+        .iter()
+        .map(|i| i.level)
+        .max()
+        .unwrap_or(RiskLevel::Low)
+}
+
+/// Applying a first-run hint rated Think twice or Dangerous, or one that
+/// turns on compatibility mode, waits for a yes (`confirmed`): `hints
+/// --apply` and `repair --apply` alike, however the hint was found, and
+/// judged on the settings `e` it is applied to, so a page drawn before a
+/// change cannot apply it with an older, lower label. Refused with
+/// `hint-needs-yes`, naming the hint, what it turns on and what it adds
+/// (owner decision 13 of 2026-11-23). Other repair steps are not judged
+/// here.
+pub fn confirm_hint(e: &AppEntry, sug: &Suggestion, confirmed: bool) -> anyhow::Result<()> {
+    if confirmed {
+        return Ok(());
+    }
+    let Some(hint) = first_run_hints(e).into_iter().find(|h| h.id == sug.id) else {
+        return Ok(());
+    };
+    let level = hint.risk.max(sug.risk).max(level_added(e, sug));
+    let compat =
+        matches!(sug.action, FixAction::Compat) || matches!(hint.action, FixAction::Compat);
+    if level < RiskLevel::High && !compat {
+        return Ok(());
+    }
+    let mut after = e.clone();
+    let added = match apply_step(&mut after, sug, &mut Default::default()) {
+        Ok(()) => sam_core::risk::new_risks(&e.profile.permissions, &after.profile.permissions),
+        Err(_) => Vec::new(),
+    };
+    let level_words = level.words();
+    let effect = effect(sug, &e.profile.permissions);
+    let text = if added.is_empty() {
+        sam_core::i18n::trf(
+            "SAM applies \"{title}\" ({level}) only after a yes. {effect} Look at it, then apply it with --yes, or in SAM's window, which asks.",
+            &[("title", &sug.title), ("level", &level_words), ("effect", &effect)],
+        )
+    } else {
+        let items: Vec<String> = added
+            .iter()
+            .map(|i| format!("{} ({})", i.title, i.level.words()))
+            .collect();
+        sam_core::i18n::trf(
+            "SAM applies \"{title}\" ({level}) only after a yes. {effect} It adds {items}. Look at it, then apply it with --yes, or in SAM's window, which asks.",
+            &[
+                ("title", &sug.title),
+                ("level", &level_words),
+                ("effect", &effect),
+                ("items", &items.join(", ")),
+            ],
+        )
+    };
+    Err(sam_core::error::CodedError::new("hint-needs-yes", text).into())
+}
+
 /// Puts back exactly what the applied repair step `r` changed (already
 /// taken out of `e.applied_repairs`), keeping the other steps.
 pub fn revert_step(e: &mut AppEntry, r: &sam_core::model::AppliedRepair) -> anyhow::Result<()> {
@@ -843,6 +966,13 @@ fn ladder_for(
         seen.push(st.id.clone());
         keep
     });
+    // A step is never labelled lower than what applying it adds, as for
+    // the hints: turning off the syscall filter is Think twice, whatever
+    // the step's own label says. The window asks by this label (owner
+    // decision 13 of 2026-11-23).
+    for st in &mut steps {
+        st.risk = st.risk.max(level_added(e, st));
+    }
     steps
 }
 
@@ -1332,6 +1462,216 @@ mod tests {
             ids(first_run_hints(&app(true))),
             ids(hints(&app(true), chromium_sandbox_blocked()))
         );
+    }
+
+    /// A first-run hint or repair step is never labelled lower than what
+    /// applying it grants: for every hint and every step of the repair
+    /// ladder SAM offers (apps built to trigger each one, alone and next
+    /// to a home, a keyring or the network already allowed, with steps
+    /// from what an app printed, on a computer that blocks Chromium's own
+    /// sandbox and on one that does not), the rating is at least the
+    /// highest level the change adds. The window and `hints --apply` ask
+    /// by that rating (owner decision 13 of 2026-11-23), so a step
+    /// labelled too low would be applied without a question.
+    #[test]
+    fn a_hint_is_never_rated_below_what_it_grants() {
+        use sam_core::model::Requirements;
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = Paths::rooted(tmp.path());
+        let home = sam_core::util::home_dir().display().to_string();
+        let printed = format!(
+            "Error: Missing X server or $DISPLAY\nError: getaddrinfo ENOTFOUND api.example.com\n\
+             EACCES: permission denied, open '{home}/Projects/x.txt'\n\
+             org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.secrets was not provided"
+        );
+        // One message about a bus name gives one step, so this one alone.
+        let printed_bus = "org.freedesktop.DBus.Error.ServiceUnknown: The name org.gnome.OnlineAccounts was not provided";
+        let mut seen = std::collections::BTreeSet::new();
+        let mut raised = Vec::new();
+        for category in ["game", "communication", "utility"] {
+            for (electron, network) in [(false, false), (false, true), (true, false)] {
+                for elf_count in [0, 1] {
+                    // What the app already has: nothing, its home, the
+                    // network, or the keyring and its session bus.
+                    for had in 0..4 {
+                        let mut e = AppEntry {
+                            category: category.into(),
+                            ..Default::default()
+                        };
+                        let p = &mut e.profile.permissions;
+                        *p = PermissionSet::strict_gui();
+                        p.dbus.session.mode = DbusMode::Filtered;
+                        match had {
+                            1 => p.filesystem.home = true,
+                            2 => p.network.mode = NetworkMode::Full,
+                            3 => p.integrations.keyring = true,
+                            _ => {}
+                        }
+                        e.detection = Some(sam_core::DependencyReport {
+                            elf_count,
+                            requirements: Requirements {
+                                electron,
+                                network,
+                                ..Default::default()
+                            },
+                            ..Default::default()
+                        });
+                        for blocked in [false, true] {
+                            let mut e = e.clone();
+                            if elf_count == 1 {
+                                let out = if had == 0 { printed_bus } else { &printed };
+                                e.last_launch = Some(sam_core::model::LaunchRecord {
+                                    findings: analyze_with(
+                                        out,
+                                        &e.profile.permissions,
+                                        None,
+                                        blocked,
+                                    ),
+                                    ..Default::default()
+                                });
+                            }
+                            let offered = hints(&e, blocked).into_iter().map(|h| ("hint", h));
+                            let steps = ladder_for(&e, &Config::default(), &paths, blocked)
+                                .into_iter()
+                                .map(|h| ("step", h));
+                            for (kind, h) in offered.chain(steps) {
+                                let mut after = e.clone();
+                                apply_step(&mut after, &h, &mut Default::default())
+                                    .unwrap_or_else(|err| panic!("{}: {err:#}", h.id));
+                                let added = sam_core::risk::new_risks(
+                                    &e.profile.permissions,
+                                    &after.profile.permissions,
+                                );
+                                for item in &added {
+                                    assert!(
+                                        h.risk >= item.level,
+                                        "the {kind} {:?} is rated {:?} but adds {:?} ({:?}) for {category}, had {had}",
+                                        h.id,
+                                        h.risk,
+                                        item.title,
+                                        item.level
+                                    );
+                                }
+                                if matches!(h.action, FixAction::Compat) {
+                                    assert!(h.risk >= RiskLevel::High, "{}", h.id);
+                                }
+                                if added.iter().any(|i| i.level == RiskLevel::Dangerous) {
+                                    raised.push(format!("{kind} {}", h.id));
+                                }
+                                seen.insert(format!("{kind} {}", h.id));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // Every hint and ladder step SAM can offer came up here (and
+        // steps from what the app printed); a new one is added above.
+        for id in [
+            "hint chromium-no-sandbox",
+            "hint files",
+            "hint gpu",
+            "hint keyring",
+            "hint network",
+            "hint x11",
+            "step full-usr",
+            "step x11",
+            "step gpu",
+            "step userns",
+            "step seccomp-baseline",
+            "step compat",
+            "step chromium-no-sandbox",
+            "step network",
+            "step keyring",
+            "step grant-folder",
+            "step dbus-name",
+        ] {
+            assert!(seen.contains(id), "{id} never came up: {seen:?}");
+        }
+        // The network next to a home or keyring, and the keyring next to
+        // the network, are Dangerous together: such hints came up.
+        assert!(raised.iter().any(|id| id == "hint network"), "{raised:?}");
+        assert!(raised.iter().any(|id| id == "hint keyring"), "{raised:?}");
+        // Turning off the syscall filter is Think twice, not Medium.
+        let mut e = AppEntry::default();
+        e.profile.permissions = PermissionSet::strict_gui();
+        let off = ladder_for(&e, &Config::default(), &paths, false)
+            .into_iter()
+            .find(|s| s.id == "seccomp-baseline")
+            .expect("offered");
+        assert!(off.risk >= RiskLevel::High, "{off:?}");
+    }
+
+    /// A first-run hint rated Think twice or Dangerous needs a yes,
+    /// whichever command applies it, and the refusal names the hint, what
+    /// it turns on and what it adds; a Medium hint and an ordinary repair
+    /// step do not (owner decision 13 of 2026-11-23; review of the first
+    /// build: `repair --apply network` applied the hint unasked).
+    #[test]
+    fn a_risky_hint_needs_yes_and_says_what_it_allows() {
+        let mut game = AppEntry {
+            category: "game".into(),
+            ..Default::default()
+        };
+        game.profile.permissions = PermissionSet::strict_gui();
+        let hint = |e: &AppEntry, id: &str| {
+            hints(e, false)
+                .into_iter()
+                .find(|h| h.id == id)
+                .unwrap_or_else(|| panic!("{id} offered"))
+        };
+        let network = hint(&game, "network");
+        let err = confirm_hint(&game, &network, false).unwrap_err();
+        assert_eq!(sam_core::error::code_of(&err), Some("hint-needs-yes"));
+        let text = format!("{err:#}");
+        assert!(text.contains(&format!("\"{}\"", network.title)), "{text}");
+        assert!(text.contains("Turns on"), "says what it turns on: {text}");
+        assert!(text.contains("Full network"), "names what it adds: {text}");
+        assert!(text.contains("--yes"), "{text}");
+        assert!(confirm_hint(&game, &network, true).is_ok());
+        assert!(
+            confirm_hint(&game, &hint(&game, "files"), false).is_ok(),
+            "Medium applies"
+        );
+        // The same change found as a repair step is the same hint.
+        let mut as_step = network.clone();
+        as_step.risk = RiskLevel::Low;
+        assert!(
+            confirm_hint(&game, &as_step, false).is_err(),
+            "judged here, not by its label"
+        );
+        // An ordinary repair step is not judged here.
+        let tmp = tempfile::tempdir().unwrap();
+        let seccomp = ladder_for(&game, &Config::default(), &Paths::rooted(tmp.path()), false)
+            .into_iter()
+            .find(|s| s.id == "seccomp-baseline")
+            .expect("offered");
+        assert!(confirm_hint(&game, &seccomp, false).is_ok());
+        // Turning on compatibility mode under a hint's id asks whatever
+        // its label, also where it adds nothing rated Think twice: here
+        // the settings have all of it but the graphics card (Medium).
+        let mut wide = game.clone();
+        wide.profile.permissions = sam_profile::compatibility_profile(&wide.profile.permissions);
+        wide.profile.permissions.devices.gpu = false;
+        wide.detection = Some(sam_core::DependencyReport {
+            elf_count: 1,
+            ..Default::default()
+        });
+        let mut compat = hint(&wide, "gpu");
+        compat.action = FixAction::Compat;
+        assert!(
+            level_added(&wide, &compat) < RiskLevel::High,
+            "adds only Medium"
+        );
+        assert!(confirm_hint(&wide, &compat, false).is_err());
+        // Raised by what the app already has: the network next to its
+        // home is Dangerous, and the refusal says why.
+        let mut reader = game.clone();
+        reader.profile.permissions.filesystem.home = true;
+        let network = hint(&reader, "network");
+        assert_eq!(network.risk, RiskLevel::Dangerous);
+        let text = format!("{:#}", confirm_hint(&reader, &network, false).unwrap_err());
+        assert!(text.contains("Can send what it reads"), "{text}");
     }
 
     /// The graphics hint is only for a windowed app that has no graphics

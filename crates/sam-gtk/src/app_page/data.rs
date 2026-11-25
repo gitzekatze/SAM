@@ -522,20 +522,17 @@ impl AppPage {
         glib::spawn_future_local(async move {
             let title = util::str_of(&sug, "title").to_string();
             let explanation = util::str_of(&sug, "explanation").to_string();
-            let risk = util::str_of(&sug, "risk");
             let ask = if util::bool_of(&sug, "from_app_output") {
                 Some(crate::i18n::trf(
                     "This suggestion is based on messages the app printed itself. A malicious app can print messages to get more access.\n\n{explanation}",
                     &[("explanation", &explanation)],
                 ))
-            } else if risk == "high"
-                || risk == "dangerous"
-                || util::str_of(&sug, "action.kind") == "compat"
-            {
+            } else if asks_first(&sug) {
                 Some(explanation.clone())
             } else {
                 None
             };
+            let asked = ask.is_some();
             if let Some(body) = ask {
                 if !window::confirm(
                     &app.window,
@@ -554,14 +551,8 @@ impl AppPage {
                 }
             }
             let id = util::str_of(&sug, "id").to_string();
-            // The window has asked above where a step needs it, so it
-            // confirms for the command line (which refuses a step from the
-            // app's own output without --yes; regression from #69).
-            let args = if as_repair {
-                vec!["repair", &me.app_id, "--apply", &id, "--yes"]
-            } else {
-                vec!["hints", &me.app_id, "--apply", &id]
-            };
+            let args = apply_args(&me.app_id, &id, as_repair, asked);
+            let args: Vec<&str> = args.iter().map(String::as_str).collect();
             match app.backend.call(&args, None).await {
                 Ok(_) => {
                     app.toast(&crate::i18n::trf("Applied: {step}", &[("step", &title)]));
@@ -569,7 +560,10 @@ impl AppPage {
                         app.launch(&me.app_id);
                     }
                 }
-                Err(e) => app.report_error(&e),
+                Err(e) => match stale_hint_notice(&e) {
+                    Some(text) => app.toast(&text),
+                    None => app.report_error(&e),
+                },
             }
             me.reload();
             app.refresh_registered().await;
@@ -644,6 +638,50 @@ impl AppPage {
             app.refresh_apps().await;
         });
     }
+}
+
+/// Whether the window asks before applying a hint or repair step that is
+/// not from the app's own output: rated Think twice or Dangerous, or
+/// turning on compatibility mode. The command line refuses such a hint
+/// without --yes by the same rule (owner decision 13 of 2026-11-23).
+pub(super) fn asks_first(sug: &Value) -> bool {
+    let risk = util::str_of(sug, "risk");
+    risk == "high" || risk == "dangerous" || util::str_of(sug, "action.kind") == "compat"
+}
+
+/// What the window says when the command line refuses a hint for a yes
+/// the window did not give: the page showed an older, lower rating (the
+/// settings changed since). SAM draws the page again, so the next click
+/// asks first; the command line's advice to add --yes does not fit here.
+pub(super) fn stale_hint_notice(e: &crate::backend::CliError) -> Option<String> {
+    e.is("hint-needs-yes").then(|| {
+        crate::i18n::tr("The rating of this hint changed. SAM shows the page again; apply it once more to be asked first.")
+    })
+}
+
+/// The command that applies hint or repair step `id` to app `app_id`.
+/// The window has asked first where a step needs it, so it confirms for
+/// the command line: a repair step always (the command line refuses one
+/// from the app's own output without --yes; regression from #69), a hint
+/// exactly when the window asked (`hints --apply` refuses a hint rated
+/// Think twice or Dangerous, or compatibility mode, without --yes; owner
+/// decision 13 of 2026-11-23).
+pub(super) fn apply_args(app_id: &str, id: &str, as_repair: bool, asked: bool) -> Vec<String> {
+    let mut args: Vec<String> = if as_repair {
+        vec![
+            "repair".into(),
+            app_id.into(),
+            "--apply".into(),
+            id.into(),
+            "--yes".into(),
+        ]
+    } else {
+        vec!["hints".into(), app_id.into(), "--apply".into(), id.into()]
+    };
+    if !as_repair && asked {
+        args.push("--yes".into());
+    }
+    args
 }
 
 /// The arguments of `review` for app `id` as shown with the review

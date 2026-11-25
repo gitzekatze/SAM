@@ -85,7 +85,7 @@ fn a_repair_step_is_kept_when_it_helps_and_undone_when_it_does_not() {
         let sug = app
             .find_suggestion(&e, step)
             .unwrap_or_else(|| panic!("{step} offered"));
-        app.apply_suggestion(&id, &sug, true).unwrap();
+        app.apply_suggestion(&id, &sug, true, true).unwrap();
     };
     let entry = || app.registry().get(&id).unwrap().unwrap();
     app.set_permissions(&id, PermissionSet::strict_gui())

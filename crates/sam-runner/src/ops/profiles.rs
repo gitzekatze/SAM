@@ -287,13 +287,19 @@ impl Sam {
 
     /// Apply a first-run hint, log finding or repair step. Repair steps
     /// (`as_repair`) are remembered so "Undo repairs" can revert them all.
+    /// A first-run hint rated Think twice or Dangerous, or one that turns
+    /// on compatibility mode, needs `confirmed` (the person said yes),
+    /// judged here on the record that is changed and saved, so no caller
+    /// can skip it (owner decision 13 of 2026-11-23).
     pub fn apply_suggestion(
         &self,
         query: &str,
         sug: &Suggestion,
         as_repair: bool,
+        confirmed: bool,
     ) -> Result<AppEntry> {
         let mut e = self.resolve(query)?;
+        crate::repair::confirm_hint(&e, sug, confirmed)?;
         if as_repair && e.repair_backup.is_none() {
             e.repair_backup = Some(e.profile.clone());
         }
@@ -302,43 +308,7 @@ impl Sam {
             on_trial: as_repair,
             ..Default::default()
         };
-        match &sug.action {
-            FixAction::Set { key, value } => {
-                undo.before
-                    .push((key.clone(), e.profile.permissions.get_key(key)?));
-                e.profile.permissions.set_key(key, value)?
-            }
-            FixAction::Add { key, value } => {
-                let mut list: Vec<String> = serde_json::from_value(
-                    e.profile.permissions.get_key(key)?,
-                )
-                .with_context(|| sam_core::i18n::trf("{key} is not a list", &[("key", &key)]))?;
-                if !list.contains(value) {
-                    list.push(value.clone());
-                    undo.added = Some(value.clone());
-                }
-                e.profile
-                    .permissions
-                    .set_key(key, &serde_json::to_string(&list)?)?;
-            }
-            FixAction::Compat => {
-                if !e.profile.compatibility_mode {
-                    e.profile.before_compat = Some(e.profile.permissions.clone());
-                }
-                e.profile.compatibility_mode = true;
-                e.profile.permissions = compatibility_profile(&e.profile.permissions);
-            }
-            FixAction::AddArg { value } => {
-                if !e.profile.args.contains(value) {
-                    e.profile.args.push(value.clone());
-                    undo.added = Some(value.clone());
-                }
-            }
-            FixAction::None => bail!(
-                "“{}” is an explanation only; there is nothing to apply",
-                sug.title
-            ),
-        }
+        crate::repair::apply_step(&mut e, sug, &mut undo)?;
         e.profile.preset = None;
         if as_repair && !e.repairs_applied.contains(&sug.id) {
             e.repairs_applied.push(sug.id.clone());

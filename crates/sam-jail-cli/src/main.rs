@@ -301,7 +301,11 @@ fn real_main(cli: Cli) -> Result<()> {
                 }
             });
         }
-        Cmd::Hints { app: query, apply } => {
+        Cmd::Hints {
+            app: query,
+            apply,
+            yes,
+        } => {
             let e = app.resolve(&query)?;
             let e = match apply {
                 Some(id) => {
@@ -309,7 +313,7 @@ fn real_main(cli: Cli) -> Result<()> {
                         .into_iter()
                         .find(|s| s.id == id)
                         .with_context(|| format!("no hint '{id}' for {}", e.display_name()))?;
-                    app.apply_suggestion(&query, &sug, false)?
+                    app.apply_suggestion(&query, &sug, false, yes)?
                 }
                 None => e,
             };
@@ -363,7 +367,7 @@ fn real_main(cli: Cli) -> Result<()> {
                     )
                 })?;
                 may_apply(&sug, yes)?;
-                app.apply_suggestion(&query, &sug, true)?;
+                app.apply_suggestion(&query, &sug, true, yes)?;
                 Some(sug.title)
             } else {
                 None

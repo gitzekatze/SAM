@@ -79,6 +79,10 @@ pub(crate) enum Cmd {
         /// Apply the hint with this id.
         #[arg(long)]
         apply: Option<String>,
+        /// Also apply a hint rated Think twice or Dangerous, or one that
+        /// turns on compatibility mode; without it such a hint is refused.
+        #[arg(long, requires = "apply")]
+        yes: bool,
     },
     /// Repair an app that does not start or misbehaves: list steps, apply one, or undo.
     Repair {
@@ -96,7 +100,8 @@ pub(crate) enum Cmd {
         #[arg(long, conflicts_with_all = ["apply", "next", "undo"])]
         undo_step: Option<String>,
         /// Also apply a step suggested by what the app printed (the app
-        /// controls that text); without it such a step is only shown.
+        /// controls that text), or a first-run hint rated Think twice or
+        /// Dangerous; without it such a step is refused.
         #[arg(long)]
         yes: bool,
     },

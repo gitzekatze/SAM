@@ -144,7 +144,7 @@ dotted form shown there (`network.mode`, `audio.pipewire`, …).
 | `args APP --stdin` | the launch arguments (JSON array on stdin) |
 | `review APP` | app summary |
 | `verify APP` or `verify PATH --permissions-stdin` | `{report, record}`: every check with expected and observed result |
-| `hints APP [--apply ID]` | `{hints}` |
+| `hints APP [--apply ID] [--yes]` | `{hints}`; a hint rated *Think twice* or *Dangerous*, or one that turns on compatibility mode, is refused with the code `hint-needs-yes` unless `--yes` is given |
 | `repair APP [--next/--undo/--apply ID]` | `{applied, findings, steps, applied_steps, can_undo}` |
 | `selftest [APP…]` | `{results}` |
 | `menu list/hide/restore APP` | `{visible, hidden}` |
@@ -158,7 +158,7 @@ dotted form shown there (`network.mode`, `audio.pipewire`, …).
 | `preset list/show/template/apply/save/delete/duplicate/import/export/put` | the user's preset objects; `put` reads one on stdin; `import` never replaces a preset of the same name: the object it returns carries the name it got (`NAME (imported)`) |
 | `preset apply NAME APP [--yes] [--expect FINGERPRINT]` | `{preset, check, applied, fingerprint}`; `fingerprint` names the preset's permissions as checked, and `--expect` applies only that preset: one changed since is refused and nothing is applied |
 | `info APP` | the app's record; its `last_launch` has `missing_layers` (protection layers the last start lacked, for example `["Landlock"]`) and `moved_aside` (what the app left in places that would run something later, and where SAM moved it); also `repair_effects` (step id → what the step changes and costs) and `compat_changes` (the switches compatibility mode turns on, or turned on) |
-| `repair APP [--apply ID / --next / --undo / --undo-step ID] [--yes]` | `--undo-step` switches off one applied step and keeps the others; a step suggested by what the app printed is refused with the code `repair-needs-yes` unless `--yes` is given |
+| `repair APP [--apply ID / --next / --undo / --undo-step ID] [--yes]` | `--undo-step` switches off one applied step and keeps the others; a step suggested by what the app printed is refused with the code `repair-needs-yes` unless `--yes` is given; a first-run hint applied here (same id, also a step reached with `--next` whose id matches a hint offered for the app, such as `x11`) is refused like `hints --apply`, with the code `hint-needs-yes` |
 | `group list` | every sandboxed app: the app summary plus `permissions`, `tags: [{key, label, family, level, read_only}]`, `running`, `needs_review`, `may_not_start` |
 | `group set KEY VALUE APP… [--dry-run] [--yes]` | `{key, value, applied, apps: [{id, name, check, running, changed}], previous: {id: permissions}, undo: {id: {from, to}}}`; without `--yes` a change that adds anything rated *Think twice* or *Dangerous* to any of the apps is refused with the code `change-needs-yes` (`check.adds_dangerous` of a dry run lists it) |
 | `group restore [--yes]` | reads `undo` on stdin and takes back only that change → `{restored}`; a later change to the same setting refuses the whole undo (code `changed-meanwhile`); an undo that adds something rated *Think twice* or *Dangerous* back needs `--yes` (code `change-needs-yes`) |

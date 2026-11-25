@@ -252,7 +252,7 @@ sam-jail remove krita                           # remove the sandbox; the AppIma
 **When an app does not work:**
 
 ```sh
-sam-jail hints krita            # first-run check, with fixes
+sam-jail hints krita            # first-run check, with fixes (a risky one needs --yes)
 sam-jail repair krita           # what went wrong last time
 sam-jail repair krita --next    # apply the next repair step
 sam-jail repair krita --undo    # undo all repair steps

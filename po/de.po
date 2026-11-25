@@ -9175,6 +9175,34 @@ msgstr "unbekannter Schlüssel „{other}“ in der flachen Vorlage"
 msgid "Some access"
 msgstr "Etwas Zugriff"
 
+#: crates/sam-gtk/src/app_page/data.rs:658
+msgid ""
+"The rating of this hint changed. SAM shows the page again; apply it once "
+"more to be asked first."
+msgstr ""
+"Die Einstufung dieses Hinweises hat sich geändert. SAM zeigt die Seite neu; "
+"wende ihn noch einmal an, damit SAM zuerst nachfragt."
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-runner/src/repair.rs:767
+msgid ""
+"SAM applies \"{title}\" ({level}) only after a yes. {effect} Look at it, "
+"then apply it with --yes, or in SAM's window, which asks."
+msgstr ""
+"SAM wendet „{title}“ ({level}) erst nach einem Ja an. {effect} Sieh es dir "
+"an und wende es dann mit --yes an, oder im Fenster von SAM, das nachfragt."
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-runner/src/repair.rs:776
+msgid ""
+"SAM applies \"{title}\" ({level}) only after a yes. {effect} It adds "
+"{items}. Look at it, then apply it with --yes, or in SAM's window, which "
+"asks."
+msgstr ""
+"SAM wendet „{title}“ ({level}) erst nach einem Ja an. {effect} Es kommt "
+"{items} dazu. Sieh es dir an und wende es dann mit --yes an, oder im Fenster "
+"von SAM, das nachfragt."
+
 #~ msgid "Lets the app use keys loaded in your SSH agent."
 #~ msgstr ""
 #~ "Erlaubt der App, die in deinem SSH-Agenten geladenen Schlüssel zu "
