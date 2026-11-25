@@ -194,6 +194,45 @@ fn a_medium_app_reads_some_access_in_list_and_info() {
     assert_eq!(picked("harmless"), 0);
 }
 
+/// Saving and applying a preset name the risk in its words too: a preset
+/// that turns sound on reads "Some access" when it is saved, listed and
+/// applied, never the internal name "Medium" (owner decision 17 of
+/// 2026-11-23).
+#[test]
+fn presets_name_the_risk_in_its_words() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    let id = setup(root, "Calc");
+    // The strictest window settings (Harmless), then sound (Some access).
+    let strict =
+        serde_json::to_string(&sam_core::permissions::PermissionSet::strict_gui()).unwrap();
+    sam(root, &["profile", "set", &id, "--yes"], Some(&strict));
+    sam(root, &["set", &id, "audio.enabled", "true"], None);
+    assert_eq!(
+        json(root, &["info", &id], None)["app"]["risk"]["level"],
+        "medium"
+    );
+
+    let saved = human(root, &["preset", "save", &id, "With sound"], None);
+    assert!(saved.contains("(Some access)"), "{saved}");
+    let listed = human(root, &["preset", "list"], None);
+    assert!(listed.contains("Some access"), "{listed}");
+
+    sam(root, &["profile", "set", &id, "--yes"], Some(&strict));
+    assert_eq!(
+        json(root, &["info", &id], None)["app"]["risk"]["level"],
+        "low"
+    );
+    let applied = human(root, &["preset", "apply", "With sound", &id, "--yes"], None);
+    assert!(
+        applied.contains("(risk Harmless → Some access)"),
+        "{applied}"
+    );
+    for text in [&saved, &listed, &applied] {
+        assert!(!text.to_lowercase().contains("medium"), "{text}");
+    }
+}
+
 /// `redetect` shows the dependency report it made.
 #[test]
 fn redetect_shows_the_dependency_report() {

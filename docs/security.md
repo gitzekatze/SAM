@@ -1192,7 +1192,7 @@ in the window and on the command line (`each_risk_level_has_words_of_its_own`,
 `a_medium_app_reads_some_access_in_list_and_info`): *Medium* reads *Some
 access*, not *Harmless* like *Low*, and `sam-jail list --risk harmless`
 selects Low apps only (`--risk some-access` selects Medium). The words do
-not change when SAM asks: that stays from *Think twice* on.
+not change when SAM asks first: that stays from *Think twice* on.
 
 **One rule for asking.** A change that adds anything rated *Think twice* or
 *Dangerous* asks first, wherever it is made: a switch in the window, the

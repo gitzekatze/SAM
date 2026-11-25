@@ -57,6 +57,31 @@ pub(crate) fn risk_str(r: RiskLevel) -> String {
     paint(&r.words(), code)
 }
 
+/// The width of a risk column: the widest of the four risk words in the
+/// language SAM speaks, so a translated word ("Etwas Zugriff") never
+/// pushes the next column out of line. Counted in characters, which is
+/// the display width for every language SAM is translated into.
+pub(crate) fn risk_width() -> usize {
+    [
+        RiskLevel::Low,
+        RiskLevel::Medium,
+        RiskLevel::High,
+        RiskLevel::Dangerous,
+    ]
+    .iter()
+    .map(|r| r.words().chars().count())
+    .max()
+    .unwrap_or(0)
+}
+
+/// The risk words, colored, filled with spaces to `width` characters
+/// (the color codes take no room on the screen, so the padding is
+/// counted from the words alone).
+pub(crate) fn risk_cell(r: RiskLevel, width: usize) -> String {
+    let fill = width.saturating_sub(r.words().chars().count());
+    format!("{}{}", risk_str(r), " ".repeat(fill))
+}
+
 pub(crate) fn sev_str(s: Severity) -> String {
     match s {
         Severity::Info => paint("info", "36"),
@@ -434,6 +459,27 @@ mod tests {
             assert!(s.contains(word), "{word} shown as {s:?}");
         }
         assert!(all_different(&shown), "{shown:?}");
+    }
+
+    /// The risk columns of `list` and `preset list` are as wide as the
+    /// widest risk word, so "Some access" (owner decision 17 of
+    /// 2026-11-23) or a longer translation never pushes the next column
+    /// out of line: every risk cell takes the same room on the screen.
+    #[test]
+    fn the_risk_column_fits_the_widest_risk_word() {
+        let w = risk_width();
+        for r in [
+            RiskLevel::Low,
+            RiskLevel::Medium,
+            RiskLevel::High,
+            RiskLevel::Dangerous,
+        ] {
+            assert!(r.words().chars().count() <= w, "{r:?} wider than {w}");
+            let cell = risk_cell(r, w);
+            assert!(cell.contains(&r.words()), "{cell:?}");
+            let shown = cell.replace(&risk_str(r), &r.words());
+            assert_eq!(shown.chars().count(), w, "{shown:?}");
+        }
     }
 
     /// The risk line names the level and the permissions that set it.

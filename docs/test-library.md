@@ -92,7 +92,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Only plain shared-library file names are accepted as system libraries: no folders, no `..`, nothing that is not a library. | [`only_plain_library_names_are_accepted`](../crates/sam-core/src/permissions.rs#L1758) |
 | Every switch says the same risk word in the window (its catalogue entry) as in the risk assessment that decides the badges and which changes ask first (audit D-M12: raw ALSA was "Think twice" in one and "Dangerous" in the other, so the window did not ask). | [`every_switch_has_one_risk_word`](../crates/sam-core/src/risk.rs#L833) |
 | Single functions and signals of a service count in the risk word: a function of a service that can act outside the sandbox is Dangerous, any other function Think twice, a signal Harmless (audit D-H2: they counted for nothing). | [`function_and_signal_rules_count_in_the_risk_word`](../crates/sam-core/src/risk.rs#L885) |
-| The command line and the window name risk with the same words, and the command line's filter understands both names. | [`risk_has_the_same_three_words_everywhere`](../crates/sam-core/src/risk.rs#L913) |
+| The command line and the window name risk with the same words, and the command line's filter understands both names. | [`risk_has_the_same_words_everywhere`](../crates/sam-core/src/risk.rs#L913) |
 | Each of the four levels has words of its own, and each word names exactly its level: `harmless` selects only Low, `some-access` (or "some access") only Medium (owner decision 17 of 2026-11-23). | [`each_risk_level_has_words_of_its_own`](../crates/sam-core/src/risk.rs#L926) |
 | The one ask rule: a change asks when it adds something rated Think twice or Dangerous that was not there, or raises it; taking a risk away, keeping it, or adding something harmless does not ask (audit G-F2). | [`only_new_or_higher_serious_risks_ask`](../crates/sam-core/src/risk.rs#L962) |
 | Settings that take a protection away count in the risk word, and a secret passed through counts more than an ordinary variable (audit D-H4). | [`switching_a_protection_off_counts`](../crates/sam-core/src/risk.rs#L1036) |
@@ -283,10 +283,10 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | An app that needs sound is warned about in the switch's word. | [`lost_sound_is_named_sound`](../crates/sam-profile/src/lib.rs#L1180) |
 | A new preset starts without home, network or system bus access. | [`preset_template_is_strict`](../crates/sam-profile/src/lib.rs#L1198) |
 | The bus names an app may own come from its application ID and window class, never from protocol or desktop-service names. | [`own_names_from_the_id_and_the_window_class`](../crates/sam-profile/src/lib.rs#L1221) |
-| An app with SAM's strictest window profile shows no tags, because it has nothing beyond the basics. | [`a_strict_window_app_has_no_tags`](../crates/sam-profile/src/tags.rs#L163) |
-| Tags appear in the family order Network, Files, Devices, Desktop, and read-only access is marked. | [`tags_follow_the_family_order_and_mark_read_only`](../crates/sam-profile/src/tags.rs#L173) |
-| Dangerous access gets red tags, and the filtered desktop bus, which every app has, gets none. | [`dangerous_access_is_red_and_filtered_bus_has_no_tag`](../crates/sam-profile/src/tags.rs#L209) |
-| One name per permission: where the risk list names a permission that also has a tag, both use the same words (regression: "Audio" vs "Sound", "GPU" vs "GPU acceleration", "Show in folder"). | [`tags_and_the_risk_list_use_the_same_words`](../crates/sam-profile/src/tags.rs#L262) |
+| An app with SAM's strictest window profile shows no tags, because it has nothing beyond the basics. | [`a_strict_window_app_has_no_tags`](../crates/sam-profile/src/tags.rs#L166) |
+| Tags appear in the family order Network, Files, Devices, Desktop, and read-only access is marked. | [`tags_follow_the_family_order_and_mark_read_only`](../crates/sam-profile/src/tags.rs#L176) |
+| Dangerous access gets red tags, and the filtered desktop bus, which every app has, gets none. | [`dangerous_access_is_red_and_filtered_bus_has_no_tag`](../crates/sam-profile/src/tags.rs#L212) |
+| One name per permission: where the risk list names a permission that also has a tag, both use the same words (regression: "Audio" vs "Sound", "GPU" vs "GPU acceleration", "Show in folder"). | [`tags_and_the_risk_list_use_the_same_words`](../crates/sam-profile/src/tags.rs#L265) |
 
 ## sam-sandbox: Building the Bubblewrap command from the permissions
 
@@ -917,7 +917,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-jail-cli: The command line and its JSON interface
 
-129 tests.
+131 tests.
 
 | Promise | Test |
 |---|---|
@@ -928,21 +928,22 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | A terminal app's window waits for Enter only after a failed end, and only with someone at the terminal; a clean end closes it at once, and a graphical app never waits. | [`only_a_failed_terminal_app_keeps_its_window_open`](../crates/sam-jail-cli/src/bin/sam-jail-run.rs#L632) |
 | "Show the fix" opens SAM's own AppImage when SAM runs from one; with no SAM window anywhere there is no button (a plain notice), never a button that runs nothing. | [`the_fix_button_opens_sam_only_when_sam_is_found`](../crates/sam-jail-cli/src/bin/sam-jail-run.rs#L655) |
 | Review K-4: a start from the menu is told at once when it lacks a protection layer, and the notification names each missing layer. | [`a_menu_start_is_told_when_a_protection_layer_is_missing`](../crates/sam-jail-cli/src/bin/sam-jail-run.rs#L688) |
-| Each command's errors name the SAM function it carries out (docs/functions.md), and the commands outside SAM's functions name none (mutation run: every answer could be dropped or be any number). | [`each_command_names_its_sam_function`](../crates/sam-jail-cli/src/main.rs#L1819) |
-| The progress lines: the first report of each step and the last one always pass, more reports of the same step only every 100 ms (the window's bar moves, and the per-file reports do not flood it). | [`progress_lines_pass_new_steps_and_the_end_and_thin_out_the_rest`](../crates/sam-jail-cli/src/main.rs#L1850) |
-| `selftest` passes a start that ended well or kept running until the time was up, and fails one that ended badly or was killed early, with a second's grace for a kill from outside SAM (mutation run: every comparison here could be turned around unnoticed). | [`selftest_passes_starts_that_ended_well_or_kept_running`](../crates/sam-jail-cli/src/main.rs#L1896) |
-| Compatibility mode goes on only with --yes, and the refusal says why (audit D-H5); turning it off needs nothing. | [`compatibility_mode_needs_yes_and_says_why`](../crates/sam-jail-cli/src/main.rs#L1939) |
-| A step from the app's own output needs --yes; SAM's own steps do not (audit U-M2). | [`a_step_from_the_apps_output_needs_yes`](../crates/sam-jail-cli/src/main.rs#L1951) |
+| Each command's errors name the SAM function it carries out (docs/functions.md), and the commands outside SAM's functions name none (mutation run: every answer could be dropped or be any number). | [`each_command_names_its_sam_function`](../crates/sam-jail-cli/src/main.rs#L1820) |
+| The progress lines: the first report of each step and the last one always pass, more reports of the same step only every 100 ms (the window's bar moves, and the per-file reports do not flood it). | [`progress_lines_pass_new_steps_and_the_end_and_thin_out_the_rest`](../crates/sam-jail-cli/src/main.rs#L1851) |
+| `selftest` passes a start that ended well or kept running until the time was up, and fails one that ended badly or was killed early, with a second's grace for a kill from outside SAM (mutation run: every comparison here could be turned around unnoticed). | [`selftest_passes_starts_that_ended_well_or_kept_running`](../crates/sam-jail-cli/src/main.rs#L1897) |
+| Compatibility mode goes on only with --yes, and the refusal says why (audit D-H5); turning it off needs nothing. | [`compatibility_mode_needs_yes_and_says_why`](../crates/sam-jail-cli/src/main.rs#L1940) |
+| A step from the app's own output needs --yes; SAM's own steps do not (audit U-M2). | [`a_step_from_the_apps_output_needs_yes`](../crates/sam-jail-cli/src/main.rs#L1952) |
 | Every page a man page names (`sam-jail-config-get(1)`) is written too (audit: `sam-jail-config.1` named six pages that did not exist). | [`every_man_page_named_is_written`](../crates/sam-jail-cli/src/man.rs#L79) |
-| `info` shows every permission of the catalogue with its value, also the ones it left out before (audit G-F14). | [`info_shows_every_permission_with_its_value`](../crates/sam-jail-cli/src/output.rs#L345) |
-| Every state, risk level and warning severity is shown in its own words: `list`, `info`, `add`, `set` and `evaluate` tell the user an app is Unsafe, Dangerous or lacks its protection only through these. | [`every_state_risk_and_severity_is_shown_in_its_own_words`](../crates/sam-jail-cli/src/output.rs#L409) |
-| The risk line names the level and the permissions that set it. | [`the_risk_line_names_the_level_and_what_sets_it`](../crates/sam-jail-cli/src/output.rs#L440) |
-| Every warning is shown with its severity, title and message. | [`every_warning_is_shown_with_its_severity_title_and_message`](../crates/sam-jail-cli/src/output.rs#L458) |
-| A name longer than its column is cut to the column with "…", so an app cannot push SAM's real risk and state out of their columns with a long name of its own (a fake "Harmless  Ready" in the name would line up under them). | [`a_long_name_is_cut_to_its_column`](../crates/sam-jail-cli/src/output.rs#L485) |
-| `sam-jail command` shows the sandbox command one option with its values per line, every token in order, and after the real `--` the program with its arguments; joined again it is exactly the command that runs. | [`the_shown_command_is_the_one_that_runs`](../crates/sam-jail-cli/src/output.rs#L502) |
-| Every option of Bubblewrap stays on one line with its values, also those SAM's own command has that were split across lines before (`--uid 1000`, `--overlay-src`, `--overlay` with three values, `--remount-ro /`, `--json-status-fd 3`). | [`every_option_keeps_its_values_on_its_line`](../crates/sam-jail-cli/src/output.rs#L556) |
-| The dependency report shows the system libraries on one line, every other missing library on its own (NOT FOUND when the host lacks it), only what the user still has to grant, and the notes. | [`the_dependency_report_shows_what_is_missing_and_still_needed`](../crates/sam-jail-cli/src/output.rs#L618) |
-| `info` shows the app's comment, why its profile is what it is, its dependency report and its warnings when it has them, and no empty sections when it has none. | [`info_shows_comment_reasons_dependencies_and_warnings`](../crates/sam-jail-cli/src/output.rs#L646) |
+| `info` shows every permission of the catalogue with its value, also the ones it left out before (audit G-F14). | [`info_shows_every_permission_with_its_value`](../crates/sam-jail-cli/src/output.rs#L370) |
+| Every state, risk level and warning severity is shown in its own words: `list`, `info`, `add`, `set` and `evaluate` tell the user an app is Unsafe, Dangerous or lacks its protection only through these. | [`every_state_risk_and_severity_is_shown_in_its_own_words`](../crates/sam-jail-cli/src/output.rs#L434) |
+| The risk columns of `list` and `preset list` are as wide as the widest risk word, so "Some access" (owner decision 17 of 2026-11-23) or a longer translation never pushes the next column out of line: every risk cell takes the same room on the screen. | [`the_risk_column_fits_the_widest_risk_word`](../crates/sam-jail-cli/src/output.rs#L468) |
+| The risk line names the level and the permissions that set it. | [`the_risk_line_names_the_level_and_what_sets_it`](../crates/sam-jail-cli/src/output.rs#L486) |
+| Every warning is shown with its severity, title and message. | [`every_warning_is_shown_with_its_severity_title_and_message`](../crates/sam-jail-cli/src/output.rs#L504) |
+| A name longer than its column is cut to the column with "…", so an app cannot push SAM's real risk and state out of their columns with a long name of its own (a fake "Harmless  Ready" in the name would line up under them). | [`a_long_name_is_cut_to_its_column`](../crates/sam-jail-cli/src/output.rs#L531) |
+| `sam-jail command` shows the sandbox command one option with its values per line, every token in order, and after the real `--` the program with its arguments; joined again it is exactly the command that runs. | [`the_shown_command_is_the_one_that_runs`](../crates/sam-jail-cli/src/output.rs#L548) |
+| Every option of Bubblewrap stays on one line with its values, also those SAM's own command has that were split across lines before (`--uid 1000`, `--overlay-src`, `--overlay` with three values, `--remount-ro /`, `--json-status-fd 3`). | [`every_option_keeps_its_values_on_its_line`](../crates/sam-jail-cli/src/output.rs#L602) |
+| The dependency report shows the system libraries on one line, every other missing library on its own (NOT FOUND when the host lacks it), only what the user still has to grant, and the notes. | [`the_dependency_report_shows_what_is_missing_and_still_needed`](../crates/sam-jail-cli/src/output.rs#L664) |
+| `info` shows the app's comment, why its profile is what it is, its dependency report and its warnings when it has them, and no empty sections when it has none. | [`info_shows_comment_reasons_dependencies_and_warnings`](../crates/sam-jail-cli/src/output.rs#L692) |
 | The permission model is the base: it depends on no other SAM part, so every other part can use it without creating a cycle. | [`the_permission_model_depends_on_no_other_part`](../crates/sam-jail-cli/tests/architecture.rs#L59) |
 | The window contains no sandbox logic: it depends only on the permission model and reaches everything else through `sam-jail --json`, so the window and the command line always behave the same. | [`the_window_reaches_sam_only_through_the_command_line`](../crates/sam-jail-cli/tests/architecture.rs#L67) |
 | The parts that handle untrusted AppImage content or build the sandbox depend only on the parts below them, never on the operations layer, the command line or the window. | [`lower_parts_never_depend_on_higher_ones`](../crates/sam-jail-cli/tests/architecture.rs#L75) |
@@ -988,9 +989,10 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Gnupg reads an appimages key and signature only in a sandbox. | [`gnupg_reads_an_appimages_key_and_signature_only_in_a_sandbox`](../crates/sam-jail-cli/tests/gnupg_sandbox.rs#L53) |
 | `evaluate` and `info` show the risk with what sets it and every warning, as their JSON has them. | [`evaluate_and_info_show_the_risk_and_every_warning`](../crates/sam-jail-cli/tests/human_views.rs#L106) |
 | An app rated Medium reads "Some access" in `list` and `info`, no longer "Harmless" like a Low one, and `--risk` selects it by these words only: `harmless` now selects Low apps alone (owner decision 17 of 2026-11-23). | [`a_medium_app_reads_some_access_in_list_and_info`](../crates/sam-jail-cli/tests/human_views.rs#L155) |
-| `redetect` shows the dependency report it made. | [`redetect_shows_the_dependency_report`](../crates/sam-jail-cli/tests/human_views.rs#L198) |
-| `command` shows exactly the command that runs: joined again, its lines are the argument list of `--json command`, the program's own arguments included. | [`command_shows_exactly_the_command_that_runs`](../crates/sam-jail-cli/tests/human_views.rs#L224) |
-| A long name with columns of its own cannot push SAM's real risk and state out of their columns in `list`, nor the permission tags in `group list`: the name is cut to its column. | [`a_long_app_name_cannot_push_risk_and_state_out_of_their_columns`](../crates/sam-jail-cli/tests/human_views.rs#L285) |
+| Saving and applying a preset name the risk in its words too: a preset that turns sound on reads "Some access" when it is saved, listed and applied, never the internal name "Medium" (owner decision 17 of 2026-11-23). | [`presets_name_the_risk_in_its_words`](../crates/sam-jail-cli/tests/human_views.rs#L201) |
+| `redetect` shows the dependency report it made. | [`redetect_shows_the_dependency_report`](../crates/sam-jail-cli/tests/human_views.rs#L237) |
+| `command` shows exactly the command that runs: joined again, its lines are the argument list of `--json command`, the program's own arguments included. | [`command_shows_exactly_the_command_that_runs`](../crates/sam-jail-cli/tests/human_views.rs#L263) |
+| A long name with columns of its own cannot push SAM's real risk and state out of their columns in `list`, nor the permission tags in `group list`: the name is cut to its column. | [`a_long_app_name_cannot_push_risk_and_state_out_of_their_columns`](../crates/sam-jail-cli/tests/human_views.rs#L324) |
 | The JSON interface lists apps with their tags, changes a permission for several apps, and restores them with the returned "previous" object. | [`group_list_set_and_restore_round_trip`](../crates/sam-jail-cli/tests/interface.rs#L79) |
 | Undo takes back only its own change: a change made to an app since stays, and a later change to the same setting refuses the whole undo instead of being overwritten (audit G-F4: the whole sets from before were written back). | [`undo_takes_back_only_its_own_change`](../crates/sam-jail-cli/tests/interface.rs#L158) |
 | `profile change` applies only what differs between "from" and "to", as the window sends it: a change made elsewhere since the window loaded the settings stays (audit G-F4). | [`a_change_from_the_window_keeps_changes_made_elsewhere`](../crates/sam-jail-cli/tests/interface.rs#L208) |
@@ -1053,7 +1055,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-gtk: The window (logic that runs without a display)
 
-25 tests.
+26 tests.
 
 | Promise | Test |
 |---|---|
@@ -1079,9 +1081,10 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | The editor (the app's page and the Permission Manager for one app) shows every permission in the catalogue, the one list of permissions (audit G-F14: the lists drifted; a setting was missing here). | [`the_editor_shows_every_permission`](../crates/sam-gtk/src/perms.rs#L1285) |
 | A switch whose key the saved form leaves out while it is at its default shows that default: Room service shows on for an app that has it on (every app, unless turned off), off once turned off. | [`a_left_out_setting_shows_its_default`](../crates/sam-gtk/src/perms.rs#L1299) |
 | The window names each risk level with its own words, the same the command line uses: a Medium app reads "Some access", no longer "Harmless" like a Low one, in badges, the app page and the hover text (owner decision 17 of 2026-11-23). | [`the_window_names_each_risk_level_in_its_own_words`](../crates/sam-gtk/src/util.rs#L527) |
-| A named pipe dropped on the window is no AppImage, and checking it does not block the window until something writes to it (audit G-F16). | [`dropped_pipes_and_icon_bombs_never_reach_gtk`](../crates/sam-gtk/src/window.rs#L1923) |
-| The release page of SAM's own update opens only when it is an https page: another scheme could open a local file or start a program through its handler (audit G-F12/13). | [`only_an_https_release_page_is_opened`](../crates/sam-gtk/src/window.rs#L1969) |
-| The folder watcher reacts to AppImages and ignores hidden files and downloads in progress. | [`the_folder_watcher_ignores_hidden_files_and_unfinished_downloads`](../crates/sam-gtk/src/window.rs#L1991) |
+| The question before a preset names the risk before and after in the words the badges use ("Harmless", "Some access"), never the JSON's level names (owner decision 17 of 2026-11-23). | [`the_preset_question_names_the_risk_in_its_words`](../crates/sam-gtk/src/window.rs#L1931) |
+| A named pipe dropped on the window is no AppImage, and checking it does not block the window until something writes to it (audit G-F16). | [`dropped_pipes_and_icon_bombs_never_reach_gtk`](../crates/sam-gtk/src/window.rs#L1951) |
+| The release page of SAM's own update opens only when it is an https page: another scheme could open a local file or start a program through its handler (audit G-F12/13). | [`only_an_https_release_page_is_opened`](../crates/sam-gtk/src/window.rs#L1997) |
+| The folder watcher reacts to AppImages and ignores hidden files and downloads in progress. | [`the_folder_watcher_ignores_hidden_files_and_unfinished_downloads`](../crates/sam-gtk/src/window.rs#L2019) |
 
 ## The window and real AppImages
 
@@ -1096,4 +1099,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 1009 automated Rust tests plus 8 scripted checks.
+Total: 1012 automated Rust tests plus 8 scripted checks.

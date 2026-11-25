@@ -911,7 +911,7 @@ mod tests {
     /// of its own since owner decision 17 of 2026-11-23 (it read "Harmless"
     /// like Low before, and `harmless` selected both).
     #[test]
-    fn risk_has_the_same_three_words_everywhere() {
+    fn risk_has_the_same_words_everywhere() {
         assert_eq!(RiskLevel::Low.words(), "Harmless");
         assert_eq!(RiskLevel::Medium.words(), "Some access");
         assert_eq!(RiskLevel::High.words(), "Think twice");
