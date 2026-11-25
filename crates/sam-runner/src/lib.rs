@@ -14,6 +14,7 @@ pub mod bwrap;
 pub mod contracts;
 pub mod dbus_check;
 pub mod dbus_proxy;
+pub mod device_watch;
 pub mod diagnose;
 pub mod doctor;
 pub mod home_live;

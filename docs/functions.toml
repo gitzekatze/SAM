@@ -349,7 +349,7 @@ tests = [
 id = 15
 area = "C"
 promise = "Sound, GPU, camera and game controllers only when allowed."
-code = ["sam-sandbox/src/lib.rs", "sam-core/src/host.rs"]
+code = ["sam-sandbox/src/lib.rs", "sam-core/src/host.rs", "sam-runner/src/device_watch.rs"]
 tests = [
   "a_helper_sees_the_apps_system_and_nothing_else",
   "a_hanging_relay_gives_up_and_a_finished_start_ends_its_relay",
@@ -364,6 +364,21 @@ tests = [
   "sound_reaches_the_app_through_the_relay_or_only_when_allowed",
   "sdl_gets_its_silent_driver_without_sound_access",
   "gamepads_only_exposes_joysticks",
+  "every_controller_shown_is_watched",
+  "an_unplugged_controller_leaves_the_running_sandbox",
+  "another_device_at_a_controllers_name_is_never_shown",
+  "an_unplugged_controller_leaves_a_sandbox_inside_pasta",
+  "the_launcher_takes_an_unplugged_controller_out_of_the_running_app",
+  "an_unplugged_controller_that_cannot_be_taken_out_ends_the_app",
+  "no_controller_no_watch",
+  "the_first_status_line_is_handed_on_at_once",
+  "ending_the_sandbox_ends_it_at_once",
+  "sams_own_namespace_is_never_taken_for_a_sandbox",
+  "without_landlock_an_unplugged_controller_ends_the_app",
+  "where_taking_out_is_not_enough_the_whole_sandbox_ends",
+  "where_taking_out_is_not_enough_a_sandbox_inside_pasta_ends",
+  "a_room_never_gets_a_watched_game_controller",
+  "with_nested_namespaces_an_unplugged_controller_ends_the_app",
   "nvidia_modules_are_exposed_with_the_gpu",
   "each_permission_grants_exactly_its_access_in_a_real_sandbox",
   "sound_and_bus_data_come_with_their_permissions",

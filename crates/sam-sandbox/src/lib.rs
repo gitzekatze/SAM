@@ -1769,6 +1769,7 @@ impl Bubblewrap {
             exec_env: Vec::new(),
             opened,
             views,
+            watched_devices: Vec::new(),
         };
         s.namespaces();
         s.system();
@@ -1801,6 +1802,7 @@ impl Bubblewrap {
             exec_env: s.exec_env,
             notes: s.notes,
             generated_files,
+            watched_devices: s.watched_devices,
         })
     }
 }
@@ -1817,6 +1819,8 @@ struct Section<'c> {
     opened: Vec<(PathBuf, bool)>,
     /// Every grant ([`Views::of`]).
     views: Views,
+    /// Devices shown by name ([`SandboxCommand::watched_devices`]).
+    watched_devices: Vec<sam_core::sandbox::WatchedDevice>,
 }
 
 impl Section<'_> {
@@ -2325,7 +2329,7 @@ impl Section<'_> {
             a.op2("--dev-bind-try", "/dev/input", "/dev/input");
             a.op2("--dev-bind-try", "/dev/uinput", "/dev/uinput");
         } else if p.devices.gamepads {
-            let found = sort_gamepad_nodes(Path::new("/dev/input"), Path::new("/run/udev/data"));
+            let found = sort_gamepad_nodes(&h.input_devices.nodes, &h.input_devices.udev_data);
             let list = |v: &[PathBuf]| {
                 v.iter()
                     .map(|p| p.display().to_string())
@@ -2347,9 +2351,12 @@ impl Section<'_> {
             if found.shown.is_empty() && found.refused.is_empty() && found.unknown.is_empty() {
                 notes.push(sam_core::i18n::tr("No game controller is plugged in; controllers connected later are not seen until the app restarts"));
             }
-            for d in found.shown {
-                a.op2("--dev-bind-try", &d, &d);
-            }
+            bind_watched(
+                a,
+                &mut self.watched_devices,
+                &h.input_devices.nodes,
+                found.shown,
+            );
         }
         if p.devices.usb {
             a.op2("--dev-bind-try", "/dev/bus/usb", "/dev/bus/usb");
@@ -2972,6 +2979,40 @@ fn gpu_module_dirs(sys_module: &Path) -> Vec<PathBuf> {
         .unwrap_or_default();
     out.sort();
     out
+}
+
+/// Shows each device node by name and notes what it is now, so that SAM
+/// takes it out of the running sandbox once its name shows anything else
+/// (unplugged, or another device at its number: sam-runner `device_watch`,
+/// review R56). A node that is gone already is not shown. Their folder
+/// (`dir`) is a read-only folder of its own: as a mount point it cannot be
+/// renamed or replaced from inside, so the node SAM takes out is always at
+/// the name SAM knows.
+fn bind_watched(
+    a: &mut Args,
+    watched: &mut Vec<sam_core::sandbox::WatchedDevice>,
+    dir: &Path,
+    nodes: Vec<PathBuf>,
+) {
+    use std::os::unix::fs::MetadataExt;
+    a.push("--tmpfs").path(dir);
+    for d in nodes {
+        let Ok(md) = fs::metadata(&d) else {
+            continue;
+        };
+        let before = a.v.len();
+        a.op2("--dev-bind-try", &d, &d);
+        if a.v.len() == before {
+            continue;
+        }
+        watched.push(sam_core::sandbox::WatchedDevice {
+            path: d,
+            dev: md.dev(),
+            ino: md.ino(),
+            rdev: md.rdev(),
+        });
+    }
+    a.push("--remount-ro").path(dir);
 }
 
 /// What udev records for an input device that also makes it a keyboard
@@ -4098,6 +4139,37 @@ mod tests {
             .unwrap();
             assert!(gamepad_nodes(&dev, &udev).is_empty(), "{kind}");
         }
+    }
+
+    /// Every game controller shown by name is watched while the app runs,
+    /// with what it was when it was chosen; one already gone is neither
+    /// shown nor watched (review R56).
+    #[test]
+    fn every_controller_shown_is_watched() {
+        let t = tempfile::tempdir().unwrap();
+        let (pad, gone) = (t.path().join("event7"), t.path().join("event8"));
+        std::os::unix::fs::symlink("/dev/null", &pad).unwrap();
+        let mut a = Args::default();
+        let mut watched = Vec::new();
+        bind_watched(&mut a, &mut watched, t.path(), vec![pad.clone(), gone]);
+        let null = fs::metadata("/dev/null").unwrap();
+        use std::os::unix::fs::MetadataExt;
+        assert_eq!(
+            watched,
+            vec![sam_core::sandbox::WatchedDevice {
+                path: pad.clone(),
+                dev: null.dev(),
+                ino: null.ino(),
+                rdev: null.rdev(),
+            }]
+        );
+        // In a read-only folder of their own, which the app cannot rename.
+        let (p, d) = (pad.display().to_string(), t.path().display().to_string());
+        let want: Vec<String> = ["--tmpfs", &d, "--dev-bind-try", &p, &p, "--remount-ro", &d]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert_eq!(a.v, want);
     }
 
     /// With the GPU, the NVIDIA driver modules are visible; other kernel modules are not.

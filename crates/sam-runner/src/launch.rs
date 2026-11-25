@@ -74,6 +74,8 @@ pub struct Prepared {
     pub warnings: Vec<Warning>,
     pub landlock: bool,
     pub seccomp: bool,
+    /// The app may make namespaces of its own (Advanced setting).
+    pub allow_userns: bool,
     /// The kernel layers the settings ask for, applied or not (without SAM's
     /// helper they cannot be): what a start is checked against.
     pub wanted_landlock: bool,
@@ -732,7 +734,13 @@ pub fn prepare(
         fs::write(&helper.spec, serde_json::to_vec_pretty(&spec)?)?;
     }
     let rooms = rooms.map(|(mut service, bwrap)| {
-        let plan = crate::room_rules::FloorPlan::from_bwrap_args(&command.args);
+        let watched: Vec<PathBuf> = command
+            .watched_devices
+            .iter()
+            .map(|d| d.path.clone())
+            .collect();
+        let plan = crate::room_rules::FloorPlan::from_bwrap_args(&command.args)
+            .map(|p| p.without_devices(&watched));
         let room_ctx = crate::room_service::RoomContext {
             plan: plan.clone().unwrap_or_default(),
             facts: crate::room_rules::AppFacts {
@@ -807,6 +815,7 @@ pub fn prepare(
         warnings,
         landlock,
         seccomp,
+        allow_userns: perms.advanced.allow_userns,
         wanted_landlock,
         wanted_seccomp,
         wanted_fence: wanted_landlock
@@ -1126,9 +1135,36 @@ fn run_once(
     // sees when the app's side is closed.
     drop(cmd);
     let child_done = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    // Bubblewrap's first status line names the sandbox, which the watch of
+    // the game controllers needs to take one out (`device_watch`).
+    let (status_line, sandbox_status) = std::sync::mpsc::channel();
     let bwrap_status_reader = channels
         .bwrap_status
-        .map(|r| read_fd_in_thread(r, child_done.clone()));
+        .map(|r| read_fd_in_thread(r, child_done.clone(), Some(status_line)));
+    // Taking an unplugged controller out is enough only where Landlock
+    // refuses every new open of it (also through a handle the app holds)
+    // and the app makes no namespaces of its own (which would keep copies
+    // of it); elsewhere SAM ends the app when one is unplugged.
+    let helper_report: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+    let unplugged = if !prepared.landlock {
+        crate::device_watch::Unplugged::EndApp(sam_core::i18n::tr(
+            "Landlock is not in place, so a handle the app holds could still reach the next device",
+        ))
+    } else if prepared.allow_userns {
+        crate::device_watch::Unplugged::EndApp(sam_core::i18n::tr(
+            "the app may make namespaces of its own, which SAM cannot reach",
+        ))
+    } else {
+        crate::device_watch::Unplugged::TakeOut {
+            helper_report: helper_report.clone(),
+        }
+    };
+    let device_watch = crate::device_watch::DeviceWatch::start(
+        prepared.command.watched_devices.clone(),
+        sandbox_status,
+        unplugged,
+        crate::device_watch::end_launched(child.id()),
+    );
     // What the start lacks is told as soon as it is known: at once without
     // a report from SAM's helper, else when the helper has reported (right
     // before the app starts). A helper that never reported has not started
@@ -1155,9 +1191,12 @@ fn run_once(
     };
     let helper_status_reader = match channels.helper_status {
         Some(r) => {
-            let reader = read_fd_in_thread(r, child_done.clone());
+            let reader = read_fd_in_thread(r, child_done.clone(), None);
             Some(std::thread::spawn(move || {
                 let report = reader.join().unwrap_or_default();
+                if let Ok(mut r) = helper_report.lock() {
+                    *r = Some(report.trim().to_string());
+                }
                 if !report.trim().is_empty() {
                     tell_missing(Some(report.trim()));
                 }
@@ -1222,6 +1261,7 @@ fn run_once(
         mode,
     )?;
     child_done.store(true, std::sync::atomic::Ordering::SeqCst);
+    let devices = device_watch.map(|w| w.finish()).unwrap_or_default();
     // Every room ends with the app's start, before SAM waits for the app's
     // output: a room holds the program's output, and one left running must
     // not hold up the end of the start. What was built or refused goes into
@@ -1240,7 +1280,7 @@ fn run_once(
     drop(prepared.sound);
     drop(prepared.wayland);
     if let Ok(mut l) = log.lock() {
-        for line in room_lines {
+        for line in room_lines.iter().chain(&devices.lines) {
             let _ = writeln!(l, "{line}");
         }
     }
@@ -1261,7 +1301,13 @@ fn run_once(
         closed_by_sam,
         timed_out.then_some(opts.timeout_secs.unwrap_or(0)),
     );
-    if relay_end.as_ref().is_some_and(|r| r.hung_up)
+    if devices.ended_app {
+        // Not the app's doing: SAM ended it to keep its promise.
+        outcome.success = false;
+        outcome.summary = sam_core::i18n::tr(
+            "ended by SAM: a game controller was unplugged and SAM could not safely take it out of the sandbox",
+        );
+    } else if relay_end.as_ref().is_some_and(|r| r.hung_up)
         && !outcome.sandbox_failure
         && !outcome.setup_failed
     {
@@ -2176,9 +2222,12 @@ fn open_fifo_reader(path: &Path) -> Result<i32> {
 /// for FIFOs a writer may never open: on Linux, poll() reports a hangup on a
 /// FIFO only after a writer was connected, and `done` ends the wait once the
 /// sandbox process has exited.
+/// Reads a status channel until the sandbox ends; `first_line` gets its
+/// first line as soon as it is complete (dropped without one otherwise).
 fn read_fd_in_thread(
     fd: i32,
     done: Arc<std::sync::atomic::AtomicBool>,
+    mut first_line: Option<std::sync::mpsc::Sender<String>>,
 ) -> std::thread::JoinHandle<String> {
     std::thread::spawn(move || {
         let mut out = Vec::new();
@@ -2207,6 +2256,11 @@ fn read_fd_in_thread(
             let r = unsafe { libc::read(fd, buf.as_mut_ptr().cast(), buf.len()) };
             if r > 0 {
                 out.extend_from_slice(&buf[..r as usize]);
+                if let Some(end) = out.iter().position(|&b| b == b'\n') {
+                    if let Some(tx) = first_line.take() {
+                        let _ = tx.send(String::from_utf8_lossy(&out[..end]).into_owned());
+                    }
+                }
                 if out.len() > 64 * 1024 {
                     break;
                 }
@@ -2309,6 +2363,34 @@ mod log_limit_tests {
 #[cfg(test)]
 mod pasta_status_tests {
     use super::*;
+
+    /// The first status line reaches the controllers' watch as soon as it
+    /// is complete, while the whole channel is still read to its end;
+    /// without a line the watch hears that none comes (review R56).
+    #[test]
+    fn the_first_status_line_is_handed_on_at_once() {
+        for (text, first) in [
+            (
+                "{\"child-pid\": 7}\n{\"exit-code\": 0}\n",
+                Some("{\"child-pid\": 7}"),
+            ),
+            ("", None),
+        ] {
+            let (r, w) = status_pipe().unwrap();
+            let (tx, rx) = std::sync::mpsc::channel();
+            let done = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let reader = read_fd_in_thread(r, done.clone(), Some(tx));
+            // SAFETY: writes the text to the pipe's write end, then closes it once.
+            unsafe {
+                libc::write(w, text.as_ptr().cast(), text.len());
+                libc::close(w);
+            }
+            let got = rx.recv_timeout(std::time::Duration::from_secs(5)).ok();
+            assert_eq!(got.as_deref(), first);
+            done.store(true, std::sync::atomic::Ordering::SeqCst);
+            assert_eq!(reader.join().unwrap(), text);
+        }
+    }
 
     /// Review K-1: a start that relies on Landlock's abstract-socket fence
     /// (it shares the host's network, the kernel has the fence) counts it

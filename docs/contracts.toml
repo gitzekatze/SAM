@@ -183,6 +183,18 @@ coverage = "full"
 playbook = "Bubblewrap rejects an option it does not know, so the start fails instead of running without the protection. Raise the minimum version in install.md, or offer allow_userns only where the option is missing."
 
 [[contract]]
+id = "bwrap-status-mount-namespace"
+component = "bubblewrap"
+assumes = "Bubblewrap's first status line (--json-status-fd) names the sandbox's mount namespace (\"mnt-namespace\", its inode), also inside pasta, and SAM, as the same user, can enter that namespace and the user namespace that owns it to take a game controller's node out of the running sandbox."
+covers = []
+functions = [15]
+probe = "bwrap-runs"
+tests = ["an_unplugged_controller_leaves_the_running_sandbox", "another_device_at_a_controllers_name_is_never_shown", "an_unplugged_controller_leaves_a_sandbox_inside_pasta", "the_launcher_takes_an_unplugged_controller_out_of_the_running_app"]
+on_break = "feature"
+coverage = "full"
+playbook = "Without it SAM cannot take an unplugged controller out, so it ends the app instead (device_watch.rs); a game then closes when its controller is unplugged. A renamed field: read it in Sandbox::from_status. A kernel that refuses to enter the namespaces: the tests name the step (user namespace, mount namespace, unmount)."
+
+[[contract]]
 id = "bwrap-rooms"
 component = "bubblewrap"
 assumes = "Bubblewrap shows a folder or file SAM opened (--bind-fd, --ro-bind-fd) as exactly that opened object and refuses when it changed on the way, writes data from a connection into a file (--ro-bind-data), shares the network only with --share-net, and has exactly the options Room service knows (0.11 to 0.13). Room service builds rooms with the first and refuses every option of the rest that could give a room more than its app."
@@ -367,9 +379,9 @@ playbook = "A filter that fails to load stops the start. When the syscall review
 [[contract]]
 id = "kernel-procfs"
 component = "kernel"
-assumes = "/proc shows process status, network tables and kernel facts at these paths; the sandbox check reads them from inside."
-covers = ["path:/proc", "path:/proc/", "path:/proc/self/status", "path:/proc/self/fd", "path:/proc/self/fd/0", "path:/proc/self/fd/1", "path:/proc/self/fd/2", "path:/proc/net/*", "path:/proc/sys/kernel/hostname", "path:/proc/sys/kernel/osrelease", "path:/proc/sys/kernel/random/boot_id"]
-functions = [16, 20, 33]
+assumes = "/proc shows process status, network tables, kernel facts and each process's namespaces at these paths; the sandbox check reads them from inside, and the controller watch compares namespaces with SAM's own."
+covers = ["path:/proc", "path:/proc/", "path:/proc/self/status", "path:/proc/self/fd", "path:/proc/self/fd/0", "path:/proc/self/fd/1", "path:/proc/self/fd/2", "path:/proc/net/*", "path:/proc/sys/kernel/hostname", "path:/proc/sys/kernel/osrelease", "path:/proc/sys/kernel/random/boot_id", "path:/proc/self/ns/"]
+functions = [15, 16, 20, 33]
 probe = "none"
 tests = ["each_permission_grants_exactly_its_access_in_a_real_sandbox", "a_start_file_left_by_a_killed_launcher_is_still_moved_aside"]
 on_break = "warn"
