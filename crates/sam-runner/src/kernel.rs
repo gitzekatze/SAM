@@ -695,9 +695,11 @@ fn listed_calls(spec: &SeccompSpec) -> Result<seccompiler::BpfProgram> {
     if spec.strict {
         list.extend(strict_extra_syscalls().into_iter().map(|(_, n)| n));
     }
-    // x32 calls never get here (`front_filter`); 32-bit calls through
-    // int 0x80 fail the architecture check and end the process, unless
-    // the app is a 32-bit one (`i386_branch` answered them already).
+    // Neither x32 calls nor calls of another architecture get here: the
+    // first end at `front_filter`'s x32 check, the second at its
+    // architecture check (a 32-bit app's 32-bit calls were answered by
+    // `i386_branch` before that). Seccompiler's own check below is a
+    // second one for the same architecture.
     let mut rules: BTreeMap<i64, Vec<SeccompRule>> =
         list.into_iter().map(|s| (s, vec![])).collect();
     // Terminal input injection into the parent's tty (TIOCSTI, TIOCLINUX).
@@ -867,6 +869,28 @@ mod tests {
     fn sock(family: i32, kind: i32, proto: i32) -> libc::c_long {
         // SAFETY: socket takes plain integers.
         unsafe { libc::socket(family, kind, proto) as libc::c_long }
+    }
+
+    /// Review R71: the hand-written architecture check that opens
+    /// [`front_filter`] is the one seccompiler builds for this processor
+    /// (same field, same number, same end), on every processor SAM builds
+    /// for. A wrong number for aarch64 would end every call there; this
+    /// test catches it on an x86_64 machine too, since both are compared
+    /// for the processor the test runs on and CI runs it on both.
+    #[test]
+    fn the_filter_checks_the_architecture_seccompiler_checks() {
+        for spec in [
+            SeccompSpec::default(),
+            SeccompSpec {
+                strict: true,
+                bluetooth: true,
+                ..SeccompSpec::default()
+            },
+        ] {
+            let front = front_filter(&spec);
+            let listed = listed_calls(&spec).unwrap();
+            assert_eq!(front[..3], listed[..3], "the architecture check");
+        }
     }
 
     /// The filter, applied by the real kernel in a child process: every

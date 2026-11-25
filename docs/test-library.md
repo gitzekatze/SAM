@@ -381,7 +381,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-421 tests.
+422 tests.
 
 | Promise | Test |
 |---|---|
@@ -436,14 +436,15 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Review 2026-11-23 F1: app M plants `~/.bash_profile` (a link to its own script) while it runs; a second launch started meanwhile must not take that link for the user's own and put it back each time it is moved aside. | [`a_second_launch_never_takes_a_link_planted_meanwhile_for_the_users_own`](../crates/sam-runner/src/home_shared.rs#L300) |
 | A launch that still runs keeps its record, and what it watches is left alone: only a record whose launcher is gone gets the last look (mutation run 2026-11-24: taking every record for a killed launcher's went unnoticed). | [`a_running_launch_is_never_taken_for_a_killed_one`](../crates/sam-runner/src/home_shared.rs#L358) |
 | Review 2026-11-23 F2: when SAM's launcher is killed (SIGKILL, a crash), its last look still happens: the next look at the running launches (`Sam::running`, which the window, `stop` and every start use) moves aside what the app left, and says so in its log. | [`a_start_file_left_by_a_killed_launcher_is_still_moved_aside`](../crates/sam-runner/src/home_shared.rs#L380) |
-| The Landlock rules allow writing exactly in the folders the permissions grant. | [`landlock_allows_writing_exactly_in_granted_folders`](../crates/sam-runner/src/kernel.rs#L758) |
-| The filter, applied by the real kernel in a child process: every call through the x32 ABI is refused (audit S-F9; x32 `ptrace` has its own number), the siblings of blocked calls are blocked too (S-F10), and a socket opens only as local, internet or netlink, Bluetooth only with its switch (S-F7). | [`the_filter_refuses_x32_odd_sockets_and_the_siblings`](../crates/sam-runner/src/kernel.rs#L878) |
-| Bubblewrap reads the filter as eight bytes per instruction. | [`the_filter_reaches_bubblewrap_as_whole_instructions`](../crates/sam-runner/src/kernel.rs#L939) |
-| The syscall filter compiles in every variant and always blocks mount and io_uring. | [`the_syscall_filter_compiles_and_blocks_mount_and_io_uring`](../crates/sam-runner/src/kernel.rs#L950) |
-| Review K-2: without nested sandboxes the filter refused unshare() but let clone() and clone3() make a new user namespace, which the unpack sandbox did not stop otherwise. | [`without_nested_sandboxes_clone_cannot_make_a_user_namespace`](../crates/sam-runner/src/kernel.rs#L989) |
-| A 32 bit app gets its calls filtered not switched off. | [`a_32_bit_app_gets_its_calls_filtered_not_switched_off`](../crates/sam-runner/src/kernel.rs#L1050) |
-| Review K-1: the abstract-socket fence is its own item in the helper's report. | [`the_helper_reports_the_socket_fence_on_its_own`](../crates/sam-runner/src/kernel.rs#L1164) |
-| Every call the filter blocks by name has its 32-bit numbers in [`I386_CALLS`] (kexec_file_load has none), and every name there is one the filter blocks: a call added to the list is not forgotten for 32-bit apps. | [`every_blocked_call_is_blocked_for_32_bit_apps_too`](../crates/sam-runner/src/kernel.rs#L1179) |
+| The Landlock rules allow writing exactly in the folders the permissions grant. | [`landlock_allows_writing_exactly_in_granted_folders`](../crates/sam-runner/src/kernel.rs#L760) |
+| Review R71: the hand-written architecture check that opens [`front_filter`] is the one seccompiler builds for this processor (same field, same number, same end), on every processor SAM builds for. | [`the_filter_checks_the_architecture_seccompiler_checks`](../crates/sam-runner/src/kernel.rs#L880) |
+| The filter, applied by the real kernel in a child process: every call through the x32 ABI is refused (audit S-F9; x32 `ptrace` has its own number), the siblings of blocked calls are blocked too (S-F10), and a socket opens only as local, internet or netlink, Bluetooth only with its switch (S-F7). | [`the_filter_refuses_x32_odd_sockets_and_the_siblings`](../crates/sam-runner/src/kernel.rs#L902) |
+| Bubblewrap reads the filter as eight bytes per instruction. | [`the_filter_reaches_bubblewrap_as_whole_instructions`](../crates/sam-runner/src/kernel.rs#L963) |
+| The syscall filter compiles in every variant and always blocks mount and io_uring. | [`the_syscall_filter_compiles_and_blocks_mount_and_io_uring`](../crates/sam-runner/src/kernel.rs#L974) |
+| Review K-2: without nested sandboxes the filter refused unshare() but let clone() and clone3() make a new user namespace, which the unpack sandbox did not stop otherwise. | [`without_nested_sandboxes_clone_cannot_make_a_user_namespace`](../crates/sam-runner/src/kernel.rs#L1013) |
+| A 32 bit app gets its calls filtered not switched off. | [`a_32_bit_app_gets_its_calls_filtered_not_switched_off`](../crates/sam-runner/src/kernel.rs#L1074) |
+| Review K-1: the abstract-socket fence is its own item in the helper's report. | [`the_helper_reports_the_socket_fence_on_its_own`](../crates/sam-runner/src/kernel.rs#L1188) |
+| Every call the filter blocks by name has its 32-bit numbers in [`I386_CALLS`] (kexec_file_load has none), and every name there is one the filter blocks: a call added to the list is not forgotten for 32-bit apps. | [`every_blocked_call_is_blocked_for_32_bit_apps_too`](../crates/sam-runner/src/kernel.rs#L1203) |
 | A log written before SAM kept only the text, or edited by hand, still shows only text (audit L-F3): `sam-jail logs` and bug reports read it through `tail`. | [`an_old_log_shows_only_its_text`](../crates/sam-runner/src/launch.rs#L2245) |
 | An app that prints without end cannot fill the disk or SAM's memory: the launch log stops at its limit with a note, a line without an end is read in pieces, and the whole output is still read. | [`a_launch_log_stops_growing_at_its_limit`](../crates/sam-runner/src/launch.rs#L2261) |
 | Review K-1: a start that relies on Landlock's abstract-socket fence (it shares the host's network, the kernel has the fence) counts it as missing unless the helper reported it in place, also when Landlock itself reads "fully enforced" (a helper too old to report it). | [`a_missing_socket_fence_is_reported_when_the_start_relies_on_it`](../crates/sam-runner/src/launch.rs#L2318) |
@@ -1008,4 +1009,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 921 automated Rust tests plus 8 scripted checks.
+Total: 922 automated Rust tests plus 8 scripted checks.
