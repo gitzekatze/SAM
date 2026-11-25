@@ -258,16 +258,25 @@ pub fn plan_within(c: &Control, old: &[u8], limit: std::time::Duration) -> Vec<O
         let to = by_rsum.partition_point(|(r, _)| *r <= key);
         &by_rsum[from..to]
     };
-    let strong = |i: usize, off: usize| -> bool {
-        if off + bs > old.len() {
+    // Block `i` against `len` bytes of the old file at `off`, padded with
+    // zeros to a whole block as zsync pads a short last block.
+    // Set by every MD4 comparison: a step that made one looks at the clock.
+    let hashed = std::cell::Cell::new(false);
+    let strong = |i: usize, off: usize, len: usize| -> bool {
+        if off + len > old.len() {
             return false;
         }
-        md4_of(&old[off..off + bs], bs)[..c.checksum_bytes] == *c.checksum(i)
+        hashed.set(true);
+        md4_of(&old[off..off + len], bs)[..c.checksum_bytes] == *c.checksum(i)
     };
-    let weak = |i: usize, off: usize| -> bool {
-        off + bs <= old.len() && rsum_key(rsum(&old[off..off + bs]), c.rsum_bytes) == c.rsums[i]
+    let weak = |i: usize, off: usize, len: usize| -> bool {
+        off + len <= old.len()
+            && rsum_key(rsum(&pad(&old[off..off + len], bs)), c.rsum_bytes) == c.rsums[i]
     };
+    // The length of the new file's last block (it may be short).
+    let tail = (c.length as usize).saturating_sub(n.saturating_sub(1) * bs);
     let mut off = 0usize;
+    let mut steps = 0u32;
     let mut r = rsum(&old[..bs]);
     loop {
         let mut matched = false;
@@ -288,12 +297,16 @@ pub fn plan_within(c: &Control, old: &[u8], limit: std::time::Duration) -> Vec<O
                 // With seq_matches 2 the stored checksums are short: the next
                 // block must match too (the last block of the file stands
                 // alone). Its cheap checksum goes first, so MD4 runs only
-                // on real candidates.
+                // on real candidates. When the next block is a short last
+                // block, only its length is compared, padded like zsync
+                // pads it: comparing a whole block never matched, so the
+                // block before it was always downloaded (review B2 S6, R84).
                 let pair = c.seq_matches == 2 && i + 1 < n;
-                if pair && !weak(i + 1, off + bs) {
+                let next = if i + 2 == n { tail } else { bs };
+                if pair && !weak(i + 1, off + bs, next) {
                     continue;
                 }
-                if !strong(i, off) || (pair && !strong(i + 1, off + bs)) {
+                if !strong(i, off, bs) || (pair && !strong(i + 1, off + bs, next)) {
                     continue;
                 }
                 found[i] = Some(off as u64);
@@ -304,8 +317,14 @@ pub fn plan_within(c: &Control, old: &[u8], limit: std::time::Duration) -> Vec<O
         if off + step + bs > old.len() {
             break;
         }
-        // Looking at the clock every 64 KiB of offsets is enough.
-        if off.is_multiple_of(64 << 10) && started.elapsed() > limit {
+        // The clock is read after every step that compared an MD4 (which
+        // costs far more than reading the clock) and every 4096 steps
+        // otherwise. Reading it only at offsets that are a multiple of
+        // 64 KiB let a description whose blocks match one after another
+        // off those offsets step over every one of them, so planning never
+        // stopped (review B2 S6, R90).
+        steps = steps.wrapping_add(1);
+        if (hashed.replace(false) || steps.is_multiple_of(4096)) && started.elapsed() > limit {
             break;
         }
         if step == 1 {
@@ -366,12 +385,18 @@ pub fn assemble(
     dest: &Path,
     mut fetch: impl FnMut(u64, u64) -> Result<Vec<u8>>,
 ) -> Result<()> {
+    // A new file, never through a link, like a whole download: `dest` lies
+    // in SAM's own folder, which the caller made fresh, so anything already
+    // there was planted (review B2 S6, R91).
+    use std::os::unix::fs::OpenOptionsExt;
     let mut f = std::fs::OpenOptions::new()
-        .create(true)
-        .truncate(true)
+        .create_new(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .mode(0o644)
         .write(true)
         .read(true)
-        .open(dest)?;
+        .open(dest)
+        .with_context(|| format!("creating {}", dest.display()))?;
     f.set_len(c.length)?;
     let bs = c.blocksize as u64;
     for (i, p) in plan.iter().enumerate() {
@@ -396,7 +421,10 @@ pub fn assemble(
         f.seek(SeekFrom::Start(s))?;
         f.write_all(&data)?;
     }
-    f.flush()?;
+    // On the disk before it is used: SAM's own update renames this file
+    // into place after moving the old SAM away, so a power loss must not
+    // leave an empty file there (review B2 S6, R91).
+    f.sync_all()?;
     f.seek(SeekFrom::Start(0))?;
     let mut h = Sha1::new();
     let mut buf = vec![0u8; 1 << 20];
@@ -524,6 +552,7 @@ mod tests {
         assert_eq!(std::fs::read(&out).unwrap(), new);
 
         // A wrong download is caught by the SHA-1.
+        std::fs::remove_file(&out).unwrap();
         let bad = assemble(&c, &old, &p, &ranges, &out, |s, e| {
             Ok(vec![0u8; (e - s) as usize])
         });
@@ -666,6 +695,108 @@ mod tests {
         assert_eq!((c.seq_matches, c.rsum_bytes, c.checksum_bytes), (2, 2, 5));
         let p = plan(&c, &old);
         assert!(p.iter().all(Option::is_some), "short format: {p:?}");
+    }
+
+    /// Regression (review B2 S6, R84): with `seq_matches` 2 a block is
+    /// taken only together with the next one, and when that next one was a
+    /// short last block, a whole block was compared and never matched, so
+    /// the block before it was downloaded at every update. Now the short
+    /// block is compared at its own length, padded with zeros as zsync pads
+    /// it: an unchanged file is reused whole. A change in the last block
+    /// still keeps both from being taken.
+    #[test]
+    fn the_block_before_a_short_last_block_is_reused_in_pairs() {
+        let old = sample(10 * 2048 + 700, 5);
+        let mut c = described(&old);
+        c.seq_matches = 2;
+        let n = c.block_count();
+        assert_eq!(n, 11, "ten whole blocks and a short one");
+        let p = plan(&c, &old);
+        assert!(p.iter().all(Option::is_some), "{p:?}");
+        assert_eq!(p[n - 2], Some(9 * 2048));
+        let mut changed = old.clone();
+        changed[10 * 2048 + 300] ^= 0xff;
+        let p = plan(&c, &changed);
+        assert_eq!(p[n - 2], None, "its next block changed");
+        assert_eq!(p[n - 1], None, "the changed block itself");
+        // Too little old data after it: nothing is compared past the end.
+        let p = plan(&c, &old[..10 * 2048 + 600]);
+        assert_eq!(p[n - 2], None, "the old file ends inside the last block");
+    }
+
+    /// Regression (review B2 S6, R90): planning looked at the clock only
+    /// at offsets that are a multiple of 64 KiB. Here the old file starts
+    /// with one extra byte, so every block matches at an odd offset and
+    /// each step jumps a whole block past those offsets: planning ran to
+    /// the end whatever its limit. Now it stops at its limit, leaving the
+    /// rest for downloading.
+    #[test]
+    fn planning_stops_at_its_limit_also_when_blocks_match_off_the_checkpoints() {
+        let bs = 2048;
+        let new = sample(32 << 20, 9);
+        let n = new.len() / bs;
+        let mut c = Control {
+            filename: None,
+            url: None,
+            sha1: String::new(),
+            length: new.len() as u64,
+            blocksize: bs,
+            seq_matches: 1,
+            rsum_bytes: 4,
+            checksum_bytes: 16,
+            rsums: Vec::with_capacity(n),
+            checksums: Vec::with_capacity(n * 16),
+        };
+        for b in new.chunks(bs) {
+            c.rsums.push(rsum_key(rsum(b), 4));
+            c.checksums.extend_from_slice(&md4_of(b, bs));
+        }
+        let mut old = vec![0xa5u8];
+        old.extend_from_slice(&new);
+        let t = std::time::Instant::now();
+        let p = plan_within(&c, &old, std::time::Duration::from_millis(20));
+        let took = t.elapsed();
+        let reused = p.iter().filter(|x| x.is_some()).count();
+        assert!(reused > 0, "the blocks match at odd offsets");
+        assert!(
+            reused < n / 2,
+            "planning stopped at its limit: {reused} of {n} blocks planned in {took:?}"
+        );
+        assert!(took < std::time::Duration::from_secs(5), "{took:?}");
+    }
+
+    /// Regression (review B2 S6, R91): `assemble` opened its target with
+    /// create and truncate, following links, unlike a whole download. A
+    /// link or file planted at the target is now refused, and nothing is
+    /// written through it.
+    #[test]
+    fn assembling_an_update_never_writes_through_a_planted_link() {
+        let d = tempfile::tempdir().unwrap();
+        let new = sample(10_000, 4);
+        let c = described(&new);
+        let p = plan(&c, &new);
+        let ranges = missing_ranges(&c, &p, 0);
+        let victim = d.path().join("victim");
+        std::fs::write(&victim, "keep").unwrap();
+        let link = d.path().join("new.AppImage");
+        std::os::unix::fs::symlink(&victim, &link).unwrap();
+        let fetch =
+            |s: u64, e: u64| -> Result<Vec<u8>> { Ok(new[s as usize..e as usize].to_vec()) };
+        assert!(assemble(&c, &new, &p, &ranges, &link, fetch).is_err());
+        assert_eq!(std::fs::read_to_string(&victim).unwrap(), "keep");
+        assert!(std::fs::symlink_metadata(&link)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        // A file already there is not overwritten either.
+        let there = d.path().join("there.AppImage");
+        std::fs::write(&there, "keep").unwrap();
+        assert!(assemble(&c, &new, &p, &ranges, &there, fetch).is_err());
+        assert_eq!(std::fs::read_to_string(&there).unwrap(), "keep");
+        // A fresh target is built.
+        let fresh = d.path().join("fresh.AppImage");
+        assemble(&c, &new, &p, &ranges, &fresh, fetch).unwrap();
+        assert_eq!(std::fs::read(&fresh).unwrap(), new);
     }
 
     /// A description from a hostile server cannot crash SAM or keep it busy

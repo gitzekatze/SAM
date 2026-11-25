@@ -12,6 +12,9 @@
 //! The lock is a file beside the apps' runtime folders, `.<id>.lock`, never
 //! inside one: removing a sandbox deletes the app's runtime folder, and a
 //! lock on a deleted file no longer meets the lock on a new one.
+//!
+//! SAM's own update has one lock of its own ([`for_self_update`]), so two
+//! updates of SAM never run at once.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -145,6 +148,50 @@ pub fn for_change_within(paths: &Paths, id: &str, wait: Duration) -> Result<Opti
     }))
 }
 
+/// SAM's own update, held until dropped.
+#[derive(Debug)]
+pub struct SelfUpdateLock {
+    _file: fs::File,
+}
+
+/// The lock file of SAM's own update: in SAM's data folder, never inside
+/// `downloads/` or `update-backups/`, which the update empties (a lock on a
+/// deleted file no longer meets the lock on a new one).
+pub fn self_update_path(paths: &Paths) -> PathBuf {
+    paths.data_dir.join(".self-update.lock")
+}
+
+/// Holds SAM's own update, without waiting. None while another update of
+/// SAM runs (from the window or the command line): both would share
+/// `downloads/sam` and `update-backups/sam` and delete each other's files,
+/// the backup of the old SAM among them (review B2 S6, R95).
+pub fn for_self_update(paths: &Paths) -> Result<Option<SelfUpdateLock>> {
+    let p = self_update_path(paths);
+    fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(&paths.data_dir)
+        .with_context(|| format!("creating {}", paths.data_dir.display()))?;
+    let f = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(&p)
+        .with_context(|| format!("opening {}", p.display()))?;
+    // Not through `take`: its error names an app, and this one is SAM's.
+    // SAFETY: `f` is an open file; flock only takes its descriptor.
+    if unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+        return Ok(Some(SelfUpdateLock { _file: f }));
+    }
+    let err = std::io::Error::last_os_error();
+    if err.kind() == std::io::ErrorKind::WouldBlock {
+        return Ok(None);
+    }
+    Err(err).context(sam_core::i18n::tr("locking the update of SAM"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -237,6 +284,37 @@ mod tests {
             // SAFETY: `fd` is an open descriptor; F_GETFD only reads its flags.
             let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
             assert!(flags >= 0 && flags & libc::FD_CLOEXEC != 0, "flags {flags}");
+        }
+    }
+
+    /// One update of SAM at a time: a second is refused at once, and free
+    /// again once the first ends. Its lock file is outside the folders the
+    /// update empties (review B2 S6, R95).
+    #[test]
+    fn one_update_of_sam_at_a_time() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = Paths::rooted(tmp.path());
+        let first = for_self_update(&paths).unwrap().expect("the first update");
+        let t = Instant::now();
+        let p = paths.clone();
+        let second = std::thread::spawn(move || for_self_update(&p).unwrap().is_some());
+        assert!(!second.join().unwrap(), "two updates of SAM at once");
+        assert!(
+            t.elapsed() < Duration::from_secs(1),
+            "refused at once, after {:?}",
+            t.elapsed()
+        );
+        let lock = self_update_path(&paths);
+        for emptied in ["downloads", "update-backups"] {
+            assert!(!lock.starts_with(paths.data_dir.join(emptied)), "{lock:?}");
+        }
+        drop(first);
+        // Another test of this process may fork right now; its child holds
+        // a copy of the lock until it runs its program (see start_soon).
+        let until = Instant::now() + Duration::from_secs(1);
+        while for_self_update(&paths).unwrap().is_none() {
+            assert!(Instant::now() < until, "free again once dropped");
+            std::thread::sleep(Duration::from_millis(10));
         }
     }
 

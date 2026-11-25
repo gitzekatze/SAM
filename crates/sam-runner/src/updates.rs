@@ -13,13 +13,16 @@ use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Result};
 use sam_core::model::{UpdateState, UpdateStatus};
+use sam_core::Fingerprint;
 use sam_detect::update_info::{self, UpdateSource};
 // SHA-1 only because the zsync format names the published file by it; it
 // catches damaged downloads, not tampering (the signature check does that).
 use sha1::{Digest, Sha1};
+use sha2::Sha256;
 
 /// The most read from a GitHub release description. It holds the release
 /// notes and about 2 KB per file, so a release with a few hundred files
@@ -64,10 +67,60 @@ fn curl(max_secs: u64) -> Result<Command> {
     Ok(cmd)
 }
 
-/// Checks `appimage` against its published version.
+/// Checks `appimage` against its published version, whatever file it is,
+/// without comparing it with anything. SAM's own checks of its apps must use
+/// [`check_unpacked`]: this one trusts the update address of any file.
 pub fn check(appimage: &Path) -> UpdateStatus {
+    check_read(appimage, None)
+}
+
+/// Checks `appimage` against its published version, but only when it is
+/// still the file SAM unpacked last (`unpacked`, the fingerprint recorded
+/// when it was unpacked). The update address
+/// comes from the AppImage itself, and this check runs outside every
+/// sandbox: another app that can write to the AppImage's folder could put
+/// its own file there, naming its own server, and SAM would send that
+/// address (a way out for data from an app without network) and offer that
+/// app's page as the download page. So a file that changed outside SAM is
+/// not checked; no server is asked (review B2 S6, R88).
+pub fn check_unpacked(appimage: &Path, unpacked: &Fingerprint) -> UpdateStatus {
+    check_read(appimage, Some(unpacked))
+}
+
+fn check_read(appimage: &Path, unpacked: Option<&Fingerprint>) -> UpdateStatus {
     let now = sam_core::util::now();
-    let Some(source) = update_info::read(appimage) else {
+    let failed = |detail: String| UpdateStatus {
+        state: UpdateState::Failed,
+        detail,
+        checked_at: now,
+        ..Default::default()
+    };
+    let changed = || {
+        failed(sam_core::i18n::tr(
+            "The AppImage changed outside SAM since it was last unpacked, so SAM does not check it for updates. Use Unpack Again and look at the app first.",
+        ))
+    };
+    // One read: the checksum compared below and the address used later
+    // come from the same bytes, so the file cannot be swapped in between.
+    let read = match unpacked {
+        None => ReadOnce::of(appimage).map(Some),
+        Some(fp) => ReadOnce::of_size(appimage, fp.size),
+    };
+    let read = match read {
+        Ok(Some(r)) => r,
+        // Not a plain file of the unpacked size: not read at all.
+        Ok(None) => return changed(),
+        Err(e) => {
+            return failed(sam_core::i18n::trf(
+                "The update check failed: {error}",
+                &[("error", &format!("{e:#}"))],
+            ))
+        }
+    };
+    if unpacked.is_some_and(|fp| !read.sha256.eq_ignore_ascii_case(&fp.sha256)) {
+        return changed();
+    }
+    let Some(source) = read.source else {
         return UpdateStatus {
             state: UpdateState::Unsupported,
             detail: sam_core::i18n::tr("This AppImage does not say where updates are published."),
@@ -75,20 +128,80 @@ pub fn check(appimage: &Path) -> UpdateStatus {
             ..Default::default()
         };
     };
-    match check_source(appimage, &source) {
+    match check_source(&read.sha1, &source) {
         Ok(mut s) => {
             s.checked_at = now;
             s
         }
-        Err(e) => UpdateStatus {
-            state: UpdateState::Failed,
-            detail: sam_core::i18n::trf(
-                "The update check failed: {error}",
-                &[("error", &format!("{e:#}"))],
-            ),
-            checked_at: now,
-            ..Default::default()
-        },
+        Err(e) => failed(sam_core::i18n::trf(
+            "The update check failed: {error}",
+            &[("error", &format!("{e:#}"))],
+        )),
+    }
+}
+
+/// An AppImage read once, through one open file: its SHA-256 (to compare
+/// with what SAM unpacked), its SHA-1 (to compare with the published file)
+/// and the update information in its first bytes.
+struct ReadOnce {
+    sha256: String,
+    sha1: String,
+    source: Option<UpdateSource>,
+}
+
+impl ReadOnce {
+    fn of(path: &Path) -> Result<ReadOnce> {
+        let f = File::open(path).with_context(|| {
+            sam_core::i18n::trf("reading {file}", &[("file", &path.display().to_string())])
+        })?;
+        Self::from_file(f, u64::MAX)
+    }
+
+    /// Like [`ReadOnce::of`], but `None`, without reading anything, unless
+    /// `path` is a plain file of exactly `size` bytes, and never more than
+    /// `size` bytes are read. Another app could otherwise put a link to
+    /// `/dev/zero`, a named pipe or a huge sparse file in the AppImage's
+    /// place, and every check (also the one when SAM opens) would read
+    /// forever (review B2 S6, R88).
+    fn of_size(path: &Path, size: u64) -> Result<Option<ReadOnce>> {
+        use std::os::unix::fs::OpenOptionsExt;
+        // Without waiting: opening a named pipe for reading would otherwise
+        // wait for a writer that never comes. A plain file is not affected.
+        let f = std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NONBLOCK)
+            .open(path)
+            .with_context(|| {
+                sam_core::i18n::trf("reading {file}", &[("file", &path.display().to_string())])
+            })?;
+        // The open file itself (fstat), not the name, which could change.
+        let meta = f.metadata()?;
+        if !meta.file_type().is_file() || meta.len() != size {
+            return Ok(None);
+        }
+        Self::from_file(f, size).map(Some)
+    }
+
+    fn from_file(f: File, limit: u64) -> Result<ReadOnce> {
+        let mut f = f.take(limit);
+        let (mut h256, mut h1) = (Sha256::new(), Sha1::new());
+        let mut head = Vec::new();
+        let mut buf = vec![0u8; 1 << 20];
+        loop {
+            let n = f.read(&mut buf)?;
+            if n == 0 {
+                break;
+            }
+            h256.update(&buf[..n]);
+            h1.update(&buf[..n]);
+            let keep = update_info::HEAD_BYTES.saturating_sub(head.len()).min(n);
+            head.extend_from_slice(&buf[..keep]);
+        }
+        Ok(ReadOnce {
+            sha256: sam_core::util::hex(&h256.finalize()),
+            sha1: sam_core::util::hex(&h1.finalize()),
+            source: update_info::from_head(&head),
+        })
     }
 }
 
@@ -112,13 +225,16 @@ pub struct Published {
 /// What the source publishes: `Ok(None)` when one of the published files
 /// is exactly `appimage` (it is current).
 pub fn newest(appimage: &Path) -> Result<Option<Published>> {
-    let source = update_info::read(appimage).context(sam_core::i18n::tr(
+    let read = ReadOnce::of(appimage)?;
+    let source = read.source.context(sam_core::i18n::tr(
         "this AppImage does not say where updates are published",
     ))?;
-    newest_from(appimage, &source)
+    newest_from(&read.sha1, &source)
 }
 
-fn newest_from(appimage: &Path, source: &UpdateSource) -> Result<Option<Published>> {
+/// What `source` publishes, compared with the local file's SHA-1 `local`
+/// (taken by the caller from the same read as `source`).
+fn newest_from(local: &str, source: &UpdateSource) -> Result<Option<Published>> {
     // Candidate .zsync files: one fixed address, or every matching file of
     // a GitHub release (releases often hold rebuilds or variants side by side).
     let (zsyncs, release, page) = match source {
@@ -162,11 +278,10 @@ fn newest_from(appimage: &Path, source: &UpdateSource) -> Result<Option<Publishe
             (urls, Some(tag_name), page)
         }
     };
-    let local = sha1_of(appimage)?;
     let mut first = None;
     for url in &zsyncs {
         let h = zsync_header(&fetch(url, Some(16 * 1024))?)?;
-        if h.sha1.eq_ignore_ascii_case(&local) {
+        if h.sha1.eq_ignore_ascii_case(local) {
             return Ok(None);
         }
         if first.is_none() {
@@ -245,8 +360,8 @@ fn arch_rank(name: &str, host: &str) -> u8 {
     }
 }
 
-fn check_source(appimage: &Path, source: &UpdateSource) -> Result<UpdateStatus> {
-    Ok(match newest_from(appimage, source)? {
+fn check_source(local_sha1: &str, source: &UpdateSource) -> Result<UpdateStatus> {
+    Ok(match newest_from(local_sha1, source)? {
         None => UpdateStatus {
             state: UpdateState::Current,
             detail: sam_core::i18n::tr("This is the newest published version."),
@@ -319,27 +434,120 @@ pub enum Fetched {
     },
 }
 
+/// The longest one update download may take: the partial download and the
+/// whole file after it together (review B2 S6, R90).
+pub const UPDATE_TIME_LIMIT: Duration = Duration::from_secs(3600);
+
 /// Downloads the new version to `dest`, reusing unchanged blocks of `old`
 /// (zsync) when that saves most of the download; otherwise, or when anything
 /// goes wrong with that, the whole file. Either way the result must match the
-/// published SHA-1.
+/// published SHA-1, and all of it ends within [`UPDATE_TIME_LIMIT`]. Used
+/// for app updates and for SAM's own update.
 pub fn download_update(p: &Published, old: &Path, dest: &Path) -> Result<Fetched> {
-    match download_delta(p, old, dest) {
+    download_update_within(p, old, dest, UPDATE_TIME_LIMIT)
+}
+
+/// [`download_update`] with its time limit (tests use seconds). One
+/// deadline covers everything: the partial download, then the whole file
+/// if that fails, and each request gets at most the time left. Each request
+/// had its own limit before, so up to 300 range requests of five minutes
+/// each (about a day) and then another hour for the whole file, while the
+/// app could not start (review B2 S6, R90).
+pub fn download_update_within(
+    p: &Published,
+    old: &Path,
+    dest: &Path,
+    limit: Duration,
+) -> Result<Fetched> {
+    let deadline = Deadline::new(limit);
+    match download_delta(p, old, dest, &deadline) {
         Ok(Some(f)) => return Ok(f),
         Ok(None) | Err(_) => {
             let _ = std::fs::remove_file(dest);
         }
     }
-    download(p, dest)?;
+    // curl's own time-out at the end of the limit is named as the limit;
+    // any other reason (a 404, say) stays what it is, also near the end.
+    download(p, dest, &deadline).map_err(|e| {
+        if deadline.is_over() && e.downcast_ref::<CurlTimedOut>().is_some() {
+            deadline.passed()
+        } else {
+            e
+        }
+    })?;
     Ok(Fetched::Full {
         total: std::fs::metadata(dest).map(|m| m.len()).unwrap_or(0),
     })
 }
 
+/// When an update download must be done (see [`download_update_within`]).
+struct Deadline {
+    end: Instant,
+    limit: Duration,
+}
+
+impl Deadline {
+    fn new(limit: Duration) -> Deadline {
+        Deadline {
+            end: Instant::now() + limit,
+            limit,
+        }
+    }
+
+    /// The time left, or the error once it is over. Less than a second
+    /// counts as over: curl takes whole seconds.
+    fn left(&self) -> Result<Duration> {
+        if self.is_over() {
+            return Err(self.passed());
+        }
+        Ok(self.end.saturating_duration_since(Instant::now()))
+    }
+
+    fn is_over(&self) -> bool {
+        self.end.saturating_duration_since(Instant::now()) < Duration::from_secs(1)
+    }
+
+    fn passed(&self) -> anyhow::Error {
+        let secs = self.limit.as_secs();
+        // In minutes when it is whole minutes (SAM's hour); tests use seconds.
+        let text = if secs >= 120 && secs.is_multiple_of(60) {
+            sam_core::i18n::trf(
+                "the update download did not finish within {minutes} minutes and was stopped",
+                &[("minutes", &(secs / 60))],
+            )
+        } else {
+            sam_core::i18n::trf(
+                "the update download did not finish within {seconds} seconds and was stopped",
+                &[("seconds", &secs)],
+            )
+        };
+        anyhow::anyhow!("{text}")
+    }
+}
+
+/// curl stopped at its time limit (exit code 28): the reason a download
+/// ends at the update's deadline.
+#[derive(Debug)]
+struct CurlTimedOut(String);
+
+impl std::fmt::Display for CurlTimedOut {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for CurlTimedOut {}
+
 /// `Ok(None)` when a delta would not save enough (most of the file changed,
 /// or it would take too many requests).
-fn download_delta(p: &Published, old: &Path, dest: &Path) -> Result<Option<Fetched>> {
-    let ctl = crate::zsync::parse(&fetch(&p.zsync_url, Some(64 << 20))?)?;
+fn download_delta(
+    p: &Published,
+    old: &Path,
+    dest: &Path,
+    deadline: &Deadline,
+) -> Result<Option<Fetched>> {
+    let secs = deadline.left()?.min(Duration::from_secs(30)).as_secs();
+    let ctl = crate::zsync::parse(&fetch_within(&p.zsync_url, Some(64 << 20), secs)?)?;
     if ctl.sha1 != p.sha1 {
         bail!(
             "{}",
@@ -350,14 +558,18 @@ fn download_delta(p: &Published, old: &Path, dest: &Path) -> Result<Option<Fetch
     // pages the system can drop again under pressure (review 2026-11-23, U-6).
     let mapped = Mapped::open(old)?;
     let old_data = mapped.bytes();
-    let plan = crate::zsync::plan(&ctl, old_data);
+    let plan = crate::zsync::plan_within(
+        &ctl,
+        old_data,
+        deadline.left()?.min(Duration::from_secs(60)),
+    );
     let ranges = crate::zsync::missing_ranges(&ctl, &plan, 64 * 1024);
     let bytes: u64 = ranges.iter().map(|(s, e)| e - s).sum();
     if ranges.len() > 300 || bytes * 10 > ctl.length * 7 {
         return Ok(None);
     }
     crate::zsync::assemble(&ctl, old_data, &plan, &ranges, dest, |s, e| {
-        fetch_range(&p.file_url, s, e)
+        fetch_range(&p.file_url, s, e, deadline)
     })?;
     Ok(Some(Fetched::Delta {
         bytes,
@@ -425,52 +637,131 @@ impl Drop for Mapped {
     }
 }
 
-/// Bytes `start..end` of `url` (an HTTP range request). At most that many
-/// bytes are kept, whatever the server sends.
-fn fetch_range(url: &str, start: u64, end: u64) -> Result<Vec<u8>> {
+/// Bytes `start..end` of `url` (an HTTP range request), within the time
+/// left of `deadline` (at most five minutes).
+fn fetch_range(url: &str, start: u64, end: u64, deadline: &Deadline) -> Result<Vec<u8>> {
     if !url.starts_with("https://") {
         bail!("{}", sam_core::i18n::tr("not HTTPS"));
     }
-    let want = end.saturating_sub(start);
-    let mut cmd = curl(300)?;
+    let want = usize::try_from(end.saturating_sub(start))?;
+    let limit = deadline.left()?.min(Duration::from_secs(300));
+    let mut cmd = curl(limit.as_secs())?;
     cmd.args(["--speed-limit", "1024", "--speed-time", "60"])
         .args(["--range", &format!("{}-{}", start, end.saturating_sub(1))])
         .arg("--")
         .arg(url);
-    let (st, out) = sam_core::util::output_within(
-        &mut cmd,
-        std::time::Duration::from_secs(310),
-        usize::try_from(want).unwrap_or(usize::MAX),
-    )?;
-    if !st.success() {
+    read_range(cmd, limit, want)
+}
+
+/// Runs `cmd` (curl fetching one byte range) for at most `limit` and
+/// returns what it prints, at most `want` bytes. One byte more means the
+/// server ignores the range and sends the whole file: SAM stops reading,
+/// ends curl at once and gives up the partial download. Before, the first
+/// bytes were kept and the rest dropped silently, so every range "passed",
+/// each one a whole download, and only the final checksum failed (review
+/// B2 S6, R90). `output_within` keeps that behaviour for its other callers.
+fn read_range(mut cmd: Command, limit: Duration, want: usize) -> Result<Vec<u8>> {
+    use std::os::unix::process::CommandExt;
+    let started = Instant::now();
+    let mut child = cmd
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .process_group(0)
+        .spawn()
+        .context(sam_core::i18n::tr("starting curl"))?;
+    // The whole group, so that nothing curl (or a stand-in) started keeps
+    // the output open.
+    let stop = |child: &mut std::process::Child| {
+        if let Ok(g) = i32::try_from(child.id()) {
+            // SAFETY: kill(2) with a negative pid signals the process group
+            // the child leads (it was started with process_group(0)); no
+            // memory is involved.
+            unsafe {
+                libc::kill(-g, libc::SIGKILL);
+            }
+        }
+        let _ = child.wait();
+    };
+    let mut out = child.stdout.take().context("stdout")?;
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut kept = Vec::new();
+        let read = (&mut out)
+            .take((want as u64).saturating_add(1))
+            .read_to_end(&mut kept);
+        let _ = tx.send(read.map(|_| kept));
+    });
+    let too_slow = || {
+        anyhow::anyhow!(
+            "{}",
+            sam_core::i18n::trf(
+                "{program} did not finish within {seconds} seconds and was stopped",
+                &[("program", &"curl"), ("seconds", &limit.as_secs())]
+            )
+        )
+    };
+    let kept = match rx.recv_timeout(limit) {
+        Ok(Ok(kept)) => kept,
+        Ok(Err(e)) => {
+            stop(&mut child);
+            return Err(e.into());
+        }
+        Err(_) => {
+            stop(&mut child);
+            return Err(too_slow());
+        }
+    };
+    if kept.len() > want {
+        stop(&mut child);
+        bail!(
+            "{}",
+            sam_core::i18n::tr(
+                "the server sent more than the part SAM asked for, so it ignores range requests; the partial download was stopped"
+            )
+        );
+    }
+    // Everything arrived; curl is ending.
+    let status = loop {
+        if let Some(st) = child.try_wait()? {
+            break st;
+        }
+        if started.elapsed() > limit {
+            stop(&mut child);
+            return Err(too_slow());
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    if !status.success() {
         bail!(
             "{}",
             sam_core::i18n::trf(
                 "downloading the changed parts failed: {reason}",
-                &[("reason", &format!("curl {st}"))]
+                &[("reason", &format!("curl {status}"))]
             )
         );
     }
-    Ok(out)
+    Ok(kept)
 }
 
-pub fn download(p: &Published, dest: &Path) -> Result<()> {
-    let res = download_inner(p, dest);
+fn download(p: &Published, dest: &Path, deadline: &Deadline) -> Result<()> {
+    let res = download_inner(p, dest, deadline);
     if res.is_err() {
         let _ = std::fs::remove_file(dest);
     }
     res
 }
 
-fn download_inner(p: &Published, dest: &Path) -> Result<()> {
+fn download_inner(p: &Published, dest: &Path, deadline: &Deadline) -> Result<()> {
     if !p.file_url.starts_with("https://") {
         bail!(
             "{}",
             sam_core::i18n::tr("the update file is not offered over HTTPS")
         );
     }
-    // An hour for the whole file; the speed limit ends a stalled one sooner.
-    let mut cmd = curl(3600)?;
+    // What is left of the update's hour (the partial download may have
+    // used some); the speed limit ends a stalled one sooner.
+    let mut cmd = curl(deadline.left()?.as_secs())?;
     cmd.args(["--speed-limit", "1024", "--speed-time", "60"]);
     cmd.arg("--").arg(&p.file_url);
     // The published length (or SAM's ceiling) is the most SAM keeps.
@@ -539,7 +830,11 @@ fn save_capped(mut cmd: Command, dest: &Path, cap: u64) -> Result<()> {
         let st = child.wait()?;
         let err = errors.join().unwrap_or_default();
         if !st.success() {
-            bail!("download failed: {}", curl_error(&err));
+            let why = format!("download failed: {}", curl_error(&err));
+            if st.code() == Some(28) {
+                return Err(CurlTimedOut(why).into());
+            }
+            bail!("{why}");
         }
         file.sync_all()?;
         Ok(())
@@ -636,6 +931,11 @@ fn sha1_of(path: &Path) -> Result<String> {
 /// range sends everything: enough was read). Without one, the whole answer
 /// up to `MAX_RELEASE_ANSWER`; a longer one is an error.
 fn fetch(url: &str, limit: Option<usize>) -> Result<Vec<u8>> {
+    fetch_within(url, limit, 30)
+}
+
+/// [`fetch`] with at most `max_secs` for the request.
+fn fetch_within(url: &str, limit: Option<usize>, max_secs: u64) -> Result<Vec<u8>> {
     if !url.starts_with("https://") {
         bail!(
             "{}",
@@ -645,7 +945,7 @@ fn fetch(url: &str, limit: Option<usize>) -> Result<Vec<u8>> {
             )
         );
     }
-    let mut cmd = curl(30)?;
+    let mut cmd = curl(max_secs)?;
     cmd.args(["--header", "Accept: application/json, */*"]);
     if let Some(n) = limit {
         cmd.args(["--range", &format!("0-{}", n - 1)]);
@@ -724,7 +1024,9 @@ mod tests {
                 page: None,
                 zsync_url: "https://127.0.0.1:9/App.AppImage.zsync".into(),
             };
-            let err = download_inner(&p, &dest).unwrap_err().to_string();
+            let err = download_inner(&p, &dest, &Deadline::new(UPDATE_TIME_LIMIT))
+                .unwrap_err()
+                .to_string();
             assert_eq!(
                 err,
                 sam_core::i18n::tr("the update file is not offered over HTTPS"),
@@ -753,6 +1055,92 @@ mod tests {
             "34aa973cd4c4daa4f61eeb2bdbad27316534016f",
             "SHA-1 of a million a"
         );
+    }
+
+    /// The update check reads an AppImage once and takes both checksums of
+    /// the whole file from that read, also past the first 8 MiB it keeps
+    /// for the update information (review B2 S6, R88): a checksum of only
+    /// the kept part would let a file changed further on pass as the one
+    /// SAM unpacked.
+    #[test]
+    fn the_update_check_hashes_the_whole_file_in_one_read() {
+        let t = tempfile::tempdir().unwrap();
+        let f = t.path().join("big.AppImage");
+        let mut data = vec![b'a'; update_info::HEAD_BYTES + (1 << 20) + 7];
+        let last = data.len() - 1;
+        data[last] = b'b';
+        std::fs::write(&f, &data).unwrap();
+        let read = ReadOnce::of(&f).unwrap();
+        assert_eq!(read.sha1, sha1_of(&f).unwrap(), "SHA-1 of the whole file");
+        assert_eq!(
+            read.sha256,
+            sam_intake::fingerprint::sha256_file(&f).unwrap(),
+            "SHA-256 of the whole file"
+        );
+        assert!(read.source.is_none(), "no ELF file, no update information");
+    }
+
+    /// Runs `f` in a thread and gives its result, or fails after `secs`
+    /// seconds: a check that reads forever is a failed assertion here, not
+    /// a test that never ends.
+    fn within<T: Send + 'static>(secs: u64, f: impl FnOnce() -> T + Send + 'static) -> T {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(f());
+        });
+        rx.recv_timeout(std::time::Duration::from_secs(secs))
+            .unwrap_or_else(|_| panic!("the update check did not end within {secs} s"))
+    }
+
+    /// The update check reads nothing of a file that is not a plain file of
+    /// the size SAM unpacked (review B2 S6, R88, second review): another
+    /// app could put a link to `/dev/zero`, a named pipe or a huge sparse
+    /// file in the AppImage's place, and every check (also the one when SAM
+    /// opens) would read forever. A file of the right size with other
+    /// contents is refused by its checksum, before any server is asked.
+    #[test]
+    fn the_update_check_reads_nothing_of_a_file_that_is_not_the_unpacked_one() {
+        let t = tempfile::tempdir().unwrap();
+        let dir = t.path().to_path_buf();
+        let unpacked = Fingerprint {
+            size: 4096,
+            sha256: sam_core::util::hex(&Sha256::digest([1u8; 4096])),
+            ..Default::default()
+        };
+        let sparse = dir.join("sparse.AppImage");
+        File::create(&sparse).unwrap().set_len(1 << 40).unwrap();
+        let zero = dir.join("zero.AppImage");
+        std::os::unix::fs::symlink("/dev/zero", &zero).unwrap();
+        let fifo = dir.join("fifo.AppImage");
+        let c = std::ffi::CString::new(fifo.as_os_str().as_encoded_bytes()).unwrap();
+        // SAFETY: a valid, NUL-terminated path.
+        assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) }, 0, "mkfifo");
+        let other = dir.join("other.AppImage");
+        std::fs::write(&other, [2u8; 4096]).unwrap();
+        for path in [sparse, zero, fifo, other] {
+            let fp = unpacked.clone();
+            let p = path.clone();
+            let status = within(10, move || check_unpacked(&p, &fp));
+            assert_eq!(
+                status.state,
+                UpdateState::Failed,
+                "{}: {}",
+                path.display(),
+                status.detail
+            );
+            assert!(
+                status.detail.contains("changed outside SAM"),
+                "{}: {}",
+                path.display(),
+                status.detail
+            );
+        }
+        // The unchanged file passes the comparison (it names no update
+        // address, so there is nothing to ask).
+        let same = dir.join("same.AppImage");
+        std::fs::write(&same, [1u8; 4096]).unwrap();
+        let status = within(10, move || check_unpacked(&same, &unpacked));
+        assert_eq!(status.state, UpdateState::Unsupported, "{}", status.detail);
     }
 
     /// The header of a zsync file is read (file name, size, checksum).
@@ -847,6 +1235,73 @@ mod tests {
         std::os::unix::fs::symlink(&victim, &link).unwrap();
         assert!(save_capped(prints(10), &link, 100).is_err());
         assert_eq!(std::fs::read_to_string(&victim).unwrap(), "keep");
+    }
+
+    /// Regression (review B2 S6, R90): a range request answered with the
+    /// whole file (a server that ignores ranges) kept the first bytes and
+    /// read the rest to its end, so each of up to 300 ranges was a whole
+    /// download. One byte more than asked for is now an error at once, and
+    /// the download is stopped, not read to its end; exactly the asked-for
+    /// bytes are taken; a request that runs too long is stopped at its limit.
+    #[test]
+    fn a_range_answered_with_more_bytes_stops_at_once() {
+        let t = tempfile::tempdir().unwrap();
+        let done = t.path().join("sent-everything");
+        let limit = Duration::from_secs(60);
+        let started = Instant::now();
+        let err = read_range(prints_then_marks(30_000_000, &done), limit, 1000)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("ignores range requests"), "{err}");
+        assert!(
+            started.elapsed() < Duration::from_secs(20),
+            "{:?}",
+            started.elapsed()
+        );
+        assert!(
+            !done.exists(),
+            "the download was stopped, not read to its end"
+        );
+        assert_eq!(read_range(prints(1000), limit, 1000).unwrap().len(), 1000);
+        let mut slow = Command::new("sh");
+        slow.args(["-c", "sleep 30"]);
+        let started = Instant::now();
+        let err = read_range(slow, Duration::from_secs(1), 1000)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("did not finish within 1 seconds"), "{err}");
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "{:?}",
+            started.elapsed()
+        );
+    }
+
+    /// The update's time limit is named in minutes when it is whole
+    /// minutes (an hour for SAM's updates), in seconds otherwise; and only
+    /// curl's own time-out is named as the limit, so a download that
+    /// fails for another reason near the end keeps its reason (review B2
+    /// S6, R90).
+    #[test]
+    fn the_time_limit_is_named_only_when_it_ended_the_download() {
+        let hour = Deadline::new(UPDATE_TIME_LIMIT).passed().to_string();
+        assert!(hour.contains("within 60 minutes"), "{hour}");
+        let short = Deadline::new(Duration::from_secs(3)).passed().to_string();
+        assert!(short.contains("within 3 seconds"), "{short}");
+        let t = tempfile::tempdir().unwrap();
+        let dest = t.path().join("new.AppImage");
+        let exits = |code: u8| {
+            let mut c = Command::new("sh");
+            c.args([
+                "-c",
+                &format!("echo 'curl: ({code}) failed' >&2; exit {code}"),
+            ]);
+            c
+        };
+        let e = save_capped(exits(28), &dest, 100).unwrap_err();
+        assert!(e.downcast_ref::<CurlTimedOut>().is_some(), "{e:#}");
+        let e = save_capped(exits(22), &dest, 100).unwrap_err();
+        assert!(e.downcast_ref::<CurlTimedOut>().is_none(), "{e:#}");
     }
 
     /// A failed download says why, in words, also after up to 64 KiB of

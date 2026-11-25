@@ -273,6 +273,20 @@ pub fn end_requested() -> bool {
     ENDING.load(Ordering::SeqCst)
 }
 
+/// Asks the launch running in this very program to end, as SIGTERM would.
+/// For `Sam::stop` closing a launch that runs inside the program asking
+/// (SAM's tests, `sam-jail bench`): it never signals its own program
+/// (review B2 S6, R85).
+pub(crate) fn request_end() {
+    ENDING.store(true, Ordering::SeqCst);
+}
+
+/// Forgets an end request once the launch it was for has ended, so a
+/// later launch in the same program is not ended at once.
+pub(crate) fn end_request_done() {
+    ENDING.store(false, Ordering::SeqCst);
+}
+
 static WINCH: AtomicBool = AtomicBool::new(false);
 
 extern "C" fn on_winch(_: libc::c_int) {

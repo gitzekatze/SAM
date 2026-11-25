@@ -757,7 +757,16 @@ only") would quit at once and end the whole sandbox with it, with no time
 to save (`closing_a_this_computer_only_app_gives_it_time_to_save`). An app
 that does not quit within the 10 seconds is ended, and SAM still finishes
 its launch: the last look at the start places, the record and the log
-(`closing_an_app_that_ignores_it_still_finishes_its_launch`).
+(`closing_an_app_that_ignores_it_still_finishes_its_launch`). Closing
+waits for and signals only the launches running when it began, each
+through a handle on that very process (a pidfd, on Linux 5.3 and later),
+so a launch started meanwhile is left alone and a process that got an
+ended launcher's process number is never hit
+(`a_launch_started_while_closing_is_left_alone`). It never signals SAM's
+own program or the program that started it, and a launch's lock reached
+through a link never counts
+(`sams_own_program_and_its_parent_are_never_signalled`,
+`a_lock_reached_through_a_link_is_never_taken`).
 
 An app started with its input from a pipe or a file (`cat data.json |
 sam-jail run jq .`, `< file`, a script), or with its output going to a
@@ -894,7 +903,15 @@ SAM opens* is on (off by default). It uses `curl`, HTTPS only (redirects
 included), with a generic user agent and without reading a `~/.curlrc`
 (where a setting could switch off certificate checks or send requests
 elsewhere); nothing about you or your apps is sent, and nothing is
-downloaded or installed.
+downloaded or installed. Only the AppImage SAM unpacked is checked: SAM
+reads the file once, compares its checksum with what it unpacked last and
+takes the update address from exactly the bytes it compared. A file
+replaced outside SAM (for example by another app with access to that
+folder) is not checked, and no server is asked, because its update address
+could carry that app's data out to a server of its choice; the app page
+says that the file changed outside SAM. Use *Unpack Again* and look at the
+app first. Anything that is not a plain file of the unpacked size is not
+read at all, and an app SAM has not unpacked yet is not checked.
 
 **Updating** (*Update Now*, `sam-jail update`) is the one time SAM
 downloads a file, and only when you ask:
@@ -926,9 +943,18 @@ downloads a file, and only when you ask:
   no other key, missing or bad signature through without a question. A signed update that was signed earlier
   than the installed version is an older version and is refused: whoever
   controls the download cannot hand out an old release with holes fixed
-  since. For unsigned apps SAM cannot tell versions apart this way.
+  since. When the record of the installed version has no signing time
+  (checked before SAM kept it), SAM checks the installed file again to
+  learn it; when a signing time still cannot be read, SAM cannot tell
+  whether the update is older and asks first (*Signing Time Unknown*,
+  answered like the questions above), and SAM's own update is refused. For unsigned apps SAM
+  cannot tell versions apart this way.
 - A server cannot keep SAM busy, crash it or fill the disk: every request
-  has a time limit; SAM itself counts what a download writes and stops at
+  has a time limit, and one update download ends within an hour in all,
+  the partial download and the whole file after it together, each request
+  getting at most the time left; a server that ignores range requests and
+  sends more than the part asked for ends the partial download at its
+  first answer, and the file is downloaded whole, once; SAM itself counts what a download writes and stops at
   the published length (8 GiB without one), whatever the server sends and
   whichever curl is installed; a release description may be up to 16 MiB,
   and a longer one is an error, never read as if complete; update addresses
@@ -955,8 +981,24 @@ downloads a file, and only when you ask:
   unpacking that failed. A version kept by an older SAM (without its
   recorded checksum) asks for a review once it is back.
 - The new file is put in place as a copy in a new file; SAM never writes
-  through a link it finds there. The sandbox is unpacked from the checked
-  download in SAM's own folder, not from the AppImage's folder, where
+  through a link it finds there. The copy is written whole under a hidden
+  name in the AppImage's folder and then renamed into place, so the folder
+  always holds the complete old version or the complete new one, also after
+  a crash or a power loss. The earlier kept version is deleted only once
+  the app's record names the new one, and a failure before that (a full
+  disk, a read-only folder) leaves the old AppImage, its record and the
+  earlier kept version as they were. Going back works in the same order:
+  before its record is saved, nothing in the backup folder is renamed or
+  overwritten. An earlier version that an older SAM left aside is
+  repaired when SAM can tell the files apart; otherwise going back and
+  updating stop and say where both files are. From the moment the record
+  names the new state until the version is unpacked, the record also says
+  what is being put in place, and SAM keeps its own checked copy of it: a
+  SAM stopped in between finishes the work at the app's next update or go
+  back from that copy, never from a file in the AppImage's folder. A
+  half-written copy left by a stopped SAM is removed at the app's next
+  update, go back, relocation or removal. The sandbox is unpacked from
+  the checked download in SAM's own folder, not from the AppImage's folder, where
   another app could swap the file in that moment; a file swapped there
   afterwards is noticed like any changed AppImage.
 - The app keeps its sandbox. When the new version asks for more (another
@@ -965,10 +1007,19 @@ downloads a file, and only when you ask:
 - Downloading only the changed parts (zsync) reuses blocks of the old file
   and fetches the rest by HTTP range requests; the assembled file must still
   match the published SHA-1, or it is discarded and the whole file is
-  downloaded instead.
+  downloaded instead. It is written to a new file in SAM's own folder,
+  never through a link, and is on the disk before SAM uses it.
 
 SAM's own AppImage updates the same way (*Check for SAM Updates*), from
-SAM's GitHub releases.
+SAM's GitHub releases. Like an app's update, it works from one copy it
+takes of SAM's AppImage at the start, in SAM's own folder: the update
+source, the old version's parts and the running version's signature come
+from that copy. The file in your folder is only moved to the backups at the
+end, kept for going back by hand. Only one
+update of SAM runs at a time; a second one, from the window and the command
+line at once, is refused until the first is done
+(`sam_updates_itself_from_its_own_copy_even_if_the_file_is_replaced`,
+`a_second_update_of_sam_is_refused_while_one_runs`).
 
 ---
 
@@ -1050,8 +1101,14 @@ SAM unpacks AppImages with its own reader and does not run them to do so.
 Only when its reader fails and you agree does the AppImage unpack itself
 (see the end of this section).
 Unpacking happens inside a minimal Bubblewrap sandbox (the AppImage
-read-only, no network, no privileges) whenever Bubblewrap works; the
-unpacking log says whether it was isolated. The only writable place in it
+read-only, no network, no privileges); the unpacking log says whether it
+was isolated. Where Bubblewrap cannot run, or SAM's `sam-jail` is not next
+to the program, SAM refuses to unpack and says which of the two is
+missing, whatever its program is called, so a package that renames SAM's
+programs cannot make it unpack without a sandbox
+(`a_release_build_of_any_name_never_unpacks_without_a_sandbox`). Only a
+developer build of a program that is not SAM's, such as a test, unpacks
+in its own process. The only writable place in it
 is a fresh, empty folder for the unpacked files, never the app's folder
 where SAM keeps its notes, the menu entry and the icon: an unpacking tool
 tricked by a crafted image cannot leave links there for SAM to write
@@ -1080,7 +1137,14 @@ unpacked all come from that copy. Another program with access to the
 AppImage's folder can no longer swap the file between SAM's check and the
 unpacking, so SAM never records one file and unpacks another
 (`what_is_unpacked_is_what_sam_checked_even_if_the_file_is_swapped`). A
-file swapped there afterwards is noticed like any changed AppImage.
+file swapped there afterwards is noticed like any changed AppImage. Moving such a
+file elsewhere does not pass it off as the app's own: SAM follows a moved
+AppImage only when its content is what SAM unpacked for the app; another
+file is added as an app of its own
+(`a_swapped_appimage_moved_elsewhere_is_not_taken_for_the_apps_own_file`).
+Data kept when a sandbox is removed likewise goes back only to the
+AppImage SAM unpacked
+(`kept_data_goes_back_to_the_unpacked_file_after_a_swap_was_seen`).
 
 Nothing in an unpack sandbox can make a user namespace of its own
 (Bubblewrap's `--disable-userns` and the syscall filter): one would give
