@@ -920,6 +920,49 @@ mod tests {
         assert_eq!(errnos(Some(&nested), &calls[12..]), control[12..]);
     }
 
+    /// Review R74: the kernel reads `ioctl`'s request and `socket`'s family
+    /// as 32-bit numbers and drops the upper half of the register. The
+    /// filter must compare the same half: a request of 0x1_0000_5412 is
+    /// TIOCSTI to the kernel, and a family of (1 << 32) | AF_PACKET is
+    /// AF_PACKET (a filter that compared all 64 bits let such calls
+    /// through, Flatpak's CVE-2019-10063). The control shows the kernel
+    /// takes the call as its lower half.
+    #[test]
+    fn the_filter_reads_arguments_as_wide_as_the_kernel_does() {
+        const HIGH: libc::c_long = 1 << 32;
+        let calls: Vec<fn() -> libc::c_long> = vec![
+            || raw(libc::SYS_ioctl, -1, HIGH | libc::TIOCSTI as libc::c_long),
+            || raw(libc::SYS_ioctl, -1, HIGH | 0x541C), // TIOCLINUX
+            || {
+                raw(
+                    libc::SYS_socket,
+                    HIGH | libc::c_long::from(libc::AF_PACKET),
+                    libc::c_long::from(libc::SOCK_DGRAM),
+                )
+            },
+            || {
+                raw(
+                    libc::SYS_socket,
+                    HIGH | libc::c_long::from(libc::AF_UNIX),
+                    libc::c_long::from(libc::SOCK_STREAM),
+                )
+            },
+        ];
+        let control = errnos(None, &calls);
+        assert_eq!(control[..2], [libc::EBADF; 2], "no descriptor -1");
+        assert_ne!(
+            control[2],
+            libc::EAFNOSUPPORT,
+            "a packet socket: {control:?}"
+        );
+        assert_eq!(control[3], 0, "a local socket opens");
+        assert_eq!(
+            errnos(Some(&SeccompSpec::default()), &calls),
+            [libc::EPERM, libc::EPERM, libc::EAFNOSUPPORT, 0],
+            "control {control:?}"
+        );
+    }
+
     /// Bubblewrap reads the filter as eight bytes per instruction.
     #[test]
     fn the_filter_reaches_bubblewrap_as_whole_instructions() {
