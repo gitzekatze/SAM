@@ -44,6 +44,57 @@ pub fn wanted_name(line: &str) -> Option<String> {
     sam_core::permissions::is_bus_name(name).then(|| name.to_string())
 }
 
+/// The desktop services SAM allows by default or through an integration
+/// switch, with the object paths of their own protocol (`/x/*`: that path
+/// and everything below it).
+///
+/// The filter (xdg-dbus-proxy) gives a program's unique name (`:1.10`) the
+/// rules of every name it owns, and a plain `--talk` lets every call
+/// through. One program often holds many names: on KDE Plasma 6,
+/// plasmashell owns the notification service and also Klipper (the
+/// clipboard history) and the shell's script runner; kded6 owns the tray
+/// watcher and the desktop's background services; KWin owns the screen
+/// saver name and its own scripting; Dolphin owns the file manager name and
+/// its menu actions. So for these names the app gets calls and signals on
+/// the service's own objects only, which the filter checks for the unique
+/// name too (B2 R76, 2026-11-25). The keyring keeps `--talk`: that switch
+/// hands out stored passwords anyway.
+const SERVICE_PATHS: &[(&str, &[&str])] = &[
+    (
+        "org.freedesktop.Notifications",
+        &["/org/freedesktop/Notifications"],
+    ),
+    ("org.kde.StatusNotifierWatcher", &["/StatusNotifierWatcher"]),
+    (
+        "org.freedesktop.ScreenSaver",
+        &["/ScreenSaver", "/org/freedesktop/ScreenSaver"],
+    ),
+    (
+        "org.freedesktop.PowerManagement",
+        &["/org/freedesktop/PowerManagement/*"],
+    ),
+    (
+        "org.freedesktop.FileManager1",
+        &["/org/freedesktop/FileManager1"],
+    ),
+    // The input methods' sandbox frontends (Fcitx 5 runs its controller,
+    // which can change its configuration, on the same connection).
+    (
+        "org.freedesktop.portal.Fcitx",
+        &["/org/freedesktop/portal/*", "/inputmethod"],
+    ),
+    ("org.freedesktop.portal.IBus", &["/org/freedesktop/IBus/*"]),
+];
+
+/// The object paths the app may reach on `name`, when it is one of
+/// [`SERVICE_PATHS`] (exact names only).
+fn service_paths(name: &str) -> Option<&'static [&'static str]> {
+    SERVICE_PATHS
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map(|(_, paths)| *paths)
+}
+
 /// The proxy's filter for `perms`: what the app may talk to and own, and
 /// the names the settings allow that SAM refused (name, why).
 /// `may_own` is the start's full check of a name ([`crate::own_names::NameCheck`]).
@@ -65,7 +116,16 @@ fn filter_args(
     // out already).
     let denied = |n: &str| sam_core::permissions::bus_name_denied(&perms.deny, n);
     for name in perms.allow.iter().filter(|n| !denied(n)) {
-        args.push(format!("--talk={name}"));
+        match service_paths(name) {
+            // A desktop service SAM knows: only its own objects (B2 R76).
+            Some(paths) => {
+                for path in paths {
+                    args.push(format!("--call={name}=*@{path}"));
+                    args.push(format!("--broadcast={name}=*@{path}"));
+                }
+            }
+            None => args.push(format!("--talk={name}")),
+        }
     }
     let tray_names = perms.tray_own_names();
     let mut refused = Vec::new();
@@ -261,6 +321,86 @@ mod tests {
         assert!(
             args.contains(&"--own=org.ok.Mine-4".to_string()),
             "{args:?}"
+        );
+    }
+
+    /// B2 R76: a desktop service SAM allows by default or through a switch
+    /// gets calls and signals on its own objects only, never a plain
+    /// `--talk`, which would open every object of the program behind it
+    /// (on Plasma 6, plasmashell's clipboard history and script runner
+    /// behind the notification service). A name SAM does not know keeps
+    /// `--talk`; an always-blocked one gets no rule at all.
+    #[test]
+    fn known_desktop_services_reach_only_their_own_objects() {
+        let mut p = DbusPerms::default().session;
+        for name in super::SERVICE_PATHS
+            .iter()
+            .map(|(n, _)| *n)
+            .chain(["org.example.Other"])
+        {
+            // The defaults are there already.
+            if !p.allow.iter().any(|a| a == name) {
+                p.allow.push(name.into());
+            }
+        }
+        p.deny = vec!["org.freedesktop.FileManager1".into()];
+        let (args, _) = super::filter_args(&p, &Default::default(), "appimage-x", &|_| true);
+        for (name, paths) in super::SERVICE_PATHS {
+            assert!(
+                !args.contains(&format!("--talk={name}")),
+                "{name}: {args:?}"
+            );
+            if *name == "org.freedesktop.FileManager1" {
+                assert!(!args.iter().any(|a| a.contains(name)), "blocked: {args:?}");
+                continue;
+            }
+            let rules: Vec<&String> = args
+                .iter()
+                .filter(|a| a.contains(&format!("={name}=")))
+                .collect();
+            assert_eq!(rules.len(), 2 * paths.len(), "{name}: {rules:?}");
+            for path in *paths {
+                assert!(path.starts_with('/'), "{name}: {path}");
+                for kind in ["--call", "--broadcast"] {
+                    assert!(
+                        args.contains(&format!("{kind}={name}=*@{path}")),
+                        "{kind} {name} {path}: {args:?}"
+                    );
+                }
+            }
+        }
+        // Every name SAM allows by default or through a switch is among
+        // them, except the portal (its own rules, `effective_session_bus`)
+        // and the keyring (which hands out passwords anyway).
+        let all = sam_core::permissions::IntegrationPerms {
+            keyring: false,
+            media_controls: true,
+            file_manager: true,
+            input_method: true,
+            ..Default::default()
+        };
+        let defaults = sam_core::permissions::default_session_allow();
+        for name in defaults
+            .iter()
+            .map(String::as_str)
+            .filter(|n| *n != sam_core::permissions::PORTAL_NAME)
+            .chain(all.bus_names().0)
+        {
+            assert!(super::service_paths(name).is_some(), "{name}");
+        }
+        assert!(
+            args.contains(&"--talk=org.example.Other".to_string()),
+            "{args:?}"
+        );
+        // The paths are the ones these services use (checked 2026-11-25 on
+        // KDE Plasma 6 and in the Fcitx 5 and IBus sources).
+        assert_eq!(
+            super::service_paths("org.freedesktop.Notifications"),
+            Some(&["/org/freedesktop/Notifications"][..])
+        );
+        assert_eq!(
+            super::service_paths("org.kde.StatusNotifierWatcher"),
+            Some(&["/StatusNotifierWatcher"][..])
         );
     }
 

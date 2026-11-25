@@ -389,7 +389,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-440 tests.
+442 tests.
 
 | Promise | Test |
 |---|---|
@@ -413,13 +413,14 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | A missing portal interface breaks the portal contract. | [`a_missing_portal_interface_breaks_the_portal_contract`](../crates/sam-runner/src/contracts.rs#L876) |
 | SAM's own bus check reaches a session bus. | [`reaches_the_session_bus`](../crates/sam-runner/src/dbus_check.rs#L275) |
 | SAM's own D-Bus message for the bus check has the correct wire format. | [`the_bus_check_message_has_the_correct_wire_format`](../crates/sam-runner/src/dbus_check.rs#L325) |
-| The proxy's filter never names an always-blocked name, in any of its rules, also when the rules it is given still hold one: the second line behind `effective_session_bus`. | [`the_filter_never_names_an_always_blocked_name`](../crates/sam-runner/src/dbus_proxy.rs#L245) |
-| Only the proxy's "wants to own" lines name a name to learn, and only a well-formed one (what the app printed never reaches this). | [`the_proxy_record_names_what_the_app_wanted_to_own`](../crates/sam-runner/src/dbus_proxy.rs#L269) |
-| A name is kept once, and no more than eight in all. | [`wanted_names_are_kept_once_and_at_most_eight`](../crates/sam-runner/src/dbus_proxy.rs#L286) |
-| An app may register a tray icon only while the tray service is allowed. | [`tray_names_follow_watcher_permission`](../crates/sam-runner/src/dbus_proxy.rs#L301) |
-| Audit L-F13: the numbered instance names SAM adds to an allowed name (`org.example.App-3`) pass the same checks as the name itself, so an on-demand service or another app's name among them is never granted unchecked; and only the exact tray names SAM chose skip the check, not every name that starts like one. | [`added_instance_names_and_tray_look_alikes_are_checked`](../crates/sam-runner/src/dbus_proxy.rs#L316) |
-| A name on the always-blocked list is not talked to although it is allowed, and blocking one name leaves the other allowed names alone (mutation run 2026-11-24: the comparison could be turned around unnoticed). | [`an_always_blocked_name_is_not_talked_to_and_others_stay_allowed`](../crates/sam-runner/src/dbus_proxy.rs#L352) |
-| The proxy counts as ready only when its socket accepts connections, not when the file merely exists (regression: the sandbox check sometimes found the session bus refused right after the start). | [`a_socket_counts_as_ready_only_when_it_accepts`](../crates/sam-runner/src/dbus_proxy.rs#L374) |
+| The proxy's filter never names an always-blocked name, in any of its rules, also when the rules it is given still hold one: the second line behind `effective_session_bus`. | [`the_filter_never_names_an_always_blocked_name`](../crates/sam-runner/src/dbus_proxy.rs#L305) |
+| B2 R76: a desktop service SAM allows by default or through a switch gets calls and signals on its own objects only, never a plain `--talk`, which would open every object of the program behind it (on Plasma 6, plasmashell's clipboard history and script runner behind the notification service). | [`known_desktop_services_reach_only_their_own_objects`](../crates/sam-runner/src/dbus_proxy.rs#L333) |
+| Only the proxy's "wants to own" lines name a name to learn, and only a well-formed one (what the app printed never reaches this). | [`the_proxy_record_names_what_the_app_wanted_to_own`](../crates/sam-runner/src/dbus_proxy.rs#L409) |
+| A name is kept once, and no more than eight in all. | [`wanted_names_are_kept_once_and_at_most_eight`](../crates/sam-runner/src/dbus_proxy.rs#L426) |
+| An app may register a tray icon only while the tray service is allowed. | [`tray_names_follow_watcher_permission`](../crates/sam-runner/src/dbus_proxy.rs#L441) |
+| Audit L-F13: the numbered instance names SAM adds to an allowed name (`org.example.App-3`) pass the same checks as the name itself, so an on-demand service or another app's name among them is never granted unchecked; and only the exact tray names SAM chose skip the check, not every name that starts like one. | [`added_instance_names_and_tray_look_alikes_are_checked`](../crates/sam-runner/src/dbus_proxy.rs#L456) |
+| A name on the always-blocked list is not talked to although it is allowed, and blocking one name leaves the other allowed names alone (mutation run 2026-11-24: the comparison could be turned around unnoticed). | [`an_always_blocked_name_is_not_talked_to_and_others_stay_allowed`](../crates/sam-runner/src/dbus_proxy.rs#L492) |
+| The proxy counts as ready only when its socket accepts connections, not when the file merely exists (regression: the sandbox check sometimes found the session bus refused right after the start). | [`a_socket_counts_as_ready_only_when_it_accepts`](../crates/sam-runner/src/dbus_proxy.rs#L514) |
 | When SAM cannot reach the sandbox to take an unplugged controller out, it ends the app: Bubblewrap gave no status line, or one without the sandbox's mount namespace, or one no process has (review R56). | [`an_unplugged_controller_that_cannot_be_taken_out_ends_the_app`](../crates/sam-runner/src/device_watch.rs#L599) |
 | Where taking the node out is not enough (no Landlock, or the app may make namespaces of its own), an unplugged controller ends the app (review R56). | [`without_landlock_an_unplugged_controller_ends_the_app`](../crates/sam-runner/src/device_watch.rs#L622) |
 | When SAM ends a sandbox it cannot keep its promise in, the program it started ends at once, whatever it does; once that program has ended, its number is never signalled again (review R56). | [`ending_the_sandbox_ends_it_at_once`](../crates/sam-runner/src/device_watch.rs#L655) |
@@ -711,6 +712,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | A swapped appimage does not start until it is confirmed. | [`a_swapped_appimage_does_not_start_until_it_is_confirmed`](../crates/sam-runner/tests/changed_appimage.rs#L13) |
 | ⟲ Regression (audit U-H1, Part 5): changing any switch cleared the mark of a swapped AppImage file, so it started without the person looking at it. | [`a_swapped_appimage_stays_marked_when_a_switch_changes`](../crates/sam-runner/tests/changed_appimage.rs#L71) |
 | ⟲ Regression (audit U-H2): "Check all AppImages for changes" (or moving the file with relocate) recorded the swapped file's checksum, so the following "Unpack Again" compared the file with itself: the swapped content ran with the old app's permissions, unmarked, and its signature was not checked again. | [`a_swapped_appimage_is_marked_also_after_the_change_check`](../crates/sam-runner/tests/changed_appimage.rs#L111) |
+| Default desktop services reach only their own objects. | [`default_desktop_services_reach_only_their_own_objects`](../crates/sam-runner/tests/default_bus_names.rs#L55) |
 | An unplugged controller is taken out of the running sandbox; the app keeps running (review R56). | [`an_unplugged_controller_leaves_the_running_sandbox`](../crates/sam-runner/tests/device_watch.rs#L318) |
 | Another device at an unplugged controller's name (a keyboard that got its number) is never reachable: the node is taken out (review R56). | [`another_device_at_a_controllers_name_is_never_shown`](../crates/sam-runner/tests/device_watch.rs#L332) |
 | With "This computer only" (pasta, which gives the sandbox its own process numbers) an unplugged controller is taken out too (review R56). | [`an_unplugged_controller_leaves_a_sandbox_inside_pasta`](../crates/sam-runner/tests/device_watch.rs#L346) |
@@ -1035,4 +1037,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 948 automated Rust tests plus 8 scripted checks.
+Total: 950 automated Rust tests plus 8 scripted checks.
