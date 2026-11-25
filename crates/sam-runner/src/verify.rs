@@ -423,17 +423,15 @@ pub fn plan(p: &PermissionSet, cfg: &Config, host: &HostInfo) -> ProbePlan {
     }
 
     // D-Bus.
-    // The bus the start gives the app: the address, or the socket SAM found
-    // without one, as the start uses it (B2 R79).
-    let host_bus = s
-        .dbus_session_address
-        .clone()
-        .filter(|a| a.contains("unix:path="))
-        .or_else(|| {
-            s.dbus_session
-                .as_ref()
-                .map(|p| format!("unix:path={}", p.display()))
-        });
+    // The bus the start gives the app: only where SAM found its socket (the
+    // start passes that socket, never the address alone), asked through the
+    // address or that socket (B2 R79).
+    let host_bus = s.dbus_session.as_ref().map(|sock| {
+        s.dbus_session_address
+            .clone()
+            .filter(|a| a.contains("unix:path="))
+            .unwrap_or_else(|| format!("unix:path={}", sock.display()))
+    });
     let on_host = |name: &str| {
         host_bus.as_deref().is_some_and(|a| {
             crate::dbus_check::name_reachable(a, name, Duration::from_secs(2)).unwrap_or(false)
@@ -450,10 +448,12 @@ pub fn plan(p: &PermissionSet, cfg: &Config, host: &HostInfo) -> ProbePlan {
         ProbeTest::SessionBus { expect: bus_on },
     ));
     if bus_on {
-        // A name the filter lets the app see: one it may talk to, own, call
+        // A name the filter lets the app see: one it may talk to, call
         // functions of or hear signals from (the portal through its
         // function rules, while it is allowed), matched as the filter
-        // matches (B2 R79).
+        // matches (B2 R79). Not the names it may own: the start refuses
+        // every own rule that covers one of the names checked here (the
+        // desktop's protocols, dangerous services).
         let bus = p.effective_session_bus();
         let allowed = |n: &str| {
             let rule_name =
@@ -462,7 +462,6 @@ pub fn plan(p: &PermissionSet, cfg: &Config, host: &HostInfo) -> ProbePlan {
                 || bus
                     .allow
                     .iter()
-                    .chain(&bus.own)
                     .cloned()
                     .chain(bus.calls.iter().chain(&bus.broadcasts).map(rule_name))
                     .any(|a| proxy_covers(&a, n))
@@ -719,22 +718,56 @@ fn list_dev(dir: &str, prefix: &str) -> Vec<PathBuf> {
 /// Bubblewrap, or a rebuilt SAM (all development builds carry the same
 /// version number), is checked again (audit: the key left them out).
 pub fn check_key(app: &AppEntry, cfg: &Config, host: &HostInfo) -> String {
+    let planned = plan(&app.profile.permissions, cfg, host);
+    check_key_of(app, cfg, host, &planned)
+}
+
+/// [`check_key`] for the plan a check ran (B2 R82: computed afterwards,
+/// a service that started during the check would enter the key untested).
+fn check_key_of(app: &AppEntry, cfg: &Config, host: &HostInfo, planned: &ProbePlan) -> String {
     check_key_with(
         app,
         cfg,
         host,
         crate::find_helper(),
         sam_core::util::which("pasta"),
+        planned,
     )
 }
 
-/// [`check_key`] with SAM's helper and pasta given.
+/// What of a plan goes into the key: each check's id and test, without the
+/// titles (they follow the language, not the computer), without the values
+/// of passed-through variables (a per-start token would make every start
+/// check again, and a secret would go into the record), and with only
+/// "another port listens" for the hidden local services (which port is the
+/// lowest changes by itself).
+fn plan_fingerprint(planned: &ProbePlan) -> Vec<serde_json::Value> {
+    planned
+        .checks
+        .iter()
+        .map(|c| {
+            let test = match &c.test {
+                ProbeTest::Env { name, expect } => {
+                    serde_json::json!({"kind": "env", "name": name, "set": expect.is_some()})
+                }
+                ProbeTest::LocalPort { expect: false, .. } => {
+                    serde_json::json!({"kind": "local_port", "other": true})
+                }
+                t => serde_json::to_value(t).unwrap_or_default(),
+            };
+            serde_json::json!([c.id, test])
+        })
+        .collect()
+}
+
+/// [`check_key`] with SAM's helper, pasta and the plan given.
 fn check_key_with(
     app: &AppEntry,
     cfg: &Config,
     host: &HostInfo,
     helper: Option<PathBuf>,
     pasta: Option<PathBuf>,
+    planned: &ProbePlan,
 ) -> String {
     // Which build of a program: its size and time, which an update or a
     // new build changes (not its path: SAM's AppImage shows it at a new
@@ -755,16 +788,11 @@ fn check_key_with(
         "helper": build(helper.as_deref()),
         "pasta": build(pasta.as_deref()),
     });
-    // What the check would check on this computer now: which folders,
-    // devices, ports and desktop services it finds, and what it expects of
-    // each (B2 R82: a pass recorded while the keyring was not running was
-    // reused once it ran). The titles are left out: they follow the
-    // language, not the computer.
-    let planned: Vec<serde_json::Value> = plan(&app.profile.permissions, cfg, host)
-        .checks
-        .iter()
-        .map(|c| serde_json::json!([c.id, c.test]))
-        .collect();
+    // What the check checks on this computer: which folders, devices,
+    // ports and desktop services it finds, and what it expects of each (B2
+    // R82: a pass recorded while the keyring was not running was reused
+    // once it ran).
+    let planned = plan_fingerprint(planned);
     let data = serde_json::json!({
         "sam": env!("CARGO_PKG_VERSION"),
         "profile": &app.profile,
@@ -804,6 +832,8 @@ fn wayland_context_result(made: bool, failed: bool) -> Option<ProbeResult> {
 /// Runs the sandbox check for an app.
 pub fn verify(app: &AppEntry, cfg: &Config, paths: &Paths, host: &HostInfo) -> Result<Outcome> {
     let plan = plan(&app.profile.permissions, cfg, host);
+    // The key of the plan that runs, not of one made afterwards.
+    let key = check_key_of(app, cfg, host, &plan);
     let prepared = prepare(
         app,
         &LaunchOptions {
@@ -891,7 +921,7 @@ pub fn verify(app: &AppEntry, cfg: &Config, paths: &Paths, host: &HostInfo) -> R
     report.results.extend(wayland);
     let record = CheckRecord {
         at: sam_core::util::now(),
-        key: check_key(app, cfg, host),
+        key,
         passed: report.passed(),
         failed: report.failed().iter().map(|r| r.title.clone()).collect(),
         skipped: report.results.iter().filter(|r| r.ok.is_none()).count(),
@@ -1255,6 +1285,7 @@ mod tests {
         let address = services.bus_address().expect("a private bus").to_string();
         let mut h = host_in(t.path());
         h.sockets.dbus_session_address = Some(address.clone());
+        h.sockets.dbus_session = sam_core::host::dbus_unix_path(&address);
         h.tools.xdg_dbus_proxy = Some(sam_core::host::Tool {
             path: "/usr/bin/xdg-dbus-proxy".into(),
             version: None,
@@ -1343,7 +1374,11 @@ mod tests {
         );
         f.dbus.session.allow = vec![];
         f.dbus.session.own = vec!["org.kde.*".into()];
-        assert_eq!(reach(&f, KWIN), Some(true), "owning a family reaches it");
+        assert_eq!(
+            reach(&f, KWIN),
+            Some(false),
+            "the start refuses to let an app own KWin's family"
+        );
         f.dbus.session.own = vec![];
         f.dbus.session.calls = vec![format!(
             "{SECRETS}=org.freedesktop.Secret.Service.*@/org/freedesktop/secrets"
@@ -1417,8 +1452,17 @@ mod tests {
             path: bwrap.clone(),
             version: None,
         });
-        let key =
-            |h: &HostInfo| check_key_with(&app, &cfg, h, Some(helper.clone()), Some(pasta.clone()));
+        let key = |h: &HostInfo| {
+            let planned = plan(&app.profile.permissions, &cfg, h);
+            check_key_with(
+                &app,
+                &cfg,
+                h,
+                Some(helper.clone()),
+                Some(pasta.clone()),
+                &planned,
+            )
+        };
         let before = key(&h);
         assert_eq!(key(&h), before, "the same computer, the same key");
         let mut newer = h.clone();
@@ -1441,7 +1485,10 @@ mod tests {
         let t = tempfile::tempdir().unwrap();
         let h = host_in(t.path());
         let (cfg, app) = (Config::default(), AppEntry::default());
-        let key = |h: &HostInfo| check_key_with(&app, &cfg, h, None, None);
+        let key = |h: &HostInfo| {
+            let planned = plan(&app.profile.permissions, &cfg, h);
+            check_key_with(&app, &cfg, h, None, None, &planned)
+        };
         let before = key(&h);
         assert_eq!(key(&h), before, "the same computer, the same key");
         // GnuPG's folder appears: the check now looks that it stays hidden.
@@ -1451,6 +1498,41 @@ mod tests {
         // The Documents folder goes.
         fs::remove_dir_all(h.home.join("Documents")).unwrap();
         assert_ne!(key(&h), with_gnupg, "a folder went");
+    }
+
+    /// B2 R82: what changes by itself does not enter the key: the value of
+    /// a passed-through variable (a per-start token; a secret would go into
+    /// the record) and which other port happens to listen. Whether the
+    /// variable is set, and whether another port listens, do.
+    #[test]
+    fn the_key_leaves_out_what_changes_by_itself() {
+        let check = |test| ProbePlan {
+            checks: vec![c("x", "Network", "X", test)],
+        };
+        let env = |v: Option<&str>| {
+            check(ProbeTest::Env {
+                name: "TOKEN".into(),
+                expect: v.map(String::from),
+            })
+        };
+        assert_eq!(
+            plan_fingerprint(&env(Some("a"))),
+            plan_fingerprint(&env(Some("b")))
+        );
+        assert_ne!(
+            plan_fingerprint(&env(Some("a"))),
+            plan_fingerprint(&env(None))
+        );
+        let port = |port, expect| check(ProbeTest::LocalPort { port, expect });
+        assert_eq!(
+            plan_fingerprint(&port(631, false)),
+            plan_fingerprint(&port(8080, false))
+        );
+        assert_ne!(
+            plan_fingerprint(&port(631, true)),
+            plan_fingerprint(&port(8080, true)),
+            "a granted port is a setting"
+        );
     }
 
     /// B2 R79: the check expects the session bus wherever the start gives
@@ -1478,6 +1560,9 @@ mod tests {
         assert_eq!(expect(&h), Some(true), "the socket without an address");
         h.sockets.dbus_session = None;
         assert_eq!(expect(&h), Some(false), "no bus at all");
+        // An address whose socket SAM did not find: the start gives no bus.
+        h.sockets.dbus_session_address = Some("unix:path=/nonexistent/bus".into());
+        assert_eq!(expect(&h), Some(false), "an address without its socket");
     }
 
     /// B2 R78: the check names the Wayland security context, which SAM
