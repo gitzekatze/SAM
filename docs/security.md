@@ -649,8 +649,11 @@ How these stay protected with the home writable:
   program's socket), and so is one whose link leads to a socket SAM rates
   *Dangerous* (Docker, the system or session bus, the sound server's own
   socket, a key agent) unless the name you listed is rated *Dangerous* for
-  the same reason (`an_app_cannot_turn_its_extra_socket_into_a_link_to_another_one`,
-  `an_extra_socket_is_passed_in_only_as_dangerous_as_its_name`). One
+  the same reason (Docker, Podman and containerd count as one, so
+  podman-docker's `docker.sock` may lead to Podman)
+  (`an_app_cannot_turn_its_extra_socket_into_a_link_to_another_one`,
+  `an_extra_socket_is_passed_in_only_as_dangerous_as_its_name`,
+  `a_docker_socket_may_lead_to_podman_but_not_to_the_bus`). One
   that lies below a folder the app may change is left out too: SAM checks
   the socket before the start and Bubblewrap takes it by name a moment
   later, so a running copy of the app could swap it in between

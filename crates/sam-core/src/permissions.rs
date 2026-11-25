@@ -464,8 +464,21 @@ pub fn dangerous_socket(path: &str) -> Option<String> {
     dangerous_socket_reason(p).map(|why| format!("{p} {}", crate::i18n::tr(why)))
 }
 
-/// Why a socket is dangerous, untranslated, if it is: two names are
-/// dangerous in the same way when their reasons are the same.
+/// In which way a socket is dangerous, if it is: two names are dangerous
+/// in the same way when their kinds are the same. Docker, Podman and
+/// containerd are one kind, control of containers: podman-docker links
+/// `/run/docker.sock` to Podman's socket (review of owner decision 11 of
+/// 2026-11-23).
+pub fn dangerous_socket_kind(path: &str) -> Option<&'static str> {
+    let containers = ["docker.sock", "podman.sock", "containerd.sock"];
+    let norm = socket_path_norm(path);
+    if containers.iter().any(|c| norm.contains(c)) {
+        return Some("containers");
+    }
+    dangerous_socket_reason(path)
+}
+
+/// Why a socket is dangerous, untranslated, if it is.
 pub fn dangerous_socket_reason(path: &str) -> Option<&'static str> {
     let norm = socket_path_norm(path);
     let bad: &[(&str, &'static str)] = &[
