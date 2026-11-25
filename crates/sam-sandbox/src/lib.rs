@@ -2281,8 +2281,10 @@ impl Section<'_> {
         // Writable for the app: its grants (seen at their real place),
         // SAM's folders (its private home among them) and the host side of
         // a writable extra bind (the views know only where those are shown).
+        // `shown_writable`: also under another name of the same place (the
+        // home kept behind a link, `/home` to `/var/home`).
         let app_can_change = |d: &Path| {
-            views.writable(d)
+            shown_writable(views, d)
                 || inside_sam(ctx, d)
                 || ctx
                     .extra_binds
@@ -2302,13 +2304,12 @@ impl Section<'_> {
             // Checked here, bound by name later: in a folder the app can
             // change, a running copy of it could swap the socket for a
             // link to another one (the session bus) in between, and the
-            // bind would follow that link (review B2 R55). A folder above
-            // it cannot be renamed instead: below a writable grant the
-            // folder is writable too, and a read-only one inside such a
-            // grant is a mount point of its own.
-            if real.parent().is_some_and(app_can_change) {
+            // bind would follow that link (review B2 R55). Every folder
+            // above it counts too: a folder the app can rename moves a
+            // read-only grant below it along, and a new one takes its name.
+            if real.ancestors().skip(1).any(app_can_change) {
                 notes.push(sam_core::i18n::trf(
-                    "{path} is in a folder the app can change, so the app could swap it for another socket during the start; it is not passed into the sandbox. Keep the socket in a folder the app cannot write.",
+                    "{path} lies below a folder the app can change, so the app could swap it for another socket during the start; this setting does not pass it in. Where the app may use that folder, it still reaches the socket there.",
                     &[("path", &sp.display())],
                 ));
                 continue;
@@ -3704,8 +3705,8 @@ mod tests {
         assert!(has_seq(&a, &["--bind-try", &target_s, &listed_s]), "{a:?}");
     }
 
-    /// An extra socket in a folder the app can change is not passed in, with
-    /// a note; in a folder the app may only read, it is. SAM checks the
+    /// An extra socket below a folder the app can change is not passed in,
+    /// with a note; in a folder the app may only read, it is. SAM checks the
     /// socket when it builds the command and Bubblewrap binds it by name
     /// later: a running copy of the app could swap it for a link to the
     /// session bus in between (review B2 R55).
@@ -3736,10 +3737,54 @@ mod tests {
                 cmd.notes
             );
         }
-        // Also when only an extra bind makes the folder writable.
+        // A read-only grant inside a writable one: the folder between them
+        // can be renamed, and the read-only mount moves along.
+        fs::create_dir_all(shared.join("deep/ro")).unwrap();
+        let inner = shared.join("deep/ro/app.sock");
+        let _i = std::os::unix::net::UnixListener::bind(&inner).unwrap();
+        let inner_s = inner.display().to_string();
+        ctx.permissions.sockets.custom = vec![inner_s.clone()];
+        ctx.permissions.filesystem.custom_write = vec![shared.display().to_string()];
+        ctx.permissions.filesystem.custom_read = vec![shared.join("deep/ro").display().to_string()];
+        assert!(
+            !has_seq(&args_of(&ctx), &["--bind-try", &inner_s, &inner_s]),
+            "below a writable folder"
+        );
         ctx.permissions.filesystem.custom_write.clear();
+        assert!(has_seq(&args_of(&ctx), &["--bind-try", &inner_s, &inner_s]));
+        ctx.permissions.filesystem.custom_read.clear();
+        ctx.permissions.sockets.custom = vec![sock_s.clone()];
+        // Also when only an extra bind makes the folder writable.
         ctx.extra_binds = vec![(shared.clone(), "/run/x".into(), true)];
         assert!(!bound(&ctx), "writable through an extra bind");
+        let cmd = Bubblewrap.build(&ctx).unwrap();
+        assert!(
+            cmd.notes.iter().any(|n| n.contains(&sock_s)),
+            "{:?}",
+            cmd.notes
+        );
+        ctx.extra_binds.clear();
+        // A writable home kept behind a link: the socket's real place is
+        // the home's too.
+        let real_home = root.join("real-home");
+        fs::create_dir(&real_home).unwrap();
+        let home_sock = real_home.join("svc.sock");
+        let _h = std::os::unix::net::UnixListener::bind(&home_sock).unwrap();
+        std::os::unix::fs::symlink(&real_home, root.join("home")).unwrap();
+        let home_s = home_sock.display().to_string();
+        ctx.host.home = root.join("home");
+        ctx.host.xdg_dirs.clear();
+        ctx.permissions.sockets.custom = vec![home_s.clone()];
+        assert!(
+            has_seq(&args_of(&ctx), &["--bind-try", &home_s, &home_s]),
+            "home not granted"
+        );
+        ctx.permissions.filesystem.home = true;
+        ctx.permissions.filesystem.home_access = Access::Rw;
+        assert!(
+            !has_seq(&args_of(&ctx), &["--bind-try", &home_s, &home_s]),
+            "the home writable under its linked name"
+        );
     }
 
     /// An extra socket whose link leads to a socket SAM calls dangerous

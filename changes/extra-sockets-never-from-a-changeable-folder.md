@@ -4,6 +4,7 @@
   takes it by name a moment later. If the socket lay in a folder the app
   may write, a running copy of the app could swap it for a link to
   another socket (such as the session bus) in between.
-- Such a socket is now left out with a note that says why. Keep the
-  socket in a folder the app cannot write; a socket in a folder the app
-  may only read is passed in as before.
+- Such a socket, also one below such a folder, is now left out with a
+  note that says why. Where the app may use that folder, it still
+  reaches the socket there. A socket in a folder the app may only read
+  is passed in as before.

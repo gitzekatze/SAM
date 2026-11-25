@@ -1390,7 +1390,7 @@ msgstr ""
 msgid "User namespaces unavailable"
 msgstr "Espaces de noms utilisateur indisponibles"
 
-#: crates/sam-core/src/warnings.rs:348 crates/sam-sandbox/src/lib.rs:1908
+#: crates/sam-core/src/warnings.rs:348 crates/sam-sandbox/src/lib.rs:2059
 msgid "Wayland socket not available"
 msgstr "Socket Wayland indisponible"
 
@@ -1402,7 +1402,7 @@ msgstr ""
 "Le socket Wayland n’est pas disponible. Active X11 ou ouvre une session "
 "Wayland."
 
-#: crates/sam-core/src/warnings.rs:355 crates/sam-sandbox/src/lib.rs:1928
+#: crates/sam-core/src/warnings.rs:355 crates/sam-sandbox/src/lib.rs:2079
 msgid "X11 display not available"
 msgstr "Affichage X11 indisponible"
 
@@ -5519,7 +5519,7 @@ msgstr "Afficher la solution"
 
 #. Keep the {placeholders}; their order may change.
 #: crates/sam-jail-cli/src/bin/sam-jail-run.rs:153
-#: crates/sam-sandbox/src/lib.rs:1493
+#: crates/sam-sandbox/src/lib.rs:1644
 msgid ""
 "SAM cannot pass on {path}: its name is not valid text. Rename it, then start "
 "the app again."
@@ -6571,7 +6571,7 @@ msgstr ""
 "relais de SAM », qui lui permet de charger du code dans le serveur audio "
 "hors du bac à sable"
 
-#: crates/sam-runner/src/doctor.rs:311 crates/sam-sandbox/src/lib.rs:1981
+#: crates/sam-runner/src/doctor.rs:311 crates/sam-sandbox/src/lib.rs:2132
 msgid "No sound server found. Audio may not work."
 msgstr "Aucun serveur de son trouvé. Le son risque de ne pas fonctionner."
 
@@ -8757,16 +8757,16 @@ msgstr "le serveur a envoyé {got} octets au lieu de {expected}"
 msgid "the assembled file does not match the published checksum"
 msgstr "le fichier assemblé ne correspond pas à la somme de contrôle publiée"
 
-#: crates/sam-sandbox/src/lib.rs:1427
+#: crates/sam-sandbox/src/lib.rs:1578
 msgid "Bubblewrap is not installed. Install the 'bubblewrap' package."
 msgstr "Bubblewrap n’est pas installé. Installe le paquet « bubblewrap »."
 
-#: crates/sam-sandbox/src/lib.rs:1435
+#: crates/sam-sandbox/src/lib.rs:1586
 msgid "xdg-dbus-proxy not found: filtered session D-Bus will be disabled"
 msgstr "xdg-dbus-proxy introuvable : le D-Bus de session filtré sera désactivé"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:1456
+#: crates/sam-sandbox/src/lib.rs:1607
 msgid ""
 "the home folder is not set (HOME is \"{home}\"); SAM does not start apps "
 "without one"
@@ -8774,17 +8774,17 @@ msgstr ""
 "le dossier personnel n'est pas défini (HOME vaut « {home} ») ; SAM ne lance "
 "pas d'application sans lui"
 
-#: crates/sam-sandbox/src/lib.rs:1467
+#: crates/sam-sandbox/src/lib.rs:1618
 msgid "bubblewrap (bwrap) is not installed"
 msgstr "bubblewrap (bwrap) n’est pas installé"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:1807
+#: crates/sam-sandbox/src/lib.rs:1958
 msgid "{key} folder does not exist on the host; not bound"
 msgstr "Le dossier {key} n’existe pas sur le système ; non lié"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:1811
+#: crates/sam-sandbox/src/lib.rs:1962
 msgid ""
 "{key} folder is set to {path}, which shows more than a user folder (the "
 "home, a folder above it, a system or SAM folder, or a protected place); not "
@@ -8795,16 +8795,16 @@ msgstr ""
 "ou de SAM, ou un emplacement protégé) ; non lié"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:1859
+#: crates/sam-sandbox/src/lib.rs:2010
 msgid "granted access to the opened folder {path}"
 msgstr "accès accordé au dossier ouvert {path}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:1864
+#: crates/sam-sandbox/src/lib.rs:2015
 msgid "granted access to the opened file {path}"
 msgstr "accès accordé au fichier ouvert {path}"
 
-#: crates/sam-sandbox/src/lib.rs:1979
+#: crates/sam-sandbox/src/lib.rs:2130
 msgid ""
 "SAM's sound relay is not running, so the app has no sound (the sound "
 "server's own connection would let it load code outside the sandbox). The "
@@ -8814,7 +8814,7 @@ msgstr ""
 "connexion propre du serveur audio lui permettrait de charger du code hors du "
 "bac à sable). Le message de lancement dit pourquoi."
 
-#: crates/sam-sandbox/src/lib.rs:2036
+#: crates/sam-sandbox/src/lib.rs:2187
 msgid ""
 "No game controller is plugged in; controllers connected later are not seen "
 "until the app restarts"
@@ -8822,19 +8822,19 @@ msgstr ""
 "Aucune manette branchée ; les manettes branchées plus tard ne seront "
 "visibles qu’après le redémarrage de l’application"
 
-#: crates/sam-sandbox/src/lib.rs:2046
+#: crates/sam-sandbox/src/lib.rs:2197
 msgid "Bluetooth needs the system D-Bus; not granted"
 msgstr "Bluetooth a besoin du D-Bus système ; non accordé"
 
-#: crates/sam-sandbox/src/lib.rs:2059
+#: crates/sam-sandbox/src/lib.rs:2210
 msgid "Input method needs the session D-Bus; not granted"
 msgstr "La méthode de saisie a besoin du D-Bus de session ; non accordé"
 
-#: crates/sam-sandbox/src/lib.rs:2082
+#: crates/sam-sandbox/src/lib.rs:2233
 msgid "session D-Bus socket not found"
 msgstr "socket du D-Bus de session introuvable"
 
-#: crates/sam-sandbox/src/lib.rs:2091
+#: crates/sam-sandbox/src/lib.rs:2242
 msgid ""
 "filtered D-Bus requested but no proxy is running (install xdg-dbus-proxy); "
 "session bus disabled"
@@ -8843,7 +8843,7 @@ msgstr ""
 "proxy) ; bus de session désactivé"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2144
+#: crates/sam-sandbox/src/lib.rs:2297
 msgid ""
 "{path} is reached through a link in a folder the app can change; it is not "
 "passed into the sandbox. List the socket by its real place."
@@ -8853,24 +8853,24 @@ msgstr ""
 "emplacement réel."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2156
+#: crates/sam-sandbox/src/lib.rs:2311
 msgid ""
-"{path} is in a folder the app can change, so the app could swap it for "
-"another socket during the start; it is not passed into the sandbox. Keep the "
-"socket in a folder the app cannot write."
+"{path} lies below a folder the app can change, so the app could swap it for "
+"another socket during the start; this setting does not pass it in. Where the "
+"app may use that folder, it still reaches the socket there."
 msgstr ""
-"{path} se trouve dans un dossier que l’application peut modifier, elle "
-"pourrait donc l’échanger contre un autre socket pendant le démarrage ; il "
-"n’est pas transmis au bac à sable. Place le socket dans un dossier où "
-"l’application ne peut pas écrire."
+"{path} se trouve sous un dossier que l’application peut modifier, elle "
+"pourrait donc l’échanger contre un autre socket pendant le démarrage ; ce "
+"réglage ne le transmet pas. Là où l’application peut utiliser ce dossier, "
+"elle atteint toujours le socket à cet endroit."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2163
+#: crates/sam-sandbox/src/lib.rs:2318
 msgid "{path} is not a socket; it is not passed into the sandbox"
 msgstr "{path} n’est pas un socket ; il n’est pas transmis au bac à sable"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2174
+#: crates/sam-sandbox/src/lib.rs:2329
 msgid ""
 "{path} leads elsewhere: {why}. It is not passed into the sandbox; list that "
 "socket by its real place if the app needs it."
@@ -8964,6 +8964,16 @@ msgstr ""
 #: crates/sam-storage/src/lib.rs:641
 msgid "unknown flat preset key '{other}'"
 msgstr "clé « {other} » inconnue dans le modèle plat"
+
+#~ msgid ""
+#~ "{path} is in a folder the app can change, so the app could swap it for "
+#~ "another socket during the start; it is not passed into the sandbox. Keep "
+#~ "the socket in a folder the app cannot write."
+#~ msgstr ""
+#~ "{path} se trouve dans un dossier que l’application peut modifier, elle "
+#~ "pourrait donc l’échanger contre un autre socket pendant le démarrage ; il "
+#~ "n’est pas transmis au bac à sable. Place le socket dans un dossier où "
+#~ "l’application ne peut pas écrire."
 
 #~ msgid ""
 #~ "Bus names that stay blocked even when a preset or another setting allows "
