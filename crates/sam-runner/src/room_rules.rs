@@ -1406,6 +1406,20 @@ mod tests {
         plan_room(&plan(), &req(ops, &["x"]), AppFacts::default()).is_err()
     }
 
+    /// A room's arguments and the person's raw arguments are read with the
+    /// same number of values for every Bubblewrap option (independent
+    /// review of PR 133: two tables could drift apart). `--version` is
+    /// read on its own, before any option.
+    #[test]
+    fn rooms_and_raw_arguments_count_option_values_alike() {
+        for (name, n) in sam_core::sandbox::BWRAP_OPTIONS {
+            if *name == "--version" {
+                continue;
+            }
+            assert_eq!(option(name).map(|(_, v)| v), Some(*n), "{name}");
+        }
+    }
+
     #[test]
     fn bwrap_args_are_read_as_bubblewrap_reads_them() {
         let a = read_bwrap_args(&s(&[

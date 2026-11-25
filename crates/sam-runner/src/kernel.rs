@@ -358,6 +358,11 @@ fn baseline_syscalls(allow_userns: bool) -> Vec<(&'static str, i64)> {
             libc::SYS_fspick,
             libc::SYS_mount_setattr,
         ]);
+        // open_tree and mount_setattr in one call (Linux 6.15): blocked
+        // like the two it combines (review R67). The libc crate has no
+        // name for it yet; its number is 467 on x86_64, i386 and aarch64,
+        // the only processors the filter supports (see `listed_calls`).
+        v.push(("open_tree_attr", 467));
     }
     v
 }
@@ -379,10 +384,10 @@ fn strict_extra_syscalls() -> Vec<(&'static str, i64)> {
 /// it: "blocked" (always), "blocked unless nested sandboxes" (nested
 /// sandboxes need namespaces and mounts), "blocked by the strict filter"
 /// (only with the strict filter on) or "limited" (only some uses refused:
-/// `ioctl` typing into the terminal, `socket` the families outside
-/// [`SOCKET_FAMILIES`], `clone` a new user namespace without nested
-/// sandboxes). Every other call is allowed (audit S-F10: the list
-/// said "blocked" for calls the default filter allows).
+/// `ioctl` typing into the terminal, `socket` and `socketpair` the
+/// families outside [`SOCKET_FAMILIES`], `clone` a new user namespace
+/// without nested sandboxes). Every other call is allowed (audit S-F10:
+/// the list said "blocked" for calls the default filter allows).
 pub fn review_statuses() -> BTreeMap<&'static str, &'static str> {
     let always: Vec<&str> = baseline_syscalls(true)
         .into_iter()
@@ -404,6 +409,7 @@ pub fn review_statuses() -> BTreeMap<&'static str, &'static str> {
     }
     out.insert("ioctl", "limited");
     out.insert("socket", "limited");
+    out.insert("socketpair", "limited");
     // A clone into a new user namespace is refused without nested
     // sandboxes; clone3 then answers "not implemented" (review K-2).
     out.insert("clone", "limited");
@@ -439,7 +445,10 @@ pub const SOCKET_FAMILIES: &[i32] = &[
 ///   architecture of x86-64 programs but number some calls on their own
 ///   (x32 `ptrace` is 521, not 101), so blocking each call by its number
 ///   missed those (audit S-F9). No AppImage is an x32 program.
-/// - `socket` opens only the families in [`SOCKET_FAMILIES`].
+/// - `socket` and `socketpair` open only the families in
+///   [`SOCKET_FAMILIES`]. `socketpair` makes its sockets the same way, so
+///   it would load and open any other family as well (a usable pair of
+///   TIPC sockets, for one; review R66).
 /// - without nested sandboxes, `clone3` answers "not implemented".
 ///
 /// It starts with the architecture: a call of another one (a 32-bit call
@@ -489,8 +498,10 @@ fn front_filter(spec: &SeccompSpec) -> seccompiler::BpfProgram {
         f.push(op(RET_K, RET_ERRNO | libc::ENOSYS as u32, 0, 0));
     }
     f.extend([
-        // Not `socket`: skip the family check (n compares, 1 load, 1 return).
-        op(JEQ_K, libc::SYS_socket as u32, 0, n + 2),
+        // `socket` or `socketpair`: both name the family first. Neither:
+        // skip the family check (n compares, 1 load, 1 return).
+        op(JEQ_K, libc::SYS_socket as u32, 1, 0),
+        op(JEQ_K, libc::SYS_socketpair as u32, 0, n + 2),
         op(LD_W_ABS, ARG0, 0, 0),
     ]);
     for (i, fam) in families.iter().enumerate() {
@@ -561,6 +572,7 @@ const I386_CALLS: &[(&str, u32)] = &[
     ("fsmount", 432),
     ("fspick", 433),
     ("mount_setattr", 442),
+    ("open_tree_attr", 467),
     ("ptrace", 26),
     ("process_vm_readv", 347),
     ("process_vm_writev", 348),
@@ -573,6 +585,7 @@ const I386_CALLS: &[(&str, u32)] = &[
 /// 32-bit x86 numbers of the calls with a closer look.
 const I386_IOCTL: u32 = 54;
 const I386_SOCKET: u32 = 359;
+const I386_SOCKETPAIR: u32 = 360;
 const I386_CLONE: u32 = 120;
 const I386_CLONE3: u32 = 435;
 
@@ -581,14 +594,16 @@ const I386_CLONE3: u32 = 435;
 /// apps ran with no filter at all, and an app could choose that by making
 /// its start program 32-bit). A 32-bit call gets the same answers as its
 /// 64-bit twin: the listed calls are refused, so are typing into the
-/// terminal, socket families outside [`SOCKET_FAMILIES`] and, without
+/// terminal, socket and socket-pair families outside [`SOCKET_FAMILIES`]
+/// and, without
 /// nested sandboxes, a clone into a new user namespace and clone3. Every
 /// other 32-bit call is allowed; 64-bit calls jump past this part.
 ///
 /// One gap is left, as in Flatpak: socketcall(), through which older C
 /// libraries open sockets, passes the family in memory the filter cannot
-/// read, so a 32-bit socket opened that way is not limited to the listed
-/// families. Without this branch such an app had no filter at all.
+/// read, so a 32-bit socket or socket pair made that way is not limited
+/// to the listed families. Without this branch such an app had no filter
+/// at all.
 fn i386_branch(spec: &SeccompSpec) -> Result<seccompiler::BpfProgram> {
     use seccompiler::sock_filter;
     if !(spec.i386 && cfg!(target_arch = "x86_64")) {
@@ -636,13 +651,14 @@ fn i386_branch(spec: &SeccompSpec) -> Result<seccompiler::BpfProgram> {
     b.push(op(JEQ_K, 0x541C, 0, 1)); // TIOCLINUX
     b.push(errno(libc::EPERM));
     b.push(op(LD_W_ABS, NR, 0, 0));
-    // socket(family, …): only the listed families.
+    // socket(family, …) and socketpair(family, …): only the listed families.
     let mut families: Vec<u32> = SOCKET_FAMILIES.iter().map(|f| *f as u32).collect();
     if spec.bluetooth {
         families.push(libc::AF_BLUETOOTH as u32);
     }
     let n = families.len() as u8;
-    b.push(op(JEQ_K, I386_SOCKET, 0, n + 2));
+    b.push(op(JEQ_K, I386_SOCKET, 1, 0));
+    b.push(op(JEQ_K, I386_SOCKETPAIR, 0, n + 2));
     b.push(op(LD_W_ABS, ARG0, 0, 0));
     for (i, fam) in families.iter().enumerate() {
         b.push(op(JEQ_K, *fam, n - i as u8, 0));
@@ -917,6 +933,7 @@ mod tests {
             || raw(libc::SYS_quotactl_fd, -1, 0),
             || raw(libc::SYS_fspick, -1, 0),
             || raw(libc::SYS_mount_setattr, -1, 0),
+            || raw(467, -1, 0), // open_tree_attr (review R67)
         ];
         let spec = SeccompSpec::default();
         let filtered = errnos(Some(&spec), &calls);
@@ -932,7 +949,7 @@ mod tests {
             &[eaf; 4],
             "crypto, VM, packet, Bluetooth sockets"
         );
-        assert_eq!(&filtered[8..], &[eperm; 6], "x32 calls and the siblings");
+        assert_eq!(&filtered[8..], &[eperm; 7], "x32 calls and the siblings");
         assert!(
             control[8] != eperm && control[9] != eperm,
             "x32: the kernel's answer, not the filter's"
@@ -941,22 +958,143 @@ mod tests {
             control[10], 0,
             "clock_adjtime reads the clock without the filter"
         );
-        // quotactl_fd and mount_setattr answer "bad descriptor" or
-        // "invalid" without the filter; fspick needs administrator rights,
-        // so the kernel refuses it either way.
-        assert!(control[11] != eperm && control[13] != eperm, "{control:?}");
+        // quotactl_fd, mount_setattr and open_tree_attr answer "bad
+        // descriptor", "invalid" or (before Linux 6.15) "no such call"
+        // without the filter; fspick needs administrator rights, so the
+        // kernel refuses it either way.
+        assert!(
+            control[11] != eperm && control[13] != eperm && control[14] != eperm,
+            "{control:?}"
+        );
         // With the Bluetooth switch, Bluetooth sockets as without the filter.
         let bt = SeccompSpec {
             bluetooth: true,
             ..SeccompSpec::default()
         };
         assert_eq!(errnos(Some(&bt), &calls[7..8]), control[7..8]);
-        // Nested sandboxes keep fspick and mount_setattr.
+        // Nested sandboxes keep fspick, mount_setattr and open_tree_attr.
         let nested = SeccompSpec {
             allow_userns: true,
             ..SeccompSpec::default()
         };
         assert_eq!(errnos(Some(&nested), &calls[12..]), control[12..]);
+    }
+
+    /// `socketpair(family, type, protocol, NULL)`: no place for the pair,
+    /// so the kernel never hands one out.
+    fn pair(family: i32, kind: i32) -> libc::c_long {
+        raw(libc::SYS_socketpair, family.into(), kind.into())
+    }
+
+    /// Review R66: `socketpair` makes its sockets as `socket` does, but
+    /// only `socket` had the family limit, so a pair of crypto, packet or
+    /// virtual-machine sockets reached the kernel (and loaded its module;
+    /// TIPC even works as a pair). Now a pair answers "family not
+    /// supported" for the same families, a local or internet pair passes
+    /// as before, and Bluetooth pairs follow the Bluetooth switch. The
+    /// pair has no place (a null pointer), so nothing is left open; the
+    /// control shows each refusal is the filter's.
+    #[test]
+    fn a_socket_pair_opens_only_the_listed_families_too() {
+        let calls: Vec<fn() -> libc::c_long> = vec![
+            || pair(libc::AF_UNIX, libc::SOCK_STREAM),
+            || pair(libc::AF_INET, libc::SOCK_STREAM),
+            || pair(libc::AF_ALG, libc::SOCK_SEQPACKET),
+            || pair(libc::AF_PACKET, libc::SOCK_DGRAM),
+            || pair(libc::AF_VSOCK, libc::SOCK_STREAM),
+            || pair(libc::AF_BLUETOOTH, libc::SOCK_STREAM),
+        ];
+        let control = errnos(None, &calls);
+        let filtered = errnos(Some(&SeccompSpec::default()), &calls);
+        assert_eq!(
+            &filtered[..2],
+            &control[..2],
+            "local and internet pairs as without the filter"
+        );
+        assert_eq!(
+            &filtered[2..],
+            &[libc::EAFNOSUPPORT; 4],
+            "crypto, packet, VM and Bluetooth pairs (control {control:?})"
+        );
+        // Without the filter the kernel writes the pair's place before it
+        // looks at the family (Linux 4.17 and later), so it answers "bad
+        // address" for every family and makes no socket; never "family
+        // not supported".
+        assert!(!control[2..].contains(&libc::EAFNOSUPPORT), "{control:?}");
+        let bt = SeccompSpec {
+            bluetooth: true,
+            ..SeccompSpec::default()
+        };
+        assert_eq!(errnos(Some(&bt), &calls[5..]), control[5..], "Bluetooth");
+        let nested = SeccompSpec {
+            allow_userns: true,
+            ..SeccompSpec::default()
+        };
+        assert_eq!(errnos(Some(&nested), &calls), filtered, "nested sandboxes");
+    }
+
+    /// Review R74: the kernel reads `ioctl`'s request and `socket`'s family
+    /// as 32-bit numbers and drops the upper half of the register. The
+    /// filter must compare the same half. A request of 0x1_0000_5412 is
+    /// TIOCSTI to the kernel: a terminal rule that compared all 64 bits
+    /// would let it through (Flatpak's CVE-2019-10063). A family of
+    /// (1 << 32) | AF_PACKET is AF_PACKET: a family check that read the
+    /// upper half would let it through. The controls show the kernel takes
+    /// both as their lower half (FIONREAD with bit 32 set still reads a
+    /// pipe; a local family with bit 32 set still opens).
+    #[test]
+    fn the_filter_reads_arguments_as_wide_as_the_kernel_does() {
+        const HIGH: libc::c_long = 1 << 32;
+        let calls: Vec<fn() -> libc::c_long> = vec![
+            || raw(libc::SYS_ioctl, -1, HIGH | libc::TIOCSTI as libc::c_long),
+            || raw(libc::SYS_ioctl, -1, HIGH | 0x541C), // TIOCLINUX
+            || {
+                raw(
+                    libc::SYS_socket,
+                    HIGH | libc::c_long::from(libc::AF_PACKET),
+                    libc::c_long::from(libc::SOCK_DGRAM),
+                )
+            },
+            || {
+                raw(
+                    libc::SYS_socket,
+                    HIGH | libc::c_long::from(libc::AF_UNIX),
+                    libc::c_long::from(libc::SOCK_STREAM),
+                )
+            },
+            // FIONREAD with bit 32 set on a pipe: answered only by a
+            // kernel that drops the upper half (else "not a terminal").
+            || {
+                let mut p = [0; 2];
+                let mut n: libc::c_int = 0;
+                // SAFETY: pipe fills a valid array; FIONREAD writes one int to `n`.
+                unsafe {
+                    if libc::pipe(p.as_mut_ptr()) != 0 {
+                        return -1;
+                    }
+                    libc::syscall(
+                        libc::SYS_ioctl,
+                        libc::c_long::from(p[0]),
+                        HIGH | libc::FIONREAD as libc::c_long,
+                        &raw mut n,
+                    )
+                }
+            },
+        ];
+        let control = errnos(None, &calls);
+        assert_eq!(control[..2], [libc::EBADF; 2], "no descriptor -1");
+        assert_ne!(
+            control[2],
+            libc::EAFNOSUPPORT,
+            "this kernel has no packet sockets (CONFIG_PACKET), which the control needs: {control:?}"
+        );
+        assert_eq!(control[3], 0, "a local socket opens");
+        assert_eq!(control[4], 0, "the kernel reads FIONREAD's lower half");
+        assert_eq!(
+            errnos(Some(&SeccompSpec::default()), &calls),
+            [libc::EPERM, libc::EPERM, libc::EAFNOSUPPORT, 0, 0],
+            "control {control:?}"
+        );
     }
 
     /// Bubblewrap reads the filter as eight bytes per instruction.
@@ -1050,6 +1188,8 @@ mod tests {
                 inlateout("rax") u64::from(nr) => r,
                 in("rcx") u64::from(b),
                 in("rdx") u64::from(c),
+                // A fourth argument, null (socketpair's place for the pair).
+                in("rsi") 0u64,
             );
         }
         let r = r as u32 as i32;
@@ -1165,6 +1305,19 @@ mod tests {
             }
         }
         assert_eq!(errnos(Some(&spec), &families), open, "allowed families");
+        // socketpair (32-bit number 360) is limited like socket (review
+        // R66); the pair has no place, so nothing is left open.
+        let pairs: Vec<fn() -> libc::c_long> = vec![
+            || call32(360, libc::AF_PACKET as u32, libc::SOCK_DGRAM as u32, 0),
+            || call32(360, libc::AF_UNIX as u32, libc::SOCK_STREAM as u32, 0),
+        ];
+        let open_pairs = errnos(None, &pairs);
+        assert_ne!(open_pairs[0], libc::EAFNOSUPPORT, "{open_pairs:?}");
+        assert_eq!(
+            errnos(Some(&spec), &pairs),
+            [libc::EAFNOSUPPORT, open_pairs[1]],
+            "32-bit pairs"
+        );
         // The strict filter's calls are refused through their 32-bit
         // numbers too.
         let strict = SeccompSpec {
@@ -1173,6 +1326,21 @@ mod tests {
             ..SeccompSpec::default()
         };
         assert_eq!(errnos(Some(&strict), &calls[13..]), [eperm], "strict");
+        // open_tree_attr through its 32-bit number (review R67).
+        let tree: Vec<fn() -> libc::c_long> = vec![|| call32(467, -1i32 as u32, 0, 0)];
+        let open_tree = errnos(None, &tree);
+        assert_ne!(open_tree, [eperm], "the kernel's own answer");
+        assert_eq!(errnos(Some(&spec), &tree), [eperm], "32-bit open_tree_attr");
+        let nested_tree = SeccompSpec {
+            i386: true,
+            allow_userns: true,
+            ..SeccompSpec::default()
+        };
+        assert_eq!(
+            errnos(Some(&nested_tree), &tree),
+            open_tree,
+            "nested, 32-bit"
+        );
         // Nested sandboxes: the namespace calls as without the filter.
         let nested = SeccompSpec {
             i386: true,
