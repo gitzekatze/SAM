@@ -130,7 +130,7 @@ report it privately ([SECURITY.md](SECURITY.md)).
 |---|---|
 | Bubblewrap | Private home per app, read-only system, no capabilities, private `/dev/shm`. There is no unsandboxed mode: if Bubblewrap cannot run, SAM says why and starts nothing. |
 | Landlock | Writes are allowed only where the profile allows them, even if a mount were wrong. Also blocks abstract sockets outside the sandbox (kernel 6.12+; on older kernels Diagnostics warns). |
-| Syscall filter | A baseline filter, on by default: what Flatpak's default filter blocks except `ptrace`, `personality` and `modify_ldt` (crash reporters and Wine use them), and more (`io_uring`, BPF, `userfaultfd`, `kexec`, rare socket types). Plus an optional strict filter. |
+| Syscall filter | A baseline filter, on by default. Without nested sandboxes it blocks what Flatpak's default filter blocks except `ptrace`, some `personality` values and `modify_ldt` (crash reporters and Wine use them), and more (`io_uring`, BPF, `userfaultfd`, `kexec`, rare socket types); nested sandboxes (for apps with a sandbox of their own) open the namespace and mount calls. Plus an optional strict filter. |
 | D-Bus filter | The session bus goes through `xdg-dbus-proxy`; the app sees only the names it is allowed to. The system bus cannot be filtered, so it is either hidden or fully open (dangerous, off by default). |
 | Portal filter | Opening links, file dialogs, notifications and printing work. Screenshots, autostart, menu-entry installation, location and remote desktop are blocked. |
 
