@@ -90,24 +90,6 @@ pub(crate) fn truncate(s: &str, n: usize) -> String {
     }
 }
 
-/// How many values follow a Bubblewrap option, as bwrap 0.13's `--help`
-/// lists them, so an option and its values stay on one line.
-fn bwrap_arity(option: &str) -> usize {
-    match option {
-        "--overlay" => 3,
-        "--bind" | "--bind-try" | "--ro-bind" | "--ro-bind-try" | "--dev-bind"
-        | "--dev-bind-try" | "--bind-fd" | "--ro-bind-fd" | "--symlink" | "--setenv" | "--file"
-        | "--bind-data" | "--ro-bind-data" | "--chmod" => 2,
-        "--proc" | "--dev" | "--tmpfs" | "--mqueue" | "--dir" | "--perms" | "--size"
-        | "--hostname" | "--chdir" | "--unsetenv" | "--uid" | "--gid" | "--userns"
-        | "--userns2" | "--pidns" | "--args" | "--argv0" | "--lock-file" | "--sync-fd"
-        | "--remount-ro" | "--overlay-src" | "--tmp-overlay" | "--ro-overlay" | "--exec-label"
-        | "--file-label" | "--cap-add" | "--cap-drop" | "--seccomp" | "--add-seccomp-fd"
-        | "--block-fd" | "--userns-block-fd" | "--info-fd" | "--json-status-fd" => 1,
-        _ => 0,
-    }
-}
-
 /// Break a long bwrap command into readable lines.
 pub(crate) fn pretty_command(argv: &[String]) -> String {
     let mut out = String::new();
@@ -124,7 +106,7 @@ pub(crate) fn pretty_command(argv: &[String]) -> String {
             out += &argv[i + 1..].iter().map(q).collect::<Vec<_>>().join(" ");
             break;
         }
-        let n = bwrap_arity(a);
+        let n = sam_core::sandbox::bwrap_arity(a);
         out += " \\\n  ";
         out += &argv[i..(i + 1 + n).min(argv.len())]
             .iter()

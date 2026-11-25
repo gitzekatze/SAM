@@ -25,7 +25,6 @@ use sam_core::{BubblewrapStatus, HostInfo, LaunchContext, SandboxCommand};
 
 pub struct Bubblewrap;
 
-/// `/usr/share` entries exposed in minimal runtime mode. Safe, read-only data.
 /// Host programs that ask a service outside the sandbox to start a program
 /// (which would then run unsandboxed). Inside every sandbox each is
 /// replaced by a stand-in from `TOOL_SHIMS` (see the /usr binding).
@@ -72,7 +71,7 @@ pub const TOOL_SHIMS: &[(&str, &str)] = &[
 while [ $# -gt 0 ]; do
   case "$1" in
     --) shift; break ;;
-    -u|-p|-E|-M|-H|--unit|--property|--slice|--description|--setenv|--uid|--gid|--nice|--working-directory|--machine|--host|--service-type|--on-active|--on-boot|--on-startup|--on-unit-active|--on-unit-inactive|--on-calendar|--timer-property|--path-property|--socket-property|--background|--json) shift 2 ;;
+    -u|-p|-E|-M|-H|-C|--unit|--property|--slice|--description|--setenv|--uid|--gid|--nice|--working-directory|--machine|--host|--capsule|--service-type|--job-mode|--on-active|--on-boot|--on-startup|--on-unit-active|--on-unit-inactive|--on-calendar|--timer-property|--path-property|--socket-property|--background|--json|--expand-environment|-g|--group|-D|--chdir|--area|--shell-prefix|--lightweight) shift 2 ;;
     -*) shift ;;
     *) break ;;
   esac
@@ -87,6 +86,7 @@ exec "$@"
     ),
 ];
 
+/// `/usr/share` entries exposed in minimal runtime mode. Safe, read-only data.
 const SHARE_BASE: &[&str] = &[
     // Which OpenGL/EGL driver to load: without these, an app that draws
     // with OpenGL (Flutter, GTK's GL area) finds no EGL at all, even for
@@ -228,27 +228,58 @@ fn protected_places_with(
     data: Option<PathBuf>,
 ) -> Vec<String> {
     let mut out: Vec<String> = PROTECTED_RO.iter().map(|p| p.to_string()).collect();
+    // Compared as written and by where they lead: the variable may name
+    // the home's real place (`/home/u` a link to `/data/u`), and a link on
+    // the way (`~/cfg` to `~/dotfiles/cfg`) must stay watched as well as
+    // the folder it leads to, since the desktop follows the name (review
+    // B2 R53). A name that is not text or holds `..` stops the start
+    // ([`odd_config_folder`]).
+    let homes = [home.to_path_buf(), resolve(home)];
     for (dir, default) in [(config, ".config/"), (data, ".local/share/")] {
         let Some(dir) = dir else {
             continue;
         };
-        let Ok(rel) = dir.strip_prefix(home) else {
-            continue;
-        };
-        let rel = rel.to_string_lossy().trim_end_matches('/').to_string();
-        if rel.is_empty() || format!("{rel}/") == default {
-            continue;
+        let mut rels: Vec<String> = Vec::new();
+        for d in [dir.clone(), resolve(&dir)] {
+            for h in &homes {
+                let Some(r) = d
+                    .strip_prefix(h)
+                    .ok()
+                    .filter(|r| r.components().all(|c| matches!(c, Component::Normal(_))))
+                    .and_then(Path::to_str)
+                else {
+                    continue;
+                };
+                let r = r.trim_end_matches('/').to_string();
+                if !r.is_empty() && format!("{r}/") != default && !rels.contains(&r) {
+                    rels.push(r);
+                }
+            }
         }
-        for p in PROTECTED_RO {
-            if let Some(rest) = p.strip_prefix(default) {
-                let alt = format!("{rel}/{rest}");
-                if !out.contains(&alt) {
-                    out.push(alt);
+        for rel in rels {
+            for p in PROTECTED_RO {
+                if let Some(rest) = p.strip_prefix(default) {
+                    let alt = format!("{rel}/{rest}");
+                    if !out.contains(&alt) {
+                        out.push(alt);
+                    }
                 }
             }
         }
     }
     out
+}
+
+/// `XDG_CONFIG_HOME` or `XDG_DATA_HOME` when its name is not valid text or
+/// holds `..`: the start places below it could not be named, or not
+/// without `..`, which a record of them may not hold, so they would go
+/// unprotected (independent reviews of PR 131 and PR 134).
+pub fn odd_config_folder(config: Option<&Path>, data: Option<&Path>) -> Option<PathBuf> {
+    [config, data]
+        .into_iter()
+        .flatten()
+        .find(|d| d.to_str().is_none() || d.components().any(|c| matches!(c, Component::ParentDir)))
+        .map(Path::to_path_buf)
 }
 
 /// Whether this start shows a place that makes the computer run something
@@ -562,8 +593,20 @@ impl HomeWatch {
         };
         // A place is always below the home: `home.join` of an absolute
         // path would leave it, and of an empty one is the home itself.
-        let rel = |p: PathBuf| {
-            (p.is_relative() && !p.as_os_str().is_empty()).then(|| p.to_str().map(String::from))?
+        // Only plain names are acted on: one with `..` would let `settle`
+        // rename or delete outside the home (review B2 R54). An older SAM
+        // wrote such names for an `XDG_CONFIG_HOME` holding `..`, so that
+        // line alone is left out (`Some(None)`) and the rest of the record
+        // still counts (independent review of PR 134); any other damage
+        // makes the whole record unreadable (`None`).
+        let place = |p: PathBuf| -> Option<Option<String>> {
+            let all = |ok: fn(&Component) -> bool| {
+                !p.as_os_str().is_empty() && p.components().all(|c| ok(&c))
+            };
+            if all(|c| matches!(c, Component::Normal(_))) {
+                return Some(Some(p.to_str()?.to_string()));
+            }
+            all(|c| matches!(c, Component::Normal(_) | Component::ParentDir)).then_some(None)
         };
         let mut home = None;
         let mut w = HomeWatch::default();
@@ -571,9 +614,10 @@ impl HomeWatch {
             let mut parts = line.split(' ');
             match (parts.next(), parts.next(), parts.next(), parts.next()) {
                 (Some("home"), Some(h), None, None) => home = Some(unhex(h)?),
-                (Some("absent"), Some(a), None, None) => w.absent.push(rel(unhex(a)?)?),
+                (Some("absent"), Some(a), None, None) => w.absent.extend(place(unhex(a)?)?),
                 (Some("link"), Some(l), Some(t), None) => {
-                    w.links.push((rel(unhex(l)?)?, unhex(t)?));
+                    let target = unhex(t)?;
+                    w.links.extend(place(unhex(l)?)?.map(|l| (l, target)));
                 }
                 (Some("home" | "absent" | "link"), ..) => return None,
                 _ => {}
@@ -1651,6 +1695,52 @@ impl Bubblewrap {
 
     /// The bwrap command line for this launch.
     pub fn build(&self, ctx: &LaunchContext) -> Result<SandboxCommand> {
+        // The person's raw arguments come right before SAM's last ones
+        // (`--remount-ro /`, then its helper): an option there missing its
+        // values would take them, and a word where an option belongs would
+        // run instead of the app; either way the root would stay writable
+        // without a word (review B2 R58, independent review of PR 133).
+        if let Some(problem) = raw_problem(&ctx.permissions.advanced.extra_bwrap_args) {
+            anyhow::bail!(
+                "{}",
+                match problem {
+                    RawProblem::Unfinished(option) => sam_core::i18n::trf(
+                        "the extra Bubblewrap arguments end with {option}, which needs more values; SAM does not start the app until the setting is complete",
+                        &[("option", &option)]
+                    ),
+                    RawProblem::NotAnOption(word) => sam_core::i18n::trf(
+                        "the extra Bubblewrap arguments hold {word} where an option belongs, which Bubblewrap would run instead of the app; SAM does not start the app until the setting is fixed",
+                        &[("word", &word)]
+                    ),
+                    RawProblem::Unknown(option) => sam_core::i18n::trf(
+                        "the extra Bubblewrap arguments hold {option}, an option SAM does not know; SAM does not start the app until the setting is changed",
+                        &[("option", &option)]
+                    ),
+                }
+            );
+        }
+        let var = |v: &str| std::env::var_os(v).map(PathBuf::from);
+        if let Some(odd) = odd_config_folder(
+            var("XDG_CONFIG_HOME").as_deref(),
+            var("XDG_DATA_HOME").as_deref(),
+        ) {
+            if odd.to_str().is_none() {
+                anyhow::bail!(
+                    "{}",
+                    sam_core::i18n::trf(
+                        "SAM cannot pass on {path}: its name is not valid text. Rename it, then start the app again.",
+                        &[("path", &odd.display())]
+                    )
+                );
+            }
+            anyhow::bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "SAM cannot pass on {path}: its name holds \"..\". Set the folder without \"..\", then start the app again.",
+                    &[("path", &odd.display())]
+                )
+            );
+        }
         // Without a real home folder, "the home" is `/` or a relative path:
         // full home access would then bind the whole computer (audit S-F12).
         let home = &ctx.host.home;
@@ -1827,7 +1917,7 @@ impl Section<'_> {
         // (systemd, Flatpak). They would run it unsandboxed if the service
         // is reachable, and otherwise fail: some AppRun scripts use
         // systemd-run whenever it exists, so hiding it lets them start
-        // normally. Hidden as an empty, non-executable file.
+        // normally. Each is covered by its stand-in from `TOOL_SHIMS`.
         // Bubblewrap cannot mount over a link, so the stand-in goes over the
         // file a link leads to (audit S-F14: a systemd-run that was a link
         // stayed the real one).
@@ -2599,6 +2689,38 @@ const SYSTEM_LIB_DIRS: &[&str] = &[
     "/lib/x86_64-linux-gnu",
     "/lib/aarch64-linux-gnu",
 ];
+
+/// What is wrong with the person's raw Bubblewrap arguments, read the way
+/// Bubblewrap reads them, each option with its values.
+#[derive(Debug, PartialEq, Eq)]
+enum RawProblem {
+    /// The list ends inside this option, still missing values: they would
+    /// be taken from SAM's own arguments after it.
+    Unfinished(String),
+    /// A word where an option belongs (or `--`): Bubblewrap would take it
+    /// as the program to run, before SAM's read-only root and its helper.
+    NotAnOption(String),
+    /// An option SAM does not know: how many values follow is unknown.
+    Unknown(String),
+}
+
+/// The first problem in the raw arguments `args`, if any.
+fn raw_problem(args: &[String]) -> Option<RawProblem> {
+    let mut i = 0;
+    while let Some(word) = args.get(i) {
+        if word == "--" || !word.starts_with("--") {
+            return Some(RawProblem::NotAnOption(word.clone()));
+        }
+        let Some(n) = sam_core::sandbox::bwrap_values(word) else {
+            return Some(RawProblem::Unknown(word.clone()));
+        };
+        if i + n >= args.len() && n > 0 {
+            return Some(RawProblem::Unfinished(word.clone()));
+        }
+        i += 1 + n;
+    }
+    None
+}
 
 /// `(system copy, place inside the sandbox)` for every bundled library in
 /// `advanced.system_libraries`. Only plain library names count, the
@@ -3684,6 +3806,109 @@ mod tests {
         assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "ran");
     }
 
+    /// Extra Bubblewrap arguments that end with an option missing its
+    /// values stop the start: the option would take SAM's `--remount-ro /`
+    /// after it, and the root would stay writable (review B2 R58).
+    #[test]
+    fn raw_arguments_missing_a_value_stop_the_start() {
+        let mut ctx = sample_context();
+        let refused = |ctx: &LaunchContext| {
+            Bubblewrap.build(ctx).err().is_some_and(|e| {
+                let e = e.to_string();
+                e.contains("needs more values")
+                    || e.contains("where an option belongs")
+                    || e.contains("SAM does not know")
+            })
+        };
+        for raw in [
+            &["--ro-bind-try"][..],
+            &["--ro-bind-try", "/a"],
+            &["--setenv", "A", "1", "--chdir"],
+            &["--overlay", "/u", "/w"],
+            &["--ro-bind", "/a", "/b", "/c"],
+            &["--"],
+            &["--unshare-ipc", "--", "/bin/sh"],
+            &["--setenv", "A", "1", "--not-yet-an-option", "x"],
+        ] {
+            ctx.permissions.advanced.extra_bwrap_args = raw.iter().map(|s| s.to_string()).collect();
+            assert!(refused(&ctx), "{raw:?}");
+        }
+        for raw in [
+            &["--ro-bind-try", "/a", "/b"][..],
+            &["--unshare-ipc"],
+            &["--setenv", "A", "--chdir"],
+        ] {
+            ctx.permissions.advanced.extra_bwrap_args = raw.iter().map(|s| s.to_string()).collect();
+            assert!(!refused(&ctx), "{raw:?}");
+            let a = args_of(&ctx);
+            assert!(has_seq(&a, &["--remount-ro", "/", "--"]), "{raw:?}");
+        }
+        // Each problem by its kind.
+        let problem =
+            |raw: &[&str]| raw_problem(&raw.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+        assert_eq!(
+            problem(&["--ro-bind", "/a", "/b", "/c"]),
+            Some(RawProblem::NotAnOption("/c".into()))
+        );
+        assert_eq!(problem(&["--"]), Some(RawProblem::NotAnOption("--".into())));
+        assert_eq!(
+            problem(&["--nope"]),
+            Some(RawProblem::Unknown("--nope".into()))
+        );
+        assert_eq!(
+            problem(&["--setenv", "A", "1", "--chdir"]),
+            Some(RawProblem::Unfinished("--chdir".into()))
+        );
+        assert_eq!(problem(&["--setenv", "A", "--chdir"]), None);
+    }
+
+    /// The systemd-run stand-in skips every option of systemd-run that takes
+    /// its value as the next argument, so that value never runs as the
+    /// command (review B2 R61: `--job-mode fail` ran `fail`).
+    #[test]
+    fn the_systemd_run_stand_in_skips_options_with_a_value() {
+        let (_, script) = TOOL_SHIMS
+            .iter()
+            .find(|(n, _)| *n == "systemd-run")
+            .unwrap();
+        for (opt, value) in [
+            ("--job-mode", "fail"),
+            ("--capsule", "work"),
+            ("-C", "work"),
+            ("--expand-environment", "no"),
+            // run0, a link to systemd-run, has value options of its own.
+            ("-g", "wheel"),
+            ("--group", "wheel"),
+            ("-D", "/tmp"),
+            ("--chdir", "/tmp"),
+            ("--area", "work"),
+            ("--shell-prefix", "x"),
+            // A value that ends at once if it runs (never `yes`, which runs
+            // forever and fills memory through the captured output).
+            ("--lightweight", "true"),
+        ] {
+            let out = std::process::Command::new("sh")
+                .args([
+                    "-c",
+                    script,
+                    "systemd-run",
+                    "--user",
+                    opt,
+                    value,
+                    "echo",
+                    "ran",
+                ])
+                .output()
+                .unwrap();
+            assert_eq!(
+                String::from_utf8_lossy(&out.stdout).trim(),
+                "ran",
+                "{opt} {value}: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
+    }
+
     /// With "this computer only", the network namespace is left to pasta.
     #[test]
     fn localhost_network_leaves_netns_to_pasta() {
@@ -4694,7 +4919,8 @@ mod guard_tests {
     /// ones, and the new places are on the list (audit S-F6).
     #[test]
     fn start_places_follow_other_config_and_data_folders() {
-        let home = Path::new("/home/u");
+        let t = tempfile::tempdir().unwrap();
+        let home = &fs::canonicalize(t.path()).unwrap().join("u");
         let p = protected_places_with(home, Some(home.join("cfg")), Some(home.join("data/")));
         for want in [
             "cfg/autostart",
@@ -4720,6 +4946,98 @@ mod guard_tests {
             "{:?}",
             &same[PROTECTED_RO.len()..]
         );
+    }
+
+    /// Start places follow `XDG_CONFIG_HOME` and `XDG_DATA_HOME` also when
+    /// they name the home's real place or hold `..`; a name that is not
+    /// text is found, and a record read back holds only plain names
+    /// (review B2 R53, R54).
+    #[test]
+    fn start_places_follow_config_folders_by_where_they_lead() {
+        use std::os::unix::ffi::OsStrExt;
+        let t = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(t.path()).unwrap();
+        let real = root.join("data/u");
+        fs::create_dir_all(real.join("cfg")).unwrap();
+        fs::create_dir_all(real.join("x")).unwrap();
+        fs::create_dir_all(root.join("home")).unwrap();
+        let home = root.join("home/u");
+        std::os::unix::fs::symlink(&real, &home).unwrap();
+        for config in [
+            real.join("cfg"),
+            home.join("x/../cfg"),
+            real.join("x/../cfg"),
+        ] {
+            let p = protected_places_with(&home, Some(config.clone()), None);
+            assert!(
+                p.iter().any(|x| x == "cfg/autostart"),
+                "{}: {:?}",
+                config.display(),
+                &p[PROTECTED_RO.len()..]
+            );
+            assert!(p.iter().all(|x| !x.contains("..")), "{p:?}");
+        }
+        let outside = protected_places_with(&home, Some(home.join("../elsewhere")), None);
+        assert_eq!(
+            outside.len(),
+            PROTECTED_RO.len(),
+            "{:?}",
+            &outside[PROTECTED_RO.len()..]
+        );
+        // A name that is not text.
+        let odd = home.join(std::ffi::OsStr::from_bytes(b"cfg-\xff"));
+        assert_eq!(odd_config_folder(None, Some(&odd)), Some(odd.clone()));
+        assert_eq!(odd_config_folder(Some(&home.join("cfg")), None), None);
+        // Records read back.
+        let line = |kind: &str, p: &str| {
+            let hex: String = p.bytes().map(|b| format!("{b:02x}")).collect();
+            format!("{kind} {hex}")
+        };
+        let home_line = line("home", "/home/u");
+        // A place with `..` (an older SAM wrote such names) is left out;
+        // the rest of the record still counts. Any other damage makes the
+        // whole record unreadable.
+        let good = line("absent", ".config/x");
+        for bad in ["./x", "/x", ""] {
+            assert!(
+                HomeWatch::from_lines([home_line.as_str(), line("absent", bad).as_str()]).is_none(),
+                "{bad} accepted"
+            );
+        }
+        for bad in ["../x", ".config/../../x", "x/../cfg/autostart"] {
+            let w = HomeWatch::from_lines([
+                home_line.as_str(),
+                line("absent", bad).as_str(),
+                format!("{} {}", line("link", bad), &line("", "/x")[1..]).as_str(),
+                good.as_str(),
+            ])
+            .unwrap();
+            assert_eq!(w.absent, [".config/x"], "{bad}");
+            assert!(w.links.is_empty(), "{bad}");
+        }
+        // A name that holds `..` stops the start as well.
+        assert_eq!(
+            odd_config_folder(Some(&home.join("x/../cfg")), None),
+            Some(home.join("x/../cfg"))
+        );
+    }
+
+    /// A config folder reached through a link in the home is protected
+    /// under both names, and the link itself stays watched: the desktop
+    /// follows the name, so an app that swapped the link for its own
+    /// folder would otherwise go unnoticed (independent review of PR 134).
+    #[test]
+    fn a_linked_config_folder_stays_watched_under_both_names() {
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap().join("u");
+        fs::create_dir_all(home.join("dotfiles/cfg")).unwrap();
+        std::os::unix::fs::symlink(home.join("dotfiles/cfg"), home.join("cfg")).unwrap();
+        let p = protected_places_with(&home, Some(home.join("cfg")), None);
+        for want in ["cfg/autostart", "dotfiles/cfg/autostart"] {
+            assert!(p.iter().any(|x| x == want), "{want} missing: {p:?}");
+        }
+        let watched = ancestors_of(p.iter().map(String::as_str));
+        assert!(watched.iter().any(|x| x == "cfg"), "{watched:?}");
     }
 
     /// Paths are resolved through links also where they do not exist yet,

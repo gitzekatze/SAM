@@ -214,6 +214,8 @@ tests = [
   "every_user_folder_switch_grants_exactly_its_folder",
   "the_user_folders_are_read_from_the_users_config_folder",
   "only_library_folders_outside_the_home_and_system_areas_are_shown",
+  "library_folders_are_judged_by_where_they_lead",
+  "library_folders_follow_real_links",
   "the_loaders_folders_come_from_its_config_files",
   "the_loaders_folders_on_this_computer_are_found",
   "an_app_is_never_told_a_folder_it_cannot_see",
@@ -282,6 +284,8 @@ tests = [
   "the_proxy_record_names_what_the_app_wanted_to_own",
   "the_apps_own_words_never_give_it_a_bus_name",
   "the_filter_refuses_x32_odd_sockets_and_the_siblings",
+  "a_socket_pair_opens_only_the_listed_families_too",
+  "the_filter_reads_arguments_as_wide_as_the_kernel_does",
   "the_filter_reaches_bubblewrap_as_whole_instructions",
   "an_app_cannot_open_the_kernels_rarely_used_doors",
   "own_names_that_are_refused",
@@ -295,6 +299,8 @@ tests = [
   "own_names_from_the_id_and_the_window_class",
   "filtered_dbus_uses_proxy",
   "the_app_runs_as_the_user_and_host_tools_are_replaced_by_stand_ins",
+  "raw_arguments_missing_a_value_stop_the_start",
+  "the_systemd_run_stand_in_skips_options_with_a_value",
   "without_nested_namespaces_user_namespaces_are_disabled",
   "extra_sockets_must_be_sockets",
   "tray_names_follow_watcher_permission",
@@ -383,7 +389,7 @@ id = 16
 area = "C"
 promise = "The app can't make itself start later outside the sandbox (autostart, shell startup files, menu entries)."
 code = ["sam-sandbox/src/lib.rs", "sam-runner/src/kernel.rs", "sam-core/src/util.rs", "sam-runner/src/home_shared.rs"]
-tests = ["a_second_launch_never_takes_a_link_planted_meanwhile_for_the_users_own", "a_running_launch_is_never_taken_for_a_killed_one", "a_watch_read_back_from_disk_never_reaches_outside_the_home", "a_start_file_left_by_a_killed_launcher_is_still_moved_aside", "closing_an_app_that_ignores_it_still_finishes_its_launch", "grants_of_parts_of_the_home_never_reach_start_places_or_secrets", "a_writable_part_of_the_home_holding_start_places_is_watched", "full_home_access_cannot_leave_anything_that_runs_later", "the_home_protections_hold_whatever_else_is_granted", "a_new_start_file_never_stays_silently", "start_places_follow_other_config_and_data_folders", "a_folder_that_cannot_be_watched_is_reported", "paths_are_resolved_through_links_also_where_they_do_not_exist_yet", "a_path_through_a_link_into_a_grant_is_visible", "a_missing_home_folder_stops_the_start", "only_what_would_run_later_is_moved_aside", "a_new_startup_file_is_moved_aside_while_the_app_runs", "a_start_file_left_in_the_home_is_moved_aside_and_named", "protected_parents_are_locked_and_linked_keys_hidden", "the_folders_above_where_a_linked_protection_lands_are_pinned", "a_start_file_kept_through_a_link_cannot_be_swapped_by_renaming_its_folder", "landlock_allows_writing_exactly_in_granted_folders", "every_breakout_attempt_from_a_real_sandbox_fails", "every_hostile_appimage_fails_to_escape", "every_known_syscall_has_been_reviewed", "the_review_list_matches_the_filter", "an_app_can_never_replace_the_programs_that_menu_entries_run", "sams_own_programs_are_read_only_wherever_an_app_could_write_them", "sams_own_programs_are_its_appimage_and_the_programs_beside_it", "places_behind_links_stay_protected_and_the_app_still_starts", "the_way_to_a_place_is_followed_link_by_link_as_the_app_follows_it", "a_way_through_forty_links_is_followed_and_one_through_more_is_not", "places_named_by_the_homes_real_path_are_protected_where_the_app_sees_them", "what_cannot_be_moved_aside_is_deleted_whatever_it_is", "a_new_folder_above_start_places_is_moved_aside_once_as_a_whole", "a_launch_alongside_another_never_makes_a_place_the_other_watches_as_empty", "a_launch_alongside_another_reports_nothing_it_did_not_find", "the_way_a_protected_link_leads_is_watched", "a_way_turned_into_a_link_is_undone_and_never_by_deleting", "a_start_file_reached_through_more_links_or_a_missing_place_cannot_be_planted"]
+tests = ["a_second_launch_never_takes_a_link_planted_meanwhile_for_the_users_own", "a_running_launch_is_never_taken_for_a_killed_one", "a_watch_read_back_from_disk_never_reaches_outside_the_home", "a_start_file_left_by_a_killed_launcher_is_still_moved_aside", "closing_an_app_that_ignores_it_still_finishes_its_launch", "grants_of_parts_of_the_home_never_reach_start_places_or_secrets", "a_writable_part_of_the_home_holding_start_places_is_watched", "full_home_access_cannot_leave_anything_that_runs_later", "the_home_protections_hold_whatever_else_is_granted", "a_new_start_file_never_stays_silently", "start_places_follow_other_config_and_data_folders", "start_places_follow_config_folders_by_where_they_lead", "a_linked_config_folder_stays_watched_under_both_names", "a_config_folder_whose_name_is_not_text_stops_the_start", "a_folder_that_cannot_be_watched_is_reported", "paths_are_resolved_through_links_also_where_they_do_not_exist_yet", "a_path_through_a_link_into_a_grant_is_visible", "a_missing_home_folder_stops_the_start", "only_what_would_run_later_is_moved_aside", "a_new_startup_file_is_moved_aside_while_the_app_runs", "a_start_file_left_in_the_home_is_moved_aside_and_named", "protected_parents_are_locked_and_linked_keys_hidden", "the_folders_above_where_a_linked_protection_lands_are_pinned", "a_start_file_kept_through_a_link_cannot_be_swapped_by_renaming_its_folder", "landlock_allows_writing_exactly_in_granted_folders", "every_breakout_attempt_from_a_real_sandbox_fails", "every_hostile_appimage_fails_to_escape", "every_known_syscall_has_been_reviewed", "the_review_list_matches_the_filter", "an_app_can_never_replace_the_programs_that_menu_entries_run", "sams_own_programs_are_read_only_wherever_an_app_could_write_them", "sams_own_programs_are_its_appimage_and_the_programs_beside_it", "places_behind_links_stay_protected_and_the_app_still_starts", "the_way_to_a_place_is_followed_link_by_link_as_the_app_follows_it", "a_way_through_forty_links_is_followed_and_one_through_more_is_not", "places_named_by_the_homes_real_path_are_protected_where_the_app_sees_them", "what_cannot_be_moved_aside_is_deleted_whatever_it_is", "a_new_folder_above_start_places_is_moved_aside_once_as_a_whole", "a_launch_alongside_another_never_makes_a_place_the_other_watches_as_empty", "a_launch_alongside_another_reports_nothing_it_did_not_find", "the_way_a_protected_link_leads_is_watched", "a_way_turned_into_a_link_is_undone_and_never_by_deleting", "a_start_file_reached_through_more_links_or_a_missing_place_cannot_be_planted"]
 
 [[function]]
 id = 17
@@ -502,6 +508,7 @@ tests = [
   "a_fault_in_a_request_gives_back_its_slot_and_connection",
   "a_fault_after_a_room_started_ends_that_room_and_answers",
   "rooms_need_both_options_that_show_places_by_handle",
+  "rooms_and_raw_arguments_count_option_values_alike",
   "a_descriptor_limit_leaving_rooms_fewer_than_64_is_recorded",
   "a_long_answer_arrives_whole_through_partial_and_interrupted_sends",
   "an_answer_to_a_stand_in_that_left_returns_at_once",
