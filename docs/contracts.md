@@ -273,14 +273,14 @@ The baseline syscall filter loads, and the syscalls it blocks have the numbers l
 
 ## kernel-procfs
 
-/proc shows process status, network tables and kernel facts at these paths; the sandbox check reads them from inside.
+/proc shows process status, network tables, kernel facts and each process's namespaces at these paths; the sandbox check reads them from inside, and the controller watch compares namespaces with SAM's own.
 
 - **Component:** Linux kernel ([releases](https://kernelnewbies.org/LinuxVersions))
 - **When it breaks:** the start goes ahead with a visible warning.
-- **SAM functions that rely on it:** [16](functions.md#16), [20](functions.md#20), [33](functions.md#33)
+- **SAM functions that rely on it:** [15](functions.md#15), [16](functions.md#16), [20](functions.md#20), [33](functions.md#33)
 - **Quick check:** none (only the tests below)
 - **Tests:** `each_permission_grants_exactly_its_access_in_a_real_sandbox`, `a_start_file_left_by_a_killed_launcher_is_still_moved_aside` (partly: Checked only indirectly, through the sandbox check in the matrix test.)
-- **Covers:** `path:/proc`, `path:/proc/`, `path:/proc/self/status`, `path:/proc/self/fd`, `path:/proc/self/fd/0`, `path:/proc/self/fd/1`, `path:/proc/self/fd/2`, `path:/proc/net/*`, `path:/proc/sys/kernel/hostname`, `path:/proc/sys/kernel/osrelease`, `path:/proc/sys/kernel/random/boot_id`
+- **Covers:** `path:/proc`, `path:/proc/`, `path:/proc/self/status`, `path:/proc/self/fd`, `path:/proc/self/fd/0`, `path:/proc/self/fd/1`, `path:/proc/self/fd/2`, `path:/proc/net/*`, `path:/proc/sys/kernel/hostname`, `path:/proc/sys/kernel/osrelease`, `path:/proc/sys/kernel/random/boot_id`, `path:/proc/self/ns/`
 - **If it breaks:** The sandbox check then reports the setting as unknown instead of passed.
 
 ## fs-layout

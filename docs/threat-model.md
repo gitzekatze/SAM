@@ -89,13 +89,16 @@ These limits are real, and SAM says so rather than pretend otherwise.
   compute the checksum too, so this catches scripts, other tools and damaged
   files, not deliberate attacks. Real protection against such programs needs
   them to run in a sandbox as well.
-- **A game controller's node kept open in a special way.** With *Game
-  controllers*, SAM takes an unplugged controller's node out of the
-  running app at once, so a keyboard plugged in later and given the same
-  number never takes its place. An app that kept a path-only handle to the
-  node (`O_PATH`) from before can still open it again and reach that next
-  device, as it could when run without SAM: Linux finds a device by its
-  number, not by the node.
+- **The moment between unplugging a game controller and its removal.**
+  With *Game controllers*, SAM takes an unplugged controller's node out of
+  the running app at once, so a keyboard plugged in later and given the
+  same number never takes its place. A handle the app already holds could
+  otherwise open the node again through `/proc/self/fd`; Landlock closes
+  that way, so SAM takes a node out only where its helper reports Landlock
+  in place and the app cannot make namespaces of its own. Elsewhere an
+  unplug ends the app. What remains is the short time (milliseconds)
+  between the unplug and the removal, in which a new device would have to
+  appear at the same number.
 - **X11.** An app with X11 access can read keystrokes and capture the
   screen of every X11 app. SAM grants X11 only when you allow it or an app
   cannot run without it, and says what it costs.

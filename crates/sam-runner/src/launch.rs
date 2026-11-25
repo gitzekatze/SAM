@@ -1305,7 +1305,7 @@ fn run_once(
         // Not the app's doing: SAM ended it to keep its promise.
         outcome.success = false;
         outcome.summary = sam_core::i18n::tr(
-            "ended by SAM: a game controller was unplugged and SAM could not take it out of the sandbox",
+            "ended by SAM: a game controller was unplugged and SAM could not safely take it out of the sandbox",
         );
     } else if relay_end.as_ref().is_some_and(|r| r.hung_up)
         && !outcome.sandbox_failure

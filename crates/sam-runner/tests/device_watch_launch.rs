@@ -125,10 +125,7 @@ echo END=1
         }
         false
     };
-    assert!(
-        seen("device opens", 30),
-        "the app never saw its controller"
-    );
+    assert!(seen("device opens", 30), "the app never saw its controller");
     std::fs::remove_file(&node).unwrap();
     if !landlock {
         // Without Landlock the held handle would still reach the next
@@ -147,7 +144,10 @@ echo END=1
     let rec = started.join().unwrap();
     let log = std::fs::read_to_string(rec.log_file.as_ref().unwrap()).unwrap();
     assert!(rec.success, "{}: {log}", rec.summary);
-    assert!(!log.contains("MOVED=1"), "the app moved its controllers aside: {log}");
+    assert!(
+        !log.contains("MOVED=1"),
+        "the app moved its controllers aside: {log}"
+    );
     assert!(log.contains("END=1"), "the app was ended: {log}");
     assert!(
         log.contains(&format!(

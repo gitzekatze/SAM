@@ -4036,18 +4036,10 @@ mod tests {
         );
         // In a read-only folder of their own, which the app cannot rename.
         let (p, d) = (pad.display().to_string(), t.path().display().to_string());
-        let want: Vec<String> = [
-            "--tmpfs",
-            &d,
-            "--dev-bind-try",
-            &p,
-            &p,
-            "--remount-ro",
-            &d,
-        ]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
+        let want: Vec<String> = ["--tmpfs", &d, "--dev-bind-try", &p, &p, "--remount-ro", &d]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         assert_eq!(a.v, want);
     }
 

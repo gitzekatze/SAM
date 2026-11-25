@@ -101,7 +101,9 @@ impl Sandbox {
                 .map(|m| m.ino())
                 .map_err(|e| format!("the sandbox's user namespace: {e}"))?;
             if user_ino == own_ns("user")? {
-                return Err("the namespace belongs to SAM's own user namespace, not a sandbox".into());
+                return Err(
+                    "the namespace belongs to SAM's own user namespace, not a sandbox".into(),
+                );
             }
             return Ok(Sandbox {
                 user,
@@ -134,8 +136,8 @@ impl Sandbox {
             let Some(fd) = pidfd(pid) else {
                 continue;
             };
-            let ours = std::fs::metadata(format!("/proc/{pid}/ns/mnt"))
-                .is_ok_and(|m| m.ino() == self.ino);
+            let ours =
+                std::fs::metadata(format!("/proc/{pid}/ns/mnt")).is_ok_and(|m| m.ino() == self.ino);
             if ours {
                 signal_kill(&fd);
             }
@@ -465,7 +467,11 @@ impl Watch {
     }
 
     /// Takes an unplugged controller's node out, where that is enough.
-    fn take_out(&self, sandbox: Option<&Result<Sandbox, String>>, path: &Path) -> Result<(), String> {
+    fn take_out(
+        &self,
+        sandbox: Option<&Result<Sandbox, String>>,
+        path: &Path,
+    ) -> Result<(), String> {
         let helper_report = match &self.unplugged {
             Unplugged::EndApp(why) => return Err(why.clone()),
             Unplugged::TakeOut { helper_report } => helper_report,
@@ -617,7 +623,10 @@ mod tests {
     fn without_landlock_an_unplugged_controller_ends_the_app() {
         let status = r#"{"child-pid": 1, "mnt-namespace": 1}"#.to_string();
         for (unplugged, why) in [
-            (landlock("landlock: not enforced"), "Landlock is not in place"),
+            (
+                landlock("landlock: not enforced"),
+                "Landlock is not in place",
+            ),
             (
                 Unplugged::TakeOut {
                     helper_report: Arc::new(Mutex::new(None)),
@@ -649,7 +658,10 @@ mod tests {
         if !crate::contracts::isolated_only("ending a started program") {
             return;
         }
-        let mut child = std::process::Command::new("sleep").arg("30").spawn().unwrap();
+        let mut child = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .unwrap();
         let end = end_launched(child.id());
         end();
         let status = child.wait().unwrap();

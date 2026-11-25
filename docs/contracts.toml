@@ -379,9 +379,9 @@ playbook = "A filter that fails to load stops the start. When the syscall review
 [[contract]]
 id = "kernel-procfs"
 component = "kernel"
-assumes = "/proc shows process status, network tables and kernel facts at these paths; the sandbox check reads them from inside."
-covers = ["path:/proc", "path:/proc/", "path:/proc/self/status", "path:/proc/self/fd", "path:/proc/self/fd/0", "path:/proc/self/fd/1", "path:/proc/self/fd/2", "path:/proc/net/*", "path:/proc/sys/kernel/hostname", "path:/proc/sys/kernel/osrelease", "path:/proc/sys/kernel/random/boot_id"]
-functions = [16, 20, 33]
+assumes = "/proc shows process status, network tables, kernel facts and each process's namespaces at these paths; the sandbox check reads them from inside, and the controller watch compares namespaces with SAM's own."
+covers = ["path:/proc", "path:/proc/", "path:/proc/self/status", "path:/proc/self/fd", "path:/proc/self/fd/0", "path:/proc/self/fd/1", "path:/proc/self/fd/2", "path:/proc/net/*", "path:/proc/sys/kernel/hostname", "path:/proc/sys/kernel/osrelease", "path:/proc/sys/kernel/random/boot_id", "path:/proc/self/ns/"]
+functions = [15, 16, 20, 33]
 probe = "none"
 tests = ["each_permission_grants_exactly_its_access_in_a_real_sandbox", "a_start_file_left_by_a_killed_launcher_is_still_moved_aside"]
 on_break = "warn"
