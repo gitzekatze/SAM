@@ -9100,6 +9100,28 @@ msgstr ""
 "que SAM no busca actualizaciones para él. Usa «Desempaquetar de nuevo» y "
 "revisa primero la aplicación."
 
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-runner/src/updates.rs:400
+msgid ""
+"the update download did not finish within {minutes} minutes and was stopped"
+msgstr ""
+"la descarga de la actualización no terminó en {minutes} minutos y se detuvo"
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-runner/src/updates.rs:405
+msgid ""
+"the update download did not finish within {seconds} seconds and was stopped"
+msgstr ""
+"la descarga de la actualización no terminó en {seconds} segundos y se detuvo"
+
+#: crates/sam-runner/src/updates.rs:605
+msgid ""
+"the server sent more than the part SAM asked for, so it ignores range "
+"requests; the partial download was stopped"
+msgstr ""
+"el servidor envió más que la parte que SAM pidió, así que ignora las "
+"peticiones de partes; la descarga parcial se detuvo"
+
 #~ msgid "To start it anyway this one time: sam-jail run --start-anyway APP"
 #~ msgstr ""
 #~ "Para iniciarla de todos modos esta vez: sam-jail run --start-anyway APP"

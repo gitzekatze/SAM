@@ -18,7 +18,7 @@ use sam_intake::testkit::{build, FixtureFile, FixtureSpec};
 use sam_runner::ops::{AddOptions, Sam};
 
 const SERVER: &str = r#"
-import http.server, ssl, sys, os, threading
+import http.server, ssl, sys, os, threading, time
 root, cert, key, log = sys.argv[1:5]
 class Handler(http.server.SimpleHTTPRequestHandler):
     tag = ""
@@ -58,11 +58,38 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             with open(log, "a") as f:
                 f.write(f"endless {sent}\n")
             return
+        # /norange/NAME sends NAME whole, whatever range was asked for, as a
+        # server that ignores Range does. /slow/NAME sends NAME (or the part
+        # asked for) in pieces of 4 KiB, one every half second.
+        mode = ""
+        for m in ("norange", "slow"):
+            if self.path.startswith(f"/{m}/"):
+                mode, self.path = m, self.path[len(m) + 1:]
         path = self.translate_path(self.path)
         if not os.path.isfile(path):
             self.send_error(404)
             return
         data = open(path, "rb").read()
+        if mode == "norange":
+            rng = None
+        if mode == "slow":
+            part = data
+            if rng and rng.startswith("bytes="):
+                a, b = rng[6:].split("-")
+                part = data[int(a):int(b) + 1]
+                self.send_response(206)
+            else:
+                self.send_response(200)
+            self.send_header("Content-Length", str(len(part)))
+            self.end_headers()
+            try:
+                for i in range(0, len(part), 4096):
+                    self.wfile.write(part[i:i + 4096])
+                    self.wfile.flush()
+                    time.sleep(0.5)
+            except (BrokenPipeError, ConnectionResetError, ssl.SSLError):
+                pass
+            return
         if rng and rng.startswith("bytes="):
             a, b = rng[6:].split("-")
             a = int(a)
@@ -77,7 +104,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
-            self.wfile.write(data)
+            try:
+                self.wfile.write(data)
+            except (BrokenPipeError, ConnectionResetError, ssl.SSLError):
+                pass
     def log_message(self, *a):
         pass
 class Plain(Handler):

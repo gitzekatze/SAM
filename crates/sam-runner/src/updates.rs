@@ -13,6 +13,7 @@ use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Result};
 use sam_core::model::{UpdateState, UpdateStatus};
@@ -433,27 +434,120 @@ pub enum Fetched {
     },
 }
 
+/// The longest one update download may take: the partial download and the
+/// whole file after it together (review B2 S6, R90).
+pub const UPDATE_TIME_LIMIT: Duration = Duration::from_secs(3600);
+
 /// Downloads the new version to `dest`, reusing unchanged blocks of `old`
 /// (zsync) when that saves most of the download; otherwise, or when anything
 /// goes wrong with that, the whole file. Either way the result must match the
-/// published SHA-1.
+/// published SHA-1, and all of it ends within [`UPDATE_TIME_LIMIT`]. Used
+/// for app updates and for SAM's own update.
 pub fn download_update(p: &Published, old: &Path, dest: &Path) -> Result<Fetched> {
-    match download_delta(p, old, dest) {
+    download_update_within(p, old, dest, UPDATE_TIME_LIMIT)
+}
+
+/// [`download_update`] with its time limit (tests use seconds). One
+/// deadline covers everything: the partial download, then the whole file
+/// if that fails, and each request gets at most the time left. Each request
+/// had its own limit before, so up to 300 range requests of five minutes
+/// each (about a day) and then another hour for the whole file, while the
+/// app could not start (review B2 S6, R90).
+pub fn download_update_within(
+    p: &Published,
+    old: &Path,
+    dest: &Path,
+    limit: Duration,
+) -> Result<Fetched> {
+    let deadline = Deadline::new(limit);
+    match download_delta(p, old, dest, &deadline) {
         Ok(Some(f)) => return Ok(f),
         Ok(None) | Err(_) => {
             let _ = std::fs::remove_file(dest);
         }
     }
-    download(p, dest)?;
+    // curl's own time-out at the end of the limit is named as the limit;
+    // any other reason (a 404, say) stays what it is, also near the end.
+    download(p, dest, &deadline).map_err(|e| {
+        if deadline.is_over() && e.downcast_ref::<CurlTimedOut>().is_some() {
+            deadline.passed()
+        } else {
+            e
+        }
+    })?;
     Ok(Fetched::Full {
         total: std::fs::metadata(dest).map(|m| m.len()).unwrap_or(0),
     })
 }
 
+/// When an update download must be done (see [`download_update_within`]).
+struct Deadline {
+    end: Instant,
+    limit: Duration,
+}
+
+impl Deadline {
+    fn new(limit: Duration) -> Deadline {
+        Deadline {
+            end: Instant::now() + limit,
+            limit,
+        }
+    }
+
+    /// The time left, or the error once it is over. Less than a second
+    /// counts as over: curl takes whole seconds.
+    fn left(&self) -> Result<Duration> {
+        if self.is_over() {
+            return Err(self.passed());
+        }
+        Ok(self.end.saturating_duration_since(Instant::now()))
+    }
+
+    fn is_over(&self) -> bool {
+        self.end.saturating_duration_since(Instant::now()) < Duration::from_secs(1)
+    }
+
+    fn passed(&self) -> anyhow::Error {
+        let secs = self.limit.as_secs();
+        // In minutes when it is whole minutes (SAM's hour); tests use seconds.
+        let text = if secs >= 120 && secs.is_multiple_of(60) {
+            sam_core::i18n::trf(
+                "the update download did not finish within {minutes} minutes and was stopped",
+                &[("minutes", &(secs / 60))],
+            )
+        } else {
+            sam_core::i18n::trf(
+                "the update download did not finish within {seconds} seconds and was stopped",
+                &[("seconds", &secs)],
+            )
+        };
+        anyhow::anyhow!("{text}")
+    }
+}
+
+/// curl stopped at its time limit (exit code 28): the reason a download
+/// ends at the update's deadline.
+#[derive(Debug)]
+struct CurlTimedOut(String);
+
+impl std::fmt::Display for CurlTimedOut {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for CurlTimedOut {}
+
 /// `Ok(None)` when a delta would not save enough (most of the file changed,
 /// or it would take too many requests).
-fn download_delta(p: &Published, old: &Path, dest: &Path) -> Result<Option<Fetched>> {
-    let ctl = crate::zsync::parse(&fetch(&p.zsync_url, Some(64 << 20))?)?;
+fn download_delta(
+    p: &Published,
+    old: &Path,
+    dest: &Path,
+    deadline: &Deadline,
+) -> Result<Option<Fetched>> {
+    let secs = deadline.left()?.min(Duration::from_secs(30)).as_secs();
+    let ctl = crate::zsync::parse(&fetch_within(&p.zsync_url, Some(64 << 20), secs)?)?;
     if ctl.sha1 != p.sha1 {
         bail!(
             "{}",
@@ -464,14 +558,18 @@ fn download_delta(p: &Published, old: &Path, dest: &Path) -> Result<Option<Fetch
     // pages the system can drop again under pressure (review 2026-11-23, U-6).
     let mapped = Mapped::open(old)?;
     let old_data = mapped.bytes();
-    let plan = crate::zsync::plan(&ctl, old_data);
+    let plan = crate::zsync::plan_within(
+        &ctl,
+        old_data,
+        deadline.left()?.min(Duration::from_secs(60)),
+    );
     let ranges = crate::zsync::missing_ranges(&ctl, &plan, 64 * 1024);
     let bytes: u64 = ranges.iter().map(|(s, e)| e - s).sum();
     if ranges.len() > 300 || bytes * 10 > ctl.length * 7 {
         return Ok(None);
     }
     crate::zsync::assemble(&ctl, old_data, &plan, &ranges, dest, |s, e| {
-        fetch_range(&p.file_url, s, e)
+        fetch_range(&p.file_url, s, e, deadline)
     })?;
     Ok(Some(Fetched::Delta {
         bytes,
@@ -539,52 +637,131 @@ impl Drop for Mapped {
     }
 }
 
-/// Bytes `start..end` of `url` (an HTTP range request). At most that many
-/// bytes are kept, whatever the server sends.
-fn fetch_range(url: &str, start: u64, end: u64) -> Result<Vec<u8>> {
+/// Bytes `start..end` of `url` (an HTTP range request), within the time
+/// left of `deadline` (at most five minutes).
+fn fetch_range(url: &str, start: u64, end: u64, deadline: &Deadline) -> Result<Vec<u8>> {
     if !url.starts_with("https://") {
         bail!("{}", sam_core::i18n::tr("not HTTPS"));
     }
-    let want = end.saturating_sub(start);
-    let mut cmd = curl(300)?;
+    let want = usize::try_from(end.saturating_sub(start))?;
+    let limit = deadline.left()?.min(Duration::from_secs(300));
+    let mut cmd = curl(limit.as_secs())?;
     cmd.args(["--speed-limit", "1024", "--speed-time", "60"])
         .args(["--range", &format!("{}-{}", start, end.saturating_sub(1))])
         .arg("--")
         .arg(url);
-    let (st, out) = sam_core::util::output_within(
-        &mut cmd,
-        std::time::Duration::from_secs(310),
-        usize::try_from(want).unwrap_or(usize::MAX),
-    )?;
-    if !st.success() {
+    read_range(cmd, limit, want)
+}
+
+/// Runs `cmd` (curl fetching one byte range) for at most `limit` and
+/// returns what it prints, at most `want` bytes. One byte more means the
+/// server ignores the range and sends the whole file: SAM stops reading,
+/// ends curl at once and gives up the partial download. Before, the first
+/// bytes were kept and the rest dropped silently, so every range "passed",
+/// each one a whole download, and only the final checksum failed (review
+/// B2 S6, R90). `output_within` keeps that behaviour for its other callers.
+fn read_range(mut cmd: Command, limit: Duration, want: usize) -> Result<Vec<u8>> {
+    use std::os::unix::process::CommandExt;
+    let started = Instant::now();
+    let mut child = cmd
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .process_group(0)
+        .spawn()
+        .context(sam_core::i18n::tr("starting curl"))?;
+    // The whole group, so that nothing curl (or a stand-in) started keeps
+    // the output open.
+    let stop = |child: &mut std::process::Child| {
+        if let Ok(g) = i32::try_from(child.id()) {
+            // SAFETY: kill(2) with a negative pid signals the process group
+            // the child leads (it was started with process_group(0)); no
+            // memory is involved.
+            unsafe {
+                libc::kill(-g, libc::SIGKILL);
+            }
+        }
+        let _ = child.wait();
+    };
+    let mut out = child.stdout.take().context("stdout")?;
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut kept = Vec::new();
+        let read = (&mut out)
+            .take((want as u64).saturating_add(1))
+            .read_to_end(&mut kept);
+        let _ = tx.send(read.map(|_| kept));
+    });
+    let too_slow = || {
+        anyhow::anyhow!(
+            "{}",
+            sam_core::i18n::trf(
+                "{program} did not finish within {seconds} seconds and was stopped",
+                &[("program", &"curl"), ("seconds", &limit.as_secs())]
+            )
+        )
+    };
+    let kept = match rx.recv_timeout(limit) {
+        Ok(Ok(kept)) => kept,
+        Ok(Err(e)) => {
+            stop(&mut child);
+            return Err(e.into());
+        }
+        Err(_) => {
+            stop(&mut child);
+            return Err(too_slow());
+        }
+    };
+    if kept.len() > want {
+        stop(&mut child);
+        bail!(
+            "{}",
+            sam_core::i18n::tr(
+                "the server sent more than the part SAM asked for, so it ignores range requests; the partial download was stopped"
+            )
+        );
+    }
+    // Everything arrived; curl is ending.
+    let status = loop {
+        if let Some(st) = child.try_wait()? {
+            break st;
+        }
+        if started.elapsed() > limit {
+            stop(&mut child);
+            return Err(too_slow());
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    if !status.success() {
         bail!(
             "{}",
             sam_core::i18n::trf(
                 "downloading the changed parts failed: {reason}",
-                &[("reason", &format!("curl {st}"))]
+                &[("reason", &format!("curl {status}"))]
             )
         );
     }
-    Ok(out)
+    Ok(kept)
 }
 
-pub fn download(p: &Published, dest: &Path) -> Result<()> {
-    let res = download_inner(p, dest);
+fn download(p: &Published, dest: &Path, deadline: &Deadline) -> Result<()> {
+    let res = download_inner(p, dest, deadline);
     if res.is_err() {
         let _ = std::fs::remove_file(dest);
     }
     res
 }
 
-fn download_inner(p: &Published, dest: &Path) -> Result<()> {
+fn download_inner(p: &Published, dest: &Path, deadline: &Deadline) -> Result<()> {
     if !p.file_url.starts_with("https://") {
         bail!(
             "{}",
             sam_core::i18n::tr("the update file is not offered over HTTPS")
         );
     }
-    // An hour for the whole file; the speed limit ends a stalled one sooner.
-    let mut cmd = curl(3600)?;
+    // What is left of the update's hour (the partial download may have
+    // used some); the speed limit ends a stalled one sooner.
+    let mut cmd = curl(deadline.left()?.as_secs())?;
     cmd.args(["--speed-limit", "1024", "--speed-time", "60"]);
     cmd.arg("--").arg(&p.file_url);
     // The published length (or SAM's ceiling) is the most SAM keeps.
@@ -653,7 +830,11 @@ fn save_capped(mut cmd: Command, dest: &Path, cap: u64) -> Result<()> {
         let st = child.wait()?;
         let err = errors.join().unwrap_or_default();
         if !st.success() {
-            bail!("download failed: {}", curl_error(&err));
+            let why = format!("download failed: {}", curl_error(&err));
+            if st.code() == Some(28) {
+                return Err(CurlTimedOut(why).into());
+            }
+            bail!("{why}");
         }
         file.sync_all()?;
         Ok(())
@@ -750,6 +931,11 @@ fn sha1_of(path: &Path) -> Result<String> {
 /// range sends everything: enough was read). Without one, the whole answer
 /// up to `MAX_RELEASE_ANSWER`; a longer one is an error.
 fn fetch(url: &str, limit: Option<usize>) -> Result<Vec<u8>> {
+    fetch_within(url, limit, 30)
+}
+
+/// [`fetch`] with at most `max_secs` for the request.
+fn fetch_within(url: &str, limit: Option<usize>, max_secs: u64) -> Result<Vec<u8>> {
     if !url.starts_with("https://") {
         bail!(
             "{}",
@@ -759,7 +945,7 @@ fn fetch(url: &str, limit: Option<usize>) -> Result<Vec<u8>> {
             )
         );
     }
-    let mut cmd = curl(30)?;
+    let mut cmd = curl(max_secs)?;
     cmd.args(["--header", "Accept: application/json, */*"]);
     if let Some(n) = limit {
         cmd.args(["--range", &format!("0-{}", n - 1)]);
@@ -838,7 +1024,9 @@ mod tests {
                 page: None,
                 zsync_url: "https://127.0.0.1:9/App.AppImage.zsync".into(),
             };
-            let err = download_inner(&p, &dest).unwrap_err().to_string();
+            let err = download_inner(&p, &dest, &Deadline::new(UPDATE_TIME_LIMIT))
+                .unwrap_err()
+                .to_string();
             assert_eq!(
                 err,
                 sam_core::i18n::tr("the update file is not offered over HTTPS"),
@@ -1047,6 +1235,73 @@ mod tests {
         std::os::unix::fs::symlink(&victim, &link).unwrap();
         assert!(save_capped(prints(10), &link, 100).is_err());
         assert_eq!(std::fs::read_to_string(&victim).unwrap(), "keep");
+    }
+
+    /// Regression (review B2 S6, R90): a range request answered with the
+    /// whole file (a server that ignores ranges) kept the first bytes and
+    /// read the rest to its end, so each of up to 300 ranges was a whole
+    /// download. One byte more than asked for is now an error at once, and
+    /// the download is stopped, not read to its end; exactly the asked-for
+    /// bytes are taken; a request that runs too long is stopped at its limit.
+    #[test]
+    fn a_range_answered_with_more_bytes_stops_at_once() {
+        let t = tempfile::tempdir().unwrap();
+        let done = t.path().join("sent-everything");
+        let limit = Duration::from_secs(60);
+        let started = Instant::now();
+        let err = read_range(prints_then_marks(30_000_000, &done), limit, 1000)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("ignores range requests"), "{err}");
+        assert!(
+            started.elapsed() < Duration::from_secs(20),
+            "{:?}",
+            started.elapsed()
+        );
+        assert!(
+            !done.exists(),
+            "the download was stopped, not read to its end"
+        );
+        assert_eq!(read_range(prints(1000), limit, 1000).unwrap().len(), 1000);
+        let mut slow = Command::new("sh");
+        slow.args(["-c", "sleep 30"]);
+        let started = Instant::now();
+        let err = read_range(slow, Duration::from_secs(1), 1000)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("did not finish within 1 seconds"), "{err}");
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "{:?}",
+            started.elapsed()
+        );
+    }
+
+    /// The update's time limit is named in minutes when it is whole
+    /// minutes (an hour for SAM's updates), in seconds otherwise; and only
+    /// curl's own time-out is named as the limit, so a download that
+    /// fails for another reason near the end keeps its reason (review B2
+    /// S6, R90).
+    #[test]
+    fn the_time_limit_is_named_only_when_it_ended_the_download() {
+        let hour = Deadline::new(UPDATE_TIME_LIMIT).passed().to_string();
+        assert!(hour.contains("within 60 minutes"), "{hour}");
+        let short = Deadline::new(Duration::from_secs(3)).passed().to_string();
+        assert!(short.contains("within 3 seconds"), "{short}");
+        let t = tempfile::tempdir().unwrap();
+        let dest = t.path().join("new.AppImage");
+        let exits = |code: u8| {
+            let mut c = Command::new("sh");
+            c.args([
+                "-c",
+                &format!("echo 'curl: ({code}) failed' >&2; exit {code}"),
+            ]);
+            c
+        };
+        let e = save_capped(exits(28), &dest, 100).unwrap_err();
+        assert!(e.downcast_ref::<CurlTimedOut>().is_some(), "{e:#}");
+        let e = save_capped(exits(22), &dest, 100).unwrap_err();
+        assert!(e.downcast_ref::<CurlTimedOut>().is_none(), "{e:#}");
     }
 
     /// A failed download says why, in words, also after up to 64 KiB of
