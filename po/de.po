@@ -9062,6 +9062,17 @@ msgstr ""
 msgid "unknown flat preset key '{other}'"
 msgstr "unbekannter Schlüssel „{other}“ in der flachen Vorlage"
 
+#: crates/sam-runner/src/app_lock.rs:192
+msgid "locking the update of SAM"
+msgstr "die Aktualisierung von SAM sperren"
+
+#: crates/sam-runner/src/ops/maintain.rs:1282
+msgid ""
+"SAM is already updating itself. Wait until that is done, then try again."
+msgstr ""
+"SAM aktualisiert sich bereits selbst. Warte, bis das erledigt ist, und "
+"versuche es dann noch einmal."
+
 #~ msgid "To start it anyway this one time: sam-jail run --start-anyway APP"
 #~ msgstr ""
 #~ "Um sie dieses eine Mal trotzdem zu starten: sam-jail run --start-anyway "
