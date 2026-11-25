@@ -943,12 +943,26 @@ impl Sam {
         // What the new file is compared with: the recorded signature when it
         // was checked, otherwise the installed file checked now. A record
         // made while GnuPG was missing would otherwise let any key through
-        // for good (review 2026-11-23, U-3).
+        // for good (review 2026-11-23, U-3). A record checked before SAM
+        // kept the signing time (before 2026-11-18) cannot tell an older
+        // release from a newer one: the installed copy, checked again, gives
+        // the time when it still shows the recorded key (review B2 S6, R94).
         let before_sig = match &entry.signature {
             Some(s)
                 if s.state == sam_core::model::SignatureState::Valid && s.fingerprint.is_some() =>
             {
-                s.clone()
+                if s.signed_at.is_some() {
+                    s.clone()
+                } else {
+                    let again = self.check_signature(&installed, false);
+                    if again.state == sam_core::model::SignatureState::Valid
+                        && again.fingerprint == s.fingerprint
+                    {
+                        again
+                    } else {
+                        s.clone()
+                    }
+                }
             }
             _ => self.check_signature(&installed, false),
         };
@@ -985,6 +999,20 @@ impl Sam {
         }
         if let Some((was, now)) = older_signed_version(Some(&before_sig), &new_sig) {
             return Err(older_version_error(was, now).into());
+        }
+        // The same key, but a signing time could not be read: SAM cannot
+        // tell whether the download is an older version, so it asks, with a
+        // question of its own, the same way as for a signature it cannot
+        // check (review B2 S6, R94).
+        if signing_time_unknown(Some(&before_sig), &new_sig)
+            && !consented_to("signing-time-unknown")
+        {
+            return Err(ask(
+                "signing-time-unknown",
+                sam_core::i18n::tr(
+                    "The new file is signed with the same key as the installed version, but SAM could not read when one of them was signed, so it cannot tell whether the download is an older version, which may have security holes that were fixed since. Accept the update only if you trust its source: SAM then installs exactly this file, never one downloaded later.",
+                ),
+            ));
         }
         // Signed and checked before, but the new file cannot be checked
         // (GnuPG missing): SAM cannot tell whether the key changed, so it
@@ -1331,6 +1359,16 @@ impl Sam {
             let running = self.check_signature(appimage, true);
             if let Some((was, now)) = older_signed_version(Some(&running), &new_sig) {
                 return Err(older_version_error(was, now).into());
+            }
+            // A time that cannot be read cannot rule out an older release;
+            // SAM does not replace itself on a guess (review B2 S6, R94).
+            if signing_time_unknown(Some(&running), &new_sig) {
+                bail!(
+                    "{}",
+                    sam_core::i18n::tr(
+                        "SAM did not update itself: the download is signed with SAM's release key, but SAM could not read when it or the running version was signed, so it cannot tell whether the download is an older release. It was deleted and nothing changed."
+                    )
+                );
             }
             use std::os::unix::fs::PermissionsExt;
             fs::set_permissions(&tmp, fs::Permissions::from_mode(0o755))?;

@@ -41,6 +41,7 @@ a `code`, which stays the same in every language:
 | `extraction-limit` | unpacking stopped at a size, file-count or time limit; the message says which one |
 | `unpack-needs-sandbox` | SAM unpacks only inside a sandbox, and none can be built here (no Bubblewrap, or SAM's `sam-jail` is not next to the program) |
 | `signature-unchecked` | `update`: the installed version was signed and checked, but the new file's signature cannot be checked (GnuPG missing); `--accept-key-change` installs exactly that file anyway |
+| `signing-time-unknown` | `update`: both versions are signed with the same key, but when one of them was signed cannot be read, so SAM cannot tell whether the update is an older version; `--accept-key-change` installs exactly that file anyway |
 
 Every error also names the **SAM function** it happened in, as `function`:
 the number in [SAM's functions](functions.md), so a script or a bug report

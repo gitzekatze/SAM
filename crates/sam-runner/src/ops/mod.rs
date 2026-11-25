@@ -716,7 +716,8 @@ pub(crate) fn signature_unconfirmed(
 /// could otherwise hand out an old, validly signed release with known holes
 /// (audit U-M6). Returns both signing times. Unsigned or unchecked files, a
 /// changed key (asked about separately) and records from before SAM kept
-/// the time cannot be compared.
+/// the time cannot be compared; [`signing_time_unknown`] tells when the key
+/// is the same but a time is missing.
 pub(crate) fn older_signed_version(
     old: Option<&sam_core::model::SignatureInfo>,
     new: &sam_core::model::SignatureInfo,
@@ -728,6 +729,24 @@ pub(crate) fn older_signed_version(
     }
     let (was, now) = (old.signed_at?, new.signed_at?);
     (now < was).then_some((was, now))
+}
+
+/// Whether the new file is signed with the same key as the installed one
+/// while at least one of the two signing times is unknown (a record from
+/// before SAM kept the time, or a time gpgv did not report): then SAM
+/// cannot tell whether the update is an older version, and
+/// [`older_signed_version`] cannot refuse it (review B2 S6, R94).
+pub(crate) fn signing_time_unknown(
+    old: Option<&sam_core::model::SignatureInfo>,
+    new: &sam_core::model::SignatureInfo,
+) -> bool {
+    use sam_core::model::SignatureState as S;
+    let Some(old) = old.filter(|o| o.state == S::Valid && o.fingerprint.is_some()) else {
+        return false;
+    };
+    new.state == S::Valid
+        && new.fingerprint == old.fingerprint
+        && (old.signed_at.is_none() || new.signed_at.is_none())
 }
 
 #[cfg(test)]
@@ -862,6 +881,48 @@ mod signature_tests {
             "never checked before"
         );
         assert_eq!(signature_unconfirmed(None, &sig(S::Unchecked, None)), None);
+    }
+
+    /// The same key on both versions, but one signing time unknown (a record
+    /// from before SAM kept the time, or a time gpgv did not report): SAM
+    /// cannot tell whether the update is older. Both times known, another
+    /// key, an unsigned, unchecked or bad file, or no earlier signature is
+    /// not this case (review B2 S6, R94).
+    #[test]
+    fn a_signing_time_that_cannot_be_read_is_noticed() {
+        use super::signing_time_unknown;
+        let at = |state: S, fp: Option<&str>, t: Option<i64>| SignatureInfo {
+            signed_at: t,
+            ..sig(state, fp)
+        };
+        let timed = at(S::Valid, Some("A"), Some(2_000));
+        let untimed = at(S::Valid, Some("A"), None);
+        assert!(
+            signing_time_unknown(Some(&untimed), &at(S::Valid, Some("A"), Some(1_000))),
+            "a record without a time"
+        );
+        assert!(
+            signing_time_unknown(Some(&timed), &untimed),
+            "a new file without a time"
+        );
+        assert!(signing_time_unknown(Some(&untimed), &untimed), "neither");
+        for (old, new) in [
+            (&timed, at(S::Valid, Some("A"), Some(1_000))),
+            (&untimed, at(S::Valid, Some("B"), None)),
+            (&untimed, at(S::Valid, None, None)),
+            (&untimed, at(S::Unchecked, None, None)),
+            (&untimed, at(S::Invalid, Some("A"), None)),
+            (&untimed, at(S::Unsigned, None, None)),
+            (&at(S::Valid, None, None), at(S::Valid, None, None)),
+            (&at(S::Invalid, Some("A"), None), untimed.clone()),
+            (&at(S::Unchecked, None, None), untimed.clone()),
+        ] {
+            assert!(!signing_time_unknown(Some(old), &new), "{old:?} {new:?}");
+        }
+        assert!(
+            !signing_time_unknown(None, &untimed),
+            "no earlier signature"
+        );
     }
 }
 

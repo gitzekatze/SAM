@@ -601,9 +601,16 @@ impl AppPage {
                 .call(&args.iter().map(String::as_str).collect::<Vec<_>>(), None)
                 .await;
             if let Err(e) = &result {
-                if e.is("signing-key-changed") || e.is("signature-unchecked") {
+                if e.is("signing-key-changed")
+                    || e.is("signature-unchecked")
+                    || e.is("signing-time-unknown")
+                {
                     let title = if e.is("signing-key-changed") {
                         tr("Signed With Another Key")
+                    } else if e.is("signing-time-unknown") {
+                        // Checked and the same key, but when it was signed
+                        // could not be read (review B2 S6, R94).
+                        tr("Signing Time Unknown")
                     } else {
                         tr("Signature Not Checked")
                     };
