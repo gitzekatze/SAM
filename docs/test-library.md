@@ -389,7 +389,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-437 tests.
+438 tests.
 
 | Promise | Test |
 |---|---|
@@ -710,11 +710,12 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | ⟲ Regression (audit U-H1, Part 5): changing any switch cleared the mark of a swapped AppImage file, so it started without the person looking at it. | [`a_swapped_appimage_stays_marked_when_a_switch_changes`](../crates/sam-runner/tests/changed_appimage.rs#L71) |
 | ⟲ Regression (audit U-H2): "Check all AppImages for changes" (or moving the file with relocate) recorded the swapped file's checksum, so the following "Unpack Again" compared the file with itself: the swapped content ran with the old app's permissions, unmarked, and its signature was not checked again. | [`a_swapped_appimage_is_marked_also_after_the_change_check`](../crates/sam-runner/tests/changed_appimage.rs#L111) |
 | An unplugged controller is taken out of the running sandbox; the app keeps running (review R56). | [`an_unplugged_controller_leaves_the_running_sandbox`](../crates/sam-runner/tests/device_watch.rs#L318) |
-| Another device at an unplugged controller's name (a keyboard that got its number) is never reachable: the node is taken out (review R56). | [`another_device_at_a_controllers_name_is_never_shown`](../crates/sam-runner/tests/device_watch.rs#L327) |
-| With "This computer only" (pasta, which gives the sandbox its own process numbers) an unplugged controller is taken out too (review R56). | [`an_unplugged_controller_leaves_a_sandbox_inside_pasta`](../crates/sam-runner/tests/device_watch.rs#L336) |
-| Where taking an unplugged controller out is not enough (no Landlock, or the app may make namespaces of its own), SAM ends the whole sandbox at once (review R56). | [`where_taking_out_is_not_enough_the_whole_sandbox_ends`](../crates/sam-runner/tests/device_watch.rs#L353) |
-| … also inside pasta, which gives the sandbox its own process numbers (review R56). | [`where_taking_out_is_not_enough_a_sandbox_inside_pasta_ends`](../crates/sam-runner/tests/device_watch.rs#L365) |
+| Another device at an unplugged controller's name (a keyboard that got its number) is never reachable: the node is taken out (review R56). | [`another_device_at_a_controllers_name_is_never_shown`](../crates/sam-runner/tests/device_watch.rs#L332) |
+| With "This computer only" (pasta, which gives the sandbox its own process numbers) an unplugged controller is taken out too (review R56). | [`an_unplugged_controller_leaves_a_sandbox_inside_pasta`](../crates/sam-runner/tests/device_watch.rs#L346) |
+| Where taking an unplugged controller out is not enough (no Landlock, or the app may make namespaces of its own), SAM ends the whole sandbox at once (review R56). | [`where_taking_out_is_not_enough_the_whole_sandbox_ends`](../crates/sam-runner/tests/device_watch.rs#L368) |
+| … also inside pasta, which gives the sandbox its own process numbers (review R56). | [`where_taking_out_is_not_enough_a_sandbox_inside_pasta_ends`](../crates/sam-runner/tests/device_watch.rs#L380) |
 | Through SAM's launcher: an app with "Game controllers" gets the controller, and once it is unplugged the node is gone from the running app, which runs on to its end (review R56). | [`the_launcher_takes_an_unplugged_controller_out_of_the_running_app`](../crates/sam-runner/tests/device_watch_launch.rs#L36) |
+| With "Nested namespaces" on, SAM ends the app when its controller is unplugged, and says why; the app does not run on to its end. | [`with_nested_namespaces_an_unplugged_controller_ends_the_app`](../crates/sam-runner/tests/device_watch_userns.rs#L34) |
 | Every hostile AppImage, added and started like any other, fails to get out of its sandbox: it cannot read keys, SAM's settings or another app's files; cannot write autostart entries, shell startup files or host temporary files; cannot type into the terminal, reach the network when it has none, see host processes or change its own app folder; cannot reach systemd, the Flatpak spawn portal, the keyring or a launcher service, nor take over a portal's name on the desktop bus; and a symlink or setuid bit in its image gains it nothing. | [`every_hostile_appimage_fails_to_escape`](../crates/sam-runner/tests/evil.rs#L159) |
 | Full home access cannot leave anything that runs later. | [`full_home_access_cannot_leave_anything_that_runs_later`](../crates/sam-runner/tests/full_home.rs#L54) |
 | Changed AppImages are recognized or refused, and unpacked or refused, without a panic; unpacking writes only inside its own folder and keeps its time limit. | [`changed_appimages_never_crash_or_escape_the_unpacker`](../crates/sam-runner/tests/fuzz.rs#L141) |
@@ -1032,4 +1033,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 945 automated Rust tests plus 8 scripted checks.
+Total: 946 automated Rust tests plus 8 scripted checks.

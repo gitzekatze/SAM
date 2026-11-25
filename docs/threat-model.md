@@ -96,9 +96,11 @@ These limits are real, and SAM says so rather than pretend otherwise.
   otherwise open the node again through `/proc/self/fd`; Landlock closes
   that way, so SAM takes a node out only where its helper reports Landlock
   in place and the app cannot make namespaces of its own. Elsewhere an
-  unplug ends the app. What remains is the short time (milliseconds)
-  between the unplug and the removal, in which a new device would have to
-  appear at the same number.
+  unplug ends the app. What remains are two short times in which a new
+  device would have to appear at the same number: between the unplug and
+  the removal (milliseconds), and at the start, between SAM choosing the
+  controllers and the sandbox being ready to watch (until Bubblewrap and
+  SAM's helper have reported, at most about 5 seconds).
 - **X11.** An app with X11 access can read keystrokes and capture the
   screen of every X11 app. SAM grants X11 only when you allow it or an app
   cannot run without it, and says what it costs.

@@ -9,7 +9,7 @@
 >
 > Test results are from the newest version report (2026-11-21 05:11:03).
 
-**42 functions:** 3 proven by passing tests, 38 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 945 tests in all.
+**42 functions:** 3 proven by passing tests, 38 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 946 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
@@ -27,7 +27,7 @@
 | 12 | [Network: none, "This computer only" (selected ports), or full.](#12) | sam-runner, sam-sandbox | 10 | ✅ 🆕 2 new tests since the report |
 | 13 | [The app reaches only allowed desktop services (a filtered D-Bus) and can't start programs outside its sandbox.](#13) | sam-runner, sam-sandbox, sam-core | 61 | ✅ 🆕 30 new tests since the report |
 | 14 | [Display: Wayland with a security context; X11 only when allowed, with its cost explained.](#14) | sam-runner, sam-sandbox, sam-core | 11 | ✅ 🆕 6 new tests since the report |
-| 15 | [Sound, GPU, camera and game controllers only when allowed.](#15) | sam-runner, sam-sandbox, sam-core | 36 | ✅ 🆕 22 new tests since the report |
+| 15 | [Sound, GPU, camera and game controllers only when allowed.](#15) | sam-runner, sam-sandbox, sam-core | 37 | ✅ 🆕 23 new tests since the report |
 | 16 | [The app can't make itself start later outside the sandbox (autostart, shell startup files, menu entries).](#16) | sam-runner, sam-sandbox, sam-core | 43 | ✅ 🆕 24 new tests since the report |
 | 17 | [The app can't type into your terminal.](#17) | sam-runner, sam-sandbox, sam-core | 46 | ✅ 🆕 2 new tests since the report |
 | 18 | [Optional: a writable app folder (changes go to a separate layer); where that's impossible, a read-only start with an explanation.](#18) | sam-runner, sam-sandbox, sam-core | 6 | ✅ 🆕 2 new tests since the report |
@@ -538,8 +538,8 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`gamepads_only_exposes_joysticks`](../crates/sam-sandbox/src/lib.rs#L3998) | "Game controllers" exposes only joysticks, never keyboards or mice. | ✅ |
 | [`every_controller_shown_is_watched`](../crates/sam-sandbox/src/lib.rs#L4018) | Every game controller shown by name is watched while the app runs, with what it was when it was chosen; one already gone is neither shown nor watched (review R56). | 🆕 new |
 | [`an_unplugged_controller_leaves_the_running_sandbox`](../crates/sam-runner/tests/device_watch.rs#L318) | An unplugged controller is taken out of the running sandbox; the app keeps running (review R56). | 🆕 new |
-| [`another_device_at_a_controllers_name_is_never_shown`](../crates/sam-runner/tests/device_watch.rs#L327) | Another device at an unplugged controller's name (a keyboard that got its number) is never reachable: the node is taken out (review R56). | 🆕 new |
-| [`an_unplugged_controller_leaves_a_sandbox_inside_pasta`](../crates/sam-runner/tests/device_watch.rs#L336) | With "This computer only" (pasta, which gives the sandbox its own process numbers) an unplugged controller is taken out too (review R56). | 🆕 new |
+| [`another_device_at_a_controllers_name_is_never_shown`](../crates/sam-runner/tests/device_watch.rs#L332) | Another device at an unplugged controller's name (a keyboard that got its number) is never reachable: the node is taken out (review R56). | 🆕 new |
+| [`an_unplugged_controller_leaves_a_sandbox_inside_pasta`](../crates/sam-runner/tests/device_watch.rs#L346) | With "This computer only" (pasta, which gives the sandbox its own process numbers) an unplugged controller is taken out too (review R56). | 🆕 new |
 | [`the_launcher_takes_an_unplugged_controller_out_of_the_running_app`](../crates/sam-runner/tests/device_watch_launch.rs#L36) | Through SAM's launcher: an app with "Game controllers" gets the controller, and once it is unplugged the node is gone from the running app, which runs on to its end (review R56). | 🆕 new |
 | [`an_unplugged_controller_that_cannot_be_taken_out_ends_the_app`](../crates/sam-runner/src/device_watch.rs#L599) | When SAM cannot reach the sandbox to take an unplugged controller out, it ends the app: Bubblewrap gave no status line, or one without the sandbox's mount namespace, or one no process has (review R56). | 🆕 new |
 | [`no_controller_no_watch`](../crates/sam-runner/src/device_watch.rs#L687) | Nothing to watch: no watch at all. | 🆕 new |
@@ -547,9 +547,10 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`ending_the_sandbox_ends_it_at_once`](../crates/sam-runner/src/device_watch.rs#L655) | When SAM ends a sandbox it cannot keep its promise in, the program it started ends at once, whatever it does; once that program has ended, its number is never signalled again (review R56). | 🆕 new |
 | [`sams_own_namespace_is_never_taken_for_a_sandbox`](../crates/sam-runner/src/device_watch.rs#L675) | SAM's own namespace (that of the person's whole session) is never taken for a sandbox, whatever the status line says: ending "the sandbox" there would end everything (incident 2026-11-25). | 🆕 new |
 | [`without_landlock_an_unplugged_controller_ends_the_app`](../crates/sam-runner/src/device_watch.rs#L622) | Where taking the node out is not enough (no Landlock, or the app may make namespaces of its own), an unplugged controller ends the app (review R56). | 🆕 new |
-| [`where_taking_out_is_not_enough_the_whole_sandbox_ends`](../crates/sam-runner/tests/device_watch.rs#L353) | Where taking an unplugged controller out is not enough (no Landlock, or the app may make namespaces of its own), SAM ends the whole sandbox at once (review R56). | 🆕 new |
-| [`where_taking_out_is_not_enough_a_sandbox_inside_pasta_ends`](../crates/sam-runner/tests/device_watch.rs#L365) | … also inside pasta, which gives the sandbox its own process numbers (review R56). | 🆕 new |
+| [`where_taking_out_is_not_enough_the_whole_sandbox_ends`](../crates/sam-runner/tests/device_watch.rs#L368) | Where taking an unplugged controller out is not enough (no Landlock, or the app may make namespaces of its own), SAM ends the whole sandbox at once (review R56). | 🆕 new |
+| [`where_taking_out_is_not_enough_a_sandbox_inside_pasta_ends`](../crates/sam-runner/tests/device_watch.rs#L380) | … also inside pasta, which gives the sandbox its own process numbers (review R56). | 🆕 new |
 | [`a_room_never_gets_a_watched_game_controller`](../crates/sam-runner/src/room_rules.rs#L2568) | A room never gets a game controller SAM watches: SAM could not take it out of the room when it is unplugged (review R56). | 🆕 new |
+| [`with_nested_namespaces_an_unplugged_controller_ends_the_app`](../crates/sam-runner/tests/device_watch_userns.rs#L34) | With "Nested namespaces" on, SAM ends the app when its controller is unplugged, and says why; the app does not run on to its end. | 🆕 new |
 | [`nvidia_modules_are_exposed_with_the_gpu`](../crates/sam-sandbox/src/lib.rs#L4047) | With the GPU, the NVIDIA driver modules are visible; other kernel modules are not. | ✅ |
 | [`each_permission_grants_exactly_its_access_in_a_real_sandbox`](../crates/sam-runner/tests/matrix.rs#L165) | Inside a real sandbox, each permission grants exactly its access and nothing more. | ✅ |
 | [`sound_and_bus_data_come_with_their_permissions`](../crates/sam-sandbox/src/lib.rs#L6045) | Without the whole system (`host_runtime` Minimal), the shared data of sound and of D-Bus is shown with their permissions, and only then; the sound settings in /etc in any case. | 🆕 new |

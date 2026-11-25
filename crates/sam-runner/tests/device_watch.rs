@@ -317,6 +317,11 @@ fn bwrap_here() -> bool {
 /// keeps running (review R56).
 #[test]
 fn an_unplugged_controller_leaves_the_running_sandbox() {
+    // If taking out fails, the watch ends the sandbox by its namespace:
+    // like every test that may end processes, only on an isolated computer.
+    if !sam_runner::contracts::isolated_only("watching a real sandbox") {
+        return;
+    }
     if bwrap_here() {
         taken_out_after(unplug, false);
     }
@@ -326,6 +331,11 @@ fn an_unplugged_controller_leaves_the_running_sandbox() {
 /// its number) is never reachable: the node is taken out (review R56).
 #[test]
 fn another_device_at_a_controllers_name_is_never_shown() {
+    // If taking out fails, the watch ends the sandbox by its namespace:
+    // like every test that may end processes, only on an isolated computer.
+    if !sam_runner::contracts::isolated_only("watching a real sandbox") {
+        return;
+    }
     if bwrap_here() {
         taken_out_after(another_device_at_its_name, false);
     }
@@ -335,6 +345,11 @@ fn another_device_at_a_controllers_name_is_never_shown() {
 /// process numbers) an unplugged controller is taken out too (review R56).
 #[test]
 fn an_unplugged_controller_leaves_a_sandbox_inside_pasta() {
+    // If taking out fails, the watch ends the sandbox by its namespace:
+    // like every test that may end processes, only on an isolated computer.
+    if !sam_runner::contracts::isolated_only("watching a real sandbox") {
+        return;
+    }
     if !bwrap_here() {
         return;
     }

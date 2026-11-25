@@ -378,6 +378,7 @@ tests = [
   "where_taking_out_is_not_enough_the_whole_sandbox_ends",
   "where_taking_out_is_not_enough_a_sandbox_inside_pasta_ends",
   "a_room_never_gets_a_watched_game_controller",
+  "with_nested_namespaces_an_unplugged_controller_ends_the_app",
   "nvidia_modules_are_exposed_with_the_gpu",
   "each_permission_grants_exactly_its_access_in_a_real_sandbox",
   "sound_and_bus_data_come_with_their_permissions",
