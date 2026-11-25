@@ -14,10 +14,11 @@
 //!   stays read-only, without, with a read-only and with a writable whole
 //!   home, while an ordinary writable extra folder takes the app's file
 //!   (owner decision 9 of 2026-11-23);
-//! - a start place kept as a link into a writable extra folder (stow:
-//!   `~/.config/tmux` a link to `~/work/dots/tmux`, `~/work` granted) and
-//!   granted itself stays read-only where it leads, and the folder between
-//!   cannot be renamed away (independent review of decision 9).
+//! - a folder inside a start place kept as a link into a writable extra
+//!   folder (stow: `~/.config/tmux/plugins` a link to `~/work/dots/tmux`,
+//!   `~/work` granted) and granted itself stays read-only where it leads,
+//!   and the folder between cannot be renamed away (independent review of
+//!   decision 9).
 //!
 //! In its own file because it sets `HOME` for the test process.
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
@@ -78,7 +79,12 @@ fn the_home_protections_hold_whatever_else_is_granted() {
     fs::create_dir_all(home.join(".ssh")).unwrap();
     fs::create_dir_all(home.join(".config/fish/conf.d")).unwrap();
     fs::create_dir_all(home.join("work/dots/tmux")).unwrap();
-    std::os::unix::fs::symlink(home.join("work/dots/tmux"), home.join(".config/tmux")).unwrap();
+    fs::create_dir_all(home.join(".config/tmux")).unwrap();
+    std::os::unix::fs::symlink(
+        home.join("work/dots/tmux"),
+        home.join(".config/tmux/plugins"),
+    )
+    .unwrap();
     fs::write(home.join(".ssh/id_ed25519"), "SECRET KEY").unwrap();
     let user_dirs = "XDG_DOCUMENTS_DIR=\"$HOME/Documents\"\n";
     fs::write(home.join(".config/user-dirs.dirs"), user_dirs).unwrap();
@@ -203,9 +209,10 @@ fn the_home_protections_hold_whatever_else_is_granted() {
         fs::remove_file(home.join("work/ok.txt")).unwrap();
     }
 
-    // A start place kept through a link into a writable folder (stow),
-    // granted itself: read-only where it leads, also below the writable
-    // folder or the writable home, and the folder between pinned.
+    // A folder inside a start place kept through a link into a writable
+    // folder (stow), granted itself: read-only where it leads, also below
+    // the writable folder or the writable home, where the start place's
+    // own lock does not reach it, and the folder between pinned.
     fs::write(home.join("work/STOW"), "").unwrap();
     for whole_home in [false, true] {
         let mut p = PermissionSet::strict_gui();
@@ -213,7 +220,7 @@ fn the_home_protections_hold_whatever_else_is_granted() {
             p.filesystem.home = true;
             p.filesystem.home_access = Access::Rw;
         }
-        p.filesystem.custom_write = vec!["~/work".into(), "~/.config/tmux".into()];
+        p.filesystem.custom_write = vec!["~/work".into(), "~/.config/tmux/plugins".into()];
         let r = start(p);
         assert_eq!(r["STOW"], "refused", "{whole_home}: {r:?}");
         assert!(
