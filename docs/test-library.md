@@ -389,7 +389,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-451 tests.
+453 tests.
 
 | Promise | Test |
 |---|---|
@@ -505,9 +505,11 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | A signed app whose update cannot be checked (GnuPG missing) is not waved through: SAM cannot tell whether the key changed. | [`an_update_that_cannot_be_checked_needs_consent_after_a_valid_signature`](../crates/sam-runner/src/ops/mod.rs#L841) |
 | The processes below an app's sandbox are its children and their children, and nothing else: quitting asks only those (mutation run 2026-11-24: the walk could take every other process instead, so stopping one app would have asked other sandboxes to quit). | [`only_the_processes_below_a_sandbox_are_its_own`](../crates/sam-runner/src/ops/mod.rs#L876) |
 | Review 2026-11-23 F3: asking an app to quit reaches the app's own processes, also one whose program is called `bwrap`, and nothing of SAM's: not the program the launcher started (here a stand-in for pasta that quits on SIGTERM, which would take the sandbox down at once), not a helper beside the sandbox (as the sound relay). | [`only_the_apps_own_processes_are_asked_to_quit`](../crates/sam-runner/src/ops/mod.rs#L916) |
-| A menu start unpacks in a sandbox with the cli next to it. | [`a_menu_start_unpacks_in_a_sandbox_with_the_cli_next_to_it`](../crates/sam-runner/src/ops/overview.rs#L523) |
-| Sams programs never unpack without a sandbox. | [`sams_programs_never_unpack_without_a_sandbox`](../crates/sam-runner/src/ops/overview.rs#L551) |
-| Tests and benchmarks may unpack in their own process. | [`tests_and_benchmarks_may_unpack_in_their_own_process`](../crates/sam-runner/src/ops/overview.rs#L573) |
+| A menu start unpacks in a sandbox with the cli next to it. | [`a_menu_start_unpacks_in_a_sandbox_with_the_cli_next_to_it`](../crates/sam-runner/src/ops/overview.rs#L549) |
+| Sams programs never unpack without a sandbox. | [`sams_programs_never_unpack_without_a_sandbox`](../crates/sam-runner/src/ops/overview.rs#L577) |
+| A release build of SAM refuses to unpack without a sandbox whatever its program is called, and the refusal names what is missing. | [`a_release_build_of_any_name_never_unpacks_without_a_sandbox`](../crates/sam-runner/src/ops/overview.rs#L604) |
+| SAM's own programs refuse to unpack without a sandbox in every build, developer builds included. | [`sams_programs_refuse_without_a_sandbox_in_every_build`](../crates/sam-runner/src/ops/overview.rs#L649) |
+| Tests and benchmarks may unpack in their own process. | [`tests_and_benchmarks_may_unpack_in_their_own_process`](../crates/sam-runner/src/ops/overview.rs#L666) |
 | A name the app asks for is refused when it belongs to an installed app (audit D-M6: a terminal's name runs host commands), to a desktop protocol, to an on-demand service (also through a wildcard, L-F13), or to another app in SAM; its own name passes; a media player's name passes with the media switch (L-Q1). | [`a_name_is_allowed_only_when_nobody_else_has_it`](../crates/sam-runner/src/own_names.rs#L190) |
 | Menu entry ids come from file names, subfolders joined with `-`; only `.desktop` files count. | [`menu_ids_are_the_file_names`](../crates/sam-runner/src/own_names.rs#L232) |
 | Each check reports what it finds, not what it hopes: run on facts that are the same on every computer, a check whose expectation is wrong fails, one whose expectation is right passes, and the report counts them (found by mutation testing: a check turning every failure into a pass went unnoticed). | [`a_check_reports_what_it_finds_not_what_it_hopes`](../crates/sam-runner/src/probe.rs#L602) |
@@ -1048,4 +1050,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 961 automated Rust tests plus 8 scripted checks.
+Total: 963 automated Rust tests plus 8 scripted checks.

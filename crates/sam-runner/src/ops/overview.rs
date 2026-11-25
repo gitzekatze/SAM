@@ -119,8 +119,9 @@ impl Sam {
     /// (`sam-jail`, which provides the built-in reader as a subcommand). The
     /// CLI is this program or the `sam-jail` next to it, so a menu start
     /// (`sam-jail-run`) that unpacks again after *Free space* is isolated too.
-    /// SAM's own programs never unpack without it (threat model: "SAM's own
-    /// unpacker … run in a sandbox"); only tests and benchmarks may.
+    /// SAM never unpacks without it (threat model: "SAM's own unpacker …
+    /// run in a sandbox"), whatever its program is called; only a
+    /// developer build of a program that is not SAM's (a test) may.
     pub(super) fn extract_isolation(&self) -> Result<Option<sam_intake::extract::Isolation>> {
         let exe = std::env::current_exe()?;
         let host = self.host();
@@ -139,8 +140,8 @@ impl Sam {
     /// the user (review 2026-11-23, F6; audit I-F18). Where SAM can build
     /// no sandbox, the signature counts as not checked, which asks before
     /// an update; only SAM's own update (`own_update`) is then checked as
-    /// before, so SAM can still update itself there. Only a program that is
-    /// not SAM's (a test) runs GnuPG directly.
+    /// before, so SAM can still update itself there. Only a developer build
+    /// of a program that is not SAM's (a test) runs GnuPG directly.
     pub(crate) fn check_signature(
         &self,
         path: &Path,
@@ -167,8 +168,8 @@ impl Sam {
 
     /// An AppImage's name and icon, read in the preview sandbox (audit
     /// I-F7). Where SAM can build no sandbox, nothing is read: the file
-    /// name has to do. Only a program that is not SAM's (a test) reads in
-    /// its own process.
+    /// name has to do. Only a developer build of a program that is not
+    /// SAM's (a test) reads in its own process.
     pub(crate) fn peek_file(&self, path: &Path) -> Option<peek::Peek> {
         match self.extract_isolation() {
             Ok(Some(iso)) => peek::peek_isolated(&iso, path).ok(),
@@ -457,18 +458,43 @@ impl Sam {
     }
 }
 
-/// SAM's own programs. They unpack AppImages only inside a sandbox.
+/// SAM's own programs. They unpack AppImages only inside a sandbox, also
+/// in a developer build.
 const SAM_PROGRAMS: &[&str] = &["sam-jail", "sam-jail-run", "sam-jail-gui"];
 
 /// The unpack sandbox for the program `exe`, given the Bubblewrap that can
 /// run here (`None` when it cannot). The reader is `exe` itself when it is
-/// SAM's CLI, else the `sam-jail` next to it. Without either, SAM's own
-/// programs refuse with a coded error; other programs (tests, benchmarks)
-/// unpack in their own process, as before.
+/// SAM's CLI, else the `sam-jail` next to it. Without either, every
+/// release build refuses with a coded error, whatever the program is
+/// called; only a developer build of a program that is not SAM's (the
+/// tests) unpacks in its own process. Packages may rename SAM's programs
+/// (Nix calls a wrapped one `.sam-jail-wrapped`), so the name alone must
+/// never let SAM unpack or run GnuPG without a sandbox (review B2 S6,
+/// R93). Nothing that runs a release build relies on unpacking without a
+/// sandbox here: the benchmark (`sam-jail dev bench`) unpacks an image it
+/// built itself with `isolation: None`, not through this function, and the
+/// tests are developer builds. The same rule as SAM's developer variables
+/// (decision 16 of 2026-11-23). SAM's own update is the one documented
+/// exception for GnuPG: `check_signature` still checks it directly where
+/// no sandbox can be built (docs/security.md).
 fn unpack_isolation(
     exe: &Path,
     bwrap: Option<PathBuf>,
     host: &sam_core::HostInfo,
+) -> Result<Option<sam_intake::extract::Isolation>> {
+    // Known untested line: every test is a developer build, so no test
+    // sees this switch in a release build (a release-build check is a
+    // follow-up).
+    isolation_for(exe, bwrap, host, cfg!(debug_assertions))
+}
+
+/// unpack_isolation's rule, with the build mode as a parameter so both
+/// modes can be tested in a developer build.
+fn isolation_for(
+    exe: &Path,
+    bwrap: Option<PathBuf>,
+    host: &sam_core::HostInfo,
+    developer_build: bool,
 ) -> Result<Option<sam_intake::extract::Isolation>> {
     let name = exe.file_name().and_then(|n| n.to_str()).unwrap_or_default();
     let reader = if name == "sam-jail" {
@@ -495,7 +521,7 @@ fn unpack_isolation(
                 filter: Some(filter),
             }))
         }
-        (bwrap, _) if SAM_PROGRAMS.contains(&name) => {
+        (bwrap, _) if !developer_build || SAM_PROGRAMS.contains(&name) => {
             let why = if bwrap.is_none() {
                 sam_core::i18n::tr("Bubblewrap cannot run on this computer")
             } else {
@@ -516,7 +542,7 @@ fn unpack_isolation(
 
 #[cfg(test)]
 mod unpack_isolation_tests {
-    use super::unpack_isolation;
+    use super::{isolation_for, unpack_isolation};
     use std::fs;
     use std::path::PathBuf;
 
@@ -568,6 +594,73 @@ mod unpack_isolation_tests {
         )
         .unwrap_err();
         assert_eq!(sam_core::error::code_of(&err), Some("unpack-needs-sandbox"));
+    }
+
+    /// A release build of SAM refuses to unpack without a sandbox whatever
+    /// its program is called, and the refusal names what is missing. A
+    /// packaged SAM may call its program something else (Nix:
+    /// `.sam-jail-wrapped`); only a developer build of a test program
+    /// unpacks in its own process (review B2 S6, R93).
+    #[test]
+    fn a_release_build_of_any_name_never_unpacks_without_a_sandbox() {
+        let dir = tempfile::tempdir().unwrap();
+        let host = sam_core::HostInfo::default();
+        for name in [".sam-jail-wrapped", "sam", "sandbox-0123abcd"] {
+            let exe = dir.path().join(name);
+            let err = isolation_for(&exe, None, &host, false).unwrap_err();
+            assert_eq!(
+                sam_core::error::code_of(&err),
+                Some("unpack-needs-sandbox"),
+                "{name} in a release build without Bubblewrap refuses: {err:#}"
+            );
+            let text = format!("{err:#}");
+            assert!(
+                text.contains("Bubblewrap cannot run"),
+                "the refusal says Bubblewrap is missing: {text}"
+            );
+            assert!(
+                !text.contains("is not next to this program"),
+                "the refusal names only what is missing: {text}"
+            );
+            // Bubblewrap works, but no sam-jail next to the program.
+            let err = isolation_for(&exe, Some(PathBuf::from("/usr/bin/bwrap")), &host, false)
+                .unwrap_err();
+            assert_eq!(sam_core::error::code_of(&err), Some("unpack-needs-sandbox"));
+            let text = format!("{err:#}");
+            assert!(
+                text.contains("is not next to this program"),
+                "the refusal says sam-jail is missing: {text}"
+            );
+            assert!(
+                !text.contains("Bubblewrap cannot run"),
+                "the refusal names only what is missing: {text}"
+            );
+        }
+        // The same test program as a developer build still unpacks in its
+        // own process.
+        let test_binary = dir.path().join("sandbox-0123abcd");
+        assert!(isolation_for(&test_binary, None, &host, true)
+            .unwrap()
+            .is_none());
+    }
+
+    /// SAM's own programs refuse to unpack without a sandbox in every
+    /// build, developer builds included.
+    #[test]
+    fn sams_programs_refuse_without_a_sandbox_in_every_build() {
+        let dir = tempfile::tempdir().unwrap();
+        let host = sam_core::HostInfo::default();
+        for developer_build in [true, false] {
+            for name in ["sam-jail", "sam-jail-run", "sam-jail-gui"] {
+                let exe = dir.path().join(name);
+                let err = isolation_for(&exe, None, &host, developer_build).unwrap_err();
+                assert_eq!(
+                    sam_core::error::code_of(&err),
+                    Some("unpack-needs-sandbox"),
+                    "{name} (developer build: {developer_build}) refuses: {err:#}"
+                );
+            }
+        }
     }
 
     #[test]
