@@ -926,7 +926,12 @@ downloads a file, and only when you ask:
   no other key, missing or bad signature through without a question. A signed update that was signed earlier
   than the installed version is an older version and is refused: whoever
   controls the download cannot hand out an old release with holes fixed
-  since. For unsigned apps SAM cannot tell versions apart this way.
+  since. When the record of the installed version has no signing time
+  (checked before SAM kept it), SAM checks the installed file again to
+  learn it; when a signing time still cannot be read, SAM cannot tell
+  whether the update is older and asks first, like for a signature it
+  cannot check, and SAM's own update is refused. For unsigned apps SAM
+  cannot tell versions apart this way.
 - A server cannot keep SAM busy, crash it or fill the disk: every request
   has a time limit; SAM itself counts what a download writes and stops at
   the published length (8 GiB without one), whatever the server sends and

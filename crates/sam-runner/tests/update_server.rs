@@ -604,6 +604,128 @@ fn an_older_signed_version_is_not_installed_as_an_update() {
         .status();
 }
 
+/// Regression (review B2 S6, R94): the refusal of an older version needs
+/// both signing times, and a record whose signature was checked before SAM
+/// kept the time (before 2026-11-18) was compared as it was, so a server
+/// could hand such an app an older release signed with the same key. Now
+/// the installed copy is checked again for its time, and the older release
+/// is refused; nothing changes. Only a check that shows the recorded key
+/// replaces the record: one naming another key stays the comparison, so a
+/// newer release is asked about as a key change. With the real GnuPG
+/// (SAM_TEST_GPG=1).
+#[test]
+fn an_older_signed_version_is_refused_when_the_record_has_no_signing_time() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    if std::env::var("SAM_TEST_GPG").as_deref() != Ok("1") {
+        sam_runner::contracts::skip("set SAM_TEST_GPG=1 (with gpg, gpgv and objcopy installed)")
+            .unwrap_or_else(|e| panic!("{e}"));
+        return;
+    }
+    assert!(
+        ["gpg", "gpgv", "objcopy"].iter().all(|t| have(t)),
+        "SAM_TEST_GPG=1, but gpg, gpgv or objcopy is not installed"
+    );
+    let tmp = tempfile::tempdir().unwrap();
+    let Some((server, url)) = server_or_skip(tmp.path()) else {
+        return;
+    };
+    let home = tmp.path().join("gnupg");
+    fs::create_dir(&home).unwrap();
+    let _agent = gpg_agent::Stop::new(&home);
+    fs::set_permissions(&home, std::os::unix::fs::PermissionsExt::from_mode(0o700)).unwrap();
+    let st = Command::new("gpg")
+        .arg("--homedir")
+        .arg(&home)
+        .args(["--batch", "--quiet", "--passphrase", ""])
+        .args(["--pinentry-mode", "loopback"])
+        .args(["--faked-system-time", "20200101T000000!"])
+        .args(["--quick-gen-key", "Tool Maker <maker@example.invalid>"])
+        .args(["ed25519", "sign", "never"])
+        .status()
+        .unwrap();
+    assert!(st.success(), "gpg could not make a key");
+
+    // The installed version was signed in 2026, the "update" in 2023, both
+    // with the same key.
+    let signed = |path: &Path, version: &str, when: &str| {
+        let mut spec = FixtureSpec::hello("Tool");
+        spec.comment = format!("Tool, version {version}");
+        spec.files.push(FixtureFile {
+            path: "usr/share/tool/version".into(),
+            data: version.as_bytes().to_vec(),
+            mode: 0o644,
+        });
+        spec.update_info = Some(format!("zsync|{url}"));
+        spec.signature_sections = true;
+        build(path, &spec).unwrap();
+        sam_detect::signature::sign_at_for_test(path, &home, "maker@example.invalid", when)
+            .unwrap();
+    };
+    let apps = tmp.path().join("Applications");
+    fs::create_dir_all(&apps).unwrap();
+    let installed = apps.join("Tool-x86_64.AppImage");
+    signed(&installed, "2.0", "20260601T000000");
+    let old_release = tmp.path().join("old.AppImage");
+    signed(&old_release, "1.0", "20230101T000000");
+    publish(&server, &old_release, "Tool-x86_64.AppImage");
+    let (sam, id) = add_reviewed(tmp.path(), &installed);
+
+    // The record as SAM wrote it before it kept the signing time: checked
+    // and valid, with the key, without the time.
+    let mut e = sam.resolve(&id).unwrap();
+    let mut sig = e.signature.clone().unwrap();
+    assert_eq!(sig.state, sam_core::model::SignatureState::Valid, "{sig:?}");
+    assert!(sig.fingerprint.is_some(), "{sig:?}");
+    assert!(sig.signed_at.is_some(), "the check reads the time: {sig:?}");
+    sig.signed_at = None;
+    e.signature = Some(sig);
+    sam.registry().save(&mut e).unwrap();
+    let before = fs::read(&installed).unwrap();
+
+    let err = sam
+        .update(&id, false)
+        .expect_err("an older release was installed over a record without a signing time");
+    assert_eq!(
+        sam_core::error::code_of(&err),
+        Some("older-version"),
+        "refused as older, not asked about: {err:#}"
+    );
+    assert_eq!(fs::read(&installed).unwrap(), before, "nothing changed");
+    assert_eq!(unpacked_version(&sam, &id), "2.0", "version 2 still runs");
+    assert!(
+        sam.resolve(&id).unwrap().update_backup.is_none(),
+        "nothing was replaced"
+    );
+
+    // A record without a time that names another key than the installed
+    // copy shows: the record stays the comparison, and a newer release
+    // signed with the installed copy's key is a key change.
+    let mut e = sam.resolve(&id).unwrap();
+    let mut sig = e.signature.clone().unwrap();
+    sig.fingerprint = Some("0123456789ABCDEF0123456789ABCDEF01234567".into());
+    sig.signed_at = None;
+    e.signature = Some(sig);
+    sam.registry().save(&mut e).unwrap();
+    let newer = tmp.path().join("newer.AppImage");
+    signed(&newer, "3.0", "20260701T000000");
+    publish(&server, &newer, "Tool-x86_64.AppImage");
+    let err = sam
+        .update(&id, false)
+        .expect_err("the key the record names was replaced by the one the file shows now");
+    assert_eq!(
+        sam_core::error::code_of(&err),
+        Some("signing-key-changed"),
+        "asked about the key: {err:#}"
+    );
+    assert_eq!(fs::read(&installed).unwrap(), before, "nothing changed");
+    assert_eq!(unpacked_version(&sam, &id), "2.0", "version 2 still runs");
+    let _ = Command::new("gpgconf")
+        .arg("--homedir")
+        .arg(&home)
+        .args(["--kill", "all"])
+        .status();
+}
+
 /// Updates come over HTTPS only, wherever the address comes from (audit
 /// B22, verification audit 2026-11-19: no test noticed the download's own
 /// check gone, and none tried a redirect). The same newer version is
