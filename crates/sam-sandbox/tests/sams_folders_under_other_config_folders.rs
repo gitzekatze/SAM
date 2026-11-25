@@ -17,6 +17,24 @@ fn has_seq(v: &[String], seq: &[&str]) -> bool {
         .any(|w| w.iter().zip(seq).all(|(a, b)| a == b))
 }
 
+/// Where `seq` starts in `v`, every time.
+fn at_seq(v: &[String], seq: &[&str]) -> Vec<usize> {
+    v.windows(seq.len())
+        .enumerate()
+        .filter(|(_, w)| w.iter().zip(seq).all(|(a, b)| a == b))
+        .map(|(i, _)| i)
+        .collect()
+}
+
+/// Whether an empty folder on `dir` comes after the read-only grant of
+/// `grant` inside it: a later mount covers an earlier one, so an empty
+/// folder before the grant would leave the grant showing what lies there.
+fn hidden_after(a: &[String], dir: &str, grant: &str) -> bool {
+    let bind = at_seq(a, &["--ro-bind-try", grant, grant]);
+    let hide = at_seq(a, &["--tmpfs", dir]);
+    !bind.is_empty() && hide.iter().any(|h| *h > bind[0])
+}
+
 fn s(p: &Path) -> String {
     p.to_string_lossy().into_owned()
 }
@@ -59,6 +77,7 @@ fn sams_folders_under_other_config_folders_are_hidden_not_only_read_only() {
     ctx.permissions.filesystem.home = true;
     ctx.permissions.filesystem.home_access = Access::Rw;
     ctx.permissions.filesystem.custom_write = vec![s(&home.join("cfg/sam/x"))];
+    ctx.permissions.filesystem.custom_read = vec![s(&home.join("dat/sam/y"))];
     let a = Bubblewrap.build(&ctx).unwrap().args;
     for d in &named {
         let d = s(d);
@@ -66,6 +85,11 @@ fn sams_folders_under_other_config_folders_are_hidden_not_only_read_only() {
         assert!(!has_seq(&a, &["--ro-bind-try", &d, &d]), "{d}: {a:?}");
     }
     assert!(!a.contains(&s(&home.join("cfg/sam/x"))), "{a:?}");
+    // The sandbox's own hiding by name comes after the grant inside.
+    assert!(
+        hidden_after(&a, &s(&home.join("dat/sam")), &s(&home.join("dat/sam/y"))),
+        "{a:?}"
+    );
 
     ctx.permissions.filesystem.home = false;
     ctx.permissions.filesystem.custom_write.clear();
@@ -78,6 +102,13 @@ fn sams_folders_under_other_config_folders_are_hidden_not_only_read_only() {
     for d in &named {
         let d = s(d);
         assert!(has_seq(&a, &["--tmpfs", &d]), "{d}: {a:?}");
+    }
+    // The hiding of SAM's folders from its list comes after the grants.
+    for (d, g) in [("cfg/sam", "cfg/sam/x"), ("dat/sam", "dat/sam/y")] {
+        assert!(
+            hidden_after(&a, &s(&home.join(d)), &s(&home.join(g))),
+            "{d}: {a:?}"
+        );
     }
     assert_eq!(
         sam_sandbox::shown_extra_folders(&ctx),

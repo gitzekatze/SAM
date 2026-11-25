@@ -1434,6 +1434,7 @@ fn write_grants(ctx: &LaunchContext) -> Vec<WriteGrant> {
                 &bound,
                 place.as_ref(),
                 &ctx.sam_dirs,
+                home,
             ) {
                 WriteBind::InsideSam
             } else if let Some(place) = place {
@@ -1593,18 +1594,21 @@ fn guard_home(a: &mut Args, home: &Path, fsp: &FilesystemPerms, views: &Views) {
         // app replaces it (regression: with `~/.bashrc` a link and the
         // whole home granted, Bubblewrap refused and no app started; the
         // same with `~/.config` a link, SB-6).
+        // SAM's own folders by name, also under `XDG_CONFIG_HOME` and
+        // `XDG_DATA_HOME` (`~/cfg/sam`): an empty folder in their place, as
+        // for SAM's folders wherever they are, by the same test as SAM's
+        // list of its folders (`Paths::sam_dirs`), which the sandbox check
+        // and the start line read. `~/cfg/sam` was only locked read-only,
+        // so the app could read SAM's settings there and the check failed
+        // a sandbox that did what it should. One that is a link, or leads
+        // to the home or above it, is locked read-only like any protected
+        // place: an app could otherwise plant `~/.config/sam` as a link to
+        // the home, and later starts would cover the home with an empty
+        // folder (independent re-review of decision 9). Anything there
+        // that is not a folder stays read-only too.
+        let sams = sam_core::places::sams_folder_by_name(home, &prot);
         for c in views.mount_points(&path) {
-            // SAM's own folders by name, also under `XDG_CONFIG_HOME` and
-            // `XDG_DATA_HOME` (`~/cfg/sam`): an empty folder in their
-            // place, as for SAM's folders wherever they are, and the same
-            // test of the name as SAM's list of its folders
-            // (`Paths::sam_dirs`), which the sandbox check and the start
-            // line read. `~/cfg/sam` was only locked read-only, so the app
-            // could read SAM's settings there and the check failed a
-            // sandbox that did what it should (independent re-review of
-            // decision 9). Anything there that is not a folder stays
-            // read-only, as any protected place.
-            if sam_core::places::is_sams_name(&prot) && c.is_dir() {
+            if sams && c.is_dir() {
                 a.push("--tmpfs").path(&c);
             } else if views.writable(&c) && c.exists() {
                 a.lock(&c);
@@ -2252,7 +2256,9 @@ impl Section<'_> {
             let op = match &g.how {
                 WriteBind::Writable => "--bind-try",
                 WriteBind::ReadOnly(found) => {
-                    notes.push(sam_core::places::read_only_grant_note(&g.written, found));
+                    // Read-only words also for a place named like SAM's
+                    // folders that only counts as a start place (a link).
+                    notes.push(sam_core::places::start_place_note(&g.written, found));
                     "--ro-bind-try"
                 }
                 WriteBind::Below(folder) => {
@@ -5896,15 +5902,90 @@ mod guard_tests {
             let mut ctx = ctx_for(&p, &home);
             ctx.sam_dirs = paths.sam_dirs("", &home);
             let a = args_of(&ctx);
-            for d in [".local/share/sam", ".config/sam"] {
+            for (d, grant) in [
+                (".local/share/sam", ".local/share/sam/x"),
+                (".config/sam", ".config/sam/y"),
+            ] {
                 assert!(
                     has_seq(&a, &["--tmpfs", &s(home.join(d))]),
+                    "{d}, whole home {whole_home}: {a:?}"
+                );
+                // The empty folder comes after the grant inside it: a
+                // later mount covers an earlier one, so before it, the
+                // grant would show the folder again.
+                let g = s(home.join(grant));
+                let bind = at_seq(&a, &["--ro-bind-try", &g, &g]);
+                let hide = at_seq(&a, &["--tmpfs", &s(home.join(d))]);
+                assert!(
+                    !bind.is_empty() && hide.iter().any(|h| h > &bind[0]),
                     "{d}, whole home {whole_home}: {a:?}"
                 );
             }
             assert_eq!(
                 shown_extra_folders(&ctx),
                 vec![s(home.join("notes"))],
+                "whole home {whole_home}"
+            );
+        }
+    }
+
+    /// Where `seq` starts in `v`, every time.
+    fn at_seq(v: &[String], seq: &[&str]) -> Vec<usize> {
+        v.windows(seq.len())
+            .enumerate()
+            .filter(|(_, w)| w.iter().zip(seq).all(|(a, b)| a == b))
+            .map(|(i, _)| i)
+            .collect()
+    }
+
+    /// A folder named like SAM's that is a link (`~/.config/sam` planted
+    /// as a link to the home by an app that could write `~/.config`) never
+    /// makes the home count as SAM's folder: no start covers the home with
+    /// an empty folder, a grant below it stays shown and a writable one is
+    /// shown read-only as below any start place, not left out. Before,
+    /// with SAM's folders kept elsewhere, every grant in the home was
+    /// hidden and the home covered (independent re-review of decision 9).
+    #[test]
+    fn a_link_named_like_sams_folder_never_hides_the_home() {
+        let t = tempfile::tempdir().unwrap();
+        let base = fs::canonicalize(t.path()).unwrap();
+        let home = base.join("home");
+        for d in [".config", "notes", "work"] {
+            fs::create_dir_all(home.join(d)).unwrap();
+        }
+        std::os::unix::fs::symlink(&home, home.join(".config/sam")).unwrap();
+        let paths = sam_core::Paths {
+            config_dir: base.join("elsewhere/config"),
+            data_dir: base.join("elsewhere/data"),
+            applications_dir: base.join("applications"),
+            runtime_root: None,
+        };
+        let s = |p: PathBuf| p.to_string_lossy().into_owned();
+        let (notes, work) = (s(home.join("notes")), s(home.join("work")));
+        for whole_home in [false, true] {
+            let mut p = PermissionSet::strict_gui();
+            p.filesystem.home = whole_home;
+            p.filesystem.home_access = Access::Rw;
+            p.filesystem.custom_read = vec![notes.clone()];
+            p.filesystem.custom_write = vec![work.clone()];
+            let mut ctx = ctx_for(&p, &home);
+            ctx.sam_dirs = paths.sam_dirs("", &home);
+            let a = args_of(&ctx);
+            assert!(
+                !has_seq(&a, &["--tmpfs", &s(home.clone())]),
+                "whole home {whole_home}: {a:?}"
+            );
+            assert!(
+                has_seq(&a, &["--ro-bind-try", &notes, &notes]),
+                "whole home {whole_home}: {a:?}"
+            );
+            assert!(
+                has_seq(&a, &["--ro-bind-try", &work, &work]),
+                "whole home {whole_home}: {a:?}"
+            );
+            assert_eq!(
+                shown_extra_folders(&ctx),
+                vec![notes.clone(), work.clone()],
                 "whole home {whole_home}"
             );
         }

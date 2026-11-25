@@ -23,7 +23,9 @@
   are now hidden from apps also while SAM keeps its own elsewhere, with or
   without full home access. Before, an app could read them through an
   extra folder inside them, or through the home when they were below
-  another config folder.
+  another config folder. A folder by those names that is a link, or that
+  leads to the home or out of it, is kept read-only instead, so an app
+  cannot make SAM hide your home by planting such a link.
 - The sandbox check and a terminal app's start line no longer count a user
   folder (for example Documents) set inside SAM's folders as shown; the
   sandbox never showed it.

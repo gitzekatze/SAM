@@ -146,6 +146,7 @@ pub fn plan(p: &PermissionSet, cfg: &Config, paths: &Paths, host: &HostInfo) -> 
                     &bound,
                     in_start_place.as_ref(),
                     &sam_dirs,
+                    &host.home,
                 )
             } else {
                 sam_core::places::inside_sams_folders(&bound, &sam_dirs)
@@ -1220,6 +1221,41 @@ mod tests {
             for t in ["Documents", "Pictures"] {
                 assert_eq!(folder(&pl, t), Access::Hidden, "{t} home {home}");
             }
+        }
+    }
+
+    /// A folder named like SAM's that is a link (`~/.config/sam` planted
+    /// as a link to the home while SAM keeps its own elsewhere) never
+    /// makes the check count the home as SAM's folder: a read-only and a
+    /// writable extra folder in the home are expected shown read-only, as
+    /// below any start place reached through a link, which is what the
+    /// sandbox does. Before, both were expected hidden, with the sandbox
+    /// hiding every grant in the home (independent re-review of
+    /// decision 9).
+    #[test]
+    fn the_check_never_takes_the_home_for_sams_folder_through_a_link() {
+        let t = tempfile::tempdir().unwrap();
+        let h = host_in(t.path());
+        let cfg = Config::default();
+        let paths = Paths {
+            data_dir: t.path().join("elsewhere/data"),
+            ..sam_paths()
+        };
+        for d in [".config", "notes", "work"] {
+            fs::create_dir_all(h.home.join(d)).unwrap();
+        }
+        std::os::unix::fs::symlink(&h.home, h.home.join(".config/sam")).unwrap();
+        let title = |p: &Path| format!("Extra folder {}", sam_core::util::tildify(p));
+        let (notes, work) = (h.home.join("notes"), h.home.join("work"));
+        for home in [false, true] {
+            let mut p = PermissionSet::strict_gui();
+            p.filesystem.home = home;
+            p.filesystem.home_access = Perm::Rw;
+            p.filesystem.custom_read = vec![notes.to_string_lossy().into_owned()];
+            p.filesystem.custom_write = vec![work.to_string_lossy().into_owned()];
+            let pl = plan(&p, &cfg, &paths, &h);
+            assert_eq!(folder(&pl, &title(&notes)), Access::ReadOnly, "home {home}");
+            assert_eq!(folder(&pl, &title(&work)), Access::ReadOnly, "home {home}");
         }
     }
 

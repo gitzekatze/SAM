@@ -66,8 +66,10 @@ pub const SENSITIVE_DOTFILES: &[&str] = &[
     ".oci",
 ];
 
-/// Paths kept read-only even with full home read/write: SAM's own state
-/// and common persistence vectors.
+/// Paths kept read-only even with full home read/write: common
+/// persistence vectors, and SAM's own folders by name (`.config/sam`,
+/// `.local/share/sam`), which the sandbox hides instead where they are
+/// folders of their own below the home ([`sams_folder_by_name`]).
 pub const PROTECTED_RO: &[&str] = &[
     ".config/sam",
     ".local/share/sam",
@@ -305,12 +307,24 @@ pub fn start_place_of_write_grant_in(
 }
 
 /// What SAM says about an extra writable folder (`shown`, as the person
-/// wrote it) that it shows read-only for lying in a start place: the
-/// launch note and the warning on the app page and in `sam-jail info`.
+/// wrote it) in a start place: that it is not shown when the place is one
+/// of SAM's own folders by name, else [`start_place_note`].
 pub fn read_only_grant_note(shown: &str, found: &StartPlaceGrant) -> String {
     if is_sams_place(found) {
         inside_sams_folders_note(shown)
-    } else if found.inside {
+    } else {
+        start_place_note(shown, found)
+    }
+}
+
+/// What SAM says about an extra writable folder (`shown`, as the person
+/// wrote it) that it shows read-only for lying in a start place, or being
+/// one: the launch note and the warning on the app page and in `sam-jail
+/// info`. Also for a place named like SAM's folders that the sandbox only
+/// locks read-only ([`sams_folder_by_name`]), so the words never say a
+/// folder is not shown that the app sees.
+pub fn start_place_note(shown: &str, found: &StartPlaceGrant) -> String {
+    if found.inside {
         crate::i18n::trf(
             "{path} is inside {place}, which SAM protects because changing it can make your computer run programs or change what SAM does; SAM shows it read-only.",
             &[("path", &shown), ("place", &format!("~/{}", found.place))],
@@ -342,13 +356,36 @@ pub fn is_sams_name(place: &str) -> bool {
     Path::new(place).file_name() == Some("sam".as_ref())
 }
 
-/// The folders under `home` that are SAM's own by name ([`is_sams_name`]):
-/// where SAM keeps its settings and data unless `SAM_CONFIG_DIR` or
-/// `SAM_DATA_DIR` say otherwise. They count as SAM's folders also while
-/// this SAM keeps its own elsewhere (a portable setup, `~/Games/sam`): the
-/// sandbox hides them by name, so its check and the start texts take them
-/// from the same list ([`crate::Paths::sam_dirs`], independent re-review
-/// of decision 9).
+/// Whether the protected place `rel` (relative to `home`) counts as one of
+/// SAM's own folders by name, which the sandbox hides: it is named like
+/// them ([`is_sams_name`]), is no link itself, and lies strictly below the
+/// home where it really is. Any other place by that name stays an ordinary
+/// protected place, locked read-only: an app that can write `~/.config`
+/// could otherwise make `~/.config/sam` a link to the home, to a folder
+/// above it or to a folder that holds other apps' grants, and every later
+/// start would hide all of that as SAM's (independent re-review of
+/// decision 9). SAM's own folders where it really keeps them
+/// ([`crate::Paths::sam_dirs`]) are hidden wherever they lead.
+pub fn sams_folder_by_name(home: &Path, rel: &str) -> bool {
+    if !is_sams_name(rel) {
+        return false;
+    }
+    let at = home.join(rel);
+    if std::fs::symlink_metadata(&at).is_ok_and(|m| m.file_type().is_symlink()) {
+        return false;
+    }
+    let real = resolve(&at);
+    let real_home = resolve(home);
+    real != real_home && real.starts_with(&real_home)
+}
+
+/// The folders under `home` that are SAM's own by name
+/// ([`sams_folder_by_name`]): where SAM keeps its settings and data unless
+/// `SAM_CONFIG_DIR` or `SAM_DATA_DIR` say otherwise. They count as SAM's
+/// folders also while this SAM keeps its own elsewhere (a portable setup,
+/// `~/Games/sam`): the sandbox hides them by name, so its check and the
+/// start texts take them from the same list ([`crate::Paths::sam_dirs`],
+/// independent re-review of decision 9).
 pub fn sams_folders_by_name(home: &Path) -> Vec<PathBuf> {
     sams_folders_by_name_in(home, &protected_places(home))
 }
@@ -357,7 +394,7 @@ pub fn sams_folders_by_name(home: &Path) -> Vec<PathBuf> {
 pub fn sams_folders_by_name_in(home: &Path, places: &[String]) -> Vec<PathBuf> {
     places
         .iter()
-        .filter(|p| is_sams_name(p))
+        .filter(|p| sams_folder_by_name(home, p))
         .map(|p| home.join(p))
         .collect()
 }
@@ -377,15 +414,22 @@ pub fn inside_sams_folders(real: &Path, sam_dirs: &[PathBuf]) -> bool {
 
 /// Whether the sandbox leaves out the extra writable folder bound at
 /// `bound` (its links resolved once) for lying in SAM's own folders: in
-/// one of `sam_dirs`, or in a start place named `sam` (`place`, what
-/// [`start_place_of_bound_write_grant`] found). The sandbox decides each
-/// writable grant with this, and the sandbox check expects what it says.
+/// one of `sam_dirs`, or in a start place (`place`, what
+/// [`start_place_of_bound_write_grant`] found under `home`) that counts as
+/// SAM's folder by name ([`sams_folder_by_name`]). One named like it that
+/// does not count (a link, or leading to the home or above it) is an
+/// ordinary start place: the grant is shown read-only, never left out,
+/// so such a link cannot make every grant below it vanish (independent
+/// re-review of decision 9). The sandbox decides each writable grant with
+/// this, and the sandbox check expects what it says.
 pub fn write_grant_in_sams_folders(
     bound: &Path,
     place: Option<&StartPlaceGrant>,
     sam_dirs: &[PathBuf],
+    home: &Path,
 ) -> bool {
-    inside_sams_folders(bound, sam_dirs) || place.is_some_and(is_sams_place)
+    inside_sams_folders(bound, sam_dirs)
+        || place.is_some_and(|f| sams_folder_by_name(home, &f.place))
 }
 
 /// What SAM says about an extra folder (`shown`, as the person wrote it)
@@ -505,7 +549,7 @@ mod tests {
         std::os::unix::fs::symlink(home.join("Games"), home.join("g")).unwrap();
         let sam_dirs = [home.join("g/sam")];
         let in_sam = |g: &str, place: Option<&StartPlaceGrant>| {
-            write_grant_in_sams_folders(&resolve(&home.join(g)), place, &sam_dirs)
+            write_grant_in_sams_folders(&resolve(&home.join(g)), place, &sam_dirs, &home)
         };
         for inside in ["Games/sam", "Games/sam/saves", "g/sam/saves/new"] {
             assert!(in_sam(inside, None), "{inside}");
@@ -547,5 +591,62 @@ mod tests {
         for other in [".config/samba", "cfg/fish", "dat/applications"] {
             assert!(!is_sams_name(other), "{other}");
         }
+    }
+
+    /// A place named like SAM's folders counts as SAM's only as a folder of
+    /// its own strictly below the home: a link (to the home, or into a
+    /// folder in it) or one that leads out of the home is an ordinary
+    /// protected place, and a writable grant below such a link is not left
+    /// out as SAM's. An app that could write `~/.config` and planted
+    /// `~/.config/sam` as a link to the home made every grant in the home
+    /// count as SAM's in later starts (independent re-review of
+    /// decision 9).
+    #[test]
+    fn a_folder_named_like_sams_counts_only_as_a_folder_of_its_own_below_the_home() {
+        let t = tempfile::tempdir().unwrap();
+        let base = std::fs::canonicalize(t.path()).unwrap();
+        let home = base.join("u");
+        for d in [".config", ".local/share/sam", "dots/sam", "cfg", "work"] {
+            std::fs::create_dir_all(home.join(d)).unwrap();
+        }
+        std::fs::create_dir_all(base.join("outside/sam")).unwrap();
+        std::os::unix::fs::symlink(&home, home.join(".config/sam")).unwrap();
+        std::os::unix::fs::symlink(home.join("dots/sam"), home.join("cfg/sam")).unwrap();
+        std::os::unix::fs::symlink(base.join("outside"), home.join("dat")).unwrap();
+        let places = protected_places_with(&home, Some(home.join("cfg")), Some(home.join("dat")));
+        assert!(places.iter().any(|p| p == "dat/sam"), "{places:?}");
+        assert_eq!(
+            sams_folders_by_name_in(&home, &places),
+            vec![home.join(".local/share/sam")]
+        );
+        assert!(sams_folder_by_name(&home, ".local/share/sam"));
+        for not_sams in [".config/sam", "cfg/sam", "dat/sam", ".config/fish"] {
+            assert!(!sams_folder_by_name(&home, not_sams), "{not_sams}");
+        }
+        // No link itself, yet the home where it really is (a home named
+        // `sam` whose `.config` leads to the folder above it): not SAM's.
+        let sam_home = base.join("sam");
+        std::fs::create_dir_all(&sam_home).unwrap();
+        std::os::unix::fs::symlink(&base, sam_home.join(".config")).unwrap();
+        assert!(!sams_folder_by_name(&sam_home, ".config/sam"));
+        // A writable grant below the link to the home is in a start place,
+        // shown read-only, but never left out as SAM's.
+        let work = home.join("work");
+        let found = start_place_of_write_grant_in(&work, &work, &home, &places);
+        assert_eq!(
+            found,
+            Some(StartPlaceGrant {
+                place: ".config/sam".into(),
+                inside: true,
+            })
+        );
+        assert!(!write_grant_in_sams_folders(
+            &work,
+            found.as_ref(),
+            &[],
+            &home
+        ));
+        let note = start_place_note("~/work", found.as_ref().unwrap());
+        assert!(note.contains("read-only"), "{note}");
     }
 }

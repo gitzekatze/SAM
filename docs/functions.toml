@@ -241,6 +241,8 @@ tests = ["a_grant_inside_sams_folder_does_not_show_it", "opened_files_are_judged
   "sams_folders_under_other_config_folders_are_hidden_not_only_read_only",
   "sams_folders_hold_its_own_and_the_folders_named_like_them",
   "sams_folders_by_name_follow_other_config_and_data_folders",
+  "a_folder_named_like_sams_counts_only_as_a_folder_of_its_own_below_the_home",
+  "a_link_named_like_sams_folder_never_hides_the_home",
   "an_extra_folder_that_leads_to_the_whole_computer_asks_first",
   "no_later_bind_shows_a_hidden_credential_again",
   "credential_places_of_any_kind_are_hidden",
@@ -662,7 +664,7 @@ id = 20
 area = "D"
 promise = "SAM checks from inside the sandbox that every setting applies (the sandbox check)."
 code = ["sam-runner/src/verify.rs", "sam-runner/src/probe.rs", "sam-runner/src/kernel.rs", "sam-sandbox/src/lib.rs", "sam-jail-cli/src/bin/sam-jail-run.rs"]
-tests = ["a_check_reports_what_it_finds_not_what_it_hopes", "a_skipped_check_is_neither_passed_nor_failed", "the_check_expects_each_folder_as_its_settings_show_it", "the_check_expects_no_folder_inside_sams_folders_wherever_they_are_kept", "the_check_expects_each_desktop_service_as_the_filter_shows_it", "the_check_expects_the_rest_where_setting_and_computer_allow_it", "folder_check_tells_real_from_private", "the_sandbox_check_passes_and_catches_mismatches", "a_wanted_layer_that_was_not_applied_is_reported_missing", "a_start_without_the_helper_reports_its_missing_layers", "a_start_without_a_wanted_protection_layer_is_marked", "a_syscall_filter_that_fails_to_load_stops_the_start",
+tests = ["a_check_reports_what_it_finds_not_what_it_hopes", "a_skipped_check_is_neither_passed_nor_failed", "the_check_expects_each_folder_as_its_settings_show_it", "the_check_expects_no_folder_inside_sams_folders_wherever_they_are_kept", "the_check_never_takes_the_home_for_sams_folder_through_a_link", "the_check_expects_each_desktop_service_as_the_filter_shows_it", "the_check_expects_the_rest_where_setting_and_computer_allow_it", "folder_check_tells_real_from_private", "the_sandbox_check_passes_and_catches_mismatches", "a_wanted_layer_that_was_not_applied_is_reported_missing", "a_start_without_the_helper_reports_its_missing_layers", "a_start_without_a_wanted_protection_layer_is_marked", "a_syscall_filter_that_fails_to_load_stops_the_start",
   "sam_jail_run_refuses_a_sandbox_whose_settings_do_not_apply",
   "the_wanted_layers_follow_the_apps_switches",
   "the_helper_reports_the_socket_fence_on_its_own",

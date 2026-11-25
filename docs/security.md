@@ -568,11 +568,17 @@ so nothing bound later shows them again
 **Hidden whenever anything would show them:** SAM's own folders
 (configuration, data and unpacked apps, wherever they are, and the folders
 where SAM keeps them unless told otherwise: `~/.config/sam` and
-`~/.local/share/sam`, also below `XDG_CONFIG_HOME` and `XDG_DATA_HOME`,
-even while SAM keeps its own elsewhere), whether a
+`~/.local/share/sam`, also below `XDG_CONFIG_HOME` and `XDG_DATA_HOME`
+where those point inside the home, even while SAM keeps its own
+elsewhere), whether a
 permission, a folder you open with the app or a path on its command line
 would show them. They are replaced by an empty, throwaway folder, so an app
-cannot change its own permissions or another app's files.
+cannot change its own permissions or another app's files. A folder by one
+of those names counts only when it is a folder of its own below the home:
+one that is a link, or that leads to the home or out of it, is kept
+read-only like the start places below instead, so an app that planted
+`~/.config/sam` as a link to the home cannot make SAM hide the home or
+other apps' folders.
 
 **Read-only whenever anything would show them writable:** SAM's own
 programs, which every menu entry runs outside the sandbox: SAM's AppImage

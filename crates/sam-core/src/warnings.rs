@@ -102,11 +102,22 @@ fn read_only_write_grants(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warnin
                 None => crate::util::expand_home(c),
             };
             let found = crate::places::start_place_of_write_grant(&grant, &home)?;
-            let note = crate::places::read_only_grant_note(c, &found);
-            let w = if crate::places::is_sams_place(&found) {
-                Warning::warn("start-place-read-only", "Not shown", note)
+            // Not shown only in a folder that counts as SAM's by name; one
+            // named like it that is a link, or leads to the home or above
+            // it, is shown read-only like any start place (independent
+            // re-review of decision 9).
+            let w = if crate::places::sams_folder_by_name(&home, &found.place) {
+                Warning::warn(
+                    "start-place-read-only",
+                    "Not shown",
+                    crate::places::read_only_grant_note(c, &found),
+                )
             } else {
-                Warning::warn("start-place-read-only", "Shown read-only", note)
+                Warning::warn(
+                    "start-place-read-only",
+                    "Shown read-only",
+                    crate::places::start_place_note(c, &found),
+                )
             };
             Some(w.with_key("filesystem.custom_write"))
         })
