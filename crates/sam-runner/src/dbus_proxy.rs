@@ -238,8 +238,8 @@ impl DbusProxy {
             let wanted = wanted.clone();
             let mut log = log;
             std::thread::spawn(move || {
-                use std::io::{BufRead, Write};
-                for line in std::io::BufReader::new(out).lines().map_while(|l| l.ok()) {
+                use std::io::Write;
+                for line in record_lines(out) {
                     if let Some(f) = log.as_mut() {
                         let _ = writeln!(f, "{line}");
                     }
@@ -256,7 +256,16 @@ impl DbusProxy {
         // that connected in between was refused (seen in CI). Wait until a
         // connection really succeeds.
         while !accepting(&socket) {
-            if let Some(st) = child.try_wait()? {
+            let ended = match child.try_wait() {
+                Ok(ended) => ended,
+                Err(e) => {
+                    // Never left running without an owner (B2 R81).
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(e.into());
+                }
+            };
+            if let Some(st) = ended {
                 bail!(
                     "{}",
                     sam_core::i18n::trf(
@@ -267,6 +276,8 @@ impl DbusProxy {
             }
             if Instant::now() > deadline {
                 let _ = child.kill();
+                // Reaped, not left as a zombie until SAM ends (B2 R81).
+                let _ = child.wait();
                 bail!(
                     "{}",
                     sam_core::i18n::tr("xdg-dbus-proxy did not create its socket in time")
@@ -429,6 +440,22 @@ mod tests {
         }
     }
 
+    /// B2 R83: a line of the proxy's record that is not valid UTF-8 (the
+    /// proxy prints parts of the app's messages unchecked) does not end
+    /// the reading: the lines after it are still read, so the proxy never
+    /// writes into a closed pipe, and a name asked for later is learned.
+    #[test]
+    fn a_record_line_that_is_not_text_does_not_end_the_reading() {
+        let record: &[u8] = b"C1: -> \xff\xfe call\nFiltering message due to arg0 org.example.Later, policy: 0 (required 3)\nlast";
+        let lines: Vec<String> = super::record_lines(record).collect();
+        assert_eq!(lines.len(), 3, "{lines:?}");
+        assert_eq!(
+            super::wanted_name(&lines[1]).as_deref(),
+            Some("org.example.Later")
+        );
+        assert_eq!(lines[2], "last");
+    }
+
     /// A name is kept once, and no more than eight in all.
     #[test]
     fn wanted_names_are_kept_once_and_at_most_eight() {
@@ -505,6 +532,27 @@ mod tests {
         assert!(!args.contains(&"--talk=org.a.B".to_string()), "{args:?}");
         assert!(args.contains(&"--talk=org.c.D".to_string()), "{args:?}");
     }
+}
+
+/// The lines of the proxy's record, each as text also when it is not valid
+/// UTF-8: the proxy prints parts of the app's messages unchecked, and a
+/// reader that stopped at such a line would close the pipe, after which
+/// the proxy dies at its next line and the app loses its bus (B2 R83).
+fn record_lines(out: impl std::io::Read) -> impl Iterator<Item = String> {
+    use std::io::BufRead;
+    let mut r = std::io::BufReader::new(out);
+    std::iter::from_fn(move || {
+        let mut buf = Vec::new();
+        match r.read_until(b'\n', &mut buf) {
+            Ok(0) | Err(_) => None,
+            Ok(_) => {
+                if buf.last() == Some(&b'\n') {
+                    buf.pop();
+                }
+                Some(String::from_utf8_lossy(&buf).into_owned())
+            }
+        }
+    })
 }
 
 /// Whether something listens on the Unix socket at `path` (an existing

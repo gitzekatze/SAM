@@ -278,6 +278,7 @@ tests = [
   "bus_names_follow_the_rules_of_the_bus",
   "media_controls_talk_but_ask_for_no_wildcard_name",
   "wanted_names_are_kept_once_and_at_most_eight",
+  "a_record_line_that_is_not_text_does_not_end_the_reading",
   "an_app_gets_the_name_it_asks_for_only_when_nobody_uses_it",
   "a_name_is_allowed_only_when_nobody_else_has_it",
   "menu_ids_are_the_file_names",
