@@ -732,9 +732,32 @@ impl Args {
         self.v.push(sa.to_string());
         self.v.push(sb.to_string());
     }
+    /// A path as one argument. A name that is not valid text stops the
+    /// start, as for a required mount: written with a replaced character it
+    /// named another place, so an empty folder meant to hide SAM's own or a
+    /// key folder landed elsewhere and the real one stayed visible (review
+    /// B2 R57).
+    fn path(&mut self, p: impl AsRef<Path>) -> &mut Self {
+        match p.as_ref().to_str() {
+            Some(s) => self.v.push(s.to_string()),
+            None => self.bad.push(p.as_ref().to_path_buf()),
+        }
+        self
+    }
     fn ro(&mut self, p: impl AsRef<Path>) {
         let p = p.as_ref();
         self.op2("--ro-bind-try", p, p);
+    }
+    /// Read-only onto itself, as a protection: a name that is not valid
+    /// text stops the start, where [`Args::ro`] would leave the place out
+    /// and so writable (review B2 R57).
+    fn lock(&mut self, p: impl AsRef<Path>) {
+        let p = p.as_ref();
+        if p.to_str().is_none() {
+            self.bad.push(p.to_path_buf());
+            return;
+        }
+        self.ro(p);
     }
     fn setenv(&mut self, k: &str, v: impl AsRef<str>) {
         self.v.extend([
@@ -1253,7 +1276,7 @@ fn guard_programs(a: &mut Args, programs: &[PathBuf], views: &Views) {
     for p in programs {
         for c in views.mount_points(p) {
             if views.writable(&c) && c.is_file() {
-                a.ro(&c);
+                a.lock(&c);
             }
         }
     }
@@ -1289,10 +1312,10 @@ fn guard_home(a: &mut Args, home: &Path, fsp: &FilesystemPerms, views: &Views) {
         for c in views.mount_points(&path) {
             if matches!(prot.as_str(), ".config/sam" | ".local/share/sam") {
                 if c.is_dir() {
-                    a.push("--tmpfs").push(c.to_string_lossy());
+                    a.push("--tmpfs").path(&c);
                 }
             } else if views.writable(&c) && c.exists() {
-                a.ro(&c);
+                a.lock(&c);
             }
         }
     }
@@ -1320,7 +1343,7 @@ fn guard_home(a: &mut Args, home: &Path, fsp: &FilesystemPerms, views: &Views) {
         for c in places {
             match fs::metadata(&c) {
                 Ok(t) if t.is_dir() => {
-                    a.push("--tmpfs").push(c.to_string_lossy());
+                    a.push("--tmpfs").path(&c);
                 }
                 // A file, and also a named pipe or a socket: `~/.netrc` as
                 // a pipe a password manager feeds stayed readable
@@ -1675,11 +1698,11 @@ impl Section<'_> {
         // changes in a separate per-app layer.
         match &ctx.appdir_overlay {
             Some(base) if p.advanced.writable_appdir => {
-                a.push("--overlay-src").push(ctx.appdir.to_string_lossy());
+                a.push("--overlay-src").path(&ctx.appdir);
                 a.push("--overlay")
-                    .push(base.join("upper").to_string_lossy())
-                    .push(base.join("work").to_string_lossy())
-                    .push(ctx.sandbox_appdir.to_string_lossy());
+                    .path(base.join("upper"))
+                    .path(base.join("work"))
+                    .path(&ctx.sandbox_appdir);
             }
             _ => a.op2("--ro-bind", &ctx.appdir, &ctx.sandbox_appdir),
         }
@@ -1767,7 +1790,7 @@ impl Section<'_> {
                 mount(&home, &|m| m.op2("--bind", &ctx.private_home, &home));
             } else {
                 mount(&home, &|m| {
-                    m.push("--tmpfs").push(home.to_string_lossy());
+                    m.push("--tmpfs").path(&home);
                 });
             }
             // The folders every home has: some apps create theirs with a
@@ -1776,7 +1799,7 @@ impl Section<'_> {
             for d in [".config", ".local/share", ".local/state", ".cache"] {
                 let dir = home.join(d);
                 mount(&dir, &|m| {
-                    m.push("--dir").push(dir.to_string_lossy());
+                    m.push("--dir").path(&dir);
                 });
             }
             for key in XDG_DIR_KEYS {
@@ -2199,13 +2222,13 @@ impl Section<'_> {
                 }
             }
             for c in places {
-                a.push("--tmpfs").push(c.to_string_lossy());
+                a.push("--tmpfs").path(&c);
             }
             // Where a bind shows it under another path in the sandbox.
             for (h, sb, _) in &ctx.extra_binds {
                 if h != sb {
                     if let Ok(rel) = d.strip_prefix(h) {
-                        a.push("--tmpfs").push(sb.join(rel).to_string_lossy());
+                        a.push("--tmpfs").path(sb.join(rel));
                     }
                 }
             }
@@ -2222,6 +2245,8 @@ impl Section<'_> {
         // Where the app starts, never a folder it cannot see (audit L-F16:
         // `cd ~/private/clientX && sam-jail run app` told the app that
         // path, even without access to the home).
+        // As text here: a name that is not text has already stopped the
+        // start where the home is mounted and at `--chdir`.
         let start_dir = self.start_dir().to_string_lossy().into_owned();
         let a = &mut self.a;
         // Environment.
@@ -2322,7 +2347,7 @@ impl Section<'_> {
         // Working directory: the same folder as `$OWD`.
         let chdir = self.start_dir();
         let a = &mut self.a;
-        a.push("--chdir").push(chdir.to_string_lossy());
+        a.push("--chdir").path(&chdir);
 
         // Room service's socket.
         if let Some(socket) = &ctx.room_socket {
@@ -3227,6 +3252,97 @@ mod tests {
             a.v.is_empty() && a.bad.is_empty(),
             "an optional mount is left out"
         );
+    }
+
+    /// A place SAM hides or locks whose name is not valid text stops the
+    /// start: SAM's own folders, key folders, start files and SAM's own
+    /// programs, also the start folder and a writable app folder. Review B2
+    /// R57: written with a replaced character, the empty folder meant to
+    /// hide one landed elsewhere and the real one stayed visible; a lock
+    /// was left out, so the place stayed writable.
+    #[test]
+    fn a_protected_place_whose_name_is_not_text_stops_the_start() {
+        use std::os::unix::ffi::OsStrExt;
+        let t = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(t.path()).unwrap();
+        let odd = root.join(std::ffi::OsStr::from_bytes(b"sam-\xff"));
+        fs::create_dir(&odd).unwrap();
+        let not_text = |ctx: &LaunchContext| {
+            Bubblewrap
+                .build(ctx)
+                .err()
+                .is_some_and(|e| e.to_string().contains("not valid text"))
+        };
+        let mut ctx = sample_context();
+        ctx.permissions.filesystem.custom_read = vec![root.display().to_string()];
+        assert!(!not_text(&ctx), "nothing odd is passed on");
+        // SAM's folder inside a granted one.
+        ctx.sam_dirs = vec![odd.clone()];
+        assert!(not_text(&ctx), "SAM's folder");
+        // SAM's folder shown under another path by an extra bind.
+        ctx.permissions.filesystem.custom_read.clear();
+        ctx.extra_binds = vec![(root.clone(), "/run/x".into(), false)];
+        assert!(not_text(&ctx), "SAM's folder below an extra bind");
+        ctx.extra_binds.clear();
+        ctx.sam_dirs.clear();
+        ctx.permissions.filesystem.custom_read = vec![root.display().to_string()];
+        assert!(!not_text(&ctx));
+        // A key folder kept through a link in a granted home.
+        let home = root.join("home");
+        fs::create_dir(&home).unwrap();
+        std::os::unix::fs::symlink(&odd, home.join(".ssh")).unwrap();
+        let mut keys = ctx.clone();
+        keys.host.home = home.clone();
+        keys.host.xdg_dirs.clear();
+        keys.permissions.filesystem.home = true;
+        keys.permissions.filesystem.home_access = Access::Ro;
+        assert!(not_text(&keys), "the key folder");
+        // A start file kept through a link to a file whose name is not
+        // text, in a writable home: its lock.
+        let mut locks = keys.clone();
+        fs::remove_file(home.join(".ssh")).unwrap();
+        fs::create_dir(home.join("dots")).unwrap();
+        let file = home
+            .join("dots")
+            .join(std::ffi::OsStr::from_bytes(b"bashrc-\xff"));
+        fs::write(&file, "echo mine\n").unwrap();
+        std::os::unix::fs::symlink(&file, home.join(".bashrc")).unwrap();
+        locks.permissions.filesystem.home_access = Access::Rw;
+        locks.permissions.filesystem.ssh = true;
+        assert!(not_text(&locks), "the start file's lock");
+        // One of SAM's own programs in a writable home: its lock.
+        fs::remove_file(home.join(".bashrc")).unwrap();
+        assert!(!not_text(&locks));
+        locks.sam_programs = vec![file.clone()];
+        assert!(not_text(&locks), "SAM's program's lock");
+        locks.sam_programs.clear();
+        // SAM's folder in the home kept through a link.
+        fs::create_dir_all(home.join(".config")).unwrap();
+        let sam_dir = home
+            .join("dots")
+            .join(std::ffi::OsStr::from_bytes(b"sam-\xff"));
+        fs::create_dir(&sam_dir).unwrap();
+        assert!(!not_text(&locks));
+        std::os::unix::fs::symlink(&sam_dir, home.join(".config/sam")).unwrap();
+        assert!(not_text(&locks), "SAM's folder in the home");
+        // A home whose name is not text, not granted: its empty folder.
+        let mut odd_home = sample_context();
+        odd_home.host.home = odd.clone();
+        odd_home.owd = PathBuf::from("/");
+        assert!(not_text(&odd_home), "the home's empty folder");
+        // The start folder.
+        ctx.owd = odd.clone();
+        assert!(not_text(&ctx), "the start folder");
+        ctx.owd = ctx.host.home.clone();
+        // A writable app folder.
+        ctx.permissions.advanced.writable_appdir = true;
+        ctx.appdir_overlay = Some(root.join("overlay"));
+        assert!(!not_text(&ctx));
+        ctx.appdir_overlay = Some(odd.clone());
+        assert!(not_text(&ctx), "the app folder's writable layer");
+        ctx.appdir_overlay = Some(root.join("overlay"));
+        ctx.appdir = odd.clone();
+        assert!(not_text(&ctx), "the app folder");
     }
 
     /// The app's user and group are the person's own, each where it
