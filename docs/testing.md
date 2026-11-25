@@ -137,7 +137,8 @@ Leave `SAM_APPLICATIONS_DIR` unset if you want launchers to show up in your menu
 `$XDG_RUNTIME_DIR/sam`); SAM's tests set it, so they never use the real one.
 These four folder variables (`SAM_CONFIG_DIR`, `SAM_DATA_DIR`,
 `SAM_APPLICATIONS_DIR`, `SAM_RUNTIME_DIR`) are still read in release builds
-too: they only move SAM's own folders.
+too: they move SAM's own folders, and with them which settings, app
+records and permissions SAM uses.
 
 Five more variables work only in developer builds (`cargo build` without
 `--release`); a release build ignores them, so a forgotten setting in
