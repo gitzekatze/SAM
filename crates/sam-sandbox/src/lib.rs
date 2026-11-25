@@ -226,14 +226,24 @@ fn protected_places_with(
     data: Option<PathBuf>,
 ) -> Vec<String> {
     let mut out: Vec<String> = PROTECTED_RO.iter().map(|p| p.to_string()).collect();
+    // Compared by where they lead too: the variable may name the home's
+    // real place (`/home/u` a link to `/data/u`) or hold `..` (review B2
+    // R53). A name that is not text stops the start ([`odd_config_folder`]).
+    let homes = [home.to_path_buf(), resolve(home)];
     for (dir, default) in [(config, ".config/"), (data, ".local/share/")] {
         let Some(dir) = dir else {
             continue;
         };
-        let Ok(rel) = dir.strip_prefix(home) else {
+        let rel = [resolve(&dir), dir].into_iter().find_map(|d| {
+            homes
+                .iter()
+                .find_map(|h| d.strip_prefix(h).ok().map(Path::to_path_buf))
+                .filter(|r| r.components().all(|c| matches!(c, Component::Normal(_))))
+        });
+        let Some(rel) = rel.as_deref().and_then(Path::to_str) else {
             continue;
         };
-        let rel = rel.to_string_lossy().trim_end_matches('/').to_string();
+        let rel = rel.trim_end_matches('/').to_string();
         if rel.is_empty() || format!("{rel}/") == default {
             continue;
         }
@@ -247,6 +257,17 @@ fn protected_places_with(
         }
     }
     out
+}
+
+/// `XDG_CONFIG_HOME` or `XDG_DATA_HOME` when its name is not valid text:
+/// the start places below it could not be named, so they would go
+/// unprotected (independent review of PR 131).
+pub fn odd_config_folder(config: Option<&Path>, data: Option<&Path>) -> Option<PathBuf> {
+    [config, data]
+        .into_iter()
+        .flatten()
+        .find(|d| d.to_str().is_none())
+        .map(Path::to_path_buf)
 }
 
 /// Whether this start shows a place that makes the computer run something
@@ -532,8 +553,11 @@ impl HomeWatch {
         };
         // A place is always below the home: `home.join` of an absolute
         // path would leave it, and of an empty one is the home itself.
+        // Only plain names: a damaged record with `..` would let `settle`
+        // rename or delete outside the home (review B2 R54).
         let rel = |p: PathBuf| {
-            (p.is_relative() && !p.as_os_str().is_empty()).then(|| p.to_str().map(String::from))?
+            (!p.as_os_str().is_empty() && p.components().all(|c| matches!(c, Component::Normal(_))))
+                .then(|| p.to_str().map(String::from))?
         };
         let mut home = None;
         let mut w = HomeWatch::default();
@@ -1598,6 +1622,19 @@ impl Bubblewrap {
 
     /// The bwrap command line for this launch.
     pub fn build(&self, ctx: &LaunchContext) -> Result<SandboxCommand> {
+        let var = |v: &str| std::env::var_os(v).map(PathBuf::from);
+        if let Some(odd) = odd_config_folder(
+            var("XDG_CONFIG_HOME").as_deref(),
+            var("XDG_DATA_HOME").as_deref(),
+        ) {
+            anyhow::bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "SAM cannot pass on {path}: its name is not valid text. Rename it, then start the app again.",
+                    &[("path", &odd.display())]
+                )
+            );
+        }
         // Without a real home folder, "the home" is `/` or a relative path:
         // full home access would then bind the whole computer (audit S-F12).
         let home = &ctx.host.home;
@@ -4400,6 +4437,64 @@ mod guard_tests {
             PROTECTED_RO.len(),
             "{:?}",
             &same[PROTECTED_RO.len()..]
+        );
+    }
+
+    /// Start places follow `XDG_CONFIG_HOME` and `XDG_DATA_HOME` also when
+    /// they name the home's real place or hold `..`; a name that is not
+    /// text is found, and a record read back holds only plain names
+    /// (review B2 R53, R54).
+    #[test]
+    fn start_places_follow_config_folders_by_where_they_lead() {
+        use std::os::unix::ffi::OsStrExt;
+        let t = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(t.path()).unwrap();
+        let real = root.join("data/u");
+        fs::create_dir_all(real.join("cfg")).unwrap();
+        fs::create_dir_all(real.join("x")).unwrap();
+        fs::create_dir_all(root.join("home")).unwrap();
+        let home = root.join("home/u");
+        std::os::unix::fs::symlink(&real, &home).unwrap();
+        for config in [
+            real.join("cfg"),
+            home.join("x/../cfg"),
+            real.join("x/../cfg"),
+        ] {
+            let p = protected_places_with(&home, Some(config.clone()), None);
+            assert!(
+                p.iter().any(|x| x == "cfg/autostart"),
+                "{}: {:?}",
+                config.display(),
+                &p[PROTECTED_RO.len()..]
+            );
+            assert!(p.iter().all(|x| !x.contains("..")), "{p:?}");
+        }
+        let outside = protected_places_with(&home, Some(home.join("../elsewhere")), None);
+        assert_eq!(
+            outside.len(),
+            PROTECTED_RO.len(),
+            "{:?}",
+            &outside[PROTECTED_RO.len()..]
+        );
+        // A name that is not text.
+        let odd = home.join(std::ffi::OsStr::from_bytes(b"cfg-\xff"));
+        assert_eq!(odd_config_folder(None, Some(&odd)), Some(odd.clone()));
+        assert_eq!(odd_config_folder(Some(&home.join("cfg")), None), None);
+        // Records read back.
+        let line = |kind: &str, p: &str| {
+            let hex: String = p.bytes().map(|b| format!("{b:02x}")).collect();
+            format!("{kind} {hex}")
+        };
+        let home_line = line("home", "/home/u");
+        for bad in ["../x", ".config/../../x", "./x", "/x"] {
+            assert!(
+                HomeWatch::from_lines([home_line.as_str(), line("absent", bad).as_str()]).is_none(),
+                "{bad} accepted"
+            );
+        }
+        assert!(
+            HomeWatch::from_lines([home_line.as_str(), line("absent", ".config/x").as_str()])
+                .is_some()
         );
     }
 
