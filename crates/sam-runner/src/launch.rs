@@ -1096,6 +1096,12 @@ fn run_once(
         Ok(p) => p,
         Err(e) => {
             writeln!(log, "# preparation failed: {e:#}")?;
+            // A start stopped for a missing protection did not fail: the
+            // person decides (B2 R75, R77). Recorded as a failed start, it
+            // would make the repair steps offer to turn protections off.
+            if sam_core::error::code_of(&e) == Some(PROTECTION_MISSING) {
+                return Err(e);
+            }
             let rec = LaunchRecord {
                 started_at,
                 finished_at: now(),

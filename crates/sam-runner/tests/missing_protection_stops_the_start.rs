@@ -87,6 +87,17 @@ fn a_start_whose_wayland_security_context_fails_does_not_run_the_app() {
         "{err:#}"
     );
     assert!(!sign.join("ran").exists(), "the app did not run");
+    // Not recorded as a failed start: the repair steps would offer to turn
+    // protections off.
+    assert!(
+        app.registry()
+            .get(&id)
+            .unwrap()
+            .unwrap()
+            .last_launch
+            .is_none(),
+        "no failed start recorded"
+    );
 
     // "Start anyway": this one start runs, and says what it lacked.
     let rec = run(&mut e, &opts(true), &app.config, &app.paths, &host).unwrap();
