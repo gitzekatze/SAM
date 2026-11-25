@@ -474,7 +474,24 @@ impl FloorPlan {
         // service leaves the skipped entry out. So every mount at the place
         // down to the first one not asked with `-try` becomes read-only;
         // the ones below a shown `-try` place are covered by it anyway.
+        // (With `--bind / /`, rooms then show the computer's mounts below
+        // the root read-only too, where the app keeps their rights: less,
+        // never more.) Bubblewrap finds the place by following links and
+        // `..`, and may find a mount of the computer below a shown folder
+        // there: a remount below the root that names no place mounted
+        // exactly there gives no rooms, never rooms without it.
         for (before, at) in read_only {
+            if at != Path::new("/")
+                && !entries
+                    .iter()
+                    .take(before)
+                    .any(|e| e.is_mount() && e.at() == at)
+            {
+                return Err(format!(
+                    "--remount-ro {} names no place mounted there, unknown to Room service",
+                    at.display()
+                ));
+            }
             let mut end = before;
             while let Some(i) = entries
                 .iter()
@@ -2149,6 +2166,35 @@ mod tests {
                 ..
             }
         ));
+        // A remount Bubblewrap finds through a link, `..`, or at a mount
+        // of the computer below a shown folder: no rooms.
+        for args in [
+            &[
+                "--symlink",
+                "usr/lib",
+                "/lib",
+                "--bind",
+                "/data",
+                "/usr/lib/x",
+                "--remount-ro",
+                "/lib/x",
+                "--",
+                "x",
+            ][..],
+            &["--bind", "/a", "/x", "--remount-ro", "/x/../x", "--", "x"],
+            &[
+                "--bind",
+                "/mnt",
+                "/mnt",
+                "--remount-ro",
+                "/mnt/disk",
+                "--",
+                "x",
+            ],
+        ] {
+            let e = fp(args).unwrap_err();
+            assert!(e.contains("names no place mounted there"), "{args:?}: {e}");
+        }
         assert_eq!(
             fp(&[
                 "--overlay-src",
