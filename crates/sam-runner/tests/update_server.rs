@@ -1511,3 +1511,56 @@ fn an_update_check_of_a_swapped_appimage_asks_no_server() {
         "the app page shows the same"
     );
 }
+
+/// Regression (review B2 S6, R88, second review): an app that was never
+/// unpacked (a first unpack that failed) has no record of what SAM
+/// unpacked, and the checksum on its record follows whatever file is in
+/// the AppImage's place (SAM's change check refreshes it). The update check
+/// compared a swapped file with that checksum, so it matched and SAM asked
+/// the server the swapped file names. Now such an app is not checked at
+/// all, and no server is asked.
+#[test]
+fn an_app_never_unpacked_is_not_checked_for_updates() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let tmp = tempfile::tempdir().unwrap();
+    let Some((server, url)) = server_or_skip(tmp.path()) else {
+        return;
+    };
+    let apps = tmp.path().join("Downloads");
+    fs::create_dir_all(&apps).unwrap();
+    let installed = apps.join("Tool-1.0-x86_64.AppImage");
+    appimage(&installed, &url, "1.0");
+    let (sam, id) = add_reviewed(tmp.path(), &installed);
+
+    // Another app puts its own file there; the record has no unpacked
+    // version and its checksum already names the swapped file.
+    let leak = format!(
+        "https://127.0.0.1:{}/leak/never-unpacked/Tool.zsync",
+        server.port
+    );
+    let planted = tmp.path().join("planted.AppImage");
+    appimage(&planted, &leak, "planted");
+    fs::copy(&planted, &installed).unwrap();
+    let sha256 = sam_intake::fingerprint::sha256_file(&installed).unwrap();
+    let size = fs::metadata(&installed).unwrap().len();
+    sam.registry()
+        .update(&id, |e| {
+            e.extraction = None;
+            e.source.sha256 = sha256;
+            e.source.size = size;
+        })
+        .unwrap();
+    fs::write(&server.log, "").unwrap();
+
+    let checks = sam.check_updates(Some(&id), false).unwrap();
+    let status = &checks[0].1;
+    assert_eq!(status.state, UpdateState::Failed, "{}", status.detail);
+    assert!(
+        status.detail.contains("not unpacked this app yet"),
+        "the status says why: {}",
+        status.detail
+    );
+    assert_eq!(status.download_page, None, "no download page is offered");
+    let log = fs::read_to_string(&server.log).unwrap_or_default();
+    assert!(log.is_empty(), "no server was asked:\n{log}");
+}

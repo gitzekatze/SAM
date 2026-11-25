@@ -780,7 +780,20 @@ impl Sam {
             }
             // Only the file SAM unpacked is checked: a swapped one would make
             // SAM ask a server of another app's choosing (review B2 S6, R88).
-            let status = crate::updates::check_unpacked(&e.source_path, unpacked_sha256(&e));
+            // An app never unpacked (a first unpack failed) has nothing to
+            // compare with: its record's checksum follows whatever file is
+            // there now, so it is not checked at all.
+            let status = match &e.extraction {
+                Some(x) => crate::updates::check_unpacked(&e.source_path, &x.source),
+                None => UpdateStatus {
+                    state: sam_core::model::UpdateState::Failed,
+                    detail: sam_core::i18n::tr(
+                        "SAM has not unpacked this app yet, so it does not check it for updates. Use Unpack Again and look at the app first.",
+                    ),
+                    checked_at: now(),
+                    ..Default::default()
+                },
+            };
             // The check takes a while: save onto the record as it is now.
             reg.update(&e.id, |fresh| fresh.update = Some(status.clone()))?;
             out.push((e.id.clone(), status));

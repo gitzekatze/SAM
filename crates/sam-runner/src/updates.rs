@@ -16,6 +16,7 @@ use std::process::{Command, Stdio};
 
 use anyhow::{bail, Context, Result};
 use sam_core::model::{UpdateState, UpdateStatus};
+use sam_core::Fingerprint;
 use sam_detect::update_info::{self, UpdateSource};
 // SHA-1 only because the zsync format names the published file by it; it
 // catches damaged downloads, not tampering (the signature check does that).
@@ -65,26 +66,27 @@ fn curl(max_secs: u64) -> Result<Command> {
     Ok(cmd)
 }
 
-/// Checks `appimage` against its published version, whatever file it is.
-/// SAM checks its apps with [`check_unpacked`]; this one is for a file
-/// SAM itself holds.
+/// Checks `appimage` against its published version, whatever file it is,
+/// without comparing it with anything. SAM's own checks of its apps must use
+/// [`check_unpacked`]: this one trusts the update address of any file.
 pub fn check(appimage: &Path) -> UpdateStatus {
     check_read(appimage, None)
 }
 
 /// Checks `appimage` against its published version, but only when it is
-/// still the file SAM unpacked last (`unpacked_sha256`). The update address
+/// still the file SAM unpacked last (`unpacked`, the fingerprint recorded
+/// when it was unpacked). The update address
 /// comes from the AppImage itself, and this check runs outside every
 /// sandbox: another app that can write to the AppImage's folder could put
 /// its own file there, naming its own server, and SAM would send that
 /// address (a way out for data from an app without network) and offer that
 /// app's page as the download page. So a file that changed outside SAM is
 /// not checked; no server is asked (review B2 S6, R88).
-pub fn check_unpacked(appimage: &Path, unpacked_sha256: &str) -> UpdateStatus {
-    check_read(appimage, Some(unpacked_sha256))
+pub fn check_unpacked(appimage: &Path, unpacked: &Fingerprint) -> UpdateStatus {
+    check_read(appimage, Some(unpacked))
 }
 
-fn check_read(appimage: &Path, unpacked_sha256: Option<&str>) -> UpdateStatus {
+fn check_read(appimage: &Path, unpacked: Option<&Fingerprint>) -> UpdateStatus {
     let now = sam_core::util::now();
     let failed = |detail: String| UpdateStatus {
         state: UpdateState::Failed,
@@ -92,10 +94,21 @@ fn check_read(appimage: &Path, unpacked_sha256: Option<&str>) -> UpdateStatus {
         checked_at: now,
         ..Default::default()
     };
+    let changed = || {
+        failed(sam_core::i18n::tr(
+            "The AppImage changed outside SAM since it was last unpacked, so SAM does not check it for updates. Use Unpack Again and look at the app first.",
+        ))
+    };
     // One read: the checksum compared below and the address used later
     // come from the same bytes, so the file cannot be swapped in between.
-    let read = match ReadOnce::of(appimage) {
-        Ok(r) => r,
+    let read = match unpacked {
+        None => ReadOnce::of(appimage).map(Some),
+        Some(fp) => ReadOnce::of_size(appimage, fp.size),
+    };
+    let read = match read {
+        Ok(Some(r)) => r,
+        // Not a plain file of the unpacked size: not read at all.
+        Ok(None) => return changed(),
         Err(e) => {
             return failed(sam_core::i18n::trf(
                 "The update check failed: {error}",
@@ -103,10 +116,8 @@ fn check_read(appimage: &Path, unpacked_sha256: Option<&str>) -> UpdateStatus {
             ))
         }
     };
-    if unpacked_sha256.is_some_and(|want| !read.sha256.eq_ignore_ascii_case(want)) {
-        return failed(sam_core::i18n::tr(
-            "The AppImage changed outside SAM since it was last unpacked, so SAM does not check it for updates. Use Unpack Again and look at the app first.",
-        ));
+    if unpacked.is_some_and(|fp| !read.sha256.eq_ignore_ascii_case(&fp.sha256)) {
+        return changed();
     }
     let Some(source) = read.source else {
         return UpdateStatus {
@@ -139,7 +150,39 @@ struct ReadOnce {
 
 impl ReadOnce {
     fn of(path: &Path) -> Result<ReadOnce> {
-        let mut f = File::open(path)?;
+        let f = File::open(path).with_context(|| {
+            sam_core::i18n::trf("reading {file}", &[("file", &path.display().to_string())])
+        })?;
+        Self::from_file(f, u64::MAX)
+    }
+
+    /// Like [`ReadOnce::of`], but `None`, without reading anything, unless
+    /// `path` is a plain file of exactly `size` bytes, and never more than
+    /// `size` bytes are read. Another app could otherwise put a link to
+    /// `/dev/zero`, a named pipe or a huge sparse file in the AppImage's
+    /// place, and every check (also the one when SAM opens) would read
+    /// forever (review B2 S6, R88).
+    fn of_size(path: &Path, size: u64) -> Result<Option<ReadOnce>> {
+        use std::os::unix::fs::OpenOptionsExt;
+        // Without waiting: opening a named pipe for reading would otherwise
+        // wait for a writer that never comes. A plain file is not affected.
+        let f = std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NONBLOCK)
+            .open(path)
+            .with_context(|| {
+                sam_core::i18n::trf("reading {file}", &[("file", &path.display().to_string())])
+            })?;
+        // The open file itself (fstat), not the name, which could change.
+        let meta = f.metadata()?;
+        if !meta.file_type().is_file() || meta.len() != size {
+            return Ok(None);
+        }
+        Self::from_file(f, size).map(Some)
+    }
+
+    fn from_file(f: File, limit: u64) -> Result<ReadOnce> {
+        let mut f = f.take(limit);
         let (mut h256, mut h1) = (Sha256::new(), Sha1::new());
         let mut head = Vec::new();
         let mut buf = vec![0u8; 1 << 20];
@@ -847,6 +890,69 @@ mod tests {
             "SHA-256 of the whole file"
         );
         assert!(read.source.is_none(), "no ELF file, no update information");
+    }
+
+    /// Runs `f` in a thread and gives its result, or fails after `secs`
+    /// seconds: a check that reads forever is a failed assertion here, not
+    /// a test that never ends.
+    fn within<T: Send + 'static>(secs: u64, f: impl FnOnce() -> T + Send + 'static) -> T {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(f());
+        });
+        rx.recv_timeout(std::time::Duration::from_secs(secs))
+            .unwrap_or_else(|_| panic!("the update check did not end within {secs} s"))
+    }
+
+    /// The update check reads nothing of a file that is not a plain file of
+    /// the size SAM unpacked (review B2 S6, R88, second review): another
+    /// app could put a link to `/dev/zero`, a named pipe or a huge sparse
+    /// file in the AppImage's place, and every check (also the one when SAM
+    /// opens) would read forever. A file of the right size with other
+    /// contents is refused by its checksum, before any server is asked.
+    #[test]
+    fn the_update_check_reads_nothing_of_a_file_that_is_not_the_unpacked_one() {
+        let t = tempfile::tempdir().unwrap();
+        let dir = t.path().to_path_buf();
+        let unpacked = Fingerprint {
+            size: 4096,
+            sha256: sam_core::util::hex(&Sha256::digest([1u8; 4096])),
+            ..Default::default()
+        };
+        let sparse = dir.join("sparse.AppImage");
+        File::create(&sparse).unwrap().set_len(1 << 40).unwrap();
+        let zero = dir.join("zero.AppImage");
+        std::os::unix::fs::symlink("/dev/zero", &zero).unwrap();
+        let fifo = dir.join("fifo.AppImage");
+        let c = std::ffi::CString::new(fifo.as_os_str().as_encoded_bytes()).unwrap();
+        // SAFETY: a valid, NUL-terminated path.
+        assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) }, 0, "mkfifo");
+        let other = dir.join("other.AppImage");
+        std::fs::write(&other, [2u8; 4096]).unwrap();
+        for path in [sparse, zero, fifo, other] {
+            let fp = unpacked.clone();
+            let p = path.clone();
+            let status = within(10, move || check_unpacked(&p, &fp));
+            assert_eq!(
+                status.state,
+                UpdateState::Failed,
+                "{}: {}",
+                path.display(),
+                status.detail
+            );
+            assert!(
+                status.detail.contains("changed outside SAM"),
+                "{}: {}",
+                path.display(),
+                status.detail
+            );
+        }
+        // The unchanged file passes the comparison (it names no update
+        // address, so there is nothing to ask).
+        let same = dir.join("same.AppImage");
+        std::fs::write(&same, [1u8; 4096]).unwrap();
+        let status = within(10, move || check_unpacked(&same, &unpacked));
+        assert_eq!(status.state, UpdateState::Unsupported, "{}", status.detail);
     }
 
     /// The header of a zsync file is read (file name, size, checksum).

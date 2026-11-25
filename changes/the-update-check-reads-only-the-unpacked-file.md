@@ -10,3 +10,6 @@
   the bytes it compared. A file that changed outside SAM is not checked,
   no server is asked, and the app page says so: use **Unpack Again** and
   look at the app first.
+- A file that is not a plain file of the size SAM unpacked (for example a
+  link to a device) is not read at all, so it cannot keep SAM busy. An app
+  SAM has not unpacked yet is not checked for updates either.
