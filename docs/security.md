@@ -130,6 +130,11 @@ blocks:
 - keyrings, `userfaultfd`, handle-based opens and `syslog`;
 - `io_uring`, a frequent source of kernel exploits (programs fall back to
   ordinary I/O);
+- `chroot` and the NUMA memory calls (`mbind`, `move_pages`,
+  `migrate_pages`, `get_mempolicy`, `set_mempolicy`,
+  `set_mempolicy_home_node`: which memory banks of a many-processor server
+  a program uses), as in Flatpak
+  (`the_baseline_blocks_what_no_desktop_app_needs`);
 - terminal injection (`TIOCSTI`, `TIOCLINUX`);
 - namespaces and mounts, unless the app needs nested sandboxes: also
   `clone` into a new user namespace, and `clone3`, whose flags no filter
@@ -164,8 +169,15 @@ does with it, and a test compares each line with the filter.
 The **strict filter** (experimental, opt-in) also blocks `ptrace` and the
 calls that reach as far into another process (its memory, its descriptors,
 its kernel objects: `process_vm_readv`, `process_vm_writev`,
-`process_madvise`, `pidfd_getfd`, `kcmp`), `personality` and every NUMA
-memory call (`the_strict_filter_blocks_every_call_its_text_names`).
+`process_madvise`, `pidfd_getfd`, `kcmp`) and `personality`
+(`the_strict_filter_blocks_every_call_its_text_names`).
+
+Compared with Flatpak's default filter, the baseline also blocks
+`io_uring`, BPF, `userfaultfd`, `kexec`, keyrings and the rare socket types
+above, and leaves `ptrace`, `personality` and `modify_ldt` to the strict
+filter or allowed: crash reporters use `ptrace` on their own app's
+processes (the app's own process namespace keeps it there), and Wine uses
+`modify_ldt` and `personality`.
 
 What no system call filter can block: `/proc/<pid>/mem` (another
 process's memory) and `/proc/<pid>/fd` (its open files) are ordinary file

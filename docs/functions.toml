@@ -286,6 +286,7 @@ tests = [
   "the_filter_refuses_x32_odd_sockets_and_the_siblings",
   "the_filter_checks_the_architecture_seccompiler_checks",
   "the_strict_filter_blocks_every_call_its_text_names",
+  "the_baseline_blocks_what_no_desktop_app_needs",
   "a_socket_pair_opens_only_the_listed_families_too",
   "the_filter_reads_arguments_as_wide_as_the_kernel_does",
   "the_filter_reaches_bubblewrap_as_whole_instructions",
