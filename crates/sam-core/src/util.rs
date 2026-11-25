@@ -239,28 +239,64 @@ fn programs_beside(exe: Option<&Path>, appimage: Option<PathBuf>) -> Vec<PathBuf
     out
 }
 
-/// The value of a developer variable (`SAM_CLI`, `SAM_RUN`,
-/// `SAM_LOCALE_DIR`, `SAM_DBUS_LOG`, the test hook `SAM_TRUST_TOOLS_IN`),
-/// only in a developer (debug) build. These variables point SAM at other
-/// programs, other translations, a log file or a folder of stand-in tools;
-/// they exist for working on SAM itself. A release build ignores them and
-/// uses its own programs next to it, the installed translations, no D-Bus
-/// log and only tools the user cannot change, so a forgotten developer setting, or a variable
-/// something else put into the desktop's environment, never changes what
-/// an installed SAM runs, shows or records (owner decision 16 of
-/// 2026-11-23).
-pub fn developer_var(name: &str) -> Option<OsString> {
-    developer_var_in(name, cfg!(debug_assertions))
+/// SAM's developer variables (`SAM_CLI`, `SAM_RUN`, `SAM_LOCALE_DIR`,
+/// `SAM_DBUS_LOG`, the test hook `SAM_TRUST_TOOLS_IN`): they point SAM at
+/// other programs, other translations, a log file or a folder of stand-in
+/// tools, and exist for working on SAM itself. Only a developer (debug)
+/// build reads them. A release build ignores them: the window takes SAM's
+/// programs next to it or a copy on `$PATH` the user cannot change, SAM
+/// takes the installed translations, keeps no D-Bus log and runs only
+/// tools the user cannot change. So a forgotten developer setting, or a
+/// variable something else put into the desktop's environment, never
+/// changes what an installed SAM runs, shows or records (owner decision 16
+/// of 2026-11-23).
+///
+/// Every reader takes one of these: [`DeveloperVars::of_this_build`] in
+/// SAM, a stand-in with its own variables in tests, which so never change
+/// the environment of the test program.
+#[derive(Clone, Copy)]
+pub struct DeveloperVars<'a> {
+    developer_build: bool,
+    lookup: &'a dyn Fn(&str) -> Option<OsString>,
 }
 
-/// [`developer_var`] for a build that is (`developer_build`) or is not a
-/// developer build: the variable's value when it is one and the value is
-/// not empty, otherwise nothing.
-pub fn developer_var_in(name: &str, developer_build: bool) -> Option<OsString> {
-    if !developer_build {
-        return None;
+/// The process environment, for [`DeveloperVars::of_this_build`].
+fn environment(name: &str) -> Option<OsString> {
+    std::env::var_os(name)
+}
+
+impl<'a> DeveloperVars<'a> {
+    /// This program's: a developer build reads its environment, a release
+    /// build nothing. The one place that decides which build this is.
+    pub fn of_this_build() -> DeveloperVars<'static> {
+        DeveloperVars {
+            developer_build: cfg!(debug_assertions),
+            lookup: &environment,
+        }
     }
-    std::env::var_os(name).filter(|v| !v.is_empty())
+
+    /// For a build that is (`developer_build`) or is not a developer
+    /// build, with the variables `lookup` gives (a test's stand-in).
+    pub fn new(developer_build: bool, lookup: &'a dyn Fn(&str) -> Option<OsString>) -> Self {
+        DeveloperVars {
+            developer_build,
+            lookup,
+        }
+    }
+
+    /// Whether this is a developer build.
+    pub fn developer_build(&self) -> bool {
+        self.developer_build
+    }
+
+    /// The value of the developer variable `name`: only in a developer
+    /// build, and an empty value counts as not set.
+    pub fn get(&self, name: &str) -> Option<OsString> {
+        if !self.developer_build {
+            return None;
+        }
+        (self.lookup)(name).filter(|v| !v.is_empty())
+    }
 }
 
 /// Finds a program SAM may run: the first one on `$PATH` that the user
@@ -315,17 +351,16 @@ fn candidates(name: &str) -> Vec<PathBuf> {
 ///
 /// Tests name a folder of stand-in tools in `SAM_TRUST_TOOLS_IN`; its
 /// programs may run although the user owns them. Only a developer build
-/// reads it ([`developer_var`]): a test hook has no business in an
+/// reads it ([`DeveloperVars`]): a test hook has no business in an
 /// installed SAM, where a forgotten or planted value would let SAM run a
 /// tool the user (and so every app) can change, outside any sandbox
 /// (owner decision 16 of 2026-11-23).
 pub fn may_run(p: &Path) -> bool {
-    may_run_in(p, cfg!(debug_assertions))
+    may_run_in(p, &DeveloperVars::of_this_build())
 }
 
-/// [`may_run`] for a build that is (`developer_build`) or is not a
-/// developer build.
-fn may_run_in(p: &Path, developer_build: bool) -> bool {
+/// [`may_run`] with the developer variables `dev`.
+fn may_run_in(p: &Path, dev: &DeveloperVars) -> bool {
     let Ok(real) = fs::canonicalize(p) else {
         return false;
     };
@@ -334,7 +369,7 @@ fn may_run_in(p: &Path, developer_build: bool) -> bool {
     let Some(folder) = p.parent().and_then(|d| fs::canonicalize(d).ok()) else {
         return false;
     };
-    if let Some(dir) = developer_var_in("SAM_TRUST_TOOLS_IN", developer_build) {
+    if let Some(dir) = dev.get("SAM_TRUST_TOOLS_IN") {
         if fs::canonicalize(dir).is_ok_and(|d| d == folder) {
             return true;
         }
@@ -806,21 +841,28 @@ mod tests {
 
     /// A release build ignores a developer variable that is set; only a
     /// developer build takes it, and an empty value means "not set"
-    /// (owner decision 16 of 2026-11-23). The variable's name is this
-    /// test's own, so no other test reads it.
+    /// (owner decision 16 of 2026-11-23). The variables are a stand-in's.
     #[test]
     fn a_release_build_ignores_developer_variables() {
-        const VAR: &str = "SAM_TEST_DEVELOPER_VARIABLE";
-        let planted = OsString::from("/home/ann/.local/planted/sam-jail");
-        std::env::set_var(VAR, &planted);
-        let release = developer_var_in(VAR, false);
-        let developer = developer_var_in(VAR, true);
-        std::env::set_var(VAR, "");
-        let empty = developer_var_in(VAR, true);
-        std::env::remove_var(VAR);
-        assert_eq!(release, None, "a release build took a developer variable");
-        assert_eq!(developer, Some(planted));
-        assert_eq!(empty, None);
+        let env = |name: &str| match name {
+            "SAM_CLI" => Some(OsString::from("/home/ann/.local/planted/sam-jail")),
+            "SAM_RUN" => Some(OsString::new()),
+            _ => None,
+        };
+        let release = DeveloperVars::new(false, &env);
+        let developer = DeveloperVars::new(true, &env);
+        assert!(!release.developer_build() && developer.developer_build());
+        assert_eq!(
+            release.get("SAM_CLI"),
+            None,
+            "a release build took a developer variable"
+        );
+        assert_eq!(
+            developer.get("SAM_CLI"),
+            Some(OsString::from("/home/ann/.local/planted/sam-jail"))
+        );
+        assert_eq!(developer.get("SAM_RUN"), None, "an empty value is not set");
+        assert_eq!(developer.get("SAM_LOCALE_DIR"), None);
     }
 
     /// Reading a file from an untrusted app returns at once for anything
@@ -1196,7 +1238,7 @@ mod may_run_tests {
     /// change is refused, as everywhere else. A developer build (the
     /// tests) trusts it (owner decision 16 of 2026-11-23). The folder is
     /// writable for everyone, so the release build refuses it also when
-    /// the test runs as root. No other test here sets the variable.
+    /// the test runs as root. The variable is a stand-in's.
     #[test]
     fn a_release_build_trusts_no_folder_of_test_tools() {
         use std::os::unix::fs::PermissionsExt;
@@ -1207,12 +1249,15 @@ mod may_run_tests {
         let bwrap = tools.join("bwrap");
         fs::write(&bwrap, "#!/bin/sh\n").unwrap();
         fs::set_permissions(&bwrap, fs::Permissions::from_mode(0o777)).unwrap();
-        std::env::set_var("SAM_TRUST_TOOLS_IN", &tools);
-        let release = may_run_in(&bwrap, false);
-        let developer = may_run_in(&bwrap, true);
-        std::env::remove_var("SAM_TRUST_TOOLS_IN");
-        assert!(!release, "a release build trusted SAM_TRUST_TOOLS_IN");
-        assert!(developer, "the tests' folder of stand-in tools is trusted");
+        let env = |name: &str| (name == "SAM_TRUST_TOOLS_IN").then(|| tools.clone().into());
+        assert!(
+            !may_run_in(&bwrap, &DeveloperVars::new(false, &env)),
+            "a release build trusted SAM_TRUST_TOOLS_IN"
+        );
+        assert!(
+            may_run_in(&bwrap, &DeveloperVars::new(true, &env)),
+            "the tests' folder of stand-in tools is trusted"
+        );
     }
 }
 

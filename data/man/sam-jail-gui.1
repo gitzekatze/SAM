@@ -32,7 +32,9 @@ Use another
 or
 .B sam-jail-run
 program. Only developer builds of SAM read these variables; a release
-build always uses its own programs next to it.
+build takes SAM's programs next to it or, without them, a copy on
+.B $PATH
+that the user cannot change.
 .SH SEE ALSO
 .BR sam-jail (1),
 .BR sam-jail-run (1)

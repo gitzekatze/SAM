@@ -75,15 +75,15 @@ pub fn init(set_locale: bool) {
 /// only), next to the program (`../share/locale`, also inside SAM's
 /// AppImage), a source checkout's `target/locale`, or the system's.
 pub fn locale_dir() -> PathBuf {
-    locale_dir_in(cfg!(debug_assertions))
+    locale_dir_in(&crate::util::DeveloperVars::of_this_build())
 }
 
-/// [`locale_dir`] for a build that is (`developer_build`) or is not a
-/// developer build. A release build never takes `SAM_LOCALE_DIR`: a
-/// variable planted in the desktop's environment would otherwise give
-/// SAM's questions an attacker's wording (owner decision 16 of 2026-11-23).
-pub fn locale_dir_in(developer_build: bool) -> PathBuf {
-    if let Some(d) = crate::util::developer_var_in("SAM_LOCALE_DIR", developer_build) {
+/// [`locale_dir`] with the developer variables `dev`. A release build never
+/// takes `SAM_LOCALE_DIR`: a variable planted in the desktop's environment
+/// would otherwise give SAM's questions an attacker's wording (owner
+/// decision 16 of 2026-11-23).
+fn locale_dir_in(dev: &crate::util::DeveloperVars) -> PathBuf {
+    if let Some(d) = dev.get("SAM_LOCALE_DIR") {
         return d.into();
     }
     if let Some(d) = std::env::current_exe()
@@ -302,17 +302,15 @@ mod tests {
     /// A release build takes its translations only from where SAM's
     /// translations are installed, never from a folder `SAM_LOCALE_DIR`
     /// names; a developer build takes that folder (owner decision 16 of
-    /// 2026-11-23). No other test here reads `SAM_LOCALE_DIR`.
+    /// 2026-11-23). The variable is a stand-in's.
     #[test]
     fn a_release_build_ignores_a_translation_folder_from_the_environment() {
-        let tmp = tempfile::tempdir().unwrap();
-        let planted = tmp.path().join("planted-locale");
-        std::env::set_var("SAM_LOCALE_DIR", &planted);
-        let release = locale_dir_in(false);
-        let developer = locale_dir_in(true);
-        std::env::remove_var("SAM_LOCALE_DIR");
+        use crate::util::DeveloperVars;
+        let planted = PathBuf::from("/home/ann/planted-locale");
+        let env = |name: &str| (name == "SAM_LOCALE_DIR").then(|| planted.clone().into());
+        let release = locale_dir_in(&DeveloperVars::new(false, &env));
         assert_ne!(release, planted, "a release build read SAM_LOCALE_DIR");
-        assert_eq!(developer, planted);
+        assert_eq!(locale_dir_in(&DeveloperVars::new(true, &env)), planted);
     }
 
     #[test]

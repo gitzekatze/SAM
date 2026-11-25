@@ -164,6 +164,79 @@ fn release_builds_use_one_fixed_rust_and_stop_on_overflow() {
     );
 }
 
+/// The keys anywhere in `table` (a `[profile.release]` with its package
+/// overrides) that turn debug assertions on.
+fn debug_assertions_on(table: &toml::Value, at: &str, out: &mut Vec<String>) {
+    if let Some(t) = table.as_table() {
+        for (k, v) in t {
+            let here = format!("{at}.{k}");
+            if k == "debug-assertions" && v.as_bool() != Some(false) {
+                out.push(format!("{here} = {v}"));
+            }
+            debug_assertions_on(v, &here, out);
+        }
+    }
+}
+
+/// Every file under `dir`, folders followed.
+fn files_below(dir: &Path, out: &mut Vec<PathBuf>) {
+    for e in fs::read_dir(dir).unwrap().flatten() {
+        let p = e.path();
+        if p.is_dir() {
+            files_below(&p, out);
+        } else {
+            out.push(p);
+        }
+    }
+}
+
+/// SAM's developer variables and test hooks (SAM_CLI, SAM_RUN,
+/// SAM_LOCALE_DIR, SAM_DBUS_LOG, SAM_TRUST_TOOLS_IN) work only where debug
+/// assertions are on (owner decision 16 of 2026-11-23). A release build
+/// with them on would honour every one of them, silently. So the release
+/// profile never turns them on, and no packaging recipe, the Makefile or
+/// the release scripts turn them on by a flag (`-C debug-assertions`,
+/// `--config profile.release.debug-assertions=true`) or a variable
+/// (`CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS`).
+#[test]
+fn release_builds_never_turn_on_debug_assertions() {
+    let cargo: toml::Value =
+        toml::from_str(&fs::read_to_string(root().join("Cargo.toml")).unwrap()).unwrap();
+    let release = &cargo["profile"]["release"];
+    let mut on = Vec::new();
+    debug_assertions_on(release, "profile.release", &mut on);
+    assert!(
+        on.is_empty(),
+        "Cargo.toml turns debug assertions on: {on:?}"
+    );
+    let mut files = vec![
+        root().join("Makefile"),
+        root().join("scripts/make-appimage.sh"),
+        root().join("scripts/release.sh"),
+        root().join(".github/workflows/release.yml"),
+    ];
+    let before = files.len();
+    files_below(&root().join("packaging"), &mut files);
+    // The recipes that build SAM with --release are among them: a moved
+    // folder must not leave this test checking nothing.
+    for recipe in ["packaging/arch/PKGBUILD", "packaging/fedora/sam-jail.spec"] {
+        assert!(files.contains(&root().join(recipe)), "{recipe} is gone");
+    }
+    assert!(files.len() > before + 1);
+    for f in &files {
+        let text = fs::read_to_string(f)
+            .unwrap_or_else(|e| panic!("{}: {e}", f.display()))
+            .to_lowercase()
+            .replace('_', "-");
+        assert!(
+            !text.contains("debug-assertions"),
+            "{} turns debug assertions on for a release build (or names them): \
+             SAM's developer variables would work there",
+            f.display()
+        );
+    }
+}
+
 const TAG: &str = "v1.2.3";
 const WORKFLOW: &str = "gitzekatze/SAM/.github/workflows/release.yml";
 const APPIMAGE: &str = "SAM-1.2.3-x86_64.AppImage";

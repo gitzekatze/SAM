@@ -895,12 +895,15 @@ metadata. SAM treats both as untrusted.
   translations), `SAM_DBUS_LOG` (a log of every D-Bus call) and the test
   hook `SAM_TRUST_TOOLS_IN` (a folder of stand-in tools SAM may run although
   you own them) work only in developer builds. A release build ignores
-  them, so a forgotten developer setting, or a variable something else put
+  them (the window takes SAM's programs next to it or, without them, a
+  copy on `$PATH` you cannot change), so a forgotten developer setting, or a variable something else put
   into your desktop's environment, never makes the window run another
   program outside any sandbox, makes SAM run a tool you (and so every app)
   can change, gives SAM's questions another wording, or writes every app's
-  D-Bus calls into a file
-  (`a_release_build_ignores_developer_variables`,
+  D-Bus calls into a file. Neither the release profile nor a packaging
+  recipe turns on debug assertions, which would make a release build read
+  them (`release_builds_never_turn_on_debug_assertions`,
+  `a_release_build_ignores_developer_variables`,
   `an_installed_window_ignores_a_program_named_in_its_environment`,
   `a_release_build_trusts_no_folder_of_test_tools`,
   `a_release_build_ignores_a_translation_folder_from_the_environment`,

@@ -1111,7 +1111,7 @@ msgid "path has no parent"
 msgstr "Pfad hat keinen übergeordneten Ordner"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/util.rs:452 crates/sam-runner/src/updates.rs:698
+#: crates/sam-core/src/util.rs:487 crates/sam-runner/src/updates.rs:698
 msgid "{program} did not finish within {seconds} seconds and was stopped"
 msgstr "{program} war nach {seconds} Sekunden nicht fertig und wurde beendet"
 

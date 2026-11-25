@@ -295,22 +295,22 @@ pub(crate) fn preset_args<'a>(
 /// `~/.local/debug/sam-jail`, which an app with write access to the home
 /// can create, when SAM is installed in `~/.local/bin` (audit G-F10).
 pub(crate) fn find_tool(name: &str, env: &str) -> PathBuf {
-    find_tool_in(name, env, cfg!(debug_assertions))
+    find_tool_in(name, env, &sam_core::util::DeveloperVars::of_this_build())
 }
 
-/// [`find_tool`] for a build that is (`developer_build`) or is not a
-/// developer build. Only a developer build takes a program named in the
-/// variable `env` (`SAM_CLI`, `SAM_RUN`): in a release build a line
-/// planted in the desktop's environment would make the window run another
-/// program outside any sandbox (owner decision 16 of 2026-11-23).
-fn find_tool_in(name: &str, env: &str, developer_build: bool) -> PathBuf {
-    if let Some(p) = sam_core::util::developer_var_in(env, developer_build) {
+/// [`find_tool`] with the developer variables `dev`. Only a developer
+/// build takes a program named in the variable `env` (`SAM_CLI`,
+/// `SAM_RUN`): in a release build a line planted in the desktop's
+/// environment would make the window run another program outside any
+/// sandbox (owner decision 16 of 2026-11-23).
+fn find_tool_in(name: &str, env: &str, dev: &sam_core::util::DeveloperVars) -> PathBuf {
+    if let Some(p) = dev.get(env) {
         return PathBuf::from(p);
     }
     let exe_dir = std::env::current_exe()
         .ok()
         .and_then(|e| e.parent().map(Path::to_path_buf));
-    tool_from(exe_dir.as_deref(), name, developer_build)
+    tool_from(exe_dir.as_deref(), name, dev.developer_build())
         .or_else(|| sam_core::util::which(name))
         // Not found: a path that starts nothing, never a bare name that
         // the system would look up on `$PATH` without SAM's check.
@@ -408,22 +408,23 @@ mod tests {
 
     /// An installed (release) window never runs a program that a variable
     /// in its environment names (`SAM_CLI`, `SAM_RUN`); only a developer
-    /// build does (owner decision 16 of 2026-11-23). The variable's name
-    /// is this test's own, so no other test reads it.
+    /// build does (owner decision 16 of 2026-11-23). The variables are a
+    /// stand-in's.
     #[test]
     fn an_installed_window_ignores_a_program_named_in_its_environment() {
-        const VAR: &str = "SAM_TEST_FIND_TOOL";
+        use sam_core::util::DeveloperVars;
         let tmp = tempfile::tempdir().unwrap();
         let planted = tmp.path().join("planted-sam-jail");
         fs::write(&planted, "planted").unwrap();
-        std::env::set_var(VAR, &planted);
-        let release = find_tool_in("sam-jail", VAR, false);
-        let developer = find_tool_in("sam-jail", VAR, true);
-        std::env::remove_var(VAR);
+        let env = |name: &str| (name == "SAM_CLI").then(|| planted.clone().into());
+        let release = find_tool_in("sam-jail", "SAM_CLI", &DeveloperVars::new(false, &env));
         assert_ne!(
             release, planted,
-            "a release window ran the program in {VAR}"
+            "a release window ran the program in SAM_CLI"
         );
-        assert_eq!(developer, planted);
+        assert_eq!(
+            find_tool_in("sam-jail", "SAM_CLI", &DeveloperVars::new(true, &env)),
+            planted
+        );
     }
 }

@@ -1082,6 +1082,7 @@ tests = [
   "a_checked_draft_is_signed_with_its_checksum_lists_written_again",
   "a_release_that_fails_to_build_leaves_no_tag",
   "release_builds_use_one_fixed_rust_and_stop_on_overflow",
+  "release_builds_never_turn_on_debug_assertions",
   "the_owners_label_counts_only_right_after_it_is_set",
   "the_approval_check_runs_the_base_branchs_checker",
   "a_desktop_test_run_that_does_not_build_fails",
