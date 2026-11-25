@@ -381,7 +381,17 @@ fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
         let mut p = base();
         p.devices.gamepads = true;
         let r = launch("gamepads", p);
-        assert_eq!(r["JS"], count_host("js").to_string(), "every joystick node");
+        // Exactly the joysticks SAM shows: never one udev also calls a
+        // keyboard or pointer, nor one udev has no record of (review R56).
+        let pads =
+            sam_sandbox::sort_gamepad_nodes(Path::new("/dev/input"), Path::new("/run/udev/data"));
+        assert_eq!(
+            r["JS"],
+            pads.shown.len().to_string(),
+            "every game controller SAM shows, no other (left out: {:?}, {:?})",
+            pads.refused,
+            pads.unknown
+        );
         assert_eq!(r["MICE"], "0", "no mice with gamepads only");
         assert_eq!(r["UINPUT"], "no");
         let host_events = count_host("event");
