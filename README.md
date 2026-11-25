@@ -147,7 +147,8 @@ warning before they apply.
   page and the local services you list, such as Ollama), or full.
 - **Display and devices:** Wayland, X11, GPU, sound (without access to
   cameras), webcam, game controllers
-  (joysticks only, never keyboards or mice), USB, all input devices.
+  (joysticks only, never keyboards or mice, not even a controller that
+  also reports itself as one), USB, all input devices.
 - **Desktop integration:** passwords and keyring, media controls, screen
   sharing, "show in folder", input methods (Fcitx5, IBus).
 - **Advanced:** sockets, environment variables, a writable app folder for

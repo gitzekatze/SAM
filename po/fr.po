@@ -545,10 +545,9 @@ msgstr "Manettes de jeu"
 #: crates/sam-core/src/permissions.rs:1178
 msgid ""
 "Gamepads and joysticks that are plugged in when the app starts. Keyboards "
-"and mice stay hidden."
-msgstr ""
-"Manettes et joysticks branchés au démarrage de l’application. Les claviers "
-"et souris restent cachés."
+"and mice stay hidden, and so does a controller that also reports itself as a "
+"keyboard or mouse."
+msgstr "Manettes et joysticks branchés au démarrage de l’application. Les claviers et souris restent cachés, de même qu’une manette qui se présente aussi comme clavier ou souris."
 
 #: crates/sam-core/src/permissions.rs:1180 crates/sam-core/src/risk.rs:290
 #: crates/sam-runner/src/verify.rs:366
@@ -8854,7 +8853,21 @@ msgstr ""
 "connexion propre du serveur audio lui permettrait de charger du code hors du "
 "bac à sable). Le message de lancement dit pourquoi."
 
-#: crates/sam-sandbox/src/lib.rs:2330
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-sandbox/src/lib.rs:2336
+msgid ""
+"Not shown as game controllers, as they also report themselves as a keyboard "
+"or mouse: {nodes}"
+msgstr "Non montrés comme manettes, car ils se présentent aussi comme clavier ou souris : {nodes}"
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-sandbox/src/lib.rs:2342
+msgid ""
+"Not shown as game controllers, as udev has no record of what they are: "
+"{nodes}"
+msgstr "Non montrés comme manettes, car udev n’indique pas ce qu’ils sont : {nodes}"
+
+#: crates/sam-sandbox/src/lib.rs:2348
 msgid ""
 "No game controller is plugged in; controllers connected later are not seen "
 "until the app restarts"
@@ -8862,19 +8875,19 @@ msgstr ""
 "Aucune manette branchée ; les manettes branchées plus tard ne seront "
 "visibles qu’après le redémarrage de l’application"
 
-#: crates/sam-sandbox/src/lib.rs:2340
+#: crates/sam-sandbox/src/lib.rs:2358
 msgid "Bluetooth needs the system D-Bus; not granted"
 msgstr "Bluetooth a besoin du D-Bus système ; non accordé"
 
-#: crates/sam-sandbox/src/lib.rs:2353
+#: crates/sam-sandbox/src/lib.rs:2371
 msgid "Input method needs the session D-Bus; not granted"
 msgstr "La méthode de saisie a besoin du D-Bus de session ; non accordé"
 
-#: crates/sam-sandbox/src/lib.rs:2376
+#: crates/sam-sandbox/src/lib.rs:2394
 msgid "session D-Bus socket not found"
 msgstr "socket du D-Bus de session introuvable"
 
-#: crates/sam-sandbox/src/lib.rs:2385
+#: crates/sam-sandbox/src/lib.rs:2403
 msgid ""
 "filtered D-Bus requested but no proxy is running (install xdg-dbus-proxy); "
 "session bus disabled"
@@ -8883,7 +8896,7 @@ msgstr ""
 "proxy) ; bus de session désactivé"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2440
+#: crates/sam-sandbox/src/lib.rs:2458
 msgid ""
 "{path} is reached through a link in a folder the app can change; it is not "
 "passed into the sandbox. List the socket by its real place."
@@ -8893,7 +8906,7 @@ msgstr ""
 "emplacement réel."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2454
+#: crates/sam-sandbox/src/lib.rs:2472
 msgid ""
 "{path} lies below a folder the app can change, so the app could swap it for "
 "another socket during the start; this setting does not pass it in. Where the "
@@ -8905,12 +8918,12 @@ msgstr ""
 "elle atteint toujours le socket à cet endroit."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2461
+#: crates/sam-sandbox/src/lib.rs:2479
 msgid "{path} is not a socket; it is not passed into the sandbox"
 msgstr "{path} n’est pas un socket ; il n’est pas transmis au bac à sable"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2472
+#: crates/sam-sandbox/src/lib.rs:2490
 msgid ""
 "{path} leads elsewhere: {why}. It is not passed into the sandbox; list that "
 "socket by its real place if the app needs it."
@@ -9004,6 +9017,13 @@ msgstr ""
 #: crates/sam-storage/src/lib.rs:641
 msgid "unknown flat preset key '{other}'"
 msgstr "clé « {other} » inconnue dans le modèle plat"
+
+#~ msgid ""
+#~ "Gamepads and joysticks that are plugged in when the app starts. Keyboards "
+#~ "and mice stay hidden."
+#~ msgstr ""
+#~ "Manettes et joysticks branchés au démarrage de l’application. Les "
+#~ "claviers et souris restent cachés."
 
 #~ msgid ""
 #~ "{path} is in a folder the app can change, so the app could swap it for "
