@@ -260,10 +260,13 @@ pub fn plan_within(c: &Control, old: &[u8], limit: std::time::Duration) -> Vec<O
     };
     // Block `i` against `len` bytes of the old file at `off`, padded with
     // zeros to a whole block as zsync pads a short last block.
+    // Set by every MD4 comparison: a step that made one looks at the clock.
+    let hashed = std::cell::Cell::new(false);
     let strong = |i: usize, off: usize, len: usize| -> bool {
         if off + len > old.len() {
             return false;
         }
+        hashed.set(true);
         md4_of(&old[off..off + len], bs)[..c.checksum_bytes] == *c.checksum(i)
     };
     let weak = |i: usize, off: usize, len: usize| -> bool {
@@ -273,6 +276,7 @@ pub fn plan_within(c: &Control, old: &[u8], limit: std::time::Duration) -> Vec<O
     // The length of the new file's last block (it may be short).
     let tail = (c.length as usize).saturating_sub(n.saturating_sub(1) * bs);
     let mut off = 0usize;
+    let mut steps = 0u32;
     let mut r = rsum(&old[..bs]);
     loop {
         let mut matched = false;
@@ -313,8 +317,14 @@ pub fn plan_within(c: &Control, old: &[u8], limit: std::time::Duration) -> Vec<O
         if off + step + bs > old.len() {
             break;
         }
-        // Looking at the clock every 64 KiB of offsets is enough.
-        if off.is_multiple_of(64 << 10) && started.elapsed() > limit {
+        // The clock is read after every step that compared an MD4 (which
+        // costs far more than reading the clock) and every 4096 steps
+        // otherwise. Reading it only at offsets that are a multiple of
+        // 64 KiB let a description whose blocks match one after another
+        // off those offsets step over every one of them, so planning never
+        // stopped (review B2 S6, R90).
+        steps = steps.wrapping_add(1);
+        if (hashed.replace(false) || steps.is_multiple_of(4096)) && started.elapsed() > limit {
             break;
         }
         if step == 1 {
@@ -712,6 +722,47 @@ mod tests {
         // Too little old data after it: nothing is compared past the end.
         let p = plan(&c, &old[..10 * 2048 + 600]);
         assert_eq!(p[n - 2], None, "the old file ends inside the last block");
+    }
+
+    /// Regression (review B2 S6, R90): planning looked at the clock only
+    /// at offsets that are a multiple of 64 KiB. Here the old file starts
+    /// with one extra byte, so every block matches at an odd offset and
+    /// each step jumps a whole block past those offsets: planning ran to
+    /// the end whatever its limit. Now it stops at its limit, leaving the
+    /// rest for downloading.
+    #[test]
+    fn planning_stops_at_its_limit_also_when_blocks_match_off_the_checkpoints() {
+        let bs = 2048;
+        let new = sample(32 << 20, 9);
+        let n = new.len() / bs;
+        let mut c = Control {
+            filename: None,
+            url: None,
+            sha1: String::new(),
+            length: new.len() as u64,
+            blocksize: bs,
+            seq_matches: 1,
+            rsum_bytes: 4,
+            checksum_bytes: 16,
+            rsums: Vec::with_capacity(n),
+            checksums: Vec::with_capacity(n * 16),
+        };
+        for b in new.chunks(bs) {
+            c.rsums.push(rsum_key(rsum(b), 4));
+            c.checksums.extend_from_slice(&md4_of(b, bs));
+        }
+        let mut old = vec![0xa5u8];
+        old.extend_from_slice(&new);
+        let t = std::time::Instant::now();
+        let p = plan_within(&c, &old, std::time::Duration::from_millis(20));
+        let took = t.elapsed();
+        let reused = p.iter().filter(|x| x.is_some()).count();
+        assert!(reused > 0, "the blocks match at odd offsets");
+        assert!(
+            reused < n / 2,
+            "planning stopped at its limit: {reused} of {n} blocks planned in {took:?}"
+        );
+        assert!(took < std::time::Duration::from_secs(5), "{took:?}");
     }
 
     /// Regression (review B2 S6, R91): `assemble` opened its target with

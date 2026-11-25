@@ -1118,7 +1118,7 @@ msgid "path has no parent"
 msgstr "la ruta no tiene carpeta superior"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/util.rs:420 crates/sam-runner/src/updates.rs:562
+#: crates/sam-core/src/util.rs:420 crates/sam-runner/src/updates.rs:584
 msgid "{program} did not finish within {seconds} seconds and was stopped"
 msgstr "{program} no terminó en {seconds} segundos y se detuvo"
 
@@ -8456,7 +8456,7 @@ msgstr "versión {release}"
 msgid "a newer version"
 msgstr "una versión más reciente"
 
-#: crates/sam-runner/src/updates.rs:288 crates/sam-runner/src/updates.rs:623
+#: crates/sam-runner/src/updates.rs:288 crates/sam-runner/src/updates.rs:645
 msgid "the update file is not offered over HTTPS"
 msgstr "el archivo de actualización no se ofrece por HTTPS"
 
@@ -8471,43 +8471,52 @@ msgid "bad update address"
 msgstr "dirección de actualización no válida"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/updates.rs:397
+#: crates/sam-runner/src/updates.rs:400
+msgid ""
+"the update download did not finish within {minutes} minutes and was stopped"
+msgstr "la descarga de la actualización no terminó en {minutes} minutos y se detuvo"
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-runner/src/updates.rs:405
 msgid ""
 "the update download did not finish within {seconds} seconds and was stopped"
-msgstr "la descarga de la actualización no terminó en {seconds} segundos y se detuvo"
+msgstr ""
+"la descarga de la actualización no terminó en {seconds} segundos y se detuvo"
 
-#: crates/sam-runner/src/updates.rs:418
+#: crates/sam-runner/src/updates.rs:440
 msgid "the update description changed while reading it"
 msgstr "la descripción de la actualización cambió mientras se leía"
 
-#: crates/sam-runner/src/updates.rs:508
+#: crates/sam-runner/src/updates.rs:530
 msgid "not HTTPS"
 msgstr "no es HTTPS"
 
-#: crates/sam-runner/src/updates.rs:536 crates/sam-runner/src/updates.rs:667
-#: crates/sam-runner/src/updates.rs:829
+#: crates/sam-runner/src/updates.rs:558 crates/sam-runner/src/updates.rs:689
+#: crates/sam-runner/src/updates.rs:855
 msgid "starting curl"
 msgstr "iniciando curl"
 
-#: crates/sam-runner/src/updates.rs:583
+#: crates/sam-runner/src/updates.rs:605
 msgid ""
 "the server sent more than the part SAM asked for, so it ignores range "
 "requests; the partial download was stopped"
-msgstr "el servidor envió más que la parte que SAM pidió, así que ignora las peticiones de partes; la descarga parcial se detuvo"
+msgstr ""
+"el servidor envió más que la parte que SAM pidió, así que ignora las "
+"peticiones de partes; la descarga parcial se detuvo"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/updates.rs:602
+#: crates/sam-runner/src/updates.rs:624
 msgid "downloading the changed parts failed: {reason}"
 msgstr "falló la descarga de las partes cambiadas: {reason}"
 
-#: crates/sam-runner/src/updates.rs:638
+#: crates/sam-runner/src/updates.rs:660
 msgid ""
 "the downloaded file does not match the published checksum; it was deleted"
 msgstr ""
 "el archivo descargado no coincide con la suma de verificación publicada; se "
 "borró"
 
-#: crates/sam-runner/src/updates.rs:688
+#: crates/sam-runner/src/updates.rs:710
 msgid ""
 "the server sent more than the update description announced; the download was "
 "stopped and deleted"
@@ -8515,13 +8524,13 @@ msgstr ""
 "el servidor envió más de lo que anunciaba la descripción de la "
 "actualización; la descarga se detuvo y se eliminó"
 
-#: crates/sam-runner/src/updates.rs:717
+#: crates/sam-runner/src/updates.rs:743
 msgid "the update source has nothing published at that address (yet)"
 msgstr ""
 "el origen de actualizaciones no tiene nada publicado en esa dirección "
 "(todavía)"
 
-#: crates/sam-runner/src/updates.rs:719
+#: crates/sam-runner/src/updates.rs:745
 msgid ""
 "the update source refused the request for now (rate limit); try again later"
 msgstr ""
@@ -8529,33 +8538,33 @@ msgstr ""
 "peticiones); vuelve a intentarlo más tarde"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/updates.rs:722
+#: crates/sam-runner/src/updates.rs:748
 msgid "the update source has a problem (HTTP {status}); try again later"
 msgstr ""
 "el origen de actualizaciones tiene un problema (HTTP {status}); vuelve a "
 "intentarlo más tarde"
 
-#: crates/sam-runner/src/updates.rs:727
+#: crates/sam-runner/src/updates.rs:753
 msgid "no connection to the update source; check the internet connection"
 msgstr ""
 "no hay conexión con el origen de actualizaciones; comprueba la conexión a "
 "internet"
 
-#: crates/sam-runner/src/updates.rs:764
+#: crates/sam-runner/src/updates.rs:790
 msgid "the update description (.zsync) has no SHA-1"
 msgstr "la descripción de la actualización (.zsync) no tiene SHA-1"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/updates.rs:802
+#: crates/sam-runner/src/updates.rs:828
 msgid "the update address is not HTTPS ({address})"
 msgstr "la dirección de actualización no es HTTPS ({address})"
 
-#: crates/sam-runner/src/updates.rs:835
+#: crates/sam-runner/src/updates.rs:861
 msgid "curl output"
 msgstr "salida de curl"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/updates.rs:844
+#: crates/sam-runner/src/updates.rs:870
 msgid "the update source answered with more than {size}, more than SAM reads"
 msgstr ""
 "la fuente de actualizaciones respondió con más de {size}, más de lo que SAM "
@@ -8783,11 +8792,11 @@ msgid "the update description (.zsync) is cut short"
 msgstr "la descripción de la actualización (.zsync) está cortada"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/zsync.rs:405
+#: crates/sam-runner/src/zsync.rs:415
 msgid "the server sent {got} bytes instead of {expected}"
 msgstr "el servidor envió {got} bytes en lugar de {expected}"
 
-#: crates/sam-runner/src/zsync.rs:431
+#: crates/sam-runner/src/zsync.rs:441
 msgid "the assembled file does not match the published checksum"
 msgstr ""
 "el archivo ensamblado no coincide con la suma de verificación publicada"

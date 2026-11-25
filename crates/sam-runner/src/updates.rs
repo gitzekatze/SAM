@@ -352,8 +352,10 @@ pub fn download_update_within(
             let _ = std::fs::remove_file(dest);
         }
     }
+    // curl's own time-out at the end of the limit is named as the limit;
+    // any other reason (a 404, say) stays what it is, also near the end.
     download(p, dest, &deadline).map_err(|e| {
-        if deadline.is_over() {
+        if deadline.is_over() && e.downcast_ref::<CurlTimedOut>().is_some() {
             deadline.passed()
         } else {
             e
@@ -392,15 +394,35 @@ impl Deadline {
     }
 
     fn passed(&self) -> anyhow::Error {
-        anyhow::anyhow!(
-            "{}",
+        let secs = self.limit.as_secs();
+        // In minutes when it is whole minutes (SAM's hour); tests use seconds.
+        let text = if secs >= 120 && secs.is_multiple_of(60) {
+            sam_core::i18n::trf(
+                "the update download did not finish within {minutes} minutes and was stopped",
+                &[("minutes", &(secs / 60))],
+            )
+        } else {
             sam_core::i18n::trf(
                 "the update download did not finish within {seconds} seconds and was stopped",
-                &[("seconds", &self.limit.as_secs())]
+                &[("seconds", &secs)],
             )
-        )
+        };
+        anyhow::anyhow!("{text}")
     }
 }
+
+/// curl stopped at its time limit (exit code 28): the reason a download
+/// ends at the update's deadline.
+#[derive(Debug)]
+struct CurlTimedOut(String);
+
+impl std::fmt::Display for CurlTimedOut {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for CurlTimedOut {}
 
 /// `Ok(None)` when a delta would not save enough (most of the file changed,
 /// or it would take too many requests).
@@ -694,7 +716,11 @@ fn save_capped(mut cmd: Command, dest: &Path, cap: u64) -> Result<()> {
         let st = child.wait()?;
         let err = errors.join().unwrap_or_default();
         if !st.success() {
-            bail!("download failed: {}", curl_error(&err));
+            let why = format!("download failed: {}", curl_error(&err));
+            if st.code() == Some(28) {
+                return Err(CurlTimedOut(why).into());
+            }
+            bail!("{why}");
         }
         file.sync_all()?;
         Ok(())
@@ -1049,6 +1075,33 @@ mod tests {
             "{:?}",
             started.elapsed()
         );
+    }
+
+    /// The update's time limit is named in minutes when it is whole
+    /// minutes (an hour for SAM's updates), in seconds otherwise; and only
+    /// curl's own time-out is named as the limit, so a download that
+    /// fails for another reason near the end keeps its reason (review B2
+    /// S6, R90).
+    #[test]
+    fn the_time_limit_is_named_only_when_it_ended_the_download() {
+        let hour = Deadline::new(UPDATE_TIME_LIMIT).passed().to_string();
+        assert!(hour.contains("within 60 minutes"), "{hour}");
+        let short = Deadline::new(Duration::from_secs(3)).passed().to_string();
+        assert!(short.contains("within 3 seconds"), "{short}");
+        let t = tempfile::tempdir().unwrap();
+        let dest = t.path().join("new.AppImage");
+        let exits = |code: u8| {
+            let mut c = Command::new("sh");
+            c.args([
+                "-c",
+                &format!("echo 'curl: ({code}) failed' >&2; exit {code}"),
+            ]);
+            c
+        };
+        let e = save_capped(exits(28), &dest, 100).unwrap_err();
+        assert!(e.downcast_ref::<CurlTimedOut>().is_some(), "{e:#}");
+        let e = save_capped(exits(22), &dest, 100).unwrap_err();
+        assert!(e.downcast_ref::<CurlTimedOut>().is_none(), "{e:#}");
     }
 
     /// A failed download says why, in words, also after up to 64 KiB of

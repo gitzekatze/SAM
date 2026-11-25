@@ -36,7 +36,20 @@ fn sample(n: usize, seed: u32) -> Vec<u8> {
 /// with eight stretches of 16 KiB changed, far enough apart that the
 /// partial download asks for them in eight range requests.
 fn publish(server: &Server, old: &Path, mode: &str) -> (Published, Vec<u8>) {
-    let new = sample(1 << 20, 7);
+    publish_with(server, old, mode, 1 << 20, true)
+}
+
+/// Like [`publish`], `len` bytes long; without `similar`, the installed
+/// version has nothing in common with the new one, so SAM skips the
+/// partial download and downloads the whole file.
+fn publish_with(
+    server: &Server,
+    old: &Path,
+    mode: &str,
+    len: usize,
+    similar: bool,
+) -> (Published, Vec<u8>) {
+    let new = sample(len, 7);
     let file = server.root.join("new.bin");
     fs::write(&file, &new).unwrap();
     let z = sam_runner::zsync::make(
@@ -48,11 +61,15 @@ fn publish(server: &Server, old: &Path, mode: &str) -> (Published, Vec<u8>) {
     .unwrap();
     fs::write(server.root.join("new.bin.zsync"), &z).unwrap();
     let mut before = new.clone();
-    for k in 0..8 {
-        let at = (16 << 10) + k * (128 << 10);
-        for b in &mut before[at..at + (16 << 10)] {
-            *b ^= 0x5a;
+    if similar {
+        for k in 0..8 {
+            let at = (16 << 10) + k * (128 << 10);
+            for b in &mut before[at..at + (16 << 10)] {
+                *b ^= 0x5a;
+            }
         }
+    } else {
+        before = sample(len, 99);
     }
     fs::write(old, &before).unwrap();
     let base = format!("https://127.0.0.1:{}", server.port);
@@ -166,4 +183,47 @@ fn the_whole_update_download_stops_at_one_deadline() {
         !asked.iter().any(|l| l.ends_with(" None")),
         "the whole file was not started after the time was up: {asked:#?}"
     );
+}
+
+/// The whole file gets only the time left of the update's limit, never an
+/// hour of its own (review B2 S6, R90). The installed version shares
+/// nothing with the new one, so SAM downloads the whole file at once; the
+/// slow server would take about twelve seconds for it, and with a limit of
+/// three seconds the download stops at three.
+#[test]
+fn the_whole_file_download_gets_only_the_time_left() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let tmp = tempfile::tempdir().unwrap();
+    let root = fs::canonicalize(tmp.path()).unwrap();
+    let Some((server, _)) = server_or_skip(&root) else {
+        return;
+    };
+    let _contracts =
+        sam_runner::contracts::guard(&["updates-curl"]).unwrap_or_else(|e| panic!("{e}"));
+    let old = root.join("old.bin");
+    let (p, _) = publish_with(&server, &old, "slow", 96 << 10, false);
+    let dest = root.join("download").join("new.bin");
+    fs::create_dir_all(dest.parent().unwrap()).unwrap();
+    let started = Instant::now();
+    let res = download_update_within(&p, &old, &dest, Duration::from_secs(3));
+    let took = started.elapsed();
+    let err = match res {
+        Ok(f) => panic!("the slow download was not stopped ({took:?}, {f:?})"),
+        Err(e) => format!("{e:#}"),
+    };
+    let asked = requests(&server, "/slow/new.bin");
+    assert_eq!(
+        asked,
+        vec!["/slow/new.bin None".to_string()],
+        "only the whole file was asked for"
+    );
+    assert!(
+        err.contains("did not finish within 3 seconds"),
+        "the update's time limit stopped it: {err}"
+    );
+    assert!(
+        took < Duration::from_secs(6),
+        "stopped at the deadline, not later: {took:?}"
+    );
+    assert!(!dest.exists(), "nothing half-downloaded is left");
 }
