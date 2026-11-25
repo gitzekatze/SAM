@@ -484,12 +484,14 @@ pub fn assess(p: &PermissionSet) -> RiskAssessment {
             RiskLevel::Dangerous,
         ),
     }
+    // The agent decrypts, signs and logs in as you with your unlocked
+    // keys (owner decision 11 of 2026-11-23).
     if p.sockets.ssh_agent {
         item(
             &mut items,
             "sockets.ssh_agent",
             "SSH agent",
-            RiskLevel::High,
+            RiskLevel::Dangerous,
         );
     }
     if p.sockets.cups {
@@ -583,6 +585,9 @@ pub fn assess(p: &PermissionSet) -> RiskAssessment {
         || fs.ssh
         || fs.gnupg
         || p.sockets.ssh_agent
+        // An extra socket that is a key agent (GnuPG's, an SSH agent) hands
+        // out the same keys (owner decision 11 of 2026-11-23).
+        || p.sockets.custom.iter().any(|s| crate::permissions::key_agent_socket(s))
         || p.integrations.keyring
         || p.dbus
             .session
@@ -1499,5 +1504,81 @@ mod tests {
         let mut p = PermissionSet::strict_gui();
         p.sockets.custom = vec!["/tmp/app.sock".into()];
         assert_eq!(assess(&p).level, RiskLevel::High, "an ordinary socket");
+    }
+
+    /// Key agents are Dangerous: whoever reaches one uses your unlocked
+    /// keys to decrypt, sign or log in to other computers as you (owner
+    /// decision 11 of 2026-11-23). The SSH agent switch, and an extra
+    /// socket at each usual place of GnuPG's agent or an SSH agent; an
+    /// ordinary socket stays Think twice.
+    #[test]
+    fn key_agents_are_rated_dangerous() {
+        let mut p = PermissionSet::strict_gui();
+        p.sockets.ssh_agent = true;
+        let switch = assess(&p);
+        assert_eq!(switch.level, RiskLevel::Dangerous, "the SSH agent switch");
+        assert!(
+            switch
+                .items
+                .iter()
+                .any(|i| i.key == "sockets.ssh_agent" && i.level == RiskLevel::Dangerous),
+            "{switch:?}"
+        );
+        for s in [
+            "/run/user/1000/gnupg/S.gpg-agent",
+            "/run/user/1000/gnupg/S.gpg-agent.ssh",
+            "/run/user/1000/gnupg/S.gpg-agent.extra",
+            "/run/user/1000/gnupg/S.gpg-agent.browser",
+            "/home/me/.gnupg/S.gpg-agent",
+            "/tmp/ssh-XXXXabc123/agent.4242",
+            "/tmp//ssh-q1w2e3/./agent.77",
+            // OpenSSH's default place since 10.1 (review of decision 11).
+            "/home/me/.ssh/agent/s.AbCdEf123",
+            "~/.ssh/agent/s.x",
+            "/run/user/1000/ssh-agent.socket",
+            "/home/me/.bitwarden-ssh-agent.sock",
+            "/run/user/1000/openssh_agent",
+            "/run/user/1000/keyring/ssh",
+            "/run/user/1000/gcr/ssh",
+            "/home/me/.1password/agent.sock",
+        ] {
+            assert!(key_agent_socket(s), "{s}");
+            let why = dangerous_socket(s).unwrap_or_else(|| panic!("{s} not dangerous"));
+            assert!(why.contains("unlocked keys"), "{s}: {why}");
+            let mut p = PermissionSet::strict_gui();
+            p.sockets.custom = vec![s.into()];
+            assert_eq!(assess(&p).level, RiskLevel::Dangerous, "{s}");
+        }
+        for s in [
+            "/run/user/1000/kpxc_server",
+            "/tmp/app.sock",
+            "/tmp/ssh-XXXXabc123/control.sock",
+            "/run/user/1000/agent.sock",
+        ] {
+            assert!(!key_agent_socket(s), "{s}");
+            assert!(dangerous_socket(s).is_none(), "{s}");
+            let mut p = PermissionSet::strict_gui();
+            p.sockets.custom = vec![s.into()];
+            assert_eq!(assess(&p).level, RiskLevel::High, "{s}");
+        }
+    }
+
+    /// An extra socket that is a key agent counts as reading your keys:
+    /// with the full network, the app can send what the agent decrypts
+    /// (owner decision 11 of 2026-11-23). An ordinary socket does not.
+    #[test]
+    fn a_key_agent_socket_with_the_network_can_send_what_it_reads() {
+        let combo = |socket: &str| {
+            let mut p = PermissionSet::strict_gui();
+            p.network.mode = NetworkMode::Full;
+            p.sockets.custom = vec![socket.into()];
+            assess(&p)
+                .items
+                .iter()
+                .any(|i| i.key == "combination.read_and_send" && i.level == RiskLevel::Dangerous)
+        };
+        assert!(combo("/run/user/1000/gnupg/S.gpg-agent"), "GnuPG's agent");
+        assert!(combo("/tmp/ssh-XXXXabc123/agent.4242"), "an SSH agent");
+        assert!(!combo("/run/user/1000/kpxc_server"), "an ordinary socket");
     }
 }

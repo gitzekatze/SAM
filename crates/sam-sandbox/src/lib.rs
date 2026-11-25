@@ -2491,8 +2491,13 @@ impl Section<'_> {
             }
             let shown = sp.to_string_lossy();
             let lands = real.to_string_lossy();
+            // Passed in only when the listed name was rated dangerous in
+            // the same way as where it leads: a name that looks like a key
+            // agent must not open the session bus, while Docker's name may
+            // lead to Podman (review of owner decision 11 of 2026-11-23).
+            let kind = sam_core::permissions::dangerous_socket_kind;
             if let Some(why) = sam_core::permissions::dangerous_socket(&lands)
-                .filter(|_| sam_core::permissions::dangerous_socket(&shown).is_none())
+                .filter(|_| kind(&shown) != kind(&lands))
             {
                 notes.push(sam_core::i18n::trf(
                     "{path} leads elsewhere: {why}. It is not passed into the sandbox; list that socket by its real place if the app needs it.",
@@ -4380,6 +4385,79 @@ mod tests {
         );
         ctx.permissions.sockets.custom = vec![bus_s.clone()];
         assert!(has_seq(&args_of(&ctx), &["--bind-try", &bus_s, &bus_s]));
+    }
+
+    /// A link whose listed name is dangerous for another reason than where
+    /// it leads is not passed in either: a name that looks like a key agent
+    /// (`x-ssh-agent.sock`) leading to the session bus was rated as a key
+    /// agent, not as the bus (review of owner decision 11 of 2026-11-23).
+    /// A name dangerous for the same reason (a key agent leading to a key
+    /// agent) is passed in, as listed.
+    #[test]
+    fn an_extra_socket_is_passed_in_only_as_dangerous_as_its_name() {
+        let t = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(t.path()).unwrap();
+        fs::create_dir(root.join("d")).unwrap();
+        fs::create_dir(root.join("gnupg")).unwrap();
+        let bus = root.join("d/bus");
+        let _b = std::os::unix::net::UnixListener::bind(&bus).unwrap();
+        let gpg = root.join("gnupg/S.gpg-agent");
+        let _g = std::os::unix::net::UnixListener::bind(&gpg).unwrap();
+        let to_bus = root.join("x-ssh-agent.sock");
+        std::os::unix::fs::symlink(&bus, &to_bus).unwrap();
+        let to_gpg = root.join("y-ssh-agent.sock");
+        std::os::unix::fs::symlink(&gpg, &to_gpg).unwrap();
+        let s = |p: &Path| p.display().to_string();
+        let mut ctx = sample_context();
+        ctx.permissions.sockets.custom = vec![s(&to_bus)];
+        let cmd = Bubblewrap.build(&ctx).unwrap();
+        assert!(!cmd.args.iter().any(|a| a == &s(&bus)), "{:?}", cmd.args);
+        assert!(
+            cmd.notes.iter().any(|n| n.contains(&s(&to_bus))),
+            "{:?}",
+            cmd.notes
+        );
+        ctx.permissions.sockets.custom = vec![s(&to_gpg)];
+        assert!(has_seq(
+            &args_of(&ctx),
+            &["--bind-try", &s(&gpg), &s(&to_gpg)]
+        ));
+    }
+
+    /// Docker, Podman and containerd count as one kind: podman-docker's
+    /// `docker.sock` linked to Podman's socket is passed in, while a
+    /// `docker.sock` leading to the session bus is not (review of owner
+    /// decision 11 of 2026-11-23).
+    #[test]
+    fn a_docker_socket_may_lead_to_podman_but_not_to_the_bus() {
+        let t = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(t.path()).unwrap();
+        for d in ["podman", "d", "a", "b"] {
+            fs::create_dir(root.join(d)).unwrap();
+        }
+        let podman = root.join("podman/podman.sock");
+        let _p = std::os::unix::net::UnixListener::bind(&podman).unwrap();
+        let bus = root.join("d/bus");
+        let _b = std::os::unix::net::UnixListener::bind(&bus).unwrap();
+        let to_podman = root.join("a/docker.sock");
+        std::os::unix::fs::symlink(&podman, &to_podman).unwrap();
+        let to_bus = root.join("b/docker.sock");
+        std::os::unix::fs::symlink(&bus, &to_bus).unwrap();
+        let s = |p: &Path| p.display().to_string();
+        let mut ctx = sample_context();
+        ctx.permissions.sockets.custom = vec![s(&to_podman)];
+        assert!(has_seq(
+            &args_of(&ctx),
+            &["--bind-try", &s(&podman), &s(&to_podman)]
+        ));
+        ctx.permissions.sockets.custom = vec![s(&to_bus)];
+        let cmd = Bubblewrap.build(&ctx).unwrap();
+        assert!(!cmd.args.iter().any(|a| a == &s(&bus)), "{:?}", cmd.args);
+        assert!(
+            cmd.notes.iter().any(|n| n.contains(&s(&to_bus))),
+            "{:?}",
+            cmd.notes
+        );
     }
 
     /// A bundled library listed in advanced.system_libraries is replaced by

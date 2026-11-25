@@ -62,6 +62,11 @@ pub const SENSITIVE_DOTFILES: &[&str] = &[
     ".vault-token",
     ".config/hcloud",
     ".oci",
+    // Key agents' sockets in the home: a read-only home still lets the
+    // app connect to them and use your unlocked keys (owner decision 11 of
+    // 2026-11-23). OpenSSH's `~/.ssh/agent` is hidden with `~/.ssh`.
+    ".1password",
+    ".bitwarden-ssh-agent.sock",
 ];
 
 /// Paths kept read-only even with full home read/write: SAM's own state

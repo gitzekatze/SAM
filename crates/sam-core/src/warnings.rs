@@ -261,9 +261,11 @@ pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
             .with_key("devices.webcam"),
         );
     }
+    // Dangerous, as the risk words rate it (owner decision 11 of
+    // 2026-11-23).
     if p.sockets.ssh_agent {
         w.push(
-            Warning::warn(
+            Warning::danger(
                 "ssh-agent",
                 "SSH agent",
                 "While it runs, the app can use your SSH keys through the agent to log in to other computers as you.",
@@ -456,6 +458,19 @@ mod tests {
                 .find(|i| i.key == "dbus.session.mode")
                 .map(|i| i.level),
             Some(crate::risk::RiskLevel::Dangerous),
+            "the same as the risk words"
+        );
+
+        // The SSH agent is Dangerous in both (owner decision 11 of
+        // 2026-11-23).
+        let mut p = PermissionSet::strict_gui();
+        p.sockets.ssh_agent = true;
+        let w = evaluate(&p, &quiet);
+        let agent = w.iter().find(|w| w.code == "ssh-agent").unwrap();
+        assert_eq!(agent.severity, Severity::Danger);
+        assert_eq!(
+            crate::risk::assess(&p).level,
+            crate::risk::RiskLevel::Dangerous,
             "the same as the risk words"
         );
     }
