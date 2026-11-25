@@ -7,4 +7,7 @@
   (`~/dotfiles` to `~/y`) and then ask a room for `~/y`: the room showed
   the real file. A room now refuses to show a place below a writable
   folder while such a hidden file could be moved that way, as it already
-  did for hidden folders. The room's refusal says why.
+  did for hidden folders. The room's refusal says why. A file SAM
+  hides inside a place brought in from elsewhere, such as the computer's
+  theme settings in an app's own home, does not count: moved, it shows a
+  room only the app's own files.

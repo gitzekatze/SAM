@@ -1569,9 +1569,17 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
         failures
             .push("linked-credential: the room was not refused for the movable hidden file".into());
     }
+    // The app moved `dotfiles` (or did not): remove whichever exists, and
+    // make sure the secret is gone before the next scenario starts.
     let _ = fs::remove_file(w.home.join(".netrc"));
     let _ = fs::remove_dir_all(w.home.join("dotfiles-moved"));
     let _ = fs::remove_dir_all(w.home.join("dotfiles"));
+    for left in [".netrc", "dotfiles-moved", "dotfiles"] {
+        assert!(
+            fs::symlink_metadata(w.home.join(left)).is_err(),
+            "linked-credential: {left} is still in the test home"
+        );
+    }
 
     // The person's own Bubblewrap arguments that cut the network.
     let id = w.add("RoomExtraArgs", EXTRA_ARGS);

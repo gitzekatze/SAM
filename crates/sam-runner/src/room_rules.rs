@@ -1011,32 +1011,50 @@ pub(crate) fn covered_later(steps: &[Step], i: usize) -> bool {
 /// from the computer, where nothing hides it. A protection is a hiding
 /// mount (an empty folder, or an empty file: SAM hides a credential file
 /// reached through a link, `~/.netrc` into `~/dotfiles`, with `/dev/null`
-/// over it), or a read-only (or device) place showing part of that same
-/// writable folder with fewer rights; a place brought in from elsewhere
-/// (the computer's theme settings in an app's own home) protects nothing
-/// there: moved, a room sees only the app's own files below it.
+/// over it, when what it hides lies in that folder), or a read-only (or
+/// device) place showing part of that same writable folder with fewer
+/// rights; a place brought in from elsewhere (the computer's theme
+/// settings in an app's own home, and the private file SAM hides inside
+/// them) protects nothing there: moved, a room sees only the app's own
+/// files below it.
 fn protections_movable(plan: &FloorPlan, w: usize) -> bool {
     let top = plan.entries[w].at();
     let Some(top_src) = plan.entries[w].source() else {
         return false;
     };
     let later = &plan.entries[w + 1..];
-    let protects = |e: &Entry| match e {
+    // Whether the mount an empty file `j` lies on shows `w`'s folder:
+    // the last mount before it at or above its place.
+    let hides_in_w = |j: usize| {
+        let at = plan.entries[j].at();
+        plan.entries[..j]
+            .iter()
+            .rposition(|e| e.is_mount() && under(at, e.at()))
+            .is_some_and(|k| {
+                k == w || (k > w && plan.entries[k].source().is_some_and(|s| under(s, top_src)))
+            })
+    };
+    let protects = |j: usize, e: &Entry| match e {
         Entry::Mask { .. } => true,
-        Entry::Ro { src, .. } if src == Path::new(HIDING_FILE) => true,
+        Entry::Ro { src, .. } if src == Path::new(HIDING_FILE) => hides_in_w(j),
         Entry::Ro { src, .. } | Entry::Dev { src, .. } => under(src, top_src),
         _ => false,
     };
-    later.iter().filter(|e| protects(e)).any(|e| {
-        let at = e.at();
-        at != top
-            && under(at, top)
-            && at
-                .ancestors()
-                .skip(1)
-                .take_while(|a| *a != top)
-                .any(|a| !later.iter().any(|p| p.is_mount() && p.at() == a))
-    })
+    later
+        .iter()
+        .enumerate()
+        .filter(|(n, e)| protects(w + 1 + n, e))
+        .map(|(_, e)| e)
+        .any(|e| {
+            let at = e.at();
+            at != top
+                && under(at, top)
+                && at
+                    .ancestors()
+                    .skip(1)
+                    .take_while(|a| *a != top)
+                    .any(|a| !later.iter().any(|p| p.is_mount() && p.at() == a))
+        })
 }
 
 /// Nothing is placed inside a place whose source the app can write, in
@@ -2284,6 +2302,47 @@ mod tests {
             );
             assert!(ask(&plan(true), at).is_ok(), "{at}");
         }
+        // The hidden file lies in another place showing part of the same
+        // writable folder: the folder above that place is not pinned, so
+        // the app could rename it, place and all, and a room asking for
+        // the new name saw the real file.
+        let nested = FloorPlan::from_bwrap_args(&s(&[
+            "--bind",
+            "/h",
+            "/home/me",
+            "--bind",
+            "/h/a/x",
+            "/home/me/a/x",
+            "--ro-bind",
+            "/dev/null",
+            "/home/me/a/x/netrc",
+            "--",
+            "x",
+        ]))
+        .unwrap();
+        let e = ask(&nested, "/home/me/y").unwrap_err();
+        assert!(e.contains("could move a protected or hidden place"), "{e}");
+        // The computer's theme settings in an app's own home, with their
+        // private file hidden: moved, a room sees only the app's own empty
+        // folder there, so rooms below the home stay possible (SAM's
+        // defaults: own home, computer's themes).
+        let themes = FloorPlan::from_bwrap_args(&s(&[
+            "--bind",
+            "/own/home",
+            "/home/me",
+            "--dir",
+            "/home/me/.config",
+            "--ro-bind-try",
+            "/home/me/.config/gtk-3.0",
+            "/home/me/.config/gtk-3.0",
+            "--ro-bind",
+            "/dev/null",
+            "/home/me/.config/gtk-3.0/bookmarks",
+            "--",
+            "x",
+        ]))
+        .unwrap();
+        assert!(ask(&themes, "/home/me/.cache/x").is_ok());
     }
 
     /// A device place is shown only as a whole: a path below it is never
