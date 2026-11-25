@@ -434,15 +434,20 @@ impl Sam {
                 .map(|a| a.id.clone());
             let mut moved_from = None;
             if registered.is_none() {
+                // Offered as moved only with what SAM unpacked for the app,
+                // as adding it then relocates (review B2 S6, R96).
                 let cands: Vec<&AppEntry> = apps
                     .iter()
-                    .filter(|a| !a.source_path.exists() && a.source.size == size)
+                    .filter(|a| {
+                        !a.source_path.exists()
+                            && a.extraction.as_ref().is_some_and(|x| x.source.size == size)
+                    })
                     .collect();
                 if !cands.is_empty() {
                     if let Ok(sha) = fingerprint::sha256_file(&canon) {
                         moved_from = cands
                             .iter()
-                            .find(|a| a.source.sha256 == sha)
+                            .find(|a| super::add::is_moved_copy(a, &sha))
                             .map(|a| a.id.clone());
                     }
                 }

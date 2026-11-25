@@ -1112,7 +1112,14 @@ unpacked all come from that copy. Another program with access to the
 AppImage's folder can no longer swap the file between SAM's check and the
 unpacking, so SAM never records one file and unpacks another
 (`what_is_unpacked_is_what_sam_checked_even_if_the_file_is_swapped`). A
-file swapped there afterwards is noticed like any changed AppImage.
+file swapped there afterwards is noticed like any changed AppImage. Moving such a
+file elsewhere does not pass it off as the app's own: SAM follows a moved
+AppImage only when its content is what SAM unpacked for the app; another
+file is added as an app of its own
+(`a_swapped_appimage_moved_elsewhere_is_not_taken_for_the_apps_own_file`).
+Data kept when a sandbox is removed likewise goes back only to the
+AppImage SAM unpacked
+(`kept_data_goes_back_to_the_unpacked_file_after_a_swap_was_seen`).
 
 Nothing in an unpack sandbox can make a user namespace of its own
 (Bubblewrap's `--disable-userns` and the syscall filter): one would give
