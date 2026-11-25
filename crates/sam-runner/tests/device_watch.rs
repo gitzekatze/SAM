@@ -14,6 +14,8 @@
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
 
 use std::io::{BufRead, BufReader, Read};
+use std::os::fd::AsRawFd;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdout, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -118,10 +120,35 @@ fn start(dir: &Path, node: &Path, pasta: bool) -> Running {
         .stderr(Stdio::inherit())
         .spawn()
         .unwrap();
-    let mut status = String::new();
-    BufReader::new(std::fs::File::open(&fifo).unwrap())
-        .read_line(&mut status)
+    // Never waits for a status line that cannot come: opened without
+    // waiting for a writer, read once Bubblewrap wrote, and given up when
+    // the sandbox has ended or after 30 s.
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK)
+        .open(&fifo)
         .unwrap();
+    let started = Instant::now();
+    loop {
+        let mut pfd = libc::pollfd {
+            fd: file.as_raw_fd(),
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        // SAFETY: one valid pollfd.
+        if unsafe { libc::poll(&mut pfd, 1, 100) } > 0 && pfd.revents & libc::POLLIN != 0 {
+            break;
+        }
+        if let Some(st) = child.try_wait().unwrap() {
+            panic!("the sandbox ended before it reported itself: {st}");
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(30),
+            "no status line from Bubblewrap"
+        );
+    }
+    let mut status = String::new();
+    BufReader::new(file).read_line(&mut status).unwrap();
     let out = BufReader::new(child.stdout.take().unwrap());
     let mut r = Running { child, out, status };
     assert!(r.status.contains("child-pid"), "no sandbox: {:?}", r.status);
@@ -239,8 +266,10 @@ fn an_unplugged_controller_leaves_a_sandbox_inside_pasta() {
     if !bwrap_here() {
         return;
     }
-    if Command::new("pasta").arg("--version").output().is_err() {
-        sam_runner::contracts::skip("pasta is not installed").unwrap();
+    // SAM uses only a pasta with --splice-only; with an older one (or
+    // none) "This computer only" does not run pasta at all.
+    if let Err(e) = sam_runner::netns::pasta_usable() {
+        sam_runner::contracts::not_here(&format!("no pasta SAM would use: {e}"));
         return;
     }
     taken_out_after(unplug, true);
