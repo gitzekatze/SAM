@@ -96,6 +96,8 @@ fn a_missing_layer_is_told_while_the_app_runs() {
             owd: Some(home.clone()),
             extra_binds: vec![(sign.clone(), sign.clone(), false)],
             on_missing_layers: Some(tell),
+            // Chosen for this start: the layer goes missing (B2 R77).
+            start_anyway: true,
             ..Default::default()
         },
         &app.config,

@@ -97,17 +97,19 @@ turning off the syscall filter (`turning_a_protection_off_for_every_app_asks_fir
   start files and other protected places inside are then guarded by their
   read-only mounts and by moving new ones aside (see *Full home access*),
   not by Landlock.
-- If Landlock (or the syscall filter) cannot be applied at a start, for
-  example because SAM's helper `sam-jail-run` is missing, the app still
-  starts in its Bubblewrap sandbox, but never silently: the command line
-  warns, a start from the menu shows a notification while the app runs
-  (with a button to the app's page), the app's page says which layer was
-  missing, and the overview marks
-  the app *Protection missing* until a start has every layer again. The same
-  holds for the Wayland security context: when the desktop offers it but
-  making one fails, the app gets the normal Wayland socket, and the start is
-  marked as missing that layer. A syscall filter that fails to load stops
-  the start.
+- If SAM's helper `sam-jail-run` is missing, so that Landlock and the
+  syscall filter the app's settings ask for cannot be applied, or the
+  desktop offers the Wayland security context but making one fails, SAM
+  does not start the app. It says which protection is missing and why; you
+  can start the app anyway for that one start (*Start anyway* on the
+  notification, `sam-jail run --start-anyway`). Such a start runs in its
+  Bubblewrap sandbox without that layer (without the security context, with
+  the compositor's own socket), never silently: a start from the menu shows
+  a notification while the app runs (with a button to the app's page), the
+  app's page says which layer was missing, and the overview marks the app
+  *Protection missing* until a start has every layer again. If Landlock
+  itself cannot be applied by the kernel at a start, the app starts and is
+  marked the same way. A syscall filter that fails to load stops the start.
 - With kernel 6.12+ (Landlock ABI 6), connections to abstract sockets outside
   the sandbox are blocked too, for example XWayland's
   `@/tmp/.X11-unix/X0`. These sockets have a name but no file, and they

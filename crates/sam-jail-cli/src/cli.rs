@@ -161,6 +161,12 @@ pub(crate) enum Cmd {
     },
     /// Run an app in its sandbox.
     Run {
+        /// Start it even when a protection its settings ask for cannot be
+        /// set up this time (SAM's helper missing, the Wayland security
+        /// context refused); without it, such a start is refused. Only for
+        /// this start.
+        #[arg(long)]
+        start_anyway: bool,
         app: String,
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,

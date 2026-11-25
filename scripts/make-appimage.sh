@@ -73,6 +73,8 @@ cat > "$app/AppRun" <<'EOF'
 # SAM's AppImage entry point.
 #   SAM.AppImage                  the window (files given are added)
 #   SAM.AppImage --app-id ID ...  start a sandboxed app (used by menu entries)
+#   SAM.AppImage --start-anyway --app-id ID ...  the same, once without a
+#                                 protection that is missing (its notice)
 #   SAM.AppImage cli ARGS...      the command line, like `sam-jail ARGS`
 HERE=$(dirname "$(readlink -f "$0")")
 # SAM's programs need this C library (glibc) or newer. On an older system
@@ -82,7 +84,7 @@ have=$(getconf GNU_LIBC_VERSION 2>/dev/null | awk '{print $2}')
 if [ -n "$have" ] && [ "$(printf '%s\n%s\n' "$need" "$have" | sort -V | head -n1)" != "$need" ]; then
     msg="SAM needs a newer system: its programs need the C library glibc $need or newer, and this system has glibc $have (for example Debian 12 or Ubuntu 22.04). Use a newer release of your distribution, or a SAM package built for it."
     echo "$msg" >&2
-    if [ "${1:-}" != cli ] && [ "${1:-}" != --app-id ]; then
+    if [ "${1:-}" != cli ] && [ "${1:-}" != --app-id ] && [ "${1:-}" != --start-anyway ]; then
         if command -v kdialog >/dev/null; then kdialog --title SAM --error "$msg"
         elif command -v zenity >/dev/null; then zenity --error --title=SAM --text="$msg"
         elif command -v notify-send >/dev/null; then notify-send --app-name=SAM "SAM cannot start" "$msg"
@@ -91,7 +93,7 @@ if [ -n "$have" ] && [ "$(printf '%s\n%s\n' "$need" "$have" | sort -V | head -n1
     exit 1
 fi
 case "${1:-}" in
-    --app-id) exec "$HERE/usr/bin/sam-jail-run" "$@" ;;
+    --app-id|--start-anyway) exec "$HERE/usr/bin/sam-jail-run" "$@" ;;
     cli) shift; exec "$HERE/usr/bin/sam-jail" "$@" ;;
 esac
 # The window needs GTK 4 and libadwaita from the system: say so plainly

@@ -669,6 +669,8 @@ tests = ["a_check_reports_what_it_finds_not_what_it_hopes", "a_skipped_check_is_
   "the_apps_variables_reach_it_only_after_the_helpers_layers",
   "the_apps_variables_go_to_the_helper_never_to_its_start",
   "a_missing_layer_is_told_while_the_app_runs",
+  "a_start_without_a_protection_it_asks_for_stops_unless_started_anyway",
+  "a_start_whose_wayland_security_context_fails_does_not_run_the_app",
   "a_missing_layer_is_told_once_when_sam_starts_the_app_again",
   "a_menu_start_is_told_when_a_protection_layer_is_missing",
   "the_check_is_repeated_after_the_kernel_or_a_sandbox_program_changed",
