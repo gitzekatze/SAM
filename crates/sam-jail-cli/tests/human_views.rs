@@ -81,7 +81,8 @@ fn setup(root: &Path, name: &str) -> String {
 /// The risk level's words in English (the program runs with `LC_ALL=C`).
 fn level_words(level: &Value) -> &'static str {
     match level.as_str().unwrap() {
-        "low" | "medium" => "Harmless",
+        "low" => "Harmless",
+        "medium" => "Some access",
         "high" => "Think twice",
         "dangerous" => "Dangerous",
         other => panic!("unknown level {other}"),
@@ -145,6 +146,91 @@ fn evaluate_and_info_show_the_risk_and_every_warning() {
     let text = human(root, &["info", &id], None);
     assert!(text.contains("\nWarnings\n"), "{text}");
     shows_every_warning(&text, &info["warnings"]);
+}
+
+/// An app rated Medium reads "Some access" in `list` and `info`, no longer
+/// "Harmless" like a Low one, and `--risk` selects it by these words only:
+/// `harmless` now selects Low apps alone (owner decision 17 of
+/// 2026-11-23).
+#[test]
+fn a_medium_app_reads_some_access_in_list_and_info() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    let id = setup(root, "Calc");
+    // Sound is rated Medium and does not ask first.
+    sam(root, &["set", &id, "audio.enabled", "true"], None);
+    let info = json(root, &["info", &id], None);
+    assert_eq!(
+        info["app"]["risk"]["level"], "medium",
+        "the test needs a Medium app: {info}"
+    );
+
+    let text = human(root, &["info", &id], None);
+    let risk = text
+        .lines()
+        .find(|l| l.trim_start().starts_with("risk:"))
+        .unwrap_or_else(|| panic!("no risk line in:\n{text}"));
+    let shown = risk.trim_start().trim_start_matches("risk:").trim_start();
+    assert!(shown.starts_with("Some access"), "{risk}");
+
+    let text = human(root, &["list"], None);
+    let mut lines = text.lines();
+    let header = lines.next().unwrap();
+    let row = lines.next().unwrap();
+    assert!(
+        from(row, column(header, "RISK")).starts_with("Some access"),
+        "{header}\n{row}"
+    );
+
+    let picked = |risk: &str| {
+        json(root, &["list", "--risk", risk], None)
+            .as_array()
+            .unwrap()
+            .len()
+    };
+    assert_eq!(picked("some-access"), 1);
+    assert_eq!(picked("some access"), 1);
+    assert_eq!(picked("medium"), 1);
+    assert_eq!(picked("harmless"), 0);
+}
+
+/// Saving and applying a preset name the risk in its words too: a preset
+/// that turns sound on reads "Some access" when it is saved, listed and
+/// applied, never the internal name "Medium" (owner decision 17 of
+/// 2026-11-23).
+#[test]
+fn presets_name_the_risk_in_its_words() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    let id = setup(root, "Calc");
+    // The strictest window settings (Harmless), then sound (Some access).
+    let strict =
+        serde_json::to_string(&sam_core::permissions::PermissionSet::strict_gui()).unwrap();
+    sam(root, &["profile", "set", &id, "--yes"], Some(&strict));
+    sam(root, &["set", &id, "audio.enabled", "true"], None);
+    assert_eq!(
+        json(root, &["info", &id], None)["app"]["risk"]["level"],
+        "medium"
+    );
+
+    let saved = human(root, &["preset", "save", &id, "With sound"], None);
+    assert!(saved.contains("(Some access)"), "{saved}");
+    let listed = human(root, &["preset", "list"], None);
+    assert!(listed.contains("Some access"), "{listed}");
+
+    sam(root, &["profile", "set", &id, "--yes"], Some(&strict));
+    assert_eq!(
+        json(root, &["info", &id], None)["app"]["risk"]["level"],
+        "low"
+    );
+    let applied = human(root, &["preset", "apply", "With sound", &id, "--yes"], None);
+    assert!(
+        applied.contains("(risk Harmless → Some access)"),
+        "{applied}"
+    );
+    for text in [&saved, &listed, &applied] {
+        assert!(!text.to_lowercase().contains("medium"), "{text}");
+    }
 }
 
 /// `redetect` shows the dependency report it made.

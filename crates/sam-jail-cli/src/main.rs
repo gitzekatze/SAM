@@ -605,17 +605,17 @@ fn real_main(cli: Cli) -> Result<()> {
                     return;
                 }
                 let w = apps.iter().map(|a| a.id.len()).max().unwrap_or(10);
-                outln!("{:<w$}  {:<24}  {:<12}  {:<11}  {:<12}  LAST RUN", "ID", "NAME", "CATEGORY", "RISK", "STATUS", w = w);
+                let rw = risk_width().max("RISK".len());
+                outln!("{:<w$}  {:<24}  {:<12}  {:<rw$}  {:<12}  LAST RUN", "ID", "NAME", "CATEGORY", "RISK", "STATUS", w = w);
                 for a in &apps {
                     let last = a.last_launched.map(format_ts).unwrap_or_else(|| "never".into());
-                    let risk = format!("{:<11}", a.risk.level.words());
                     let badge = format!("{:<12}", a.badge.label());
                     outln!(
                         "{:<w$}  {:<24}  {:<12}  {}  {}  {last}",
                         a.id,
                         truncate(&a.name, 24),
                         a.category,
-                        risk.replace(&a.risk.level.words(), &risk_str(a.risk.level)),
+                        risk_cell(a.risk.level, rw),
                         badge.replace(a.badge.label(), &badge_str(a.badge)),
                         w = w
                     );
@@ -1487,13 +1487,14 @@ fn real_main(cli: Cli) -> Result<()> {
             let cat = permission_catalog();
             out.emit(&cat, || {
                 let mut last = "";
+                let rw = risk_width();
                 for p in &cat {
                     if p.category != last {
                         outln!("\n{}", paint(p.category, "1"));
                         last = p.category;
                     }
-                    outln!("  {:<30} {:<10} {}", p.key, risk_str(p.risk), p.title);
-                    outln!("  {:<30} {:<10} {}", "", "", p.description);
+                    outln!("  {:<30} {} {}", p.key, risk_cell(p.risk, rw), p.title);
+                    outln!("  {:<30} {:<rw$} {}", "", "", p.description);
                 }
             });
         }

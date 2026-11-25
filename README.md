@@ -32,7 +32,7 @@ the same tool Flatpak uses, and its window works like Flatseal's.
   private home folder and its own window. SAM adds only what this app shows
   it needs: sound for a music player, the network for a browser.
 - **Every switch says what it costs.** Each permission is explained in one
-  sentence and marked as harmless, think twice or dangerous.
+  sentence and marked as harmless, some access, think twice or dangerous.
 - **SAM finds out why an app struggles.** After a failed start, SAM reads what
   went wrong and offers the one change that helps, from mild to strong. You
   can undo every change.
@@ -137,8 +137,9 @@ report it privately ([SECURITY.md](SECURITY.md)).
 ### Permissions
 
 Every permission has a plain-language explanation and a risk level (*low*,
-*medium*, *high*, *dangerous*); tags show them in three colours: grey for
-harmless, amber for think twice, red for dangerous. Risky choices show a
+*medium*, *high*, *dangerous*), named *Harmless*, *Some access*, *Think twice*
+and *Dangerous*; tags show them in three colours: grey for harmless and some
+access, amber for think twice, red for dangerous. Risky choices show a
 warning before they apply.
 
 - **Files:** private home, XDG folders (read-only or read/write), your own

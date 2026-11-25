@@ -9260,6 +9260,10 @@ msgstr ""
 msgid "unknown flat preset key '{other}'"
 msgstr "clé « {other} » inconnue dans le modèle plat"
 
+#: crates/sam-core/src/risk.rs:38
+msgid "Some access"
+msgstr "Certains accès"
+
 #~ msgid "Lets the app use keys loaded in your SSH agent."
 #~ msgstr ""
 #~ "Permet à l’application d’utiliser les clés chargées dans ton agent SSH."

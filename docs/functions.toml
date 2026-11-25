@@ -111,6 +111,12 @@ promise = "SAM explains every permission in plain language and shows how risky i
 code = ["sam-core/src/permissions.rs", "sam-core/src/risk.rs", "sam-core/src/warnings.rs", "sam-gtk/src/all_perms.rs", "sam-jail-cli/src/output.rs"]
 tests = ["the_strictest_window_profile_is_low_risk", "full_home_is_dangerous", "network_and_x11_high", "each_dangerous_setting_produces_its_warning", "strict_has_no_danger", "x11_warning_can_be_disabled", "tags_and_the_risk_list_use_the_same_words", "folder_explanations_name_the_path",
   "risk_has_the_same_three_words_everywhere",
+  "the_preset_question_names_the_risk_in_its_words",
+  "presets_name_the_risk_in_its_words",
+  "the_risk_column_fits_the_widest_risk_word",
+  "each_risk_level_has_words_of_its_own",
+  "the_window_names_each_risk_level_in_its_own_words",
+  "a_medium_app_reads_some_access_in_list_and_info",
   "the_full_session_bus_is_rated_dangerous",
   "every_switch_has_one_risk_word",
   "switching_a_protection_off_counts",

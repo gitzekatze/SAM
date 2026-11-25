@@ -1477,34 +1477,7 @@ impl App {
 
     /// Asks before a preset that removes needed or adds high-risk access.
     pub async fn confirm_preset(&self, name: &str, c: &Value) -> bool {
-        let mut text = String::new();
-        let removes = util::list_of(c, "removes_needed");
-        if !removes.is_empty() {
-            text.push_str(&format!(
-                "{}\n\n",
-                crate::i18n::trf(
-                    "This preset removes permissions the app likely needs: {permissions}.",
-                    &[("permissions", &removes.join(", "))]
-                )
-            ));
-        }
-        let adds = util::list_of(c, "adds_dangerous");
-        if !adds.is_empty() {
-            text.push_str(&format!(
-                "{}\n\n",
-                crate::i18n::trf(
-                    "It adds high-risk permissions: {permissions}.",
-                    &[("permissions", &adds.join(", "))]
-                )
-            ));
-        }
-        text.push_str(&crate::i18n::trf(
-            "The risk changes from {before} to {after}.",
-            &[
-                ("before", &util::str_of(c, "risk_before")),
-                ("after", &util::str_of(c, "risk_after")),
-            ],
-        ));
+        let text = preset_confirm_text(c);
         confirm(
             &self.window,
             &crate::i18n::trf("Apply “{name}” Anyway?", &[("name", &name)]),
@@ -1912,8 +1885,65 @@ fn watched_name(name: &str) -> bool {
             .any(|e| lower.ends_with(e))
 }
 
+/// The text of the question before a preset is applied: what it removes
+/// that the app likely needs, what high-risk access it adds, and how the
+/// risk changes, in the words the badges use (`c` is the preset's check
+/// as `sam-jail preset apply` gives it).
+fn preset_confirm_text(c: &Value) -> String {
+    let mut text = String::new();
+    let removes = util::list_of(c, "removes_needed");
+    if !removes.is_empty() {
+        text.push_str(&format!(
+            "{}\n\n",
+            crate::i18n::trf(
+                "This preset removes permissions the app likely needs: {permissions}.",
+                &[("permissions", &removes.join(", "))]
+            )
+        ));
+    }
+    let adds = util::list_of(c, "adds_dangerous");
+    if !adds.is_empty() {
+        text.push_str(&format!(
+            "{}\n\n",
+            crate::i18n::trf(
+                "It adds high-risk permissions: {permissions}.",
+                &[("permissions", &adds.join(", "))]
+            )
+        ));
+    }
+    text.push_str(&crate::i18n::trf(
+        "The risk changes from {before} to {after}.",
+        &[
+            // The level's words, as the badges show them (owner
+            // decision 17 of 2026-11-23), not the JSON's `medium`.
+            ("before", &util::risk_label(util::str_of(c, "risk_before"))),
+            ("after", &util::risk_label(util::str_of(c, "risk_after"))),
+        ],
+    ));
+    text
+}
+
 #[cfg(test)]
 mod tests {
+    /// The question before a preset names the risk before and after in
+    /// the words the badges use ("Harmless", "Some access"), never the
+    /// JSON's level names (owner decision 17 of 2026-11-23).
+    #[test]
+    fn the_preset_question_names_the_risk_in_its_words() {
+        let c = serde_json::json!({
+            "removes_needed": [],
+            "adds_dangerous": [],
+            "risk_before": "low",
+            "risk_after": "medium",
+        });
+        let text = super::preset_confirm_text(&c);
+        assert!(
+            text.contains("The risk changes from Harmless to Some access."),
+            "{text}"
+        );
+        assert!(!text.to_lowercase().contains("medium"), "{text}");
+    }
+
     /// A named pipe dropped on the window is no AppImage, and checking it
     /// does not block the window until something writes to it (audit
     /// G-F16). An icon whose header announces a huge picture is not handed
