@@ -552,6 +552,9 @@ How these stay protected with the home writable:
   `~/.local/bin`, D-Bus services, the KWin, Plasma, fish, git, Neovim and
   tmux settings folders and file manager service menus; and the files
   `.bashrc`, `.profile`, `.gitconfig`, `mimeapps.list` and `user-dirs.dirs`.
+  While another app runs that saw such a place missing, SAM leaves it
+  missing: both watches move aside whatever appears there, as for
+  `.bash_profile`.
 - **The folders above them cannot be renamed** (`.config`, `.local`,
   `.local/share` and so on are mount points of their own), so an app cannot
   move `.config` away and fill a new one. The same holds for the folders
