@@ -9,6 +9,12 @@
   also for updates.
 - Now SAM offers and follows a moved file only when its content is what
   SAM unpacked for the app. Any other file is added as an app of its
-  own, with its own settings.
-- The app keeps its marks when it follows its file. An app whose file
-  had changed is ready again once you add its real file back.
+  own, with its own settings. So is the moved file of an app that was
+  never unpacked.
+- The app keeps its marks when it follows its file, and a switch you
+  change while SAM checks the file is no longer undone. An app whose
+  file had changed is ready again once you add its real file back.
+- Data you keep when you remove a sandbox belongs to the AppImage SAM
+  unpacked. After a check had seen a swapped file, the real AppImage,
+  added again, did not get its data back; now it does, and the swapped
+  file does not.

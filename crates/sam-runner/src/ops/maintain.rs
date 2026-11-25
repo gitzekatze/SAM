@@ -237,10 +237,7 @@ impl Sam {
         let mut entry = self.resolve(query)?;
         let p = fs::canonicalize(new_path)?;
         let fp = fingerprint::compute(&p)?;
-        let same = entry
-            .extraction
-            .as_ref()
-            .is_some_and(|x| x.source.sha256 == fp.sha256);
+        let same = super::add::is_unpacked_content(&entry, &fp.sha256);
         entry.source_path = p;
         entry.source = fp;
         entry.state = if same {
@@ -496,10 +493,14 @@ impl Sam {
         let _ = fs::remove_dir_all(self.paths.runtime_dir(&entry.id));
         if keep_data {
             // Which file the kept data belongs to: only that AppImage gets it
-            // back when it is added again (see `kept_for_another`).
+            // back when it is added again (see `kept_for_another`). The one
+            // SAM unpacked, not the file last seen: after the change check
+            // saw a swapped file, that was the swapped one, so the real file
+            // was refused its data and a file made to match the id could
+            // take it (review B2 S6, R96).
             let kept = self.paths.data_dir.join("kept");
             fs::create_dir_all(&kept)?;
-            fs::write(kept.join(&entry.id), &entry.source.sha256)?;
+            fs::write(kept.join(&entry.id), unpacked_sha256(&entry))?;
         } else {
             let home = self.paths.app_home(&entry.id);
             if home.exists() {

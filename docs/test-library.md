@@ -389,7 +389,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-453 tests.
+455 tests.
 
 | Promise | Test |
 |---|---|
@@ -490,14 +490,14 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | With "this computer only", the app reaches only the ports on this computer the user lists. | [`only_listed_host_ports`](../crates/sam-runner/src/netns.rs#L184) |
 | The app's ports are offered on this computer's loopback addresses only, for IPv4 and IPv6 alike, never on every address (audit L-F7). | [`the_apps_ports_listen_on_loopback_only`](../crates/sam-runner/src/netns.rs#L204) |
 | Local services whose clients would hand an app control or secrets are never taken over automatically. | [`well_known_local_services_are_never_taken_over`](../crates/sam-runner/src/netns.rs#L237) |
-| An app without AppRun starts the program its menu entry names, found inside the app; a name that points outside it is never used. | [`the_entry_from_exec_stays_inside_the_app`](../crates/sam-runner/src/ops/add.rs#L549) |
-| A change works on the app's record as it is once it holds the app, not on the copy read when the change was asked for: another change may have saved in between (review L2). | [`a_change_works_on_the_record_as_it_is_under_the_lock`](../crates/sam-runner/src/ops/maintain.rs#L1610) |
-| ⟲ Regression (audit U-L4): the data of an app whose record SAM could not read (damaged, or written by a newer SAM) was listed as left over, and "remove leftover data" deleted the app's private home. | [`data_of_an_unreadable_record_is_not_offered_for_deletion`](../crates/sam-runner/src/ops/maintain.rs#L1634) |
-| A download that waited for an answer about an update for more than a week (the question was never answered) is deleted when updates are checked; a younger one stays for its answer. | [`a_download_never_answered_is_deleted_after_a_week`](../crates/sam-runner/src/ops/maintain.rs#L1677) |
-| An update keeps its published name only when that is a plain AppImage name no other file has: the update server chooses it, and a name like `sudo` in ~/.local/bin would replace a command outside any sandbox (review 2026-11-23, U-2). | [`only_a_plain_appimage_name_is_taken_from_an_update`](../crates/sam-runner/src/ops/maintain.rs#L1701) |
-| The unpack location can be any folder, for example `~/Documents`. | [`a_shared_unpack_folder_keeps_everything_that_is_not_sams`](../crates/sam-runner/src/ops/maintain.rs#L1747) |
-| Updates are downloaded into a fresh folder inside SAM's data folder that only SAM's user can enter (audit U-H4): never the AppImage's folder, never one with leftovers. | [`a_download_folder_is_fresh_private_and_sams_own`](../crates/sam-runner/src/ops/maintain.rs#L1823) |
-| Across file systems (a download in SAM's folder, the AppImage on another drive) a move is a copy: into a new file with the same permissions, never through a link planted at the target and never over a file that is there (audit U-H4: `fs::copy` followed links). | [`a_move_across_drives_never_writes_through_a_link`](../crates/sam-runner/src/ops/maintain.rs#L1843) |
+| An app without AppRun starts the program its menu entry names, found inside the app; a name that points outside it is never used. | [`the_entry_from_exec_stays_inside_the_app`](../crates/sam-runner/src/ops/add.rs#L567) |
+| A change works on the app's record as it is once it holds the app, not on the copy read when the change was asked for: another change may have saved in between (review L2). | [`a_change_works_on_the_record_as_it_is_under_the_lock`](../crates/sam-runner/src/ops/maintain.rs#L1611) |
+| ⟲ Regression (audit U-L4): the data of an app whose record SAM could not read (damaged, or written by a newer SAM) was listed as left over, and "remove leftover data" deleted the app's private home. | [`data_of_an_unreadable_record_is_not_offered_for_deletion`](../crates/sam-runner/src/ops/maintain.rs#L1635) |
+| A download that waited for an answer about an update for more than a week (the question was never answered) is deleted when updates are checked; a younger one stays for its answer. | [`a_download_never_answered_is_deleted_after_a_week`](../crates/sam-runner/src/ops/maintain.rs#L1678) |
+| An update keeps its published name only when that is a plain AppImage name no other file has: the update server chooses it, and a name like `sudo` in ~/.local/bin would replace a command outside any sandbox (review 2026-11-23, U-2). | [`only_a_plain_appimage_name_is_taken_from_an_update`](../crates/sam-runner/src/ops/maintain.rs#L1702) |
+| The unpack location can be any folder, for example `~/Documents`. | [`a_shared_unpack_folder_keeps_everything_that_is_not_sams`](../crates/sam-runner/src/ops/maintain.rs#L1748) |
+| Updates are downloaded into a fresh folder inside SAM's data folder that only SAM's user can enter (audit U-H4): never the AppImage's folder, never one with leftovers. | [`a_download_folder_is_fresh_private_and_sams_own`](../crates/sam-runner/src/ops/maintain.rs#L1824) |
+| Across file systems (a download in SAM's folder, the AppImage on another drive) a move is a copy: into a new file with the same permissions, never through a link planted at the target and never over a file that is there (audit U-H4: `fs::copy` followed links). | [`a_move_across_drives_never_writes_through_a_link`](../crates/sam-runner/src/ops/maintain.rs#L1844) |
 | When SAM's recommendation improves, the user's own changes are kept. | [`user_changes_survive_better_recommendation`](../crates/sam-runner/src/ops/mod.rs#L645) |
 | An update signed with the same key but earlier than the installed version is an older version; later, equal, another key, unsigned or without a time is not judged here. | [`an_older_signed_version_is_recognized`](../crates/sam-runner/src/ops/mod.rs#L751) |
 | An update signed with another key, or not signed at all, is noticed. | [`key_changes_are_noticed`](../crates/sam-runner/src/ops/mod.rs#L792) |
@@ -721,6 +721,8 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | ⟲ Regression (audit U-H2): "Check all AppImages for changes" (or moving the file with relocate) recorded the swapped file's checksum, so the following "Unpack Again" compared the file with itself: the swapped content ran with the old app's permissions, unmarked, and its signature was not checked again. | [`a_swapped_appimage_is_marked_also_after_the_change_check`](../crates/sam-runner/tests/changed_appimage.rs#L114) |
 | ⟲ Regression (review B2 S6, R96): another app swaps an AppImage, the change check records the swapped file as the file last seen, and the app moves the swapped file elsewhere. | [`a_swapped_appimage_moved_elsewhere_is_not_taken_for_the_apps_own_file`](../crates/sam-runner/tests/changed_appimage.rs#L190) |
 | An AppImage moved to another folder and added there is followed, as before: the app keeps its sandbox, its unpacked checksum and its marks. | [`a_moved_appimage_added_again_is_followed_with_its_marks`](../crates/sam-runner/tests/changed_appimage.rs#L256) |
+| ⟲ Regression (review B2 S6, R96): adding a moved AppImage read the app's record before copying and checking the file, which can take a while, and saved that copy: a change made meanwhile, such as a switch changed in the window, was undone. | [`following_a_moved_appimage_keeps_a_change_made_while_it_was_checked`](../crates/sam-runner/tests/changed_appimage.rs#L309) |
+| ⟲ Regression (review B2 S6, R96): "keep my data" recorded the file last seen as the owner of the kept data. | [`kept_data_goes_back_to_the_unpacked_file_after_a_swap_was_seen`](../crates/sam-runner/tests/changed_appimage.rs#L366) |
 | Default desktop services reach only their own objects. | [`default_desktop_services_reach_only_their_own_objects`](../crates/sam-runner/tests/default_bus_names.rs#L57) |
 | An unplugged controller is taken out of the running sandbox; the app keeps running (review R56). | [`an_unplugged_controller_leaves_the_running_sandbox`](../crates/sam-runner/tests/device_watch.rs#L318) |
 | Another device at an unplugged controller's name (a keyboard that got its number) is never reachable: the node is taken out (review R56). | [`another_device_at_a_controllers_name_is_never_shown`](../crates/sam-runner/tests/device_watch.rs#L332) |
@@ -1050,4 +1052,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 963 automated Rust tests plus 8 scripted checks.
+Total: 965 automated Rust tests plus 8 scripted checks.

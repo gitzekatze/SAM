@@ -29,15 +29,6 @@ impl Sam {
         }
         let pr = &opts.progress;
         let file_size = fs::metadata(&source).map(|m| m.len()).unwrap_or(0);
-        pr.step(
-            ADD_STEPS,
-            0,
-            0.0,
-            sam_core::i18n::trf(
-                "{size} AppImage: format, checksum and signature",
-                &[("size", &progress::size(file_size))],
-            ),
-        );
         let reg = self.registry();
         let all = reg.list()?;
         if let Some(existing) = all.iter().find(|a| a.source_path == source) {
@@ -53,6 +44,15 @@ impl Sam {
                 )
             );
         }
+        pr.step(
+            ADD_STEPS,
+            0,
+            0.0,
+            sam_core::i18n::trf(
+                "{size} AppImage: format, checksum and signature",
+                &[("size", &progress::size(file_size))],
+            ),
+        );
         // Everything below reads one copy in SAM's own folder: the file was
         // checksummed, its signature checked and then opened again for
         // unpacking, so another program could swap it in between, and SAM
@@ -108,27 +108,41 @@ impl Sam {
 
         // Same content as what SAM unpacked for a registered app whose file
         // went missing: the app's file was moved, so it follows the file.
-        // Every other field and mark of the record stays as it is.
-        if let Some(mut moved) = all.into_iter().find(|a| is_moved_copy(a, &fp.sha256)) {
-            moved.source_path = source.clone();
-            moved.source = fp;
-            if let Some(x) = moved.extraction.as_mut() {
-                x.source = moved.source.clone();
+        // Changed on the record as it is now, not on the copy read before
+        // the file was copied and checked, which can take a while: saving
+        // that copy would undo a change made meanwhile, such as a switch
+        // turned off in the window (review B2 S6, R96). Every other field
+        // and mark of the record stays as it is.
+        for cand in all.iter().filter(|a| is_moved_copy(a, &fp.sha256)) {
+            let mut followed = false;
+            let moved = reg.update(&cand.id, |moved| {
+                // Still the app's moved file: the record may have changed.
+                if !is_moved_copy(moved, &fp.sha256) {
+                    return;
+                }
+                followed = true;
+                moved.source_path = source.clone();
+                moved.source = fp.clone();
+                if let Some(x) = moved.extraction.as_mut() {
+                    x.source = fp.clone();
+                }
+                // The file is again the one SAM unpacked: what Missing and
+                // Stale said (no file, or a file that differs) is over, as
+                // in `refresh`.
+                if matches!(moved.state, AppState::Missing | AppState::Stale) {
+                    moved.state = AppState::Ready;
+                }
+            })?;
+            if let (true, Some(entry)) = (followed, moved) {
+                return Ok(AddOutcome {
+                    entry,
+                    created: false,
+                    relocated: true,
+                    needs_fallback_consent: false,
+                    missing_tool: None,
+                    warnings: vec![],
+                });
             }
-            // The file is again the one SAM unpacked: what Missing and Stale
-            // said (no file, or a file that differs) is over, as in `refresh`.
-            if matches!(moved.state, AppState::Missing | AppState::Stale) {
-                moved.state = AppState::Ready;
-            }
-            reg.save(&mut moved)?;
-            return Ok(AddOutcome {
-                entry: moved,
-                created: false,
-                relocated: true,
-                needs_fallback_consent: false,
-                missing_tool: None,
-                warnings: vec![],
-            });
         }
 
         let t = now();
@@ -519,11 +533,15 @@ impl Sam {
 /// update then trusted (review B2 S6, R96). An app that was never unpacked
 /// is not matched: its file is added as an app of its own.
 pub(super) fn is_moved_copy(app: &AppEntry, sha256: &str) -> bool {
-    !app.source_path.exists()
-        && app
-            .extraction
-            .as_ref()
-            .is_some_and(|x| x.source.sha256 == sha256)
+    !app.source_path.exists() && is_unpacked_content(app, sha256)
+}
+
+/// Whether a file with this checksum has the content SAM unpacked for
+/// `app`; never for an app that was not unpacked.
+pub(super) fn is_unpacked_content(app: &AppEntry, sha256: &str) -> bool {
+    app.extraction
+        .as_ref()
+        .is_some_and(|x| x.source.sha256 == sha256)
 }
 
 /// The program to start for an app without `AppRun`: the first word of its

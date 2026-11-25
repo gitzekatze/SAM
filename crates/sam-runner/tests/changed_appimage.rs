@@ -300,3 +300,104 @@ fn a_moved_appimage_added_again_is_followed_with_its_marks() {
     assert!(out.entry.content_changed_outside, "the mark stays");
     assert!(!preflight(&out.entry).0.is_empty(), "still no start");
 }
+
+/// Regression (review B2 S6, R96): adding a moved AppImage read the app's
+/// record before copying and checking the file, which can take a while, and
+/// saved that copy: a change made meanwhile, such as a switch changed in
+/// the window, was undone. The app now follows its file on the record as
+/// it is when the check is done.
+#[test]
+fn following_a_moved_appimage_keeps_a_change_made_while_it_was_checked() {
+    if sam_runner::doctor::bwrap_functional(&HostInfo::probe()).is_err() {
+        sam_runner::contracts::skip(
+            "bubblewrap is not functional here (SAM unpacks inside a sandbox)",
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let img = tmp.path().join("Tool.AppImage");
+    build(&img, &FixtureSpec::hello("Tool")).unwrap();
+    let sam = Sam::with_paths(Paths::rooted(&tmp.path().join("sam"))).unwrap();
+    let id = add_tool(&sam, &img).entry.id;
+    let before = sam.resolve(&id).unwrap().profile.permissions;
+    let elsewhere = tmp.path().join("Elsewhere");
+    fs::create_dir_all(&elsewhere).unwrap();
+    let moved = elsewhere.join("Renamed.AppImage");
+    fs::rename(&img, &moved).unwrap();
+
+    // The window changes a switch while SAM copies and checks the file
+    // (SAM reports the start of that step).
+    let changed = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let (paths, app, slot) = (sam.paths.clone(), id.clone(), changed.clone());
+    let progress = sam_runner::progress::ProgressSink::new(move |_| {
+        let mut slot = slot.lock().unwrap();
+        if slot.is_none() {
+            let window = Sam::with_paths(paths.clone()).unwrap();
+            let e = window
+                .set_permission(&app, "filesystem.music", "ro")
+                .unwrap();
+            *slot = Some(e.profile.permissions);
+        }
+    });
+    let out = sam
+        .add(
+            &moved,
+            &AddOptions {
+                accept: true,
+                launcher: Some(false),
+                progress,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert!(out.relocated);
+    let changed = changed.lock().unwrap().clone().expect("the switch changed");
+    assert_ne!(changed, before, "the switch changed something");
+    assert_eq!(out.entry.profile.permissions, changed);
+    assert_eq!(sam.resolve(&id).unwrap().profile.permissions, changed);
+}
+
+/// Regression (review B2 S6, R96): "keep my data" recorded the file last
+/// seen as the owner of the kept data. After the change check saw a
+/// swapped file, that was the swapped one: the real file, added again, was
+/// refused its data (and a file made to match the app's id could take it).
+/// The owner is now the file SAM unpacked.
+#[test]
+fn kept_data_goes_back_to_the_unpacked_file_after_a_swap_was_seen() {
+    if sam_runner::doctor::bwrap_functional(&HostInfo::probe()).is_err() {
+        sam_runner::contracts::skip(
+            "bubblewrap is not functional here (SAM unpacks inside a sandbox)",
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let img = tmp.path().join("Tool.AppImage");
+    build(&img, &FixtureSpec::hello("Tool")).unwrap();
+    let real = tmp.path().join("Real.AppImage.copy");
+    fs::copy(&img, &real).unwrap();
+    let sam = Sam::with_paths(Paths::rooted(&tmp.path().join("sam"))).unwrap();
+    let id = add_tool(&sam, &img).entry.id;
+    let home = sam.paths.app_home(&id);
+    fs::create_dir_all(&home).unwrap();
+    fs::write(home.join("settings.ini"), "mine").unwrap();
+
+    // Another app swaps the file; the change check sees it.
+    let mut spec = FixtureSpec::hello("Tool");
+    spec.comment = "another app's choice".into();
+    build(&img, &spec).unwrap();
+    sam.refresh(Some(&id), true).unwrap();
+    assert_eq!(sam.resolve(&id).unwrap().state, AppState::Stale);
+    sam.remove(&id, true).unwrap();
+
+    // The real file comes back and gets its id and its data.
+    fs::remove_file(&img).unwrap();
+    fs::copy(&real, &img).unwrap();
+    let out = add_tool(&sam, &img);
+    assert_eq!(out.entry.id, id, "the real file gets its data back");
+    assert_eq!(
+        fs::read_to_string(sam.paths.app_home(&id).join("settings.ini")).unwrap(),
+        "mine"
+    );
+}
