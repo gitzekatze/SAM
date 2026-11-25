@@ -1639,7 +1639,7 @@ impl App {
             }
             Err(_) => crate::i18n::tr("an older version"),
         };
-        let body = crate::i18n::trf("This window is SAM {version} (interface {interface}), but the command line tool it uses, {program}, is {found}.\n\nInstall matching versions of both, or point SAM_CLI at the right sam-jail. Until then, SAM may show wrong or missing information.", &[("version", &env!("CARGO_PKG_VERSION")), ("interface", &sam_core::JSON_INTERFACE), ("program", &self.backend.cli.display()), ("found", &found)]);
+        let body = crate::i18n::trf("This window is SAM {version} (interface {interface}), but the command line tool it uses, {program}, is {found}.\n\nInstall matching versions of both. Until then, SAM may show wrong or missing information.", &[("version", &env!("CARGO_PKG_VERSION")), ("interface", &sam_core::JSON_INTERFACE), ("program", &self.backend.cli.display()), ("found", &found)]);
         let d = adw::AlertDialog::new(
             Some(&crate::i18n::tr("SAM's Parts Do Not Match")),
             Some(&body),

@@ -269,6 +269,7 @@ promise = "The app reaches only allowed desktop services (a filtered D-Bus) and 
 code = ["sam-runner/src/dbus_proxy.rs", "sam-sandbox/src/lib.rs", "sam-core/src/permissions.rs", "sam-runner/src/kernel.rs", "sam-core/src/host.rs"]
 tests = [
   "the_sockets_follow_the_sessions_variables",
+  "a_release_build_keeps_no_dbus_log",
   "the_user_name_is_users_or_the_home_folders",
   "a_32_bit_start_program_keeps_the_syscall_filter_on",
   "without_nested_sandboxes_clone_cannot_make_a_user_namespace",
@@ -627,6 +628,9 @@ tests = [
   "as_root_only_what_no_one_else_can_change_may_run",
   "menu_entries_name_sams_launcher_by_its_whole_path",
   "an_installed_window_runs_only_the_tool_next_to_it",
+  "an_installed_window_ignores_a_program_named_in_its_environment",
+  "a_release_build_ignores_developer_variables",
+  "a_release_build_trusts_no_folder_of_test_tools",
   "a_file_name_that_is_not_text_is_refused_by_name",
   "a_folder_name_that_is_not_text_stops_the_start", "a_protected_place_whose_name_is_not_text_stops_the_start",
   "an_appimage_never_covers_sams_own_files",
@@ -1000,6 +1004,7 @@ tests = [
   "only_a_folder_with_a_compiled_catalogue_holds_translations",
   "a_value_is_never_filled_in_again",
   "only_a_program_cargo_built_reads_a_checkouts_translations",
+  "a_release_build_ignores_a_translation_folder_from_the_environment",
   "every_text_the_window_builds_is_translated",
 ]
 checks = ["tests/gui/flow-atspi.sh", "scripts/i18n.py"]
@@ -1081,6 +1086,7 @@ tests = [
   "a_checked_draft_is_signed_with_its_checksum_lists_written_again",
   "a_release_that_fails_to_build_leaves_no_tag",
   "release_builds_use_one_fixed_rust_and_stop_on_overflow",
+  "release_builds_never_turn_on_debug_assertions",
   "the_owners_label_counts_only_right_after_it_is_set",
   "the_approval_check_runs_the_base_branchs_checker",
   "a_desktop_test_run_that_does_not_build_fails",
