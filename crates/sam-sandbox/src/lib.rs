@@ -25,7 +25,6 @@ use sam_core::{BubblewrapStatus, HostInfo, LaunchContext, SandboxCommand};
 
 pub struct Bubblewrap;
 
-/// `/usr/share` entries exposed in minimal runtime mode. Safe, read-only data.
 /// Host programs that ask a service outside the sandbox to start a program
 /// (which would then run unsandboxed). Inside every sandbox each is
 /// replaced by a stand-in from `TOOL_SHIMS` (see the /usr binding).
@@ -72,7 +71,7 @@ pub const TOOL_SHIMS: &[(&str, &str)] = &[
 while [ $# -gt 0 ]; do
   case "$1" in
     --) shift; break ;;
-    -u|-p|-E|-M|-H|--unit|--property|--slice|--description|--setenv|--uid|--gid|--nice|--working-directory|--machine|--host|--service-type|--on-active|--on-boot|--on-startup|--on-unit-active|--on-unit-inactive|--on-calendar|--timer-property|--path-property|--socket-property|--background|--json) shift 2 ;;
+    -u|-p|-E|-M|-H|-C|--unit|--property|--slice|--description|--setenv|--uid|--gid|--nice|--working-directory|--machine|--host|--capsule|--service-type|--job-mode|--on-active|--on-boot|--on-startup|--on-unit-active|--on-unit-inactive|--on-calendar|--timer-property|--path-property|--socket-property|--background|--json|--expand-environment|-g|--group|-D|--chdir|--area|--shell-prefix|--lightweight) shift 2 ;;
     -*) shift ;;
     *) break ;;
   esac
@@ -87,6 +86,7 @@ exec "$@"
     ),
 ];
 
+/// `/usr/share` entries exposed in minimal runtime mode. Safe, read-only data.
 const SHARE_BASE: &[&str] = &[
     // Which OpenGL/EGL driver to load: without these, an app that draws
     // with OpenGL (Flutter, GTK's GL area) finds no EGL at all, even for
@@ -1827,7 +1827,7 @@ impl Section<'_> {
         // (systemd, Flatpak). They would run it unsandboxed if the service
         // is reachable, and otherwise fail: some AppRun scripts use
         // systemd-run whenever it exists, so hiding it lets them start
-        // normally. Hidden as an empty, non-executable file.
+        // normally. Each is covered by its stand-in from `TOOL_SHIMS`.
         // Bubblewrap cannot mount over a link, so the stand-in goes over the
         // file a link leads to (audit S-F14: a systemd-run that was a link
         // stayed the real one).
@@ -3671,6 +3671,53 @@ mod tests {
             .output()
             .unwrap();
         assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "ran");
+    }
+
+    /// The systemd-run stand-in skips every option of systemd-run that takes
+    /// its value as the next argument, so that value never runs as the
+    /// command (review B2 R61: `--job-mode fail` ran `fail`).
+    #[test]
+    fn the_systemd_run_stand_in_skips_options_with_a_value() {
+        let (_, script) = TOOL_SHIMS
+            .iter()
+            .find(|(n, _)| *n == "systemd-run")
+            .unwrap();
+        for (opt, value) in [
+            ("--job-mode", "fail"),
+            ("--capsule", "work"),
+            ("-C", "work"),
+            ("--expand-environment", "no"),
+            // run0, a link to systemd-run, has value options of its own.
+            ("-g", "wheel"),
+            ("--group", "wheel"),
+            ("-D", "/tmp"),
+            ("--chdir", "/tmp"),
+            ("--area", "work"),
+            ("--shell-prefix", "x"),
+            // A value that ends at once if it runs (never `yes`, which runs
+            // forever and fills memory through the captured output).
+            ("--lightweight", "true"),
+        ] {
+            let out = std::process::Command::new("sh")
+                .args([
+                    "-c",
+                    script,
+                    "systemd-run",
+                    "--user",
+                    opt,
+                    value,
+                    "echo",
+                    "ran",
+                ])
+                .output()
+                .unwrap();
+            assert_eq!(
+                String::from_utf8_lossy(&out.stdout).trim(),
+                "ran",
+                "{opt} {value}: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
     }
 
     /// With "this computer only", the network namespace is left to pasta.
