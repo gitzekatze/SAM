@@ -1155,6 +1155,9 @@ mod tests {
         assert!(!bus(&q, &h), "an abstract socket is not passed on");
         h.sockets.dbus_session_address =
             Some(format!("unix:path={}", t.path().join("no-bus").display()));
+        // The socket as SAM finds it next to the address (the start passes
+        // that socket; B2 R79).
+        h.sockets.dbus_session = Some(t.path().join("no-bus"));
         assert!(bus(&q, &h), "full access");
         q.dbus.session.mode = DbusMode::Filtered;
         assert!(!bus(&q, &h), "filter without its proxy");
