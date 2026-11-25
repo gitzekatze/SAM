@@ -139,6 +139,24 @@ pub struct SandboxCommand {
     pub notes: Vec<String>,
     /// Files the sandbox builder generated.
     pub generated_files: Vec<PathBuf>,
+    /// Device nodes shown by name that SAM takes out of the running
+    /// sandbox once their name shows another device (game controllers).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub watched_devices: Vec<WatchedDevice>,
+}
+
+/// A device node the app was given by name, and what it was when SAM chose
+/// it (device and inode of the node, which a node made for another device
+/// at the same name does not share). A bound node stays a node for its
+/// device number: once the device is unplugged, opening it reaches the
+/// next device that gets the number, possibly a keyboard, with the old
+/// node's access rights (review R56).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WatchedDevice {
+    /// The node's name, the same outside and inside the sandbox.
+    pub path: PathBuf,
+    pub dev: u64,
+    pub ino: u64,
 }
 
 impl SandboxCommand {
@@ -286,6 +304,7 @@ mod display_tests {
             exec_env: vec![],
             notes: vec![],
             generated_files: vec![],
+            watched_devices: vec![],
         };
         let shown = c.display_hiding(&["OPENAI_API_KEY"]);
         assert!(!shown.contains("sk-secret"), "{shown}");

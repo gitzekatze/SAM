@@ -1656,6 +1656,7 @@ impl Bubblewrap {
             exec_env: Vec::new(),
             opened,
             views,
+            watched_devices: Vec::new(),
         };
         s.namespaces();
         s.system();
@@ -1688,6 +1689,7 @@ impl Bubblewrap {
             exec_env: s.exec_env,
             notes: s.notes,
             generated_files,
+            watched_devices: s.watched_devices,
         })
     }
 }
@@ -1704,6 +1706,8 @@ struct Section<'c> {
     opened: Vec<(PathBuf, bool)>,
     /// Every grant ([`Views::of`]).
     views: Views,
+    /// Devices shown by name ([`SandboxCommand::watched_devices`]).
+    watched_devices: Vec<sam_core::sandbox::WatchedDevice>,
 }
 
 impl Section<'_> {
@@ -2212,13 +2216,11 @@ impl Section<'_> {
             a.op2("--dev-bind-try", "/dev/input", "/dev/input");
             a.op2("--dev-bind-try", "/dev/uinput", "/dev/uinput");
         } else if p.devices.gamepads {
-            let pads = gamepad_nodes(Path::new("/dev/input"), Path::new("/run/udev/data"));
+            let pads = gamepad_nodes(&h.input_devices.nodes, &h.input_devices.udev_data);
             if pads.is_empty() {
                 notes.push(sam_core::i18n::tr("No game controller is plugged in; controllers connected later are not seen until the app restarts"));
             }
-            for d in pads {
-                a.op2("--dev-bind-try", &d, &d);
-            }
+            bind_watched(a, &mut self.watched_devices, pads);
         }
         if p.devices.usb {
             a.op2("--dev-bind-try", "/dev/bus/usb", "/dev/bus/usb");
@@ -2807,6 +2809,29 @@ fn gpu_module_dirs(sys_module: &Path) -> Vec<PathBuf> {
         .unwrap_or_default();
     out.sort();
     out
+}
+
+/// Shows each device node by name and notes what it is now, so that SAM
+/// takes it out of the running sandbox once its name shows anything else
+/// (unplugged, or another device at its number: sam-runner `device_watch`,
+/// review R56). A node that is gone already is not shown.
+fn bind_watched(
+    a: &mut Args,
+    watched: &mut Vec<sam_core::sandbox::WatchedDevice>,
+    nodes: Vec<PathBuf>,
+) {
+    use std::os::unix::fs::MetadataExt;
+    for d in nodes {
+        let Ok(md) = fs::metadata(&d) else {
+            continue;
+        };
+        a.op2("--dev-bind-try", &d, &d);
+        watched.push(sam_core::sandbox::WatchedDevice {
+            path: d,
+            dev: md.dev(),
+            ino: md.ino(),
+        });
+    }
 }
 
 /// Joystick device nodes: `js*`, plus `event*` nodes udev tagged as a
@@ -3632,6 +3657,31 @@ mod tests {
         fs::write(udev.join("c1:5"), "E:ID_INPUT=1\nE:ID_INPUT_KEYBOARD=1\n").unwrap();
         let got = gamepad_nodes(&dev, &udev);
         assert_eq!(got, vec![dev.join("event7"), dev.join("js0")]);
+    }
+
+    /// Every game controller shown by name is watched while the app runs,
+    /// with what it was when it was chosen; one already gone is neither
+    /// shown nor watched (review R56).
+    #[test]
+    fn every_controller_shown_is_watched() {
+        let t = tempfile::tempdir().unwrap();
+        let (pad, gone) = (t.path().join("event7"), t.path().join("event8"));
+        std::os::unix::fs::symlink("/dev/null", &pad).unwrap();
+        let mut a = Args::default();
+        let mut watched = Vec::new();
+        bind_watched(&mut a, &mut watched, vec![pad.clone(), gone]);
+        let null = fs::metadata("/dev/null").unwrap();
+        use std::os::unix::fs::MetadataExt;
+        assert_eq!(
+            watched,
+            vec![sam_core::sandbox::WatchedDevice {
+                path: pad.clone(),
+                dev: null.dev(),
+                ino: null.ino(),
+            }]
+        );
+        let p = pad.display().to_string();
+        assert_eq!(a.v, vec!["--dev-bind-try".to_string(), p.clone(), p]);
     }
 
     /// With the GPU, the NVIDIA driver modules are visible; other kernel modules are not.

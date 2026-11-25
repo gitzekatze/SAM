@@ -1126,9 +1126,17 @@ fn run_once(
     // sees when the app's side is closed.
     drop(cmd);
     let child_done = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    // Bubblewrap's first status line names the sandbox, which the watch of
+    // the game controllers needs to take one out (`device_watch`).
+    let (status_line, sandbox_status) = std::sync::mpsc::channel();
     let bwrap_status_reader = channels
         .bwrap_status
-        .map(|r| read_fd_in_thread(r, child_done.clone()));
+        .map(|r| read_fd_in_thread(r, child_done.clone(), Some(status_line)));
+    let device_watch = crate::device_watch::DeviceWatch::start(
+        prepared.command.watched_devices.clone(),
+        sandbox_status,
+        end_sandbox(child.id()),
+    );
     // What the start lacks is told as soon as it is known: at once without
     // a report from SAM's helper, else when the helper has reported (right
     // before the app starts). A helper that never reported has not started
@@ -1155,7 +1163,7 @@ fn run_once(
     };
     let helper_status_reader = match channels.helper_status {
         Some(r) => {
-            let reader = read_fd_in_thread(r, child_done.clone());
+            let reader = read_fd_in_thread(r, child_done.clone(), None);
             Some(std::thread::spawn(move || {
                 let report = reader.join().unwrap_or_default();
                 if !report.trim().is_empty() {
@@ -1222,6 +1230,7 @@ fn run_once(
         mode,
     )?;
     child_done.store(true, std::sync::atomic::Ordering::SeqCst);
+    let devices = device_watch.map(|w| w.finish()).unwrap_or_default();
     // Every room ends with the app's start, before SAM waits for the app's
     // output: a room holds the program's output, and one left running must
     // not hold up the end of the start. What was built or refused goes into
@@ -1240,7 +1249,7 @@ fn run_once(
     drop(prepared.sound);
     drop(prepared.wayland);
     if let Ok(mut l) = log.lock() {
-        for line in room_lines {
+        for line in room_lines.iter().chain(&devices.lines) {
             let _ = writeln!(l, "{line}");
         }
     }
@@ -1261,7 +1270,13 @@ fn run_once(
         closed_by_sam,
         timed_out.then_some(opts.timeout_secs.unwrap_or(0)),
     );
-    if relay_end.as_ref().is_some_and(|r| r.hung_up)
+    if devices.ended_app {
+        // Not the app's doing: SAM ended it to keep its promise.
+        outcome.success = false;
+        outcome.summary = sam_core::i18n::tr(
+            "ended by SAM: a game controller was unplugged and SAM could not take it out of the sandbox",
+        );
+    } else if relay_end.as_ref().is_some_and(|r| r.hung_up)
         && !outcome.sandbox_failure
         && !outcome.setup_failed
     {
@@ -2176,9 +2191,12 @@ fn open_fifo_reader(path: &Path) -> Result<i32> {
 /// for FIFOs a writer may never open: on Linux, poll() reports a hangup on a
 /// FIFO only after a writer was connected, and `done` ends the wait once the
 /// sandbox process has exited.
+/// Reads a status channel until the sandbox ends; `first_line` gets its
+/// first line as soon as it is complete (dropped without one otherwise).
 fn read_fd_in_thread(
     fd: i32,
     done: Arc<std::sync::atomic::AtomicBool>,
+    mut first_line: Option<std::sync::mpsc::Sender<String>>,
 ) -> std::thread::JoinHandle<String> {
     std::thread::spawn(move || {
         let mut out = Vec::new();
@@ -2207,6 +2225,11 @@ fn read_fd_in_thread(
             let r = unsafe { libc::read(fd, buf.as_mut_ptr().cast(), buf.len()) };
             if r > 0 {
                 out.extend_from_slice(&buf[..r as usize]);
+                if let Some(end) = out.iter().position(|&b| b == b'\n') {
+                    if let Some(tx) = first_line.take() {
+                        let _ = tx.send(String::from_utf8_lossy(&out[..end]).into_owned());
+                    }
+                }
                 if out.len() > 64 * 1024 {
                     break;
                 }
@@ -2219,6 +2242,38 @@ fn read_fd_in_thread(
         // SAFETY: the FIFO descriptor opened above is closed exactly once here.
         unsafe { libc::close(fd) };
         String::from_utf8_lossy(&out).into_owned()
+    })
+}
+
+/// Ends the sandbox the launcher started (Bubblewrap, or pasta around it)
+/// at once: Bubblewrap's `--die-with-parent` takes everything inside with
+/// it. Through a pidfd taken now, so a process number used again after the
+/// sandbox ended is never hit.
+fn end_sandbox(pid: u32) -> Box<dyn FnOnce() + Send> {
+    // SAFETY: pidfd_open takes a pid and flags and returns a new descriptor or -1.
+    let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid as libc::pid_t, 0) } as i32;
+    let pidfd = (fd >= 0).then(|| {
+        // SAFETY: `fd` was just returned by the kernel and is owned here alone.
+        unsafe { <std::os::fd::OwnedFd as std::os::fd::FromRawFd>::from_raw_fd(fd) }
+    });
+    Box::new(move || match pidfd {
+        Some(p) => {
+            // SAFETY: a valid pidfd, a signal number, no info, no flags.
+            unsafe {
+                libc::syscall(
+                    libc::SYS_pidfd_send_signal,
+                    std::os::fd::AsRawFd::as_raw_fd(&p),
+                    libc::SIGKILL,
+                    std::ptr::null::<libc::siginfo_t>(),
+                    0,
+                )
+            };
+        }
+        None => {
+            // SAFETY: a plain signal by number (kernels before 5.3 have no
+            // pidfd); the watch ends right after the launcher waits for it.
+            unsafe { libc::kill(pid as libc::pid_t, libc::SIGKILL) };
+        }
     })
 }
 
@@ -2309,6 +2364,44 @@ mod log_limit_tests {
 #[cfg(test)]
 mod pasta_status_tests {
     use super::*;
+
+    /// The first status line reaches the controllers' watch as soon as it
+    /// is complete, while the whole channel is still read to its end;
+    /// without a line the watch hears that none comes (review R56).
+    #[test]
+    fn the_first_status_line_is_handed_on_at_once() {
+        for (text, first) in [
+            (
+                "{\"child-pid\": 7}\n{\"exit-code\": 0}\n",
+                Some("{\"child-pid\": 7}"),
+            ),
+            ("", None),
+        ] {
+            let (r, w) = status_pipe().unwrap();
+            let (tx, rx) = std::sync::mpsc::channel();
+            let done = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let reader = read_fd_in_thread(r, done.clone(), Some(tx));
+            // SAFETY: writes the text to the pipe's write end, then closes it once.
+            unsafe {
+                libc::write(w, text.as_ptr().cast(), text.len());
+                libc::close(w);
+            }
+            let got = rx.recv_timeout(std::time::Duration::from_secs(5)).ok();
+            assert_eq!(got.as_deref(), first);
+            done.store(true, std::sync::atomic::Ordering::SeqCst);
+            assert_eq!(reader.join().unwrap(), text);
+        }
+    }
+
+    /// When SAM ends a sandbox it cannot keep its promise in, the program
+    /// it started ends at once, whatever it does (review R56).
+    #[test]
+    fn ending_the_sandbox_ends_it_at_once() {
+        let mut child = Command::new("sleep").arg("30").spawn().unwrap();
+        end_sandbox(child.id())();
+        let status = child.wait().unwrap();
+        assert_eq!(status.signal(), Some(libc::SIGKILL));
+    }
 
     /// Review K-1: a start that relies on Landlock's abstract-socket fence
     /// (it shares the host's network, the kernel has the fence) counts it

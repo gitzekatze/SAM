@@ -1176,7 +1176,7 @@ pub fn permission_catalog() -> Vec<PermissionInfo> {
         perm!("devices.webcam", "Devices", "Webcam",
             "Access to video capture devices. The app could record you.", High),
         perm!("devices.gamepads", "Devices", "Game controllers",
-            "Gamepads and joysticks that are plugged in when the app starts. Keyboards and mice stay hidden.", Medium),
+            "Gamepads and joysticks that are plugged in when the app starts. One that is unplugged is taken away from the app at once, so a device plugged in later never takes its place. Keyboards and mice stay hidden.", Medium),
         perm!("devices.input", "Devices", "All input devices",
             "Raw access to every keyboard, mouse and controller in /dev/input, and a virtual input device (/dev/uinput): the app can read every keystroke and type or move the mouse as if it were you. Only for tools that remap or configure input devices.", Dangerous, advanced),
         perm!("devices.usb", "Devices", "Raw USB",
