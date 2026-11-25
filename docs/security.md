@@ -566,10 +566,43 @@ so nothing bound later shows them again
 `credentials_behind_links_pipes_and_sockets_stay_hidden`).
 
 **Hidden whenever anything would show them:** SAM's own folders
-(configuration, data and unpacked apps, wherever they are), whether a
+(configuration, data and unpacked apps, wherever they are, and the folders
+where SAM keeps them unless told otherwise: `~/.config/sam` and
+`~/.local/share/sam`, also below `XDG_CONFIG_HOME` and `XDG_DATA_HOME`
+where those point inside the home, even while SAM keeps its own
+elsewhere), whether a
 permission, a folder you open with the app or a path on its command line
 would show them. They are replaced by an empty, throwaway folder, so an app
-cannot change its own permissions or another app's files.
+cannot change its own permissions or another app's files. Where SAM keeps
+its own folders is hidden wherever it leads. A folder by one of the names
+above is hidden wherever it leads too, also when it is a link (another SAM
+may keep its settings in `~/Sync/sam`, with `~/.local/share/sam` a link
+there: with the whole home or `~/Sync` granted, the app does not see
+them). It is kept read-only like the start places below instead only where
+hiding it would cover too much: where it really is the home or a folder
+above it, or where it leads elsewhere through a link and the app is shown
+only folders inside the place it leads to, never that place itself. So an
+app that plants `~/.config/sam` as a link to the home, or to `~/work` while
+`~/work/project` is granted, cannot make SAM cover the home or that grant
+with an empty folder. Where the app is shown the place such a link leads to
+itself (the whole home, or exactly that folder), SAM cannot tell a planted
+link from another SAM's folder kept there, and the place stays hidden, as
+it always was.
+
+A link to the home by one of those names is kept read-only where the app
+reaches it, and that is the whole home. So with `~/.config/sam` leading to
+the home and the whole home granted read and write, the app sees the whole
+home read-only: it cannot change any file there, Documents and the other
+user folders and extra folders inside the home included, while keys,
+credential stores and SAM's own folders stay hidden as always. Without the
+whole home, an extra folder you allow the app to write inside the home is
+shown read-only. The same holds for a start place (`~/.config/fish`, say)
+that leads to the home. The start, the app page and `sam-jail info` say
+which link leads to the home, and the sandbox check expects the home
+read-only (`a_link_named_like_sams_folder_never_hides_the_home`,
+`the_check_never_takes_the_home_for_sams_folder_through_a_link`). If you
+did not make such a link, remove it: an app that can write `~/.config` may
+have planted it.
 
 **Read-only whenever anything would show them writable:** SAM's own
 programs, which every menu entry runs outside the sandbox: SAM's AppImage
@@ -612,6 +645,40 @@ How these stay protected with the home writable:
   these places (`~/.config`, `~/.local`, a dotfiles folder that `~/.bashrc`
   links into, a user folder) gets the same protections as the whole home:
   the places are made first, locked, and watched while the app runs.
+- **Extra folders inside a start place stay read-only.** An extra folder
+  granted read and write that is a start place, lies inside one
+  (`~/.config/fish/conf.d`) or is where one really is (a dotfiles folder
+  that `~/.config/fish` links to) is shown read-only, with or without the
+  whole home. It is checked as written, through links and with `..`, also
+  below `XDG_CONFIG_HOME` and `XDG_DATA_HOME` where they point inside the
+  home (start places under an `XDG_CONFIG_HOME` or `XDG_DATA_HOME` outside
+  the home are not covered, a known gap older than this rule). The start
+  notes it, and the app page and `sam-jail info` warn before the start;
+  the folder's rating stays as it is. Such a folder is shown read-only
+  where it leads also when it lies inside another folder the app may
+  write (`conf.d` kept as a link into a granted `~/work`), and the folders
+  between them cannot be renamed. SAM decides this once per start, on the
+  place it binds. Any other extra folder below a folder the app can
+  already change (another writable extra folder, a folder opened writable
+  on the command line, the writable home) is not bound a second time: the
+  app could otherwise turn a part of its way into a link to a start place
+  after SAM looked. This holds against the app itself, not against a
+  second program: another sandbox, or a copy of the app started with other
+  settings (with `~/work` writable, say), that can already write a folder
+  above a grant can swap a part of its way for a link in the short time
+  between SAM's look and Bubblewrap's mount, and Bubblewrap follows that
+  link, so a start place could be bound writable. This is a known gap,
+  older than this rule (SAM had the same race before); such a program can
+  also write there when a start place holds a link into a folder it can
+  write, which SAM does not lock yet. Binding each grant through an open
+  handle, which closes the race, is planned.
+  An extra folder inside SAM's own folders is not shown at all, also inside
+  the folders named like them (`~/.config/sam`, `~/.local/share/sam`) while
+  SAM keeps its own elsewhere, wherever they lead; inside one that SAM only
+  keeps read-only because hiding it would cover too much (see *Hidden
+  whenever anything would show them*), it is shown read-only. The sandbox
+  check, the app page and a terminal app's start line take the same answer
+  as the sandbox.
 - **User folders are only what they are.** `user-dirs.dirs` says where
   Documents, Downloads and the others are. A folder set there to the home,
   a folder above it, a system folder, a key folder, a start place or a

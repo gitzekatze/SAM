@@ -153,7 +153,7 @@ impl Sam {
         if !self.config.security.check_before_launch {
             return Ok(());
         }
-        let key = crate::verify::check_key(entry, &self.config, host);
+        let key = crate::verify::check_key(entry, &self.config, &self.paths, host);
         let fresh = entry
             .last_check
             .as_ref()

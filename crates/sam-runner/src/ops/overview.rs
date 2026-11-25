@@ -23,12 +23,16 @@ impl Sam {
         terminal_program: bool,
         host: &HostInfo,
     ) -> Evaluation {
+        // Where SAM keeps its own folders, so the page decides about an
+        // extra folder in them as the sandbox does.
+        let own_dirs = self.paths.sam_dirs(&self.config.extraction.location);
         let ctx = WarningContext {
             app_needs_network: app.map(app_needs_network),
             host: Some(host),
             warn_x11: self.config.security.warn_x11,
             warn_full_home: self.config.security.warn_full_home,
             terminal_program,
+            sam_dirs: &own_dirs,
         };
         Evaluation {
             risk: assess(perms),
