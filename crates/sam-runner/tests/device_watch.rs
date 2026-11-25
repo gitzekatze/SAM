@@ -147,6 +147,9 @@ fn start(dir: &Path, node: &Path, pasta: bool) -> Running {
             "no status line from Bubblewrap"
         );
     }
+    // Bubblewrap may write its line in pieces: read the rest waiting.
+    // SAFETY: clears the flags of a descriptor this test owns.
+    unsafe { libc::fcntl(file.as_raw_fd(), libc::F_SETFL, 0) };
     let mut status = String::new();
     BufReader::new(file).read_line(&mut status).unwrap();
     let out = BufReader::new(child.stdout.take().unwrap());
