@@ -180,7 +180,16 @@ pub fn for_self_update(paths: &Paths) -> Result<Option<SelfUpdateLock>> {
         .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
         .open(&p)
         .with_context(|| format!("opening {}", p.display()))?;
-    Ok(take(&f, libc::LOCK_EX, Duration::ZERO)?.then_some(SelfUpdateLock { _file: f }))
+    // Not through `take`: its error names an app, and this one is SAM's.
+    // SAFETY: `f` is an open file; flock only takes its descriptor.
+    if unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+        return Ok(Some(SelfUpdateLock { _file: f }));
+    }
+    let err = std::io::Error::last_os_error();
+    if err.kind() == std::io::ErrorKind::WouldBlock {
+        return Ok(None);
+    }
+    Err(err).context(sam_core::i18n::tr("locking the update of SAM"))
 }
 
 #[cfg(test)]

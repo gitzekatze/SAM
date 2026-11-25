@@ -1385,7 +1385,9 @@ impl Sam {
             }
             fs::create_dir_all(&backup_dir)?;
             // A running AppImage can be moved: the old SAM keeps running
-            // from its mounted image until it exits.
+            // from its mounted image until it exits. The backup is the file
+            // SAM ran from, whatever is at `appimage` by now, not the copy
+            // checked above: it is kept only for going back by hand.
             move_file(appimage, &backup_dir.join(&old_name))?;
             if let Err(e) = move_file(&tmp, &target) {
                 let _ = move_file(&backup_dir.join(&old_name), appimage);

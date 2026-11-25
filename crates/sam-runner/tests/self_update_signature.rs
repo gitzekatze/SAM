@@ -294,6 +294,8 @@ fn sam_updates_itself_from_its_own_copy_even_if_the_file_is_replaced() {
     update_common::publish(&r.server, &release, "SAM-2.0-x86_64.AppImage");
     let later = tmp.path().join("later.AppImage");
     r.sam(&later, "1.1", "20260901T000000", 2);
+    // `later` itself is moved away by the swap: keep its content to compare.
+    std::fs::copy(&later, tmp.path().join("later.AppImage.expected")).unwrap();
     let hook = tmp.path().join("swap-on-request");
     std::fs::write(&hook, format!("{}\n{}", later.display(), running.display())).unwrap();
 
@@ -325,6 +327,14 @@ fn sam_updates_itself_from_its_own_copy_even_if_the_file_is_replaced() {
         .data_dir
         .join("update-backups/sam/SAM-x86_64.AppImage");
     assert!(backup.is_file(), "the file in the person's folder is kept");
+    // The backup is the file SAM ran from as it is at the end (here the
+    // one swapped in), not the checked copy: it is only for going back by
+    // hand.
+    assert_eq!(
+        std::fs::read(&backup).unwrap(),
+        std::fs::read(tmp.path().join("later.AppImage.expected")).unwrap(),
+        "the backup holds what was at SAM's place at the end"
+    );
     assert!(
         !paths.data_dir.join("downloads/sam.installed").exists(),
         "the copy is removed once SAM is done"

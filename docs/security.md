@@ -968,10 +968,11 @@ downloads a file, and only when you ask:
   downloaded instead.
 
 SAM's own AppImage updates the same way (*Check for SAM Updates*), from
-SAM's GitHub releases. Like an app's update, it works from a copy of SAM's
-AppImage in SAM's own folder: the update source, the old version's parts
-and the running version's signature come from that copy, not from the file
-in your folder, which is only moved to the backups at the end. Only one
+SAM's GitHub releases. Like an app's update, it works from one copy it
+takes of SAM's AppImage at the start, in SAM's own folder: the update
+source, the old version's parts and the running version's signature come
+from that copy. The file in your folder is only moved to the backups at the
+end, kept for going back by hand. Only one
 update of SAM runs at a time; a second one, from the window and the command
 line at once, is refused until the first is done
 (`sam_updates_itself_from_its_own_copy_even_if_the_file_is_replaced`,
