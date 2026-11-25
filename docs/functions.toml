@@ -506,6 +506,7 @@ tests = [
   "a_device_place_that_cannot_be_checked_at_the_start_refuses_every_room",
   "a_place_that_cannot_be_opened_at_the_start_refuses_every_room",
   "a_place_below_a_writable_folder_needs_its_protections_pinned",
+  "a_hidden_file_below_a_writable_folder_needs_its_folders_pinned",
   "nothing_of_the_room_lies_inside_a_device_place",
   "read_only_places_inside_a_writable_request_are_recorded",
   "rooms_keep_their_first_process_and_their_order",

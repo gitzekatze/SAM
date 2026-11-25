@@ -352,6 +352,10 @@ pub const NOT_FOR_ROOMS: &[&str] = &["/run/sam/rooms"];
 /// lay anything over the folder that holds it (its program may read it).
 pub const RESERVED: &str = "/.sam-room";
 
+/// The empty file SAM lays read-only over a file the app must not read
+/// (a credential store, a theme file with private settings).
+const HIDING_FILE: &str = "/dev/null";
+
 impl FloorPlan {
     /// Reads SAM's own Bubblewrap arguments for the app (up to `--`). An
     /// option SAM does not use is an error: then the start gets no rooms.
@@ -1005,7 +1009,9 @@ pub(crate) fn covered_later(steps: &[Step], i: usize) -> bool {
 /// such a place is not a mount point of its own (pinned). A renamed folder
 /// takes the app's hiding along in the app, but a room shows the folder
 /// from the computer, where nothing hides it. A protection is a hiding
-/// mount, or a read-only (or device) place showing part of that same
+/// mount (an empty folder, or an empty file: SAM hides a credential file
+/// reached through a link, `~/.netrc` into `~/dotfiles`, with `/dev/null`
+/// over it), or a read-only (or device) place showing part of that same
 /// writable folder with fewer rights; a place brought in from elsewhere
 /// (the computer's theme settings in an app's own home) protects nothing
 /// there: moved, a room sees only the app's own files below it.
@@ -1017,6 +1023,7 @@ fn protections_movable(plan: &FloorPlan, w: usize) -> bool {
     let later = &plan.entries[w + 1..];
     let protects = |e: &Entry| match e {
         Entry::Mask { .. } => true,
+        Entry::Ro { src, .. } if src == Path::new(HIDING_FILE) => true,
         Entry::Ro { src, .. } | Entry::Dev { src, .. } => under(src, top_src),
         _ => false,
     };
@@ -2239,6 +2246,44 @@ mod tests {
         };
         assert!(ask(&with("/h/.config/gtk-3.0")).is_err());
         assert!(ask(&with("/real/.config/gtk-3.0")).is_ok());
+    }
+
+    /// SAM hides a credential file reached through a link (`~/.netrc`
+    /// into `~/dotfiles`) with an empty file over it: that counts as a
+    /// hiding as an empty folder does. With the folder above it not
+    /// pinned, the app could rename it (`~/dotfiles` to `~/y`) and a room
+    /// asking for `~/y` showed the real file (review B2 S2b).
+    #[test]
+    fn a_hidden_file_below_a_writable_folder_needs_its_folders_pinned() {
+        let plan = |pinned: bool| {
+            let mut a = s(&["--bind", "/h", "/home/me"]);
+            if pinned {
+                a.extend(s(&["--bind", "/h/dotfiles", "/home/me/dotfiles"]));
+            }
+            a.extend(s(&[
+                "--ro-bind",
+                "/dev/null",
+                "/home/me/dotfiles/netrc",
+                "--",
+                "x",
+            ]));
+            FloorPlan::from_bwrap_args(&a).unwrap()
+        };
+        let ask = |plan: &FloorPlan, at: &str| {
+            plan_room(
+                plan,
+                &req(&[&["--ro-bind", at, at]], &["x"]),
+                AppFacts::default(),
+            )
+        };
+        for at in ["/home/me/y", "/home/me/Pictures"] {
+            let e = ask(&plan(false), at).unwrap_err();
+            assert!(
+                e.contains("could move a protected or hidden place"),
+                "{at}: {e}"
+            );
+            assert!(ask(&plan(true), at).is_ok(), "{at}");
+        }
     }
 
     /// A device place is shown only as a whole: a path below it is never
