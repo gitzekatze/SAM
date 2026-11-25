@@ -71,7 +71,7 @@ pub const TOOL_SHIMS: &[(&str, &str)] = &[
 while [ $# -gt 0 ]; do
   case "$1" in
     --) shift; break ;;
-    -u|-p|-E|-M|-H|-C|--unit|--property|--slice|--description|--setenv|--uid|--gid|--nice|--working-directory|--machine|--host|--capsule|--service-type|--job-mode|--on-active|--on-boot|--on-startup|--on-unit-active|--on-unit-inactive|--on-calendar|--timer-property|--path-property|--socket-property|--background|--json) shift 2 ;;
+    -u|-p|-E|-M|-H|-C|--unit|--property|--slice|--description|--setenv|--uid|--gid|--nice|--working-directory|--machine|--host|--capsule|--service-type|--job-mode|--on-active|--on-boot|--on-startup|--on-unit-active|--on-unit-inactive|--on-calendar|--timer-property|--path-property|--socket-property|--background|--json|--expand-environment|-g|--group|-D|--chdir|--area|--shell-prefix|--lightweight) shift 2 ;;
     -*) shift ;;
     *) break ;;
   esac
@@ -3529,6 +3529,17 @@ mod tests {
             ("--job-mode", "fail"),
             ("--capsule", "work"),
             ("-C", "work"),
+            ("--expand-environment", "no"),
+            // run0, a link to systemd-run, has value options of its own.
+            ("-g", "wheel"),
+            ("--group", "wheel"),
+            ("-D", "/tmp"),
+            ("--chdir", "/tmp"),
+            ("--area", "work"),
+            ("--shell-prefix", "x"),
+            // A value that ends at once if it runs (never `yes`, which runs
+            // forever and fills memory through the captured output).
+            ("--lightweight", "true"),
         ] {
             let out = std::process::Command::new("sh")
                 .args([
