@@ -436,6 +436,46 @@ impl HomeWatch {
                 Ok(_) => {}
             }
         }
+        // The way a protected place leads, inside the home: every further
+        // link on it, and the first part of it that does not exist. The
+        // app could replace such a link (`~/.profile` to `cfg/profile`,
+        // `~/cfg` a link of its own) or create the missing part
+        // (`~/.zshrc` to `.dotfiles/zshrc`, no `~/.dotfiles`): the
+        // protected link stays as it was and leads to the app's file
+        // outside the sandbox (review B2 S3, R51). Taken over from running
+        // launches as above.
+        let real_home = resolve(home);
+        let in_home = |p: &Path| -> Option<String> {
+            [home, real_home.as_path()]
+                .iter()
+                .find_map(|h| p.strip_prefix(h).ok())
+                .filter(|r| !r.as_os_str().is_empty())
+                .and_then(|r| r.to_str().map(String::from))
+        };
+        for rel in watched_places(&ctx.permissions, home) {
+            let (links, missing) = way_to(&home.join(&rel));
+            let found = links
+                .into_iter()
+                .filter_map(|(at, t)| Some((in_home(&at)?, Some(t))))
+                .chain(missing.and_then(|m| Some((in_home(&m)?, None))));
+            for (r, target) in found {
+                if w.absent.contains(&r) || w.links.iter().any(|(l, _)| l == &r) {
+                    continue;
+                }
+                if running.iter().any(|o| o.absent.contains(&r)) {
+                    w.absent.push(r);
+                } else if let Some(t) = running
+                    .iter()
+                    .find_map(|o| o.links.iter().find(|(l, _)| l == &r).map(|(_, t)| t))
+                {
+                    w.links.push((r, t.clone()));
+                } else if let Some(t) = target {
+                    w.links.push((r, t));
+                } else {
+                    w.absent.push(r);
+                }
+            }
+        }
         Some(w)
     }
 
@@ -595,6 +635,50 @@ impl HomeWatch {
         }
         moved
     }
+}
+
+/// The way to `p` as Linux follows it, link by link: every link met (its
+/// place and its target), and the first place on the way that does not
+/// exist. Stops after 40 links, as Linux does.
+fn way_to(p: &Path) -> (Vec<(PathBuf, PathBuf)>, Option<PathBuf>) {
+    let mut links = Vec::new();
+    let mut todo: Vec<OsString> = Vec::new();
+    let add = |todo: &mut Vec<OsString>, path: &Path| {
+        for c in path.components().rev() {
+            match c {
+                Component::Normal(n) => todo.push(n.to_os_string()),
+                Component::ParentDir => todo.push("..".into()),
+                _ => {}
+            }
+        }
+    };
+    add(&mut todo, p);
+    let mut at = PathBuf::from("/");
+    while let Some(c) = todo.pop() {
+        if c == ".." {
+            at.pop();
+            continue;
+        }
+        let next = at.join(&c);
+        match fs::symlink_metadata(&next) {
+            Err(_) => return (links, Some(next)),
+            Ok(m) if m.file_type().is_symlink() => {
+                let Ok(target) = fs::read_link(&next) else {
+                    return (links, None);
+                };
+                if links.len() >= 40 {
+                    return (links, None);
+                }
+                if target.is_absolute() {
+                    at = PathBuf::from("/");
+                }
+                add(&mut todo, &target);
+                links.push((next, target));
+            }
+            Ok(_) => at = next,
+        }
+    }
+    (links, None)
 }
 
 /// Removes whatever is at `p`: a folder with all in it, a file, or a link
@@ -4767,6 +4851,61 @@ mod guard_tests {
         assert_eq!(places, [".config"], "{m:?}");
         assert!(aside.join(".config/autostart/evil.desktop").is_file());
         assert!(!home.join(".config").exists());
+    }
+
+    /// The watch follows the way a protected link leads inside the home:
+    /// a further link on it that the app replaces, or a missing part of it
+    /// that the app creates, is moved aside after the start and the link
+    /// put back, so the protected name leads where it led before; a launch
+    /// alongside another takes over what that one saw (review B2 S3, R51).
+    #[test]
+    fn the_way_a_protected_link_leads_is_watched() {
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap().join("home");
+        fs::create_dir_all(home.join("store/cfg")).unwrap();
+        fs::write(home.join("store/cfg/profile"), "echo mine\n").unwrap();
+        let link = |to: &str, at: &str| std::os::unix::fs::symlink(to, home.join(at)).unwrap();
+        link("cfg/profile", ".profile");
+        link("store/cfg", "cfg");
+        link(".dotfiles/zshrc", ".zshrc");
+        let ctx = ctx_for(&full_rw(), &home);
+        let w = HomeWatch::before(&ctx).unwrap();
+        let cfg = ("cfg".to_string(), PathBuf::from("store/cfg"));
+        assert!(w.links.contains(&cfg), "{w:?}");
+        assert!(w.absent.contains(&".dotfiles".to_string()), "{w:?}");
+        // Kept on disk, the watch keeps these places.
+        let back = HomeWatch::from_lines(w.to_lines().iter().map(String::as_str)).unwrap();
+        assert_eq!((&back.links, &back.absent), (&w.links, &w.absent));
+        // A launch alongside another takes over what that one saw.
+        let other = HomeWatch {
+            home: home.clone(),
+            absent: vec!["cfg".into()],
+            links: vec![(".dotfiles".into(), PathBuf::from("elsewhere"))],
+        };
+        let w2 = HomeWatch::before_alongside(&ctx, &[other]).unwrap();
+        assert!(w2.absent.contains(&"cfg".to_string()), "{w2:?}");
+        assert!(
+            w2.links
+                .contains(&(".dotfiles".to_string(), PathBuf::from("elsewhere"))),
+            "{w2:?}"
+        );
+        // The app replaces the second link and creates the missing part.
+        fs::remove_file(home.join("cfg")).unwrap();
+        fs::create_dir(home.join("cfg")).unwrap();
+        fs::write(home.join("cfg/profile"), "echo pwned\n").unwrap();
+        fs::create_dir(home.join(".dotfiles")).unwrap();
+        fs::write(home.join(".dotfiles/zshrc"), "echo pwned\n").unwrap();
+        let m = w.settle(&t.path().join("aside"));
+        assert_eq!(
+            fs::read_to_string(home.join(".profile")).unwrap(),
+            "echo mine\n"
+        );
+        assert!(!home.join(".zshrc").exists(), "{m:?}");
+        let places: Vec<&str> = m.iter().map(|m| m.place.as_str()).collect();
+        assert!(
+            places.contains(&"cfg") && places.contains(&".dotfiles"),
+            "{m:?}"
+        );
     }
 
     /// Next to a shown system path, links to the system's data and settings
