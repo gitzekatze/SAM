@@ -3305,7 +3305,7 @@ msgstr ""
 msgid "Port of the app (empty = automatic)"
 msgstr ""
 
-#: crates/sam-gtk/src/perms.rs:633 crates/sam-runner/src/verify.rs:285 crates/sam-runner/src/verify.rs:293 crates/sam-runner/src/verify.rs:306
+#: crates/sam-gtk/src/perms.rs:633 crates/sam-runner/src/verify.rs:285 crates/sam-runner/src/verify.rs:293 crates/sam-runner/src/verify.rs:306 crates/sam-runner/src/verify.rs:773
 msgid "Display"
 msgstr ""
 
@@ -5095,7 +5095,7 @@ msgstr ""
 msgid "loading the seccomp filter"
 msgstr ""
 
-#: crates/sam-runner/src/kernel.rs:689
+#: crates/sam-runner/src/kernel.rs:720
 msgid "seccomp filters are not supported on this architecture"
 msgstr ""
 
@@ -6569,28 +6569,40 @@ msgstr ""
 msgid "Nested sandboxes blocked"
 msgstr ""
 
-#: crates/sam-runner/src/verify.rs:758
+#: crates/sam-runner/src/verify.rs:762
+msgid "in place"
+msgstr ""
+
+#: crates/sam-runner/src/verify.rs:765
+msgid "the desktop did not set it up, so the app would get every Wayland function"
+msgstr ""
+
+#: crates/sam-runner/src/verify.rs:774
+msgid "Privileged Wayland functions hidden"
+msgstr ""
+
+#: crates/sam-runner/src/verify.rs:795
 msgid "SAM's sandbox helper (sam-jail-run) was not found, so the sandbox cannot be checked"
 msgstr ""
 
-#: crates/sam-runner/src/verify.rs:775
+#: crates/sam-runner/src/verify.rs:812
 msgid "no stdout"
 msgstr ""
 
-#: crates/sam-runner/src/verify.rs:779
+#: crates/sam-runner/src/verify.rs:816
 msgid "no stderr"
 msgstr ""
 
-#: crates/sam-runner/src/verify.rs:801
+#: crates/sam-runner/src/verify.rs:838
 msgid "the sandbox check did not finish within 30 seconds"
 msgstr ""
 
-#: crates/sam-runner/src/verify.rs:813
+#: crates/sam-runner/src/verify.rs:851
 #. Keep the {placeholders}; their order may change.
 msgid "the sandbox did not start: {reason}"
 msgstr ""
 
-#: crates/sam-runner/src/verify.rs:822
+#: crates/sam-runner/src/verify.rs:860
 msgid "reading the check report"
 msgstr ""
 
@@ -6727,38 +6739,38 @@ msgstr ""
 msgid "No game controller is plugged in; controllers connected later are not seen until the app restarts"
 msgstr ""
 
-#: crates/sam-sandbox/src/lib.rs:2360
+#: crates/sam-sandbox/src/lib.rs:2365
 msgid "Bluetooth needs the system D-Bus; not granted"
 msgstr ""
 
-#: crates/sam-sandbox/src/lib.rs:2373
+#: crates/sam-sandbox/src/lib.rs:2378
 msgid "Input method needs the session D-Bus; not granted"
 msgstr ""
 
-#: crates/sam-sandbox/src/lib.rs:2396
+#: crates/sam-sandbox/src/lib.rs:2401
 msgid "session D-Bus socket not found"
 msgstr ""
 
-#: crates/sam-sandbox/src/lib.rs:2405
+#: crates/sam-sandbox/src/lib.rs:2410
 msgid "filtered D-Bus requested but no proxy is running (install xdg-dbus-proxy); session bus disabled"
 msgstr ""
 
-#: crates/sam-sandbox/src/lib.rs:2460
+#: crates/sam-sandbox/src/lib.rs:2465
 #. Keep the {placeholders}; their order may change.
 msgid "{path} is reached through a link in a folder the app can change; it is not passed into the sandbox. List the socket by its real place."
 msgstr ""
 
-#: crates/sam-sandbox/src/lib.rs:2474
+#: crates/sam-sandbox/src/lib.rs:2479
 #. Keep the {placeholders}; their order may change.
 msgid "{path} lies below a folder the app can change, so the app could swap it for another socket during the start; this setting does not pass it in. Where the app may use that folder, it still reaches the socket there."
 msgstr ""
 
-#: crates/sam-sandbox/src/lib.rs:2481
+#: crates/sam-sandbox/src/lib.rs:2486
 #. Keep the {placeholders}; their order may change.
 msgid "{path} is not a socket; it is not passed into the sandbox"
 msgstr ""
 
-#: crates/sam-sandbox/src/lib.rs:2492
+#: crates/sam-sandbox/src/lib.rs:2497
 #. Keep the {placeholders}; their order may change.
 msgid "{path} leads elsewhere: {why}. It is not passed into the sandbox; list that socket by its real place if the app needs it."
 msgstr ""

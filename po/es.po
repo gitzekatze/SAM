@@ -1,13 +1,7 @@
-# Spanish translation of SAM - Sandboxed AppImage Manager.
 msgid ""
 msgstr ""
-"Project-Id-Version: sam\n"
 "Report-Msgid-Bugs-To: https://github.com/gitzekatze/SAM/issues\n"
-"Language: es\n"
-"MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
-"Content-Transfer-Encoding: 8bit\n"
-"Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
 #. Keep the {placeholders}; their order may change.
 #: crates/sam-core/src/config.rs:286
@@ -543,7 +537,12 @@ msgid ""
 "cannot do that safely, so a device plugged in later never takes its place. "
 "Keyboards and mice stay hidden, and so does a controller that also reports "
 "itself as a keyboard or mouse."
-msgstr "Mandos y joysticks conectados cuando se inicia la aplicación. Si desconectas uno, se le retira a la aplicación de inmediato, o SAM cierra la aplicación donde no puede hacerlo con seguridad, para que un dispositivo conectado después nunca ocupe su lugar. Los teclados y ratones siguen ocultos, y también un mando que además se presenta como teclado o ratón."
+msgstr ""
+"Mandos y joysticks conectados cuando se inicia la aplicación. Si desconectas "
+"uno, se le retira a la aplicación de inmediato, o SAM cierra la aplicación "
+"donde no puede hacerlo con seguridad, para que un dispositivo conectado "
+"después nunca ocupe su lugar. Los teclados y ratones siguen ocultos, y "
+"también un mando que además se presenta como teclado o ratón."
 
 #: crates/sam-core/src/permissions.rs:1180 crates/sam-core/src/risk.rs:290
 #: crates/sam-runner/src/verify.rs:366
@@ -4460,6 +4459,7 @@ msgstr "Puerto de la aplicación (vacío = automático)"
 
 #: crates/sam-gtk/src/perms.rs:633 crates/sam-runner/src/verify.rs:285
 #: crates/sam-runner/src/verify.rs:293 crates/sam-runner/src/verify.rs:306
+#: crates/sam-runner/src/verify.rs:773
 msgid "Display"
 msgstr "Pantalla"
 
@@ -6658,7 +6658,7 @@ msgstr "no se indicó ninguna orden"
 msgid "loading the seccomp filter"
 msgstr "cargando el filtro seccomp"
 
-#: crates/sam-runner/src/kernel.rs:689
+#: crates/sam-runner/src/kernel.rs:720
 msgid "seccomp filters are not supported on this architecture"
 msgstr "los filtros seccomp no se admiten en esta arquitectura"
 
@@ -6897,7 +6897,9 @@ msgstr "aviso: {text}"
 msgid ""
 "Landlock is not in place, so a handle the app holds could still reach the "
 "next device"
-msgstr "Landlock no está activo, así que un descriptor que la app mantiene abierto aún podría llegar al siguiente dispositivo"
+msgstr ""
+"Landlock no está activo, así que un descriptor que la app mantiene abierto "
+"aún podría llegar al siguiente dispositivo"
 
 #: crates/sam-runner/src/launch.rs:1154
 msgid "the app may make namespaces of its own, which SAM cannot reach"
@@ -6915,7 +6917,9 @@ msgstr "no hay tubería de stderr"
 msgid ""
 "ended by SAM: a game controller was unplugged and SAM could not safely take "
 "it out of the sandbox"
-msgstr "finalizada por SAM: se desconectó un mando y SAM no pudo retirarlo de la sandbox con seguridad"
+msgstr ""
+"finalizada por SAM: se desconectó un mando y SAM no pudo retirarlo de la "
+"sandbox con seguridad"
 
 #: crates/sam-runner/src/launch.rs:1316
 msgid "ended when its terminal was closed"
@@ -8603,7 +8607,22 @@ msgstr "Entornos aislados anidados permitidos"
 msgid "Nested sandboxes blocked"
 msgstr "Entornos aislados anidados bloqueados"
 
-#: crates/sam-runner/src/verify.rs:758
+#: crates/sam-runner/src/verify.rs:762
+msgid "in place"
+msgstr "activo"
+
+#: crates/sam-runner/src/verify.rs:765
+msgid ""
+"the desktop did not set it up, so the app would get every Wayland function"
+msgstr ""
+"el escritorio no lo estableció, así que la aplicación obtendría todas las "
+"funciones de Wayland"
+
+#: crates/sam-runner/src/verify.rs:774
+msgid "Privileged Wayland functions hidden"
+msgstr "Funciones privilegiadas de Wayland ocultas"
+
+#: crates/sam-runner/src/verify.rs:795
 msgid ""
 "SAM's sandbox helper (sam-jail-run) was not found, so the sandbox cannot be "
 "checked"
@@ -8611,24 +8630,24 @@ msgstr ""
 "No se encontró el asistente del entorno aislado de SAM (sam-jail-run), así "
 "que no se puede comprobar el entorno aislado"
 
-#: crates/sam-runner/src/verify.rs:775
+#: crates/sam-runner/src/verify.rs:812
 msgid "no stdout"
 msgstr "sin salida estándar"
 
-#: crates/sam-runner/src/verify.rs:779
+#: crates/sam-runner/src/verify.rs:816
 msgid "no stderr"
 msgstr "sin salida de errores"
 
-#: crates/sam-runner/src/verify.rs:801
+#: crates/sam-runner/src/verify.rs:838
 msgid "the sandbox check did not finish within 30 seconds"
 msgstr "la comprobación del entorno aislado no terminó en 30 segundos"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/verify.rs:813
+#: crates/sam-runner/src/verify.rs:851
 msgid "the sandbox did not start: {reason}"
 msgstr "el entorno aislado no se inició: {reason}"
 
-#: crates/sam-runner/src/verify.rs:822
+#: crates/sam-runner/src/verify.rs:860
 msgid "reading the check report"
 msgstr "leyendo el informe de la comprobación"
 
@@ -8820,19 +8839,19 @@ msgstr ""
 "No hay ningún mando conectado; los mandos que se conecten después no se "
 "verán hasta reiniciar la aplicación"
 
-#: crates/sam-sandbox/src/lib.rs:2360
+#: crates/sam-sandbox/src/lib.rs:2365
 msgid "Bluetooth needs the system D-Bus; not granted"
 msgstr "Bluetooth necesita el D-Bus del sistema; no concedido"
 
-#: crates/sam-sandbox/src/lib.rs:2373
+#: crates/sam-sandbox/src/lib.rs:2378
 msgid "Input method needs the session D-Bus; not granted"
 msgstr "El método de entrada necesita el D-Bus de sesión; no concedido"
 
-#: crates/sam-sandbox/src/lib.rs:2396
+#: crates/sam-sandbox/src/lib.rs:2401
 msgid "session D-Bus socket not found"
 msgstr "no se encontró el socket del D-Bus de sesión"
 
-#: crates/sam-sandbox/src/lib.rs:2405
+#: crates/sam-sandbox/src/lib.rs:2410
 msgid ""
 "filtered D-Bus requested but no proxy is running (install xdg-dbus-proxy); "
 "session bus disabled"
@@ -8841,7 +8860,7 @@ msgstr ""
 "proxy); bus de sesión desactivado"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2460
+#: crates/sam-sandbox/src/lib.rs:2465
 msgid ""
 "{path} is reached through a link in a folder the app can change; it is not "
 "passed into the sandbox. List the socket by its real place."
@@ -8851,7 +8870,7 @@ msgstr ""
 "ubicación real."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2474
+#: crates/sam-sandbox/src/lib.rs:2479
 msgid ""
 "{path} lies below a folder the app can change, so the app could swap it for "
 "another socket during the start; this setting does not pass it in. Where the "
@@ -8863,12 +8882,12 @@ msgstr ""
 "socket allí."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2481
+#: crates/sam-sandbox/src/lib.rs:2486
 msgid "{path} is not a socket; it is not passed into the sandbox"
 msgstr "{path} no es un socket; no se pasa al entorno aislado"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2492
+#: crates/sam-sandbox/src/lib.rs:2497
 msgid ""
 "{path} leads elsewhere: {why}. It is not passed into the sandbox; list that "
 "socket by its real place if the app needs it."
