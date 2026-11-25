@@ -1123,7 +1123,7 @@ msgstr "Algo de acceso"
 
 #: crates/sam-core/src/risk.rs:39
 msgid "Think twice"
-msgstr "Piénselo bien"
+msgstr "Piénsalo bien"
 
 #: crates/sam-core/src/risk.rs:40
 msgid "Dangerous"
@@ -2800,7 +2800,7 @@ msgstr "SAM no puede leer estos ajustes. Revísalos abajo antes de confirmar."
 #: crates/sam-gtk/src/app_page/mod.rs:741
 msgid "None of these settings is rated Think twice or Dangerous."
 msgstr ""
-"Ninguno de estos ajustes está calificado como «Piénselo bien» o «Peligroso»."
+"Ninguno de estos ajustes está calificado como «Piénsalo bien» o «Peligroso»."
 
 #: crates/sam-gtk/src/app_page/mod.rs:746
 msgid "These settings let the app use:"

@@ -5,8 +5,8 @@
   asks for `--yes` for the same change. Now a hint rated *Think twice* or
   *Dangerous*, or one that turns on compatibility mode, is refused
   without `--yes` (code `hint-needs-yes`). The message names the hint,
-  what it turns on and what it adds. A harmless hint, such as Downloads,
-  still applies at once.
+  what it turns on and what it adds. A hint rated Harmless or Some access,
+  such as Downloads, still applies at once.
 - The same holds when such a hint is applied with `sam-jail repair APP
   --apply ID` or reached with `--next`: a repair step with the same id as
   a hint SAM offers for that app (for example `x11`) is the same change and
