@@ -1501,8 +1501,10 @@ impl App {
         text.push_str(&crate::i18n::trf(
             "The risk changes from {before} to {after}.",
             &[
-                ("before", &util::str_of(c, "risk_before")),
-                ("after", &util::str_of(c, "risk_after")),
+                // The level's words, as the badges show them (owner
+                // decision 17 of 2026-11-23), not the JSON's `medium`.
+                ("before", &util::risk_label(util::str_of(c, "risk_before"))),
+                ("after", &util::risk_label(util::str_of(c, "risk_after"))),
             ],
         ));
         confirm(

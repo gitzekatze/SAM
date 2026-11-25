@@ -52,8 +52,11 @@ pub(crate) fn preset_cmd(app: &Sam, out: &Out, cmd: PresetCmd) -> Result<()> {
                             "Applied “{preset}” (risk {before} → {after})",
                             &[
                                 ("preset", &r.preset),
-                                ("before", &c.risk_before),
-                                ("after", &c.risk_after)
+                                // The level's words, as `list` and
+                                // `info` show them (owner decision 17
+                                // of 2026-11-23).
+                                ("before", &c.risk_before.words()),
+                                ("after", &c.risk_after.words())
                             ]
                         )
                     );

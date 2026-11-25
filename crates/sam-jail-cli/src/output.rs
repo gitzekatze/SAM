@@ -45,7 +45,9 @@ pub(crate) fn badge_str(b: Badge) -> String {
     paint(b.label(), code)
 }
 
-/// Risk in the window's words (Harmless / Think twice / Dangerous), colored.
+/// Risk in the window's words (Harmless / Some access / Think twice /
+/// Dangerous), colored. Low and Medium share green: Medium has words of
+/// its own (owner decision 17 of 2026-11-23), not a warning color.
 pub(crate) fn risk_str(r: RiskLevel) -> String {
     let code = match r {
         RiskLevel::Low | RiskLevel::Medium => "32",

@@ -25,22 +25,31 @@ impl RiskLevel {
             RiskLevel::Dangerous => 35,
         }
     }
-    /// The words people see, in the window and on the command line alike:
-    /// three levels (low and medium are both harmless), translated.
+    /// The words people see, in the window and on the command line alike,
+    /// translated: each level has its own words. Medium says "Some access"
+    /// and no longer "Harmless" like Low: sound, the GPU or a shared folder
+    /// are ordinary grants, but they are access, and calling them harmless
+    /// said less than SAM knows (owner decision 17 of 2026-11-23). When SAM
+    /// asks first does not depend on these words: it still asks from High
+    /// on ([`new_risks`]).
     pub fn words(self) -> String {
         match self {
-            RiskLevel::Low | RiskLevel::Medium => crate::i18n::tr("Harmless"),
+            RiskLevel::Low => crate::i18n::tr("Harmless"),
+            RiskLevel::Medium => crate::i18n::tr("Some access"),
             RiskLevel::High => crate::i18n::tr("Think twice"),
             RiskLevel::Dangerous => crate::i18n::tr("Dangerous"),
         }
     }
     /// Whether `name` names this level: the internal name (`low`, `high`, …)
-    /// or the words people see (`harmless`, `think-twice`, `dangerous`).
+    /// or the words people see (`harmless`, `some-access`, `think-twice`,
+    /// `dangerous`; a space or `_` works like `-`). `harmless` names Low
+    /// only (owner decision 17 of 2026-11-23).
     pub fn is_named(self, name: &str) -> bool {
         let n = name.trim().to_lowercase().replace([' ', '_'], "-");
         n == self.label().to_lowercase()
             || match self {
-                RiskLevel::Low | RiskLevel::Medium => n == "harmless",
+                RiskLevel::Low => n == "harmless",
+                RiskLevel::Medium => n == "some-access",
                 RiskLevel::High => n == "think-twice",
                 RiskLevel::Dangerous => false,
             }
@@ -897,16 +906,53 @@ mod tests {
         assert!(assess(&p).level <= RiskLevel::Medium.max(base));
     }
 
-    /// The command line and the window name risk with the same three words,
-    /// and the command line's filter understands both names.
+    /// The command line and the window name risk with the same words, and
+    /// the command line's filter understands both names. Medium has words
+    /// of its own since owner decision 17 of 2026-11-23 (it read "Harmless"
+    /// like Low before, and `harmless` selected both).
     #[test]
     fn risk_has_the_same_three_words_everywhere() {
         assert_eq!(RiskLevel::Low.words(), "Harmless");
-        assert_eq!(RiskLevel::Medium.words(), "Harmless");
+        assert_eq!(RiskLevel::Medium.words(), "Some access");
         assert_eq!(RiskLevel::High.words(), "Think twice");
         assert_eq!(RiskLevel::Dangerous.words(), "Dangerous");
         assert!(RiskLevel::High.is_named("think twice") && RiskLevel::High.is_named("high"));
-        assert!(RiskLevel::Medium.is_named("harmless") && !RiskLevel::High.is_named("harmless"));
+        assert!(!RiskLevel::Medium.is_named("harmless") && !RiskLevel::High.is_named("harmless"));
+    }
+
+    /// Each of the four levels has words of its own, and each word names
+    /// exactly its level: `harmless` selects only Low, `some-access` (or
+    /// "some access") only Medium (owner decision 17 of 2026-11-23).
+    #[test]
+    fn each_risk_level_has_words_of_its_own() {
+        let all = [
+            RiskLevel::Low,
+            RiskLevel::Medium,
+            RiskLevel::High,
+            RiskLevel::Dangerous,
+        ];
+        let words: std::collections::BTreeSet<String> = all.iter().map(|l| l.words()).collect();
+        assert_eq!(words.len(), all.len(), "{words:?}");
+        for (name, level) in [
+            ("harmless", RiskLevel::Low),
+            ("Harmless", RiskLevel::Low),
+            ("low", RiskLevel::Low),
+            ("some-access", RiskLevel::Medium),
+            ("some access", RiskLevel::Medium),
+            ("Some_Access", RiskLevel::Medium),
+            ("medium", RiskLevel::Medium),
+            ("think-twice", RiskLevel::High),
+            ("high", RiskLevel::High),
+            ("dangerous", RiskLevel::Dangerous),
+        ] {
+            for l in all {
+                assert_eq!(l.is_named(name), l == level, "{name:?} names {l:?}?");
+            }
+        }
+        // Each level's own words name it, whatever their case.
+        for l in all {
+            assert!(l.is_named(&l.words()), "{l:?}");
+        }
     }
 
     /// The one ask rule: a change asks when it adds something rated Think

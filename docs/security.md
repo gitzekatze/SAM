@@ -1178,7 +1178,7 @@ The preview and the unpacked app use the same desktop file
 | Level | Words | Permissions |
 |---|---|---|
 | **Low** | Harmless | fonts, icons, locales, time zone (read-only), Wayland, filtered D-Bus, "This computer only", the app's own ports |
-| **Medium** | Harmless | GPU, sound, folder access, all of `/usr`, nested namespaces, names the app may own, passed-through variables |
+| **Medium** | Some access | GPU, sound, folder access, all of `/usr`, nested namespaces, names the app may own, passed-through variables |
 | **High** | Think twice | network, X11, whole home read-only, webcam, SSH agent, keyring (also a password service allowed by name), direct PipeWire, raw sound devices (ALSA), local services the app may reach, a passed-through variable that holds a secret, the syscall filter or Landlock switched off, single functions of a service |
 | **Dangerous** | Dangerous | whole home read/write, full session D-Bus, system D-Bus, raw input and USB devices, exposed keys, raw Bubblewrap arguments, compatibility mode, sound without SAM's relay (also the sound server's socket as an extra socket), a service that can act outside the sandbox allowed by name or one of its functions (a terminal that runs any command it is sent included), a wildcard over the portal, an extra folder that is a system folder, the home, a folder above it or `/tmp` (however it is written), and the network together with your home, keys or passwords (it can send what it reads) |
 
@@ -1186,7 +1186,13 @@ An app's risk is the level of its riskiest permission. SAM shows the level
 with the permission that sets it, for example *High risk · Network +1*. The
 *Overview* group lists every permission above *Low*. The window shows each
 switch with the same word the assessment uses (a test compares them,
-`every_switch_has_one_risk_word`).
+`every_switch_has_one_risk_word`). Each level has words of its own, the same
+in the window and on the command line (`each_risk_level_has_words_of_its_own`,
+`the_window_names_each_risk_level_in_its_own_words`,
+`a_medium_app_reads_some_access_in_list_and_info`): *Medium* reads *Some
+access*, not *Harmless* like *Low*, and `sam-jail list --risk harmless`
+selects Low apps only (`--risk some-access` selects Medium). The words do
+not change when SAM asks: that stays from *Think twice* on.
 
 **One rule for asking.** A change that adds anything rated *Think twice* or
 *Dangerous* asks first, wherever it is made: a switch in the window, the
