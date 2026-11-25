@@ -2151,8 +2151,11 @@ impl Section<'_> {
             // Checked here, bound by name later: in a folder the app can
             // change, a running copy of it could swap the socket for a
             // link to another one (the session bus) in between, and the
-            // bind would follow that link (review B2 R55).
-            if real.ancestors().skip(1).any(app_can_change) {
+            // bind would follow that link (review B2 R55). A folder above
+            // it cannot be renamed instead: below a writable grant the
+            // folder is writable too, and a read-only one inside such a
+            // grant is a mount point of its own.
+            if real.parent().is_some_and(app_can_change) {
                 notes.push(sam_core::i18n::trf(
                     "{path} is in a folder the app can change, so the app could swap it for another socket during the start; it is not passed into the sandbox. Keep the socket in a folder the app cannot write.",
                     &[("path", &sp.display())],
@@ -3550,12 +3553,11 @@ mod tests {
         assert!(has_seq(&a, &["--bind-try", &target_s, &listed_s]), "{a:?}");
     }
 
-    /// Review B2 R55: SAM checks an extra socket when it builds the
-    /// command, and Bubblewrap binds it by name later. A socket in a folder
-    /// the app can change (or below one) could be swapped for a link to the
-    /// session bus in between by a running copy of the app, so it is not
-    /// passed in, with a note. The same socket in a folder the app may only
-    /// read is passed in.
+    /// An extra socket in a folder the app can change is not passed in, with
+    /// a note; in a folder the app may only read, it is. SAM checks the
+    /// socket when it builds the command and Bubblewrap binds it by name
+    /// later: a running copy of the app could swap it for a link to the
+    /// session bus in between (review B2 R55).
     #[test]
     fn an_extra_socket_in_a_folder_the_app_can_change_is_not_passed_in() {
         let t = tempfile::tempdir().unwrap();
