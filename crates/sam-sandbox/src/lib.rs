@@ -2809,9 +2809,24 @@ fn gpu_module_dirs(sys_module: &Path) -> Vec<PathBuf> {
     out
 }
 
-/// Joystick device nodes: `js*`, plus `event*` nodes udev tagged as a
-/// joystick (`E:ID_INPUT_JOYSTICK=1` in `/run/udev/data/c13:<minor>`).
-/// Keyboards and mice are left out, so the app cannot log keystrokes.
+/// What udev records for an input device that also makes it a keyboard
+/// or a pointer (a mouse or something that moves the pointer like one).
+/// A device with any of these is never passed as a game controller, also
+/// when it reports itself as a joystick too (review R56).
+const NOT_A_GAME_CONTROLLER: [&str; 6] = [
+    "E:ID_INPUT_KEYBOARD=1",
+    "E:ID_INPUT_MOUSE=1",
+    "E:ID_INPUT_TOUCHPAD=1",
+    "E:ID_INPUT_TOUCHSCREEN=1",
+    "E:ID_INPUT_TABLET=1",
+    "E:ID_INPUT_POINTINGSTICK=1",
+];
+
+/// Joystick device nodes: `js*` and `event*` nodes that udev recorded as
+/// a joystick (`E:ID_INPUT_JOYSTICK=1` in `/run/udev/data/c13:<minor>`)
+/// and not also as a keyboard or pointer ([`NOT_A_GAME_CONTROLLER`]), so
+/// the app cannot log keystrokes or follow the pointer. A node udev has no
+/// record for is left out: what it is cannot be told.
 pub fn gamepad_nodes(dev_input: &Path, udev_data: &Path) -> Vec<PathBuf> {
     use std::os::unix::fs::{FileTypeExt, MetadataExt};
     let mut out = Vec::new();
@@ -2827,17 +2842,18 @@ pub fn gamepad_nodes(dev_input: &Path, udev_data: &Path) -> Vec<PathBuf> {
         if !md.file_type().is_char_device() {
             continue;
         }
-        let keep = if name.starts_with("js") {
-            true
-        } else if name.starts_with("event") {
-            let rdev = md.rdev();
-            let (major, minor) = (libc_major(rdev), libc_minor(rdev));
-            fs::read_to_string(udev_data.join(format!("c{major}:{minor}")))
-                .map(|t| t.lines().any(|l| l.trim() == "E:ID_INPUT_JOYSTICK=1"))
-                .unwrap_or(false)
-        } else {
-            false
-        };
+        if !(name.starts_with("js") || name.starts_with("event")) {
+            continue;
+        }
+        let rdev = md.rdev();
+        let (major, minor) = (libc_major(rdev), libc_minor(rdev));
+        let keep = fs::read_to_string(udev_data.join(format!("c{major}:{minor}")))
+            .map(|t| {
+                let tags: Vec<&str> = t.lines().map(str::trim).collect();
+                tags.contains(&"E:ID_INPUT_JOYSTICK=1")
+                    && !NOT_A_GAME_CONTROLLER.iter().any(|n| tags.contains(n))
+            })
+            .unwrap_or(false);
         if keep {
             out.push(path);
         }
@@ -3616,22 +3632,55 @@ mod tests {
         assert!(text.contains("type or move the mouse"), "{text}");
     }
 
-    /// "Game controllers" exposes only joysticks, never keyboards or mice.
+    /// "Game controllers" exposes only joysticks, never keyboards or mice:
+    /// also not a device that reports itself as a joystick and a keyboard
+    /// or mouse at once, nor a node udev has no record for (review R56).
     #[test]
     fn gamepads_only_exposes_joysticks() {
         let t = tempfile::tempdir().unwrap();
         let (dev, udev) = (t.path().join("input"), t.path().join("udev"));
         fs::create_dir_all(&dev).unwrap();
         fs::create_dir_all(&udev).unwrap();
-        // /dev/null is c1:3, /dev/zero is c1:5: stand-ins for a gamepad and a keyboard.
-        std::os::unix::fs::symlink("/dev/null", dev.join("js0")).unwrap();
-        std::os::unix::fs::symlink("/dev/null", dev.join("event7")).unwrap();
-        std::os::unix::fs::symlink("/dev/zero", dev.join("event3")).unwrap();
-        std::os::unix::fs::symlink("/dev/zero", dev.join("mice")).unwrap();
-        fs::write(udev.join("c1:3"), "E:ID_INPUT=1\nE:ID_INPUT_JOYSTICK=1\n").unwrap();
+        // Stand-ins by device number: /dev/null (c1:3) a gamepad, /dev/zero
+        // (c1:5) a keyboard, /dev/full (c1:7) a joystick that is also a
+        // keyboard, /dev/random (c1:8) a joystick that is also a mouse,
+        // /dev/urandom (c1:9) a node udev has no record for.
+        let link = |to: &str, name: &str| std::os::unix::fs::symlink(to, dev.join(name)).unwrap();
+        link("/dev/null", "js0");
+        link("/dev/null", "event7");
+        link("/dev/zero", "event3");
+        link("/dev/zero", "mice");
+        link("/dev/full", "event4");
+        link("/dev/full", "js1");
+        link("/dev/random", "event5");
+        link("/dev/urandom", "js2");
+        let joystick = "E:ID_INPUT=1\nE:ID_INPUT_JOYSTICK=1\n";
+        fs::write(udev.join("c1:3"), joystick).unwrap();
         fs::write(udev.join("c1:5"), "E:ID_INPUT=1\nE:ID_INPUT_KEYBOARD=1\n").unwrap();
+        fs::write(
+            udev.join("c1:7"),
+            format!("{joystick}E:ID_INPUT_KEYBOARD=1\n"),
+        )
+        .unwrap();
+        fs::write(udev.join("c1:8"), format!("{joystick}E:ID_INPUT_MOUSE=1\n")).unwrap();
         let got = gamepad_nodes(&dev, &udev);
         assert_eq!(got, vec![dev.join("event7"), dev.join("js0")]);
+        // Any one keyboard or pointer tag is enough to leave a device out.
+        for kind in [
+            "KEYBOARD",
+            "MOUSE",
+            "TOUCHPAD",
+            "TOUCHSCREEN",
+            "TABLET",
+            "POINTINGSTICK",
+        ] {
+            fs::write(
+                udev.join("c1:3"),
+                format!("{joystick}E:ID_INPUT_{kind}=1\n"),
+            )
+            .unwrap();
+            assert!(gamepad_nodes(&dev, &udev).is_empty(), "{kind}");
+        }
     }
 
     /// With the GPU, the NVIDIA driver modules are visible; other kernel modules are not.
