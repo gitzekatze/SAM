@@ -928,7 +928,11 @@ downloads a file, and only when you ask:
   controls the download cannot hand out an old release with holes fixed
   since. For unsigned apps SAM cannot tell versions apart this way.
 - A server cannot keep SAM busy, crash it or fill the disk: every request
-  has a time limit; SAM itself counts what a download writes and stops at
+  has a time limit, and one update download ends within an hour in all,
+  the partial download and the whole file after it together, each request
+  getting at most the time left; a server that ignores range requests and
+  sends more than the part asked for ends the partial download at its
+  first answer, and the file is downloaded whole, once; SAM itself counts what a download writes and stops at
   the published length (8 GiB without one), whatever the server sends and
   whichever curl is installed; a release description may be up to 16 MiB,
   and a longer one is an error, never read as if complete; update addresses
@@ -965,7 +969,8 @@ downloads a file, and only when you ask:
 - Downloading only the changed parts (zsync) reuses blocks of the old file
   and fetches the rest by HTTP range requests; the assembled file must still
   match the published SHA-1, or it is discarded and the whole file is
-  downloaded instead.
+  downloaded instead. It is written to a new file in SAM's own folder,
+  never through a link, and is on the disk before SAM uses it.
 
 SAM's own AppImage updates the same way (*Check for SAM Updates*), from
 SAM's GitHub releases.

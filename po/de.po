@@ -1111,7 +1111,7 @@ msgid "path has no parent"
 msgstr "Pfad hat keinen übergeordneten Ordner"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/util.rs:420
+#: crates/sam-core/src/util.rs:420 crates/sam-runner/src/updates.rs:562
 msgid "{program} did not finish within {seconds} seconds and was stopped"
 msgstr "{program} war nach {seconds} Sekunden nicht fertig und wurde beendet"
 
@@ -7449,7 +7449,7 @@ msgstr ""
 
 #. Keep the {placeholders}; their order may change.
 #: crates/sam-runner/src/ops/maintain.rs:1302
-#: crates/sam-runner/src/updates.rs:267
+#: crates/sam-runner/src/updates.rs:268
 msgid "{version} is published."
 msgstr "{version} ist veröffentlicht."
 
@@ -8399,7 +8399,7 @@ msgstr "SAMs Ton-Vermittler hat sich beim Start beendet ({status})"
 msgid "SAM's sound relay did not open its socket in time"
 msgstr "SAMs Ton-Vermittler hat seinen Socket nicht rechtzeitig geöffnet"
 
-#: crates/sam-runner/src/updates.rs:42
+#: crates/sam-runner/src/updates.rs:43
 msgid ""
 "curl is not installed, so SAM cannot check for or download updates. Install "
 "the package curl."
@@ -8407,92 +8407,105 @@ msgstr ""
 "curl ist nicht installiert, deshalb kann SAM nicht nach Aktualisierungen "
 "suchen oder sie herunterladen. Installiere das Paket curl."
 
-#: crates/sam-runner/src/updates.rs:73
+#: crates/sam-runner/src/updates.rs:74
 msgid "This AppImage does not say where updates are published."
 msgstr "Dieses AppImage sagt nicht, wo Aktualisierungen veröffentlicht werden."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/updates.rs:85
+#: crates/sam-runner/src/updates.rs:86
 msgid "The update check failed: {error}"
 msgstr "Die Suche nach Aktualisierungen ist fehlgeschlagen: {error}"
 
-#: crates/sam-runner/src/updates.rs:115
+#: crates/sam-runner/src/updates.rs:116
 msgid "this AppImage does not say where updates are published"
 msgstr "dieses AppImage sagt nicht, wo Aktualisierungen veröffentlicht werden"
 
-#: crates/sam-runner/src/updates.rs:142
+#: crates/sam-runner/src/updates.rs:143
 msgid "GitHub's answer"
 msgstr "Antwort von GitHub"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/updates.rs:156
+#: crates/sam-runner/src/updates.rs:157
 msgid "release {tag_name} has no file matching {pattern}"
 msgstr "Veröffentlichung {tag_name} hat keine Datei, die zu {pattern} passt"
 
-#: crates/sam-runner/src/updates.rs:176
+#: crates/sam-runner/src/updates.rs:177
 msgid "no update description"
 msgstr "keine Aktualisierungsbeschreibung"
 
-#: crates/sam-runner/src/updates.rs:182
+#: crates/sam-runner/src/updates.rs:183
 msgid "the update description names no file"
 msgstr "die Aktualisierungsbeschreibung nennt keine Datei"
 
-#: crates/sam-runner/src/updates.rs:252
+#: crates/sam-runner/src/updates.rs:253
 msgid "This is the newest published version."
 msgstr "Dies ist die neueste veröffentlichte Version."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/updates.rs:257
+#: crates/sam-runner/src/updates.rs:258
 msgid "{file} (release {release})"
 msgstr "{file} (Veröffentlichung {release})"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/updates.rs:262
+#: crates/sam-runner/src/updates.rs:263
 msgid "release {release}"
 msgstr "Veröffentlichung {release}"
 
-#: crates/sam-runner/src/updates.rs:263
+#: crates/sam-runner/src/updates.rs:264
 msgid "a newer version"
 msgstr "eine neuere Version"
 
-#: crates/sam-runner/src/updates.rs:287 crates/sam-runner/src/updates.rs:469
+#: crates/sam-runner/src/updates.rs:288 crates/sam-runner/src/updates.rs:623
 msgid "the update file is not offered over HTTPS"
 msgstr "die Aktualisierungsdatei wird nicht über HTTPS angeboten"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/updates.rs:293
+#: crates/sam-runner/src/updates.rs:294
 msgid "the update description names an unusable file ({file})"
 msgstr "die Aktualisierungsbeschreibung nennt eine unbrauchbare Datei ({file})"
 
-#: crates/sam-runner/src/updates.rs:302
+#: crates/sam-runner/src/updates.rs:303
 msgid "bad update address"
 msgstr "ungültige Aktualisierungsadresse"
 
-#: crates/sam-runner/src/updates.rs:346
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-runner/src/updates.rs:397
+msgid ""
+"the update download did not finish within {seconds} seconds and was stopped"
+msgstr "das Herunterladen des Updates war nach {seconds} Sekunden nicht fertig und wurde beendet"
+
+#: crates/sam-runner/src/updates.rs:418
 msgid "the update description changed while reading it"
 msgstr "die Aktualisierungsbeschreibung hat sich beim Lesen geändert"
 
-#: crates/sam-runner/src/updates.rs:432
+#: crates/sam-runner/src/updates.rs:508
 msgid "not HTTPS"
 msgstr "kein HTTPS"
 
+#: crates/sam-runner/src/updates.rs:536 crates/sam-runner/src/updates.rs:667
+#: crates/sam-runner/src/updates.rs:829
+msgid "starting curl"
+msgstr "curl wird gestartet"
+
+#: crates/sam-runner/src/updates.rs:583
+msgid ""
+"the server sent more than the part SAM asked for, so it ignores range "
+"requests; the partial download was stopped"
+msgstr "der Server hat mehr als den von SAM angefragten Teil gesendet, er beachtet also keine Teilanfragen; das teilweise Herunterladen wurde beendet"
+
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/updates.rs:448
+#: crates/sam-runner/src/updates.rs:602
 msgid "downloading the changed parts failed: {reason}"
 msgstr "das Herunterladen der geänderten Teile ist fehlgeschlagen: {reason}"
 
-#: crates/sam-runner/src/updates.rs:483
+#: crates/sam-runner/src/updates.rs:638
 msgid ""
 "the downloaded file does not match the published checksum; it was deleted"
 msgstr ""
 "die heruntergeladene Datei passt nicht zur veröffentlichten Prüfsumme; sie "
 "wurde gelöscht"
 
-#: crates/sam-runner/src/updates.rs:512 crates/sam-runner/src/updates.rs:669
-msgid "starting curl"
-msgstr "curl wird gestartet"
-
-#: crates/sam-runner/src/updates.rs:533
+#: crates/sam-runner/src/updates.rs:688
 msgid ""
 "the server sent more than the update description announced; the download was "
 "stopped and deleted"
@@ -8500,12 +8513,12 @@ msgstr ""
 "der Server hat mehr geschickt, als die Update-Beschreibung angekündigt hat; "
 "der Download wurde abgebrochen und gelöscht"
 
-#: crates/sam-runner/src/updates.rs:562
+#: crates/sam-runner/src/updates.rs:717
 msgid "the update source has nothing published at that address (yet)"
 msgstr ""
 "die Update-Quelle hat unter dieser Adresse (noch) nichts veröffentlicht"
 
-#: crates/sam-runner/src/updates.rs:564
+#: crates/sam-runner/src/updates.rs:719
 msgid ""
 "the update source refused the request for now (rate limit); try again later"
 msgstr ""
@@ -8513,30 +8526,30 @@ msgstr ""
 "später erneut"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/updates.rs:567
+#: crates/sam-runner/src/updates.rs:722
 msgid "the update source has a problem (HTTP {status}); try again later"
 msgstr ""
 "die Update-Quelle hat ein Problem (HTTP {status}); versuch es später erneut"
 
-#: crates/sam-runner/src/updates.rs:572
+#: crates/sam-runner/src/updates.rs:727
 msgid "no connection to the update source; check the internet connection"
 msgstr "keine Verbindung zur Update-Quelle; prüfe die Internetverbindung"
 
-#: crates/sam-runner/src/updates.rs:609
+#: crates/sam-runner/src/updates.rs:764
 msgid "the update description (.zsync) has no SHA-1"
 msgstr "die Aktualisierungsbeschreibung (.zsync) hat kein SHA-1"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/updates.rs:642
+#: crates/sam-runner/src/updates.rs:802
 msgid "the update address is not HTTPS ({address})"
 msgstr "die Aktualisierungsadresse ist kein HTTPS ({address})"
 
-#: crates/sam-runner/src/updates.rs:675
+#: crates/sam-runner/src/updates.rs:835
 msgid "curl output"
 msgstr "Ausgabe von curl"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/updates.rs:684
+#: crates/sam-runner/src/updates.rs:844
 msgid "the update source answered with more than {size}, more than SAM reads"
 msgstr ""
 "die Update-Quelle hat mit mehr als {size} geantwortet, mehr als SAM liest"
@@ -8759,11 +8772,11 @@ msgid "the update description (.zsync) is cut short"
 msgstr "die Aktualisierungsbeschreibung (.zsync) ist abgeschnitten"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/zsync.rs:390
+#: crates/sam-runner/src/zsync.rs:405
 msgid "the server sent {got} bytes instead of {expected}"
 msgstr "der Server hat {got} Bytes statt {expected} gesendet"
 
-#: crates/sam-runner/src/zsync.rs:413
+#: crates/sam-runner/src/zsync.rs:431
 msgid "the assembled file does not match the published checksum"
 msgstr "die zusammengesetzte Datei passt nicht zur veröffentlichten Prüfsumme"
 
