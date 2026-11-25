@@ -929,8 +929,8 @@ downloads a file, and only when you ask:
   since. When the record of the installed version has no signing time
   (checked before SAM kept it), SAM checks the installed file again to
   learn it; when a signing time still cannot be read, SAM cannot tell
-  whether the update is older and asks first, like for a signature it
-  cannot check, and SAM's own update is refused. For unsigned apps SAM
+  whether the update is older and asks first (*Signing Time Unknown*,
+  answered like the questions above), and SAM's own update is refused. For unsigned apps SAM
   cannot tell versions apart this way.
 - A server cannot keep SAM busy, crash it or fill the disk: every request
   has a time limit; SAM itself counts what a download writes and stops at

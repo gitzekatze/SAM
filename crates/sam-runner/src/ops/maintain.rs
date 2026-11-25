@@ -1001,12 +1001,14 @@ impl Sam {
             return Err(older_version_error(was, now).into());
         }
         // The same key, but a signing time could not be read: SAM cannot
-        // tell whether the download is an older version, so it asks like
-        // for a signature it cannot check (review B2 S6, R94).
-        if signing_time_unknown(Some(&before_sig), &new_sig) && !consented_to("signature-unchecked")
+        // tell whether the download is an older version, so it asks, with a
+        // question of its own, the same way as for a signature it cannot
+        // check (review B2 S6, R94).
+        if signing_time_unknown(Some(&before_sig), &new_sig)
+            && !consented_to("signing-time-unknown")
         {
             return Err(ask(
-                "signature-unchecked",
+                "signing-time-unknown",
                 sam_core::i18n::tr(
                     "The new file is signed with the same key as the installed version, but SAM could not read when one of them was signed, so it cannot tell whether the download is an older version, which may have security holes that were fixed since. Accept the update only if you trust its source: SAM then installs exactly this file, never one downloaded later.",
                 ),

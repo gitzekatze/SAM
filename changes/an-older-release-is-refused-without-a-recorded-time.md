@@ -7,8 +7,9 @@
   Now SAM checks the installed version again at update time to learn when
   it was signed, and refuses the older release.
 - When SAM still cannot read when one of the two versions was signed, it
-  cannot tell whether the update is older, so it asks first, the same way
-  as for a signature it cannot check (*Update Anyway*,
+  cannot tell whether the update is older, so it asks first
+  (*Signing Time Unknown* in the window, code `signing-time-unknown` on the
+  command line), answered the same way as a changed key (*Update Anyway*,
   `sam-jail update --accept-key-change`). A yes installs exactly the file
   you were shown.
 - SAM does not update itself when it cannot read when the new release or

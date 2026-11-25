@@ -21,7 +21,8 @@ use update_common::{add_reviewed, have, publish, server_or_skip, unpacked_versio
 
 /// Puts a stand-in for gpgv into `bin`: the real `gpgv` run as it is, with
 /// the signature time in its `VALIDSIG` line replaced by `-`, as if gpgv had
-/// not reported it. Good and bad signatures stay what they are.
+/// not reported it. When gpgv fails (a bad signature), its output is
+/// dropped; the signature still counts as not valid, by the exit code.
 fn gpgv_without_time(bin: &Path) {
     let real = sam_core::util::which("gpgv").unwrap();
     let script = format!(
@@ -36,9 +37,9 @@ fn gpgv_without_time(bin: &Path) {
 /// When SAM cannot read when the installed version or the download was
 /// signed, it cannot tell an older release signed with the same key from a
 /// newer one, and nothing older gets through on that guess. An app's update
-/// waits for a yes (`signature-unchecked`, the question for a signature SAM
-/// cannot check) and changes nothing until then; a yes installs exactly the
-/// file shown. SAM's own update is refused, even for a newer release signed
+/// waits for a yes (`signing-time-unknown`, answered like the question for
+/// a signature SAM cannot check) and changes nothing until then; a yes
+/// installs exactly the file shown. SAM's own update is refused, even for a newer release signed
 /// with its release key. Runs with SAM_TEST_GPG=1 (CI), where missing GnuPG
 /// tools fail it.
 #[test]
@@ -188,7 +189,7 @@ fn a_signing_time_that_cannot_be_read_lets_no_older_release_through() {
     };
     assert_eq!(
         sam_core::error::code_of(&err),
-        Some("signature-unchecked"),
+        Some("signing-time-unknown"),
         "asked about the unknown time: {err:#}"
     );
     assert!(
