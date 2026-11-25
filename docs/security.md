@@ -163,10 +163,19 @@ The **strict filter** (experimental, opt-in) also blocks `ptrace` and the
 calls that reach as far into another process (its memory, its descriptors,
 its kernel objects: `process_vm_readv`, `process_vm_writev`,
 `process_madvise`, `pidfd_getfd`, `kcmp`), `personality` and every NUMA
-memory call (`the_strict_filter_blocks_every_call_its_text_names`). A
-process can still open `/proc/<pid>/mem` of a process the kernel's own
-tracing rules let it reach: that is an ordinary file open, which no system
-call filter can tell apart.
+memory call (`the_strict_filter_blocks_every_call_its_text_names`).
+
+What no system call filter can block: `/proc/<pid>/mem` (another
+process's memory) and `/proc/<pid>/fd` (its open files) are ordinary file
+opens, allowed wherever the kernel's own tracing rules allow them. Every
+app runs in its own process namespace (`--unshare-pid`), so it sees and
+reaches only its own processes there, never the desktop's or another
+app's, with or without the strict filter.
+
+Graphics drivers built on Mesa use `kcmp` to check whether two handles of
+the graphics card are the same. Under the strict filter that check is
+refused, and some drivers print a warning about it; the app works as
+before.
 
 ### Nested sandboxes are off by default
 

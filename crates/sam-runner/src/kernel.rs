@@ -365,7 +365,8 @@ fn baseline_syscalls(allow_userns: bool) -> Vec<(&'static str, i64)> {
 /// Additionally blocked by the strict filter: `ptrace` and every call
 /// that reaches into another process as far (its memory, its descriptors,
 /// its kernel objects), `personality`, and every NUMA memory call (review
-/// R68: the help text promised these, five were missing).
+/// R68: the help text promised these, six were missing). The full promise
+/// is written in `docs/security.md`, section "strict filter".
 fn strict_extra_syscalls() -> Vec<(&'static str, i64)> {
     calls![
         libc::SYS_ptrace,
@@ -1174,13 +1175,19 @@ mod tests {
             ..SeccompSpec::default()
         };
         assert_eq!(errnos(Some(&strict), &calls[13..]), [eperm], "strict");
-        // The calls the strict filter gained (review R68), through their
-        // 32-bit numbers: pidfd_getfd(-1) and get_mempolicy(NULL).
-        let reach: Vec<fn() -> libc::c_long> =
-            vec![|| call32(438, -1i32 as u32, 0, 0), || call32(275, 0, 0, 0)];
+        // The six calls the strict filter gained (review R68), each through
+        // its own 32-bit number, with arguments that change nothing.
+        let reach: Vec<fn() -> libc::c_long> = vec![
+            || call32(440, -1i32 as u32, 0, 0), // process_madvise(-1)
+            || call32(438, -1i32 as u32, 0, 0), // pidfd_getfd(-1)
+            || call32(349, 0, 0, 0),            // kcmp: no process 0
+            || call32(275, 0, 0, 0),            // get_mempolicy(NULL)
+            || call32(276, 0, 0, 0),            // set_mempolicy(MPOL_DEFAULT)
+            || call32(450, 0, 0, 0),            // set_mempolicy_home_node, no pages
+        ];
         let open_reach = errnos(None, &reach);
         assert!(!open_reach.contains(&eperm), "{open_reach:?}");
-        assert_eq!(errnos(Some(&strict), &reach), [eperm; 2], "strict, 32-bit");
+        assert_eq!(errnos(Some(&strict), &reach), [eperm; 6], "strict, 32-bit");
         // Nested sandboxes: the namespace calls as without the filter.
         let nested = SeccompSpec {
             i386: true,
