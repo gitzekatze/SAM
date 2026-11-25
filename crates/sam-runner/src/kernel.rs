@@ -922,11 +922,13 @@ mod tests {
 
     /// Review R74: the kernel reads `ioctl`'s request and `socket`'s family
     /// as 32-bit numbers and drops the upper half of the register. The
-    /// filter must compare the same half: a request of 0x1_0000_5412 is
-    /// TIOCSTI to the kernel, and a family of (1 << 32) | AF_PACKET is
-    /// AF_PACKET (a filter that compared all 64 bits let such calls
-    /// through, Flatpak's CVE-2019-10063). The control shows the kernel
-    /// takes the call as its lower half.
+    /// filter must compare the same half. A request of 0x1_0000_5412 is
+    /// TIOCSTI to the kernel: a terminal rule that compared all 64 bits
+    /// would let it through (Flatpak's CVE-2019-10063). A family of
+    /// (1 << 32) | AF_PACKET is AF_PACKET: a family check that read the
+    /// upper half would let it through. The controls show the kernel takes
+    /// both as their lower half (FIONREAD with bit 32 set still reads a
+    /// pipe; a local family with bit 32 set still opens).
     #[test]
     fn the_filter_reads_arguments_as_wide_as_the_kernel_does() {
         const HIGH: libc::c_long = 1 << 32;
@@ -947,18 +949,37 @@ mod tests {
                     libc::c_long::from(libc::SOCK_STREAM),
                 )
             },
+            // FIONREAD with bit 32 set on a pipe: answered only by a
+            // kernel that drops the upper half (else "not a terminal").
+            || {
+                let mut p = [0; 2];
+                let mut n: libc::c_int = 0;
+                // SAFETY: pipe fills a valid array; FIONREAD writes one int to `n`.
+                unsafe {
+                    if libc::pipe(p.as_mut_ptr()) != 0 {
+                        return -1;
+                    }
+                    libc::syscall(
+                        libc::SYS_ioctl,
+                        libc::c_long::from(p[0]),
+                        HIGH | libc::FIONREAD as libc::c_long,
+                        &raw mut n,
+                    )
+                }
+            },
         ];
         let control = errnos(None, &calls);
         assert_eq!(control[..2], [libc::EBADF; 2], "no descriptor -1");
         assert_ne!(
             control[2],
             libc::EAFNOSUPPORT,
-            "a packet socket: {control:?}"
+            "this kernel has no packet sockets (CONFIG_PACKET), which the control needs: {control:?}"
         );
         assert_eq!(control[3], 0, "a local socket opens");
+        assert_eq!(control[4], 0, "the kernel reads FIONREAD's lower half");
         assert_eq!(
             errnos(Some(&SeccompSpec::default()), &calls),
-            [libc::EPERM, libc::EPERM, libc::EAFNOSUPPORT, 0],
+            [libc::EPERM, libc::EPERM, libc::EAFNOSUPPORT, 0, 0],
             "control {control:?}"
         );
     }
