@@ -674,6 +674,11 @@ tests = ["a_check_reports_what_it_finds_not_what_it_hopes", "a_skipped_check_is_
   "a_missing_layer_is_told_once_when_sam_starts_the_app_again",
   "a_menu_start_is_told_when_a_protection_layer_is_missing",
   "the_check_is_repeated_after_the_kernel_or_a_sandbox_program_changed",
+  "the_check_is_repeated_when_what_it_would_check_changed",
+  "the_check_names_the_wayland_security_context",
+  "the_check_expects_the_bus_the_start_gives",
+  "the_key_leaves_out_what_changes_by_itself",
+  "the_sandbox_check_fails_without_the_wayland_security_context",
 ]
 checks = ["tests/real-apps/run.sh"]
 

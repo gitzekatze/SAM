@@ -4460,6 +4460,7 @@ msgstr "Puerto de la aplicación (vacío = automático)"
 
 #: crates/sam-gtk/src/perms.rs:633 crates/sam-runner/src/verify.rs:285
 #: crates/sam-runner/src/verify.rs:293 crates/sam-runner/src/verify.rs:306
+#: crates/sam-runner/src/verify.rs:773
 msgid "Display"
 msgstr "Pantalla"
 
@@ -8656,7 +8657,22 @@ msgstr "Entornos aislados anidados permitidos"
 msgid "Nested sandboxes blocked"
 msgstr "Entornos aislados anidados bloqueados"
 
-#: crates/sam-runner/src/verify.rs:758
+#: crates/sam-runner/src/verify.rs:762
+msgid "in place"
+msgstr "activo"
+
+#: crates/sam-runner/src/verify.rs:765
+msgid ""
+"the desktop did not set it up, so the app would get every Wayland function"
+msgstr ""
+"el escritorio no lo estableció, así que la aplicación obtendría todas las "
+"funciones de Wayland"
+
+#: crates/sam-runner/src/verify.rs:774
+msgid "Privileged Wayland functions hidden"
+msgstr "Funciones privilegiadas de Wayland ocultas"
+
+#: crates/sam-runner/src/verify.rs:795
 msgid ""
 "SAM's sandbox helper (sam-jail-run) was not found, so the sandbox cannot be "
 "checked"
@@ -8664,24 +8680,24 @@ msgstr ""
 "No se encontró el asistente del entorno aislado de SAM (sam-jail-run), así "
 "que no se puede comprobar el entorno aislado"
 
-#: crates/sam-runner/src/verify.rs:775
+#: crates/sam-runner/src/verify.rs:812
 msgid "no stdout"
 msgstr "sin salida estándar"
 
-#: crates/sam-runner/src/verify.rs:779
+#: crates/sam-runner/src/verify.rs:816
 msgid "no stderr"
 msgstr "sin salida de errores"
 
-#: crates/sam-runner/src/verify.rs:801
+#: crates/sam-runner/src/verify.rs:838
 msgid "the sandbox check did not finish within 30 seconds"
 msgstr "la comprobación del entorno aislado no terminó en 30 segundos"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/verify.rs:813
+#: crates/sam-runner/src/verify.rs:851
 msgid "the sandbox did not start: {reason}"
 msgstr "el entorno aislado no se inició: {reason}"
 
-#: crates/sam-runner/src/verify.rs:822
+#: crates/sam-runner/src/verify.rs:860
 msgid "reading the check report"
 msgstr "leyendo el informe de la comprobación"
 

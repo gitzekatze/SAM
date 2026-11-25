@@ -4448,6 +4448,7 @@ msgstr "Port der App (leer = automatisch)"
 
 #: crates/sam-gtk/src/perms.rs:633 crates/sam-runner/src/verify.rs:285
 #: crates/sam-runner/src/verify.rs:293 crates/sam-runner/src/verify.rs:306
+#: crates/sam-runner/src/verify.rs:773
 msgid "Display"
 msgstr "Anzeige"
 
@@ -8647,7 +8648,22 @@ msgstr "Verschachtelte Sandboxen erlaubt"
 msgid "Nested sandboxes blocked"
 msgstr "Verschachtelte Sandboxen gesperrt"
 
-#: crates/sam-runner/src/verify.rs:758
+#: crates/sam-runner/src/verify.rs:762
+msgid "in place"
+msgstr "vorhanden"
+
+#: crates/sam-runner/src/verify.rs:765
+msgid ""
+"the desktop did not set it up, so the app would get every Wayland function"
+msgstr ""
+"der Desktop hat ihn nicht eingerichtet, daher bekäme die App jede Wayland-"
+"Funktion"
+
+#: crates/sam-runner/src/verify.rs:774
+msgid "Privileged Wayland functions hidden"
+msgstr "Privilegierte Wayland-Funktionen verborgen"
+
+#: crates/sam-runner/src/verify.rs:795
 msgid ""
 "SAM's sandbox helper (sam-jail-run) was not found, so the sandbox cannot be "
 "checked"
@@ -8655,24 +8671,24 @@ msgstr ""
 "SAMs Sandbox-Helfer (sam-jail-run) wurde nicht gefunden, deshalb kann die "
 "Sandbox nicht geprüft werden"
 
-#: crates/sam-runner/src/verify.rs:775
+#: crates/sam-runner/src/verify.rs:812
 msgid "no stdout"
 msgstr "keine Standardausgabe"
 
-#: crates/sam-runner/src/verify.rs:779
+#: crates/sam-runner/src/verify.rs:816
 msgid "no stderr"
 msgstr "keine Fehlerausgabe"
 
-#: crates/sam-runner/src/verify.rs:801
+#: crates/sam-runner/src/verify.rs:838
 msgid "the sandbox check did not finish within 30 seconds"
 msgstr "die Sandbox-Prüfung wurde nicht innerhalb von 30 Sekunden fertig"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/verify.rs:813
+#: crates/sam-runner/src/verify.rs:851
 msgid "the sandbox did not start: {reason}"
 msgstr "die Sandbox ist nicht gestartet: {reason}"
 
-#: crates/sam-runner/src/verify.rs:822
+#: crates/sam-runner/src/verify.rs:860
 msgid "reading the check report"
 msgstr "der Prüfbericht wird gelesen"
 
