@@ -1368,7 +1368,7 @@ msgstr ""
 msgid "User namespaces unavailable"
 msgstr "Benutzer-Namensräume nicht verfügbar"
 
-#: crates/sam-core/src/warnings.rs:348 crates/sam-sandbox/src/lib.rs:1868
+#: crates/sam-core/src/warnings.rs:348 crates/sam-sandbox/src/lib.rs:2059
 msgid "Wayland socket not available"
 msgstr "Wayland-Socket nicht verfügbar"
 
@@ -1380,7 +1380,7 @@ msgstr ""
 "Der Wayland-Socket ist nicht verfügbar. Schalte X11 ein oder melde dich in "
 "einer Wayland-Sitzung an."
 
-#: crates/sam-core/src/warnings.rs:355 crates/sam-sandbox/src/lib.rs:1888
+#: crates/sam-core/src/warnings.rs:355 crates/sam-sandbox/src/lib.rs:2079
 msgid "X11 display not available"
 msgstr "X11-Anzeige nicht verfügbar"
 
@@ -2205,7 +2205,7 @@ msgid "Start"
 msgstr "Start"
 
 #: crates/sam-gtk/src/app_page/data.rs:102
-#: crates/sam-gtk/src/app_page/render.rs:1233 crates/sam-gtk/src/pages.rs:351
+#: crates/sam-gtk/src/app_page/render.rs:1232 crates/sam-gtk/src/pages.rs:351
 #: crates/sam-runner/src/progress.rs:36
 msgid "Unpacking"
 msgstr "Entpacken"
@@ -2313,7 +2313,7 @@ msgid "Close and Free Space"
 msgstr "Schließen und Platz freigeben"
 
 #: crates/sam-gtk/src/app_page/data.rs:353
-#: crates/sam-gtk/src/app_page/render.rs:1287
+#: crates/sam-gtk/src/app_page/render.rs:1286
 msgid "Free Space"
 msgstr "Platz freigeben"
 
@@ -2533,7 +2533,7 @@ msgid "Launching"
 msgstr "Starten"
 
 #: crates/sam-gtk/src/app_page/mod.rs:289
-#: crates/sam-gtk/src/app_page/render.rs:733
+#: crates/sam-gtk/src/app_page/render.rs:732
 msgid "How SAM starts this app."
 msgstr "Wie SAM diese App startet."
 
@@ -2694,7 +2694,9 @@ msgstr "Mit diesen Einstellungen darf die App nutzen:"
 msgid ""
 "Confirming also accepts the note about the updated AppImage, which likely "
 "needs: {needs}."
-msgstr "Mit dem Bestätigen nimmst du auch den Hinweis zum aktualisierten AppImage an, das wahrscheinlich Folgendes braucht: {needs}."
+msgstr ""
+"Mit dem Bestätigen nimmst du auch den Hinweis zum aktualisierten AppImage "
+"an, das wahrscheinlich Folgendes braucht: {needs}."
 
 #: crates/sam-gtk/src/app_page/mod.rs:789 crates/sam-gtk/src/window.rs:622
 #: crates/sam-gtk/src/window.rs:755 crates/sam-gtk/src/window.rs:1784
@@ -3047,63 +3049,65 @@ msgid "Confirm Settings"
 msgstr "Einstellungen bestätigen"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/render.rs:491
+#: crates/sam-gtk/src/app_page/render.rs:493
 #: crates/sam-runner/src/ops/profiles.rs:426
 msgid ""
 "{app} changed since this page showed it. Look at it again, then confirm."
-msgstr "{app} hat sich geändert, seit diese Seite es gezeigt hat. Sieh es dir noch einmal an und bestätige dann."
+msgstr ""
+"{app} hat sich geändert, seit diese Seite es gezeigt hat. Sieh es dir noch "
+"einmal an und bestätige dann."
 
-#: crates/sam-gtk/src/app_page/render.rs:514
+#: crates/sam-gtk/src/app_page/render.rs:513
 msgid "Confirm These Settings?"
 msgstr "Diese Einstellungen bestätigen?"
 
-#: crates/sam-gtk/src/app_page/render.rs:516
+#: crates/sam-gtk/src/app_page/render.rs:515
 msgid "Confirm"
 msgstr "Bestätigen"
 
-#: crates/sam-gtk/src/app_page/render.rs:523
+#: crates/sam-gtk/src/app_page/render.rs:522
 msgid "Settings confirmed; the app starts again"
 msgstr "Einstellungen bestätigt; die App startet wieder"
 
-#: crates/sam-gtk/src/app_page/render.rs:534
+#: crates/sam-gtk/src/app_page/render.rs:533
 msgid "Settings not reviewed yet"
 msgstr "Einstellungen noch nicht geprüft"
 
-#: crates/sam-gtk/src/app_page/render.rs:535
+#: crates/sam-gtk/src/app_page/render.rs:534
 msgid "SAM chose these settings for you. Look through them, then confirm."
 msgstr ""
 "SAM hat diese Einstellungen für dich gewählt. Sieh sie durch und bestätige "
 "dann."
 
-#: crates/sam-gtk/src/app_page/render.rs:541
+#: crates/sam-gtk/src/app_page/render.rs:540
 msgid "Mark as Reviewed"
 msgstr "Als geprüft markieren"
 
-#: crates/sam-gtk/src/app_page/render.rs:549
+#: crates/sam-gtk/src/app_page/render.rs:548
 msgid "Marked as reviewed"
 msgstr "Als geprüft markiert"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/render.rs:560
+#: crates/sam-gtk/src/app_page/render.rs:559
 msgid "The updated AppImage likely needs: {needs}. Your settings were kept."
 msgstr ""
 "Das aktualisierte AppImage braucht wahrscheinlich: {needs}. Deine "
 "Einstellungen wurden beibehalten."
 
-#: crates/sam-gtk/src/app_page/render.rs:567
+#: crates/sam-gtk/src/app_page/render.rs:566
 msgid "Got It"
 msgstr "Verstanden"
 
-#: crates/sam-gtk/src/app_page/render.rs:638
+#: crates/sam-gtk/src/app_page/render.rs:637
 msgid "What the repair steps cost together"
 msgstr "Was die Reparaturschritte zusammen kosten"
 
-#: crates/sam-gtk/src/app_page/render.rs:658
+#: crates/sam-gtk/src/app_page/render.rs:657
 msgid "Repair steps that did not help were switched off"
 msgstr "Reparaturschritte, die nicht geholfen haben, wurden ausgeschaltet"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/render.rs:659
+#: crates/sam-gtk/src/app_page/render.rs:658
 msgid ""
 "The last start failed with them too, so SAM put back what they changed and "
 "does not offer them again: {steps}"
@@ -3112,11 +3116,11 @@ msgstr ""
 "zurückgesetzt, was sie geändert haben, und bietet sie nicht wieder an: "
 "{steps}"
 
-#: crates/sam-gtk/src/app_page/render.rs:735
+#: crates/sam-gtk/src/app_page/render.rs:734
 msgid "How SAM starts this app. Available once the sandbox exists."
 msgstr "Wie SAM diese App startet. Verfügbar, sobald die Sandbox existiert."
 
-#: crates/sam-gtk/src/app_page/render.rs:779
+#: crates/sam-gtk/src/app_page/render.rs:778
 msgid ""
 "Broad access for apps that work no other way. For these settings it changes "
 "nothing more."
@@ -3125,7 +3129,7 @@ msgstr ""
 "Einstellungen ändert er nichts mehr."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/render.rs:780
+#: crates/sam-gtk/src/app_page/render.rs:779
 msgid ""
 "Turned on: {changes}. Each weakens the sandbox. Turning the mode off "
 "restores your previous settings."
@@ -3134,7 +3138,7 @@ msgstr ""
 "Modus ausschaltest, kommen deine vorherigen Einstellungen zurück."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/render.rs:784
+#: crates/sam-gtk/src/app_page/render.rs:783
 msgid ""
 "For apps that work no other way. Turns on: {changes}. Each weakens the "
 "sandbox. Turning it off again restores your settings."
@@ -3144,7 +3148,7 @@ msgstr ""
 "wieder her."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/render.rs:800
+#: crates/sam-gtk/src/app_page/render.rs:799
 msgid ""
 "Settings and files the app saved outside the folders you granted stay in its "
 "private folder: {folder}"
@@ -3153,16 +3157,16 @@ msgstr ""
 "speichert, bleiben in ihrem privaten Ordner: {folder}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/render.rs:819
+#: crates/sam-gtk/src/app_page/render.rs:818
 msgid "Starts the app through SAM: {entry}"
 msgstr "Startet die App über SAM: {entry}"
 
-#: crates/sam-gtk/src/app_page/render.rs:823
+#: crates/sam-gtk/src/app_page/render.rs:822
 msgid "No menu entry: start the app from SAM."
 msgstr "Kein Menüeintrag: Starte die App über SAM."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/render.rs:856
+#: crates/sam-gtk/src/app_page/render.rs:855
 msgid ""
 "Another menu entry starts it without any sandbox: {entries}. Hide it, so the "
 "app always starts in its sandbox; the switch under Menu Entries shows it "
@@ -3172,18 +3176,18 @@ msgstr ""
 "aus, damit die App immer in ihrer Sandbox startet; der Schalter unter "
 "„Menüeinträge“ zeigt ihn wieder."
 
-#: crates/sam-gtk/src/app_page/render.rs:864
-#: crates/sam-gtk/src/app_page/render.rs:895
+#: crates/sam-gtk/src/app_page/render.rs:863
+#: crates/sam-gtk/src/app_page/render.rs:894
 msgid "No other menu entry starts this AppImage."
 msgstr "Kein anderer Menüeintrag startet dieses AppImage."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/render.rs:866
+#: crates/sam-gtk/src/app_page/render.rs:865
 msgid "These start the AppImage without a sandbox: {entries}"
 msgstr "Diese starten das AppImage ohne Sandbox: {entries}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/render.rs:868
+#: crates/sam-gtk/src/app_page/render.rs:867
 msgid ""
 "Hidden by SAM, shown again when you turn this off or remove the sandbox: "
 "{entries}"
@@ -3191,13 +3195,13 @@ msgstr ""
 "Von SAM ausgeblendet; wieder sichtbar, wenn du dies ausschaltest oder die "
 "Sandbox entfernst: {entries}"
 
-#: crates/sam-gtk/src/app_page/render.rs:874
+#: crates/sam-gtk/src/app_page/render.rs:873
 msgid "Created together with the sandbox (see Preferences → Menu Entries)."
 msgstr ""
 "Zusammen mit der Sandbox erstellt (siehe Einstellungen → Menüeinträge)."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/render.rs:897
+#: crates/sam-gtk/src/app_page/render.rs:896
 msgid ""
 "These start the AppImage without a sandbox; SAM hides them when it creates "
 "the sandbox: {entries}"
@@ -3206,37 +3210,37 @@ msgstr ""
 "Sandbox erstellt: {entries}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/render.rs:932
+#: crates/sam-gtk/src/app_page/render.rs:931
 msgid "Repair step: {step}"
 msgstr "Reparaturschritt: {step}"
 
-#: crates/sam-gtk/src/app_page/render.rs:950
+#: crates/sam-gtk/src/app_page/render.rs:949
 msgid "Repair step switched off"
 msgstr "Reparaturschritt ausgeschaltet"
 
-#: crates/sam-gtk/src/app_page/render.rs:981
+#: crates/sam-gtk/src/app_page/render.rs:980
 msgid "Fix and start"
 msgstr "Beheben und starten"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/render.rs:1039
+#: crates/sam-gtk/src/app_page/render.rs:1038
 msgid "Enforced: {what}"
 msgstr "Durchgesetzt: {what}"
 
-#: crates/sam-gtk/src/app_page/render.rs:1044
+#: crates/sam-gtk/src/app_page/render.rs:1043
 msgid "Not started yet"
 msgstr "Noch nicht gestartet"
 
-#: crates/sam-gtk/src/app_page/render.rs:1047
+#: crates/sam-gtk/src/app_page/render.rs:1046
 msgid "Last start"
 msgstr "Letzter Start"
 
-#: crates/sam-gtk/src/app_page/render.rs:1057
+#: crates/sam-gtk/src/app_page/render.rs:1056
 msgid "Go back to the previous version"
 msgstr "Zur vorherigen Version zurück"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/render.rs:1058
+#: crates/sam-gtk/src/app_page/render.rs:1057
 msgid ""
 "Puts {prev} back in place of the updated AppImage. The updated file is kept, "
 "so you can switch again."
@@ -3244,15 +3248,15 @@ msgstr ""
 "Setzt {prev} wieder an die Stelle des aktualisierten AppImages. Die "
 "aktualisierte Datei bleibt erhalten, sodass du erneut wechseln kannst."
 
-#: crates/sam-gtk/src/app_page/render.rs:1059
+#: crates/sam-gtk/src/app_page/render.rs:1058
 msgid "Back to the previous version"
 msgstr "Zurück zur vorherigen Version"
 
-#: crates/sam-gtk/src/app_page/render.rs:1066
+#: crates/sam-gtk/src/app_page/render.rs:1065
 msgid "Check the setup"
 msgstr "Einrichtung prüfen"
 
-#: crates/sam-gtk/src/app_page/render.rs:1067
+#: crates/sam-gtk/src/app_page/render.rs:1066
 msgid ""
 "Is the AppImage still there, unpacked and intact, is the menu entry valid, "
 "and how did the last start end."
@@ -3260,22 +3264,22 @@ msgstr ""
 "Ist das AppImage noch da, entpackt und unbeschädigt, ist der Menüeintrag "
 "gültig, und wie endete der letzte Start?"
 
-#: crates/sam-gtk/src/app_page/render.rs:1100
+#: crates/sam-gtk/src/app_page/render.rs:1099
 msgid "Switch off all repair steps"
 msgstr "Alle Reparaturschritte ausschalten"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/render.rs:1101
+#: crates/sam-gtk/src/app_page/render.rs:1100
 msgid "Puts back the settings from before the first step. Applied: {applied}"
 msgstr ""
 "Stellt die Einstellungen von vor dem ersten Schritt wieder her. Angewendet: "
 "{applied}"
 
-#: crates/sam-gtk/src/app_page/render.rs:1108
+#: crates/sam-gtk/src/app_page/render.rs:1107
 msgid "Repairs undone"
 msgstr "Reparaturen rückgängig gemacht"
 
-#: crates/sam-gtk/src/app_page/render.rs:1117
+#: crates/sam-gtk/src/app_page/render.rs:1116
 msgid ""
 "Inspects the app again and updates SAM's recommendation. Your settings are "
 "kept; anything new is listed above."
@@ -3283,56 +3287,56 @@ msgstr ""
 "Untersucht die App erneut und aktualisiert SAMs Empfehlung. Deine "
 "Einstellungen bleiben; alles Neue steht oben."
 
-#: crates/sam-gtk/src/app_page/render.rs:1119
+#: crates/sam-gtk/src/app_page/render.rs:1118
 msgid "Detection finished"
 msgstr "Erkennung abgeschlossen"
 
-#: crates/sam-gtk/src/app_page/render.rs:1125
+#: crates/sam-gtk/src/app_page/render.rs:1124
 msgid "Diagnose missing resources"
 msgstr "Fehlende Ressourcen ermitteln"
 
-#: crates/sam-gtk/src/app_page/render.rs:1126
+#: crates/sam-gtk/src/app_page/render.rs:1125
 msgid "Runs the app once under strace (if installed) and suggests fixes."
 msgstr ""
 "Führt die App einmal unter strace aus (falls installiert) und schlägt "
 "Lösungen vor."
 
-#: crates/sam-gtk/src/app_page/render.rs:1129
+#: crates/sam-gtk/src/app_page/render.rs:1128
 msgid "Starting a diagnostic run (closes after 30 s)…"
 msgstr "Diagnoselauf wird gestartet (endet nach 30 s) …"
 
-#: crates/sam-gtk/src/app_page/render.rs:1132
+#: crates/sam-gtk/src/app_page/render.rs:1131
 msgid "Diagnostic run finished"
 msgstr "Diagnoselauf beendet"
 
-#: crates/sam-gtk/src/app_page/render.rs:1140
+#: crates/sam-gtk/src/app_page/render.rs:1139
 msgid "Copy bug report"
 msgstr "Fehlerbericht kopieren"
 
-#: crates/sam-gtk/src/app_page/render.rs:1141
+#: crates/sam-gtk/src/app_page/render.rs:1140
 msgid "A redacted report (home path, user and host names removed)."
 msgstr ""
 "Ein bereinigter Bericht (Pfad des Persönlichen Ordners, Benutzer- und "
 "Rechnernamen entfernt)."
 
-#: crates/sam-gtk/src/app_page/render.rs:1149
+#: crates/sam-gtk/src/app_page/render.rs:1148
 msgid "Bug report copied"
 msgstr "Fehlerbericht kopiert"
 
-#: crates/sam-gtk/src/app_page/render.rs:1176
+#: crates/sam-gtk/src/app_page/render.rs:1175
 msgid "Setup check: everything is in order"
 msgstr "Einrichtungsprüfung: alles in Ordnung"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/render.rs:1178
+#: crates/sam-gtk/src/app_page/render.rs:1177
 msgid "Setup check: {bad} things to look at"
 msgstr "Einrichtungsprüfung: {bad} Punkte zum Ansehen"
 
-#: crates/sam-gtk/src/app_page/render.rs:1204
+#: crates/sam-gtk/src/app_page/render.rs:1203
 msgid "Recognized as"
 msgstr "Erkannt als"
 
-#: crates/sam-gtk/src/app_page/render.rs:1207
+#: crates/sam-gtk/src/app_page/render.rs:1206
 msgid ""
 "SAM's recommendation starts from what apps of this kind usually need, then "
 "adjusts it to what it found in this app."
@@ -3340,34 +3344,34 @@ msgstr ""
 "SAMs Empfehlung geht davon aus, was Apps dieser Art üblicherweise brauchen, "
 "und passt sie dann an das an, was SAM in dieser App gefunden hat."
 
-#: crates/sam-gtk/src/app_page/render.rs:1215
+#: crates/sam-gtk/src/app_page/render.rs:1214
 msgid "AppImage type"
 msgstr "AppImage-Typ"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/render.rs:1224
+#: crates/sam-gtk/src/app_page/render.rs:1223
 msgid "{n} file via {method}"
 msgid_plural "{n} files via {method}"
 msgstr[0] "{n} Datei über {method}"
 msgstr[1] "{n} Dateien über {method}"
 
-#: crates/sam-gtk/src/app_page/render.rs:1231
+#: crates/sam-gtk/src/app_page/render.rs:1230
 msgid "Not unpacked"
 msgstr "Nicht entpackt"
 
-#: crates/sam-gtk/src/app_page/render.rs:1236
+#: crates/sam-gtk/src/app_page/render.rs:1235
 msgid "Not checked"
 msgstr "Nicht geprüft"
 
-#: crates/sam-gtk/src/app_page/render.rs:1239
+#: crates/sam-gtk/src/app_page/render.rs:1238
 msgid "Signature"
 msgstr "Signatur"
 
-#: crates/sam-gtk/src/app_page/render.rs:1246 crates/sam-gtk/src/pages.rs:316
+#: crates/sam-gtk/src/app_page/render.rs:1245 crates/sam-gtk/src/pages.rs:316
 msgid "Updates"
 msgstr "Aktualisierungen"
 
-#: crates/sam-gtk/src/app_page/render.rs:1248
+#: crates/sam-gtk/src/app_page/render.rs:1247
 msgid ""
 "Not checked yet. Checking contacts the update source this AppImage names "
 "(GitHub or its own server)."
@@ -3376,32 +3380,32 @@ msgstr ""
 "AppImage nennt (GitHub oder ihr eigener Server)."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/render.rs:1250
+#: crates/sam-gtk/src/app_page/render.rs:1249
 msgid "{detail} (checked {time})"
 msgstr "{detail} (geprüft {time})"
 
-#: crates/sam-gtk/src/app_page/render.rs:1261
+#: crates/sam-gtk/src/app_page/render.rs:1260
 msgid "Check for Updates"
 msgstr "Nach Aktualisierungen suchen"
 
-#: crates/sam-gtk/src/app_page/render.rs:1263
+#: crates/sam-gtk/src/app_page/render.rs:1262
 msgid "Ask the update source whether a newer version is published"
 msgstr "Die Update-Quelle fragen, ob eine neuere Version veröffentlicht ist"
 
-#: crates/sam-gtk/src/app_page/render.rs:1275
+#: crates/sam-gtk/src/app_page/render.rs:1274
 msgid "Update check done"
 msgstr "Suche nach Aktualisierungen abgeschlossen"
 
-#: crates/sam-gtk/src/app_page/render.rs:1282
+#: crates/sam-gtk/src/app_page/render.rs:1281
 msgid "Disk space"
 msgstr "Speicherplatz"
 
-#: crates/sam-gtk/src/app_page/render.rs:1283 crates/sam-gtk/src/pages.rs:1069
+#: crates/sam-gtk/src/app_page/render.rs:1282 crates/sam-gtk/src/pages.rs:1069
 #: crates/sam-gtk/src/pages.rs:1116
 msgid "Checking…"
 msgstr "Wird geprüft …"
 
-#: crates/sam-gtk/src/app_page/render.rs:1290
+#: crates/sam-gtk/src/app_page/render.rs:1289
 msgid ""
 "Delete the unpacked copy. Settings and files stay; the next start unpacks "
 "the AppImage again."
@@ -3409,24 +3413,24 @@ msgstr ""
 "Die entpackte Kopie löschen. Einstellungen und Dateien bleiben; beim "
 "nächsten Start wird das AppImage erneut entpackt."
 
-#: crates/sam-gtk/src/app_page/render.rs:1299
+#: crates/sam-gtk/src/app_page/render.rs:1298
 msgid "Space freed; the next start unpacks the AppImage again"
 msgstr ""
 "Platz freigegeben; beim nächsten Start wird das AppImage erneut entpackt"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/render.rs:1314
+#: crates/sam-gtk/src/app_page/render.rs:1313
 msgid ""
 "{total} in total: unpacked app {unpacked}, private home {home}, logs {logs}"
 msgstr ""
 "{total} insgesamt: entpackte App {unpacked}, eigener Persönlicher Ordner "
 "{home}, Protokolle {logs}"
 
-#: crates/sam-gtk/src/app_page/render.rs:1339
+#: crates/sam-gtk/src/app_page/render.rs:1338
 msgid "Locate the AppImage"
 msgstr "AppImage suchen"
 
-#: crates/sam-gtk/src/app_page/render.rs:1349
+#: crates/sam-gtk/src/app_page/render.rs:1348
 msgid "Location updated"
 msgstr "Ort aktualisiert"
 
@@ -5446,7 +5450,7 @@ msgstr "Lösung zeigen"
 
 #. Keep the {placeholders}; their order may change.
 #: crates/sam-jail-cli/src/bin/sam-jail-run.rs:153
-#: crates/sam-sandbox/src/lib.rs:1454
+#: crates/sam-sandbox/src/lib.rs:1644
 msgid ""
 "SAM cannot pass on {path}: its name is not valid text. Rename it, then start "
 "the app again."
@@ -6489,7 +6493,7 @@ msgstr ""
 "ohne SAMs Vermittler“, womit sie Code außerhalb der Sandbox in den Tonserver "
 "laden kann"
 
-#: crates/sam-runner/src/doctor.rs:311 crates/sam-sandbox/src/lib.rs:1941
+#: crates/sam-runner/src/doctor.rs:311 crates/sam-sandbox/src/lib.rs:2132
 msgid "No sound server found. Audio may not work."
 msgstr "Kein Tonserver gefunden. Ton funktioniert eventuell nicht."
 
@@ -8664,18 +8668,18 @@ msgstr "der Server hat {got} Bytes statt {expected} gesendet"
 msgid "the assembled file does not match the published checksum"
 msgstr "die zusammengesetzte Datei passt nicht zur veröffentlichten Prüfsumme"
 
-#: crates/sam-sandbox/src/lib.rs:1388
+#: crates/sam-sandbox/src/lib.rs:1578
 msgid "Bubblewrap is not installed. Install the 'bubblewrap' package."
 msgstr "Bubblewrap ist nicht installiert. Installiere das Paket „bubblewrap“."
 
-#: crates/sam-sandbox/src/lib.rs:1396
+#: crates/sam-sandbox/src/lib.rs:1586
 msgid "xdg-dbus-proxy not found: filtered session D-Bus will be disabled"
 msgstr ""
 "xdg-dbus-proxy nicht gefunden: Der gefilterte Sitzungs-D-Bus wird "
 "abgeschaltet"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:1417
+#: crates/sam-sandbox/src/lib.rs:1607
 msgid ""
 "the home folder is not set (HOME is \"{home}\"); SAM does not start apps "
 "without one"
@@ -8683,17 +8687,17 @@ msgstr ""
 "der Home-Ordner ist nicht gesetzt (HOME ist „{home}“); ohne ihn startet SAM "
 "keine Apps"
 
-#: crates/sam-sandbox/src/lib.rs:1428
+#: crates/sam-sandbox/src/lib.rs:1618
 msgid "bubblewrap (bwrap) is not installed"
 msgstr "bubblewrap (bwrap) ist nicht installiert"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:1768
+#: crates/sam-sandbox/src/lib.rs:1958
 msgid "{key} folder does not exist on the host; not bound"
 msgstr "Der Ordner {key} existiert auf dem System nicht; nicht eingebunden"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:1772
+#: crates/sam-sandbox/src/lib.rs:1962
 msgid ""
 "{key} folder is set to {path}, which shows more than a user folder (the "
 "home, a folder above it, a system or SAM folder, or a protected place); not "
@@ -8704,16 +8708,16 @@ msgstr ""
 "oder SAM-Ordner oder einen geschützten Ort); nicht eingebunden"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:1820
+#: crates/sam-sandbox/src/lib.rs:2010
 msgid "granted access to the opened folder {path}"
 msgstr "Zugriff auf den geöffneten Ordner {path} erteilt"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:1825
+#: crates/sam-sandbox/src/lib.rs:2015
 msgid "granted access to the opened file {path}"
 msgstr "Zugriff auf die geöffnete Datei {path} erteilt"
 
-#: crates/sam-sandbox/src/lib.rs:1939
+#: crates/sam-sandbox/src/lib.rs:2130
 msgid ""
 "SAM's sound relay is not running, so the app has no sound (the sound "
 "server's own connection would let it load code outside the sandbox). The "
@@ -8723,7 +8727,7 @@ msgstr ""
 "Verbindung des Tonservers würde ihr erlauben, Code außerhalb der Sandbox zu "
 "laden). Die Startmeldung sagt, warum."
 
-#: crates/sam-sandbox/src/lib.rs:1996
+#: crates/sam-sandbox/src/lib.rs:2187
 msgid ""
 "No game controller is plugged in; controllers connected later are not seen "
 "until the app restarts"
@@ -8731,19 +8735,19 @@ msgstr ""
 "Kein Gamecontroller angeschlossen; später angeschlossene Controller sieht "
 "die App erst nach einem Neustart"
 
-#: crates/sam-sandbox/src/lib.rs:2006
+#: crates/sam-sandbox/src/lib.rs:2197
 msgid "Bluetooth needs the system D-Bus; not granted"
 msgstr "Bluetooth braucht den System-D-Bus; nicht erteilt"
 
-#: crates/sam-sandbox/src/lib.rs:2019
+#: crates/sam-sandbox/src/lib.rs:2210
 msgid "Input method needs the session D-Bus; not granted"
 msgstr "Die Eingabemethode braucht den Sitzungs-D-Bus; nicht erteilt"
 
-#: crates/sam-sandbox/src/lib.rs:2042
+#: crates/sam-sandbox/src/lib.rs:2233
 msgid "session D-Bus socket not found"
 msgstr "Socket des Sitzungs-D-Bus nicht gefunden"
 
-#: crates/sam-sandbox/src/lib.rs:2051
+#: crates/sam-sandbox/src/lib.rs:2242
 msgid ""
 "filtered D-Bus requested but no proxy is running (install xdg-dbus-proxy); "
 "session bus disabled"
@@ -8752,7 +8756,7 @@ msgstr ""
 "proxy); Sitzungsbus abgeschaltet"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2104
+#: crates/sam-sandbox/src/lib.rs:2297
 msgid ""
 "{path} is reached through a link in a folder the app can change; it is not "
 "passed into the sandbox. List the socket by its real place."
@@ -8762,12 +8766,24 @@ msgstr ""
 "seinem tatsächlichen Ort an."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2112
+#: crates/sam-sandbox/src/lib.rs:2311
+msgid ""
+"{path} lies below a folder the app can change, so the app could swap it for "
+"another socket during the start; this setting does not pass it in. Where the "
+"app may use that folder, it still reaches the socket there."
+msgstr ""
+"{path} liegt unter einem Ordner, den die App ändern kann; die App könnte "
+"ihn während des Starts gegen einen anderen Socket tauschen. Diese Einstellung "
+"gibt ihn daher nicht weiter. Wo die App diesen Ordner nutzen darf, erreicht "
+"sie den Socket weiterhin dort."
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-sandbox/src/lib.rs:2318
 msgid "{path} is not a socket; it is not passed into the sandbox"
 msgstr "{path} ist kein Socket; er wird nicht in die Sandbox weitergegeben"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2123
+#: crates/sam-sandbox/src/lib.rs:2329
 msgid ""
 "{path} leads elsewhere: {why}. It is not passed into the sandbox; list that "
 "socket by its real place if the app needs it."
@@ -8813,23 +8829,23 @@ msgid "invalid app id '{id}'"
 msgstr "ungültige App-ID „{id}“"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-storage/src/lib.rs:439
+#: crates/sam-storage/src/lib.rs:461
 msgid "the preset {file} could not be read ({error}); it was moved to {moved}"
 msgstr ""
 "die Vorlage {file} konnte nicht gelesen werden ({error}); sie wurde nach "
 "{moved} verschoben"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-storage/src/lib.rs:446
+#: crates/sam-storage/src/lib.rs:468
 msgid "skipping the damaged preset {file}: {error}"
 msgstr "die beschädigte Vorlage {file} wird übersprungen: {error}"
 
-#: crates/sam-storage/src/lib.rs:464
+#: crates/sam-storage/src/lib.rs:486
 msgid "preset name must not be empty"
 msgstr "der Name der Vorlage darf nicht leer sein"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-storage/src/lib.rs:480
+#: crates/sam-storage/src/lib.rs:502
 msgid ""
 "the preset “{other}” already uses the file for this name; choose another name"
 msgstr ""
@@ -8837,17 +8853,17 @@ msgstr ""
 "einen anderen Namen"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-storage/src/lib.rs:505
+#: crates/sam-storage/src/lib.rs:527
 msgid "{name} (imported)"
 msgstr "{name} (importiert)"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-storage/src/lib.rs:507
+#: crates/sam-storage/src/lib.rs:529
 msgid "{name} (imported {n})"
 msgstr "{name} (importiert {n})"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-storage/src/lib.rs:567
+#: crates/sam-storage/src/lib.rs:589
 msgid ""
 "this preset was made by a newer SAM (format {format}); update SAM to use it"
 msgstr ""
@@ -8855,9 +8871,19 @@ msgstr ""
 "SAM, um sie zu verwenden"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-storage/src/lib.rs:619
+#: crates/sam-storage/src/lib.rs:641
 msgid "unknown flat preset key '{other}'"
 msgstr "unbekannter Schlüssel „{other}“ in der flachen Vorlage"
+
+#~ msgid ""
+#~ "{path} is in a folder the app can change, so the app could swap it for "
+#~ "another socket during the start; it is not passed into the sandbox. Keep "
+#~ "the socket in a folder the app cannot write."
+#~ msgstr ""
+#~ "{path} liegt in einem Ordner, den die App ändern kann; die App könnte ihn "
+#~ "während des Starts gegen einen anderen Socket tauschen. Er wird nicht in "
+#~ "die Sandbox weitergegeben. Lege den Socket in einen Ordner, in den die "
+#~ "App nicht schreiben kann."
 
 #~ msgid ""
 #~ "Bus names that stay blocked even when a preset or another setting allows "

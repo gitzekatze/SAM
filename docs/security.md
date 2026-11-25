@@ -602,7 +602,12 @@ How these stay protected with the home writable:
   program's socket), and so is one whose link leads to a socket SAM rates
   *Dangerous* (Docker, the system or session bus, the sound server's own
   socket) unless you listed that socket by name
-  (`an_app_cannot_turn_its_extra_socket_into_a_link_to_another_one`).
+  (`an_app_cannot_turn_its_extra_socket_into_a_link_to_another_one`). One
+  that lies below a folder the app may change is left out too: SAM checks
+  the socket before the start and Bubblewrap takes it by name a moment
+  later, so a running copy of the app could swap it in between
+  (`an_extra_socket_in_a_folder_the_app_can_change_is_not_passed_in`).
+  Not covered: another app with its own access to that folder.
 - **Files whose mere presence changes behaviour** (`.bash_profile`, `.zshrc`,
   `.xprofile`, `.vimrc`, `.pam_environment` and the like) cannot be protected
   by a mount before they exist: making one would create the file. So SAM
