@@ -1359,6 +1359,9 @@ fn run_once(
         &prepared.context.runtime_dir,
         mode,
     )?;
+    // An end request (SIGTERM, SIGHUP, or `Sam::stop` in this program) was
+    // for this launch, which has ended now.
+    pty::end_request_done();
     child_done.store(true, std::sync::atomic::Ordering::SeqCst);
     let devices = device_watch.map(|w| w.finish()).unwrap_or_default();
     // Every room ends with the app's start, before SAM waits for the app's
@@ -2278,12 +2281,21 @@ fn hold_lock(path: &Path) -> Result<fs::File> {
     }
 }
 
-/// True if another process holds the lock on `path`.
+/// True if another process holds the lock on `path`. Only a regular file
+/// counts, never one reached through a link (review B2 S6, R85).
 pub fn lock_held(path: &Path) -> bool {
     use std::os::fd::AsRawFd;
-    let Ok(f) = fs::File::open(path) else {
+    use std::os::unix::fs::OpenOptionsExt;
+    let Ok(f) = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+    else {
         return false;
     };
+    if !f.metadata().is_ok_and(|m| m.is_file()) {
+        return false;
+    }
     // SAFETY: `f` is an open file; flock only takes its descriptor.
     unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_SH | libc::LOCK_NB) != 0 }
 }

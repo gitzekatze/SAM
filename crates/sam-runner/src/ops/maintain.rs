@@ -293,25 +293,30 @@ impl Sam {
     /// ends the sandbox at once (its grace time is over) and then finishes
     /// the launch: the last look at the start places, the record, the log.
     /// Only a runner that is still there 15 seconds later is killed.
+    /// Only the launches running when it begins are closed and waited for:
+    /// one started meanwhile is left alone (review B2 S6, R85).
     /// Returns how many launches ran.
     pub fn stop(&self, query: &str) -> Result<usize> {
         let entry = self.resolve(query)?;
-        // Only processes that really hold their launch's lock open: a process
-        // id reused by an unrelated program is never touched.
+        // Only processes that really hold their launch's lock open, each
+        // kept as a pidfd taken during that check: a process id reused by
+        // an unrelated program is never touched, also when the closing
+        // takes its full 25 seconds.
         let base = self.paths.runtime_dir(&entry.id);
         let mut runners = Vec::new();
         for p in self.running(&entry.id) {
             for e in fs::read_dir(&base).into_iter().flatten().flatten() {
-                if crate::launch::launch_dir_pid(&e.file_name().to_string_lossy()) == Some(p)
-                    && holds_open(p, &e.path().join("running.lock"))
-                {
+                if crate::launch::launch_dir_pid(&e.file_name().to_string_lossy()) != Some(p) {
+                    continue;
+                }
+                if let Some(runner) = Runner::holding(p, &e.path().join("running.lock")) {
                     let sandbox = fs::read_to_string(e.path().join(crate::launch::SANDBOX_PID))
                         .ok()
                         .and_then(|s| s.trim().parse::<u32>().ok());
                     // So the launch is recorded as closed, not as a failed
                     // start; its time tells the runner when the app was asked.
                     let _ = fs::write(e.path().join(crate::launch::STOP_MARKER), b"");
-                    runners.push((p, sandbox));
+                    runners.push((runner, sandbox));
                     break;
                 }
             }
@@ -319,21 +324,20 @@ impl Sam {
         if runners.is_empty() {
             return Ok(0);
         }
-        // SAFETY: kill takes plain integers; a process that is already gone only makes it fail.
-        let signal = |pid: u32, sig: i32| unsafe {
-            libc::kill(pid as libc::pid_t, sig);
-        };
-        for &(r, sandbox) in &runners {
+        for (r, sandbox) in &runners {
             match sandbox {
-                Some(s) => super::ask_to_quit(r, s),
+                Some(s) => super::ask_to_quit(r.pid(), *s),
                 // Not started yet: the runner asks the app itself.
-                None => signal(r, libc::SIGTERM),
+                None => r.signal(libc::SIGTERM),
             }
         }
+        // Waits for the runners found above, not for every launch of the
+        // app: a launch started meanwhile kept the closing waiting until it
+        // failed (review B2 S6, R85).
         let wait = |secs: u64| {
             let end = std::time::Instant::now() + std::time::Duration::from_secs(secs);
             while std::time::Instant::now() < end {
-                if self.running(&entry.id).is_empty() {
+                if runners.iter().all(|(r, _)| r.launch_ended()) {
                     return true;
                 }
                 std::thread::sleep(std::time::Duration::from_millis(100));
@@ -342,16 +346,18 @@ impl Sam {
         };
         let grace = crate::launch::QUIT_GRACE.as_secs();
         if !wait(grace) {
-            for &(r, _) in &runners {
-                signal(r, libc::SIGTERM);
+            for (r, _) in &runners {
+                r.signal(libc::SIGTERM);
             }
             // Longer than the runner's own grace time, in case it began
             // one anew (review 2026-11-23 F2: SIGKILL came after 3 seconds).
             if !wait(grace + 5) {
-                for &(r, _) in &runners {
-                    signal(r, libc::SIGKILL);
+                for (r, _) in &runners {
+                    r.signal(libc::SIGKILL);
                 }
                 if !wait(3) {
+                    // What a killed runner left is cleared also here.
+                    let _ = self.running(&entry.id);
                     bail!(
                         "{}",
                         sam_core::i18n::trf(
@@ -365,6 +371,9 @@ impl Sam {
                 }
             }
         }
+        // One last look at the launches, as the waits took before: it
+        // clears what a killed runner left (its folder, start files).
+        let _ = self.running(&entry.id);
         Ok(runners.len())
     }
 
