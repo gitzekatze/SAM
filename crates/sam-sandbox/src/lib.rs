@@ -2243,7 +2243,7 @@ impl Section<'_> {
             if pads.is_empty() {
                 notes.push(sam_core::i18n::tr("No game controller is plugged in; controllers connected later are not seen until the app restarts"));
             }
-            bind_watched(a, &mut self.watched_devices, pads);
+            bind_watched(a, &mut self.watched_devices, &h.input_devices.nodes, pads);
         }
         if p.devices.usb {
             a.op2("--dev-bind-try", "/dev/bus/usb", "/dev/bus/usb");
@@ -2839,24 +2839,35 @@ fn gpu_module_dirs(sys_module: &Path) -> Vec<PathBuf> {
 /// Shows each device node by name and notes what it is now, so that SAM
 /// takes it out of the running sandbox once its name shows anything else
 /// (unplugged, or another device at its number: sam-runner `device_watch`,
-/// review R56). A node that is gone already is not shown.
+/// review R56). A node that is gone already is not shown. Their folder
+/// (`dir`) is a read-only folder of its own: as a mount point it cannot be
+/// renamed or replaced from inside, so the node SAM takes out is always at
+/// the name SAM knows.
 fn bind_watched(
     a: &mut Args,
     watched: &mut Vec<sam_core::sandbox::WatchedDevice>,
+    dir: &Path,
     nodes: Vec<PathBuf>,
 ) {
     use std::os::unix::fs::MetadataExt;
+    a.push("--tmpfs").path(dir);
     for d in nodes {
         let Ok(md) = fs::metadata(&d) else {
             continue;
         };
+        let before = a.v.len();
         a.op2("--dev-bind-try", &d, &d);
+        if a.v.len() == before {
+            continue;
+        }
         watched.push(sam_core::sandbox::WatchedDevice {
             path: d,
             dev: md.dev(),
             ino: md.ino(),
+            rdev: md.rdev(),
         });
     }
+    a.push("--remount-ro").path(dir);
 }
 
 /// Joystick device nodes: `js*`, plus `event*` nodes udev tagged as a
@@ -3786,7 +3797,7 @@ mod tests {
         std::os::unix::fs::symlink("/dev/null", &pad).unwrap();
         let mut a = Args::default();
         let mut watched = Vec::new();
-        bind_watched(&mut a, &mut watched, vec![pad.clone(), gone]);
+        bind_watched(&mut a, &mut watched, t.path(), vec![pad.clone(), gone]);
         let null = fs::metadata("/dev/null").unwrap();
         use std::os::unix::fs::MetadataExt;
         assert_eq!(
@@ -3795,10 +3806,24 @@ mod tests {
                 path: pad.clone(),
                 dev: null.dev(),
                 ino: null.ino(),
+                rdev: null.rdev(),
             }]
         );
-        let p = pad.display().to_string();
-        assert_eq!(a.v, vec!["--dev-bind-try".to_string(), p.clone(), p]);
+        // In a read-only folder of their own, which the app cannot rename.
+        let (p, d) = (pad.display().to_string(), t.path().display().to_string());
+        let want: Vec<String> = [
+            "--tmpfs",
+            &d,
+            "--dev-bind-try",
+            &p,
+            &p,
+            "--remount-ro",
+            &d,
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        assert_eq!(a.v, want);
     }
 
     /// With the GPU, the NVIDIA driver modules are visible; other kernel modules are not.

@@ -74,6 +74,8 @@ pub struct Prepared {
     pub warnings: Vec<Warning>,
     pub landlock: bool,
     pub seccomp: bool,
+    /// The app may make namespaces of its own (Advanced setting).
+    pub allow_userns: bool,
     /// The kernel layers the settings ask for, applied or not (without SAM's
     /// helper they cannot be): what a start is checked against.
     pub wanted_landlock: bool,
@@ -732,7 +734,13 @@ pub fn prepare(
         fs::write(&helper.spec, serde_json::to_vec_pretty(&spec)?)?;
     }
     let rooms = rooms.map(|(mut service, bwrap)| {
-        let plan = crate::room_rules::FloorPlan::from_bwrap_args(&command.args);
+        let watched: Vec<PathBuf> = command
+            .watched_devices
+            .iter()
+            .map(|d| d.path.clone())
+            .collect();
+        let plan = crate::room_rules::FloorPlan::from_bwrap_args(&command.args)
+            .map(|p| p.without_devices(&watched));
         let room_ctx = crate::room_service::RoomContext {
             plan: plan.clone().unwrap_or_default(),
             facts: crate::room_rules::AppFacts {
@@ -807,6 +815,7 @@ pub fn prepare(
         warnings,
         landlock,
         seccomp,
+        allow_userns: perms.advanced.allow_userns,
         wanted_landlock,
         wanted_seccomp,
         wanted_fence: wanted_landlock
@@ -1132,10 +1141,29 @@ fn run_once(
     let bwrap_status_reader = channels
         .bwrap_status
         .map(|r| read_fd_in_thread(r, child_done.clone(), Some(status_line)));
+    // Taking an unplugged controller out is enough only where Landlock
+    // refuses every new open of it (also through a handle the app holds)
+    // and the app makes no namespaces of its own (which would keep copies
+    // of it); elsewhere SAM ends the app when one is unplugged.
+    let helper_report: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+    let unplugged = if !prepared.landlock {
+        crate::device_watch::Unplugged::EndApp(sam_core::i18n::tr(
+            "Landlock is not in place, so a handle the app holds could still reach the next device",
+        ))
+    } else if prepared.allow_userns {
+        crate::device_watch::Unplugged::EndApp(sam_core::i18n::tr(
+            "the app may make namespaces of its own, which SAM cannot reach",
+        ))
+    } else {
+        crate::device_watch::Unplugged::TakeOut {
+            helper_report: helper_report.clone(),
+        }
+    };
     let device_watch = crate::device_watch::DeviceWatch::start(
         prepared.command.watched_devices.clone(),
         sandbox_status,
-        end_sandbox(child.id()),
+        unplugged,
+        crate::device_watch::end_launched(child.id()),
     );
     // What the start lacks is told as soon as it is known: at once without
     // a report from SAM's helper, else when the helper has reported (right
@@ -1166,6 +1194,9 @@ fn run_once(
             let reader = read_fd_in_thread(r, child_done.clone(), None);
             Some(std::thread::spawn(move || {
                 let report = reader.join().unwrap_or_default();
+                if let Ok(mut r) = helper_report.lock() {
+                    *r = Some(report.trim().to_string());
+                }
                 if !report.trim().is_empty() {
                     tell_missing(Some(report.trim()));
                 }
@@ -2245,38 +2276,6 @@ fn read_fd_in_thread(
     })
 }
 
-/// Ends the sandbox the launcher started (Bubblewrap, or pasta around it)
-/// at once: Bubblewrap's `--die-with-parent` takes everything inside with
-/// it. Through a pidfd taken now, so a process number used again after the
-/// sandbox ended is never hit.
-fn end_sandbox(pid: u32) -> Box<dyn FnOnce() + Send> {
-    // SAFETY: pidfd_open takes a pid and flags and returns a new descriptor or -1.
-    let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid as libc::pid_t, 0) } as i32;
-    let pidfd = (fd >= 0).then(|| {
-        // SAFETY: `fd` was just returned by the kernel and is owned here alone.
-        unsafe { <std::os::fd::OwnedFd as std::os::fd::FromRawFd>::from_raw_fd(fd) }
-    });
-    Box::new(move || match pidfd {
-        Some(p) => {
-            // SAFETY: a valid pidfd, a signal number, no info, no flags.
-            unsafe {
-                libc::syscall(
-                    libc::SYS_pidfd_send_signal,
-                    std::os::fd::AsRawFd::as_raw_fd(&p),
-                    libc::SIGKILL,
-                    std::ptr::null::<libc::siginfo_t>(),
-                    0,
-                )
-            };
-        }
-        None => {
-            // SAFETY: a plain signal by number (kernels before 5.3 have no
-            // pidfd); the watch ends right after the launcher waits for it.
-            unsafe { libc::kill(pid as libc::pid_t, libc::SIGKILL) };
-        }
-    })
-}
-
 /// Last lines of a log file (for reports and the GUI).
 /// The last `max_lines` lines of a log, as text: escape codes and hidden
 /// characters an app wrote are removed, also from logs written before SAM
@@ -2391,16 +2390,6 @@ mod pasta_status_tests {
             done.store(true, std::sync::atomic::Ordering::SeqCst);
             assert_eq!(reader.join().unwrap(), text);
         }
-    }
-
-    /// When SAM ends a sandbox it cannot keep its promise in, the program
-    /// it started ends at once, whatever it does (review R56).
-    #[test]
-    fn ending_the_sandbox_ends_it_at_once() {
-        let mut child = Command::new("sleep").arg("30").spawn().unwrap();
-        end_sandbox(child.id())();
-        let status = child.wait().unwrap();
-        assert_eq!(status.signal(), Some(libc::SIGKILL));
     }
 
     /// Review K-1: a start that relies on Landlock's abstract-socket fence

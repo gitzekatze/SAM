@@ -12,20 +12,24 @@
 //! sandbox's namespaces and removes Bubblewrap's bind, leaving Bubblewrap's
 //! empty placeholder file. The app keeps running.
 //!
-//! When SAM cannot take a node out, it ends the app: a node that could
-//! reach another device is never left behind.
-//!
-//! Limit: a process that holds a path-only handle (`O_PATH`) to the node
-//! from before the unplug can still reopen it through `/proc/self/fd`, as
-//! it could when run without SAM. Taking the node out removes the way that
-//! needs no such preparation.
+//! A handle the app opened before stays a way to the node: through
+//! `/proc/self/fd` it can be opened again, and that open, too, goes by the
+//! number. Landlock closes it: SAM's Landlock layer lets the app read only
+//! below the sandbox's root, and a node taken out is no longer below it,
+//! so every new open of it is refused (checked by the tests). So SAM takes
+//! a node out only where Landlock is in place and the app cannot make
+//! namespaces of its own (they would hold copies of the node that SAM's
+//! removal does not reach). Elsewhere, and whenever taking a node out
+//! fails, SAM ends the app: a way to another device is never left behind.
 
 use std::ffi::CString;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, TryRecvError};
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
@@ -43,6 +47,8 @@ const STATUS_WAIT: Duration = Duration::from_secs(5);
 pub struct Sandbox {
     user: OwnedFd,
     mnt: OwnedFd,
+    /// The mount namespace's inode: what makes a process one of the sandbox.
+    ino: u64,
 }
 
 impl Sandbox {
@@ -57,6 +63,12 @@ impl Sandbox {
         let want = v["mnt-namespace"]
             .as_u64()
             .ok_or("Bubblewrap did not report the sandbox's mount namespace")?;
+        // Never SAM's own namespace (that of the person's whole session):
+        // ending "the sandbox" there would end everything (incident
+        // 2026-11-25).
+        if want == own_ns("mnt")? {
+            return Err("the status line names SAM's own mount namespace, not a sandbox".into());
+        }
         let first = v["child-pid"].as_u64().map(|p| p.to_string());
         let others = std::fs::read_dir("/proc")
             .map_err(|e| format!("/proc: {e}"))?
@@ -82,9 +94,52 @@ impl Sandbox {
             }
             // SAFETY: `user` was just returned by the kernel and is owned here alone.
             let user = unsafe { OwnedFd::from_raw_fd(user) };
-            return Ok(Sandbox { user, mnt });
+            // A sandbox of SAM always has its own user namespace: a mount
+            // namespace owned by SAM's own is never taken for a sandbox.
+            let user_ino = std::fs::File::from(user.try_clone().map_err(|e| e.to_string())?)
+                .metadata()
+                .map(|m| m.ino())
+                .map_err(|e| format!("the sandbox's user namespace: {e}"))?;
+            if user_ino == own_ns("user")? {
+                return Err("the namespace belongs to SAM's own user namespace, not a sandbox".into());
+            }
+            return Ok(Sandbox {
+                user,
+                mnt,
+                ino: want,
+            });
         }
         Err("no process of the sandbox was found".into())
+    }
+
+    /// Ends every process of the sandbox at once (each found by its mount
+    /// namespace, signalled through a pidfd taken before the check, so a
+    /// process number used again is never hit).
+    pub fn end_all(&self) {
+        // Checked again right here: never SAM's own namespace.
+        if own_ns("mnt").map_or(true, |own| own == self.ino) {
+            return;
+        }
+        let Ok(rd) = std::fs::read_dir("/proc") else {
+            return;
+        };
+        let me = std::process::id() as libc::pid_t;
+        for e in rd.flatten() {
+            let Ok(pid) = e.file_name().to_string_lossy().parse::<libc::pid_t>() else {
+                continue;
+            };
+            if pid == me {
+                continue;
+            }
+            let Some(fd) = pidfd(pid) else {
+                continue;
+            };
+            let ours = std::fs::metadata(format!("/proc/{pid}/ns/mnt"))
+                .is_ok_and(|m| m.ino() == self.ino);
+            if ours {
+                signal_kill(&fd);
+            }
+        }
     }
 
     /// Takes the node at `path` out of the sandbox: removes Bubblewrap's
@@ -158,15 +213,88 @@ unsafe fn take_out_here(user: i32, mnt: i32, path: &CString) -> i32 {
     }
 }
 
-/// Whether the name still shows the device SAM chose.
+/// Whether the name still shows the device SAM chose: the same node
+/// (devtmpfs makes a new one for every device) for the same number.
 fn unchanged(d: &WatchedDevice) -> bool {
-    std::fs::metadata(&d.path).is_ok_and(|m| m.dev() == d.dev && m.ino() == d.ino)
+    std::fs::metadata(&d.path)
+        .is_ok_and(|m| m.dev() == d.dev && m.ino() == d.ino && m.rdev() == d.rdev)
+}
+
+/// The inode of SAM's own namespace of this kind (`mnt`, `user`).
+fn own_ns(kind: &str) -> Result<u64, String> {
+    std::fs::metadata(format!("/proc/self/ns/{kind}"))
+        .map(|m| m.ino())
+        .map_err(|e| format!("SAM's own {kind} namespace: {e}"))
+}
+
+fn pidfd(pid: libc::pid_t) -> Option<OwnedFd> {
+    // SAFETY: pidfd_open takes a pid and flags and returns a new descriptor or -1.
+    let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) } as i32;
+    // SAFETY: a descriptor just returned by the kernel, owned here alone.
+    (fd >= 0).then(|| unsafe { OwnedFd::from_raw_fd(fd) })
+}
+
+fn signal_kill(pidfd: &OwnedFd) {
+    // SAFETY: a valid pidfd, a signal number, no info, no flags.
+    unsafe {
+        libc::syscall(
+            libc::SYS_pidfd_send_signal,
+            pidfd.as_raw_fd(),
+            libc::SIGKILL,
+            std::ptr::null::<libc::siginfo_t>(),
+            0,
+        )
+    };
+}
+
+/// Ends the sandbox the launcher started (`pid`: Bubblewrap, or pasta
+/// around it) at once; Bubblewrap's `--die-with-parent` takes everything
+/// inside with it. Through a pidfd taken now, so a process number used
+/// again after the sandbox ended is never hit; without pidfds (Linux
+/// before 5.3) only while `pid` is still the launcher's unreaped child.
+pub fn end_launched(pid: u32) -> Box<dyn FnOnce() + Send> {
+    let pid = pid as libc::pid_t;
+    let fd = pidfd(pid);
+    Box::new(move || match fd {
+        Some(fd) => signal_kill(&fd),
+        None => {
+            // SAFETY: waitid with WNOWAIT only looks; `info` is valid.
+            let still_ours = unsafe {
+                let mut info: libc::siginfo_t = std::mem::zeroed();
+                libc::waitid(
+                    libc::P_PID,
+                    pid as libc::id_t,
+                    &mut info,
+                    libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
+                ) == 0
+            };
+            if still_ours {
+                // SAFETY: a signal to the launcher's own, not yet reaped child.
+                unsafe { libc::kill(pid, libc::SIGKILL) };
+            }
+        }
+    })
+}
+
+/// What SAM does when a controller the app was given is unplugged.
+pub enum Unplugged {
+    /// Takes its node out. Enough only with Landlock in place, which
+    /// refuses every new open of a node taken out, also through a handle
+    /// the app holds: `helper_report` is what SAM's helper reported it
+    /// enforced (none yet: the app has not started, so it holds nothing).
+    TakeOut {
+        helper_report: Arc<Mutex<Option<String>>>,
+    },
+    /// Ends the app, for this reason.
+    EndApp(String),
 }
 
 /// The running watch; [`DeviceWatch::finish`] ends it.
 pub struct DeviceWatch {
-    /// Written to end the thread (an eventfd).
+    /// Written to end the thread at once (an eventfd; -1 without one).
     wake: i32,
+    /// Set to end the thread; it looks at least once a second.
+    stop: Arc<AtomicBool>,
     thread: Option<JoinHandle<Report>>,
 }
 
@@ -182,11 +310,12 @@ pub struct Report {
 impl DeviceWatch {
     /// Watches `nodes` while the app runs. `status` brings Bubblewrap's
     /// first status line (none, when the sender is dropped without one);
-    /// `end_app` ends the sandbox at once. `None` when there is nothing to
-    /// watch.
+    /// `unplugged` says what to do; `end_app` ends the sandbox at once.
+    /// `None` when there is nothing to watch.
     pub fn start(
         nodes: Vec<WatchedDevice>,
         status: Receiver<String>,
+        unplugged: Unplugged,
         end_app: Box<dyn FnOnce() + Send>,
     ) -> Option<DeviceWatch> {
         if nodes.is_empty() {
@@ -194,18 +323,18 @@ impl DeviceWatch {
         }
         // SAFETY: eventfd takes an initial value and flags and returns a new descriptor or -1.
         let wake = unsafe { libc::eventfd(0, libc::EFD_CLOEXEC | libc::EFD_NONBLOCK) };
-        if wake < 0 {
-            // Without a way to end the thread, it ends with the app's
-            // namespace gone; it still watches.
-            let thread = std::thread::spawn(move || watch(nodes, status, end_app, -1));
-            return Some(DeviceWatch {
-                wake,
-                thread: Some(thread),
-            });
-        }
-        let thread = std::thread::spawn(move || watch(nodes, status, end_app, wake));
+        let stop = Arc::new(AtomicBool::new(false));
+        let w = Watch {
+            status,
+            unplugged,
+            end_app: Some(end_app),
+            wake,
+            stop: stop.clone(),
+        };
+        let thread = std::thread::spawn(move || w.run(nodes));
         Some(DeviceWatch {
             wake,
+            stop,
             thread: Some(thread),
         })
     }
@@ -220,6 +349,7 @@ impl DeviceWatch {
     }
 
     fn signal(&self) {
+        self.stop.store(true, Ordering::SeqCst);
         if self.wake >= 0 {
             let one: u64 = 1;
             // SAFETY: writes 8 bytes from a valid u64 to the eventfd.
@@ -241,92 +371,129 @@ impl Drop for DeviceWatch {
     }
 }
 
-fn watch(
-    mut nodes: Vec<WatchedDevice>,
+struct Watch {
     status: Receiver<String>,
-    end_app: Box<dyn FnOnce() + Send>,
+    unplugged: Unplugged,
+    end_app: Option<Box<dyn FnOnce() + Send>>,
     wake: i32,
-) -> Report {
-    let mut report = Report::default();
-    let inotify = Inotify::new(&nodes);
-    let mut sandbox: Option<Result<Sandbox, String>> = None;
-    let mut end_app = Some(end_app);
-    loop {
-        if sandbox.is_none() {
-            match status.try_recv() {
-                Ok(line) => sandbox = Some(Sandbox::from_status(&line)),
-                Err(TryRecvError::Disconnected) => {
-                    sandbox = Some(Err("Bubblewrap reported no sandbox".into()))
-                }
-                Err(TryRecvError::Empty) => {}
+    stop: Arc<AtomicBool>,
+}
+
+impl Watch {
+    fn run(mut self, mut nodes: Vec<WatchedDevice>) -> Report {
+        let mut report = Report::default();
+        let inotify = Inotify::new(&nodes);
+        let mut sandbox: Option<Result<Sandbox, String>> = None;
+        loop {
+            if self.stop.load(Ordering::SeqCst) {
+                return report;
             }
-        }
-        let changed: Vec<usize> = (0..nodes.len())
-            .filter(|&i| !unchanged(&nodes[i]))
-            .collect();
-        if !changed.is_empty() && sandbox.is_none() {
-            // Bubblewrap writes the line as soon as the sandbox exists.
-            sandbox = Some(match status.recv_timeout(STATUS_WAIT) {
-                Ok(line) => Sandbox::from_status(&line),
-                Err(RecvTimeoutError::Timeout) => {
-                    Err("Bubblewrap's status line did not come".into())
-                }
-                Err(RecvTimeoutError::Disconnected) => Err("Bubblewrap reported no sandbox".into()),
-            });
-        }
-        for i in changed.into_iter().rev() {
-            let d = nodes.remove(i);
-            let done = match &sandbox {
-                Some(Ok(s)) => s.take_out(&d.path),
-                Some(Err(e)) => Err(e.clone()),
-                None => Err("the sandbox is not known".into()),
-            };
-            match done {
-                Ok(()) => report.lines.push(format!(
-                    "# game controller unplugged: {} taken out of the sandbox",
-                    d.path.display()
-                )),
-                Err(e) => {
-                    report.lines.push(format!(
-                        "# game controller unplugged: {} could not be taken out of the sandbox ({e}); SAM ended the app",
-                        d.path.display()
-                    ));
-                    report.ended_app = true;
-                    if let Some(f) = end_app.take() {
-                        f();
+            if sandbox.is_none() {
+                match self.status.try_recv() {
+                    Ok(line) => sandbox = Some(Sandbox::from_status(&line)),
+                    Err(TryRecvError::Disconnected) => {
+                        sandbox = Some(Err("Bubblewrap reported no sandbox".into()))
                     }
-                    return report;
+                    Err(TryRecvError::Empty) => {}
                 }
             }
+            let changed: Vec<usize> = (0..nodes.len())
+                .filter(|&i| !unchanged(&nodes[i]))
+                .collect();
+            if !changed.is_empty() && sandbox.is_none() {
+                // Bubblewrap writes the line as soon as the sandbox exists.
+                sandbox = Some(match self.status.recv_timeout(STATUS_WAIT) {
+                    Ok(line) => Sandbox::from_status(&line),
+                    Err(RecvTimeoutError::Timeout) => {
+                        Err("Bubblewrap's status line did not come".into())
+                    }
+                    Err(RecvTimeoutError::Disconnected) => {
+                        Err("Bubblewrap reported no sandbox".into())
+                    }
+                });
+            }
+            for i in changed.into_iter().rev() {
+                let d = nodes.remove(i);
+                match self.take_out(sandbox.as_ref(), &d.path) {
+                    Ok(()) => report.lines.push(format!(
+                        "# game controller unplugged: {} taken out of the sandbox",
+                        d.path.display()
+                    )),
+                    Err(why) => {
+                        report.lines.push(format!(
+                            "# game controller unplugged: {}; SAM ended the app ({why})",
+                            d.path.display()
+                        ));
+                        report.ended_app = true;
+                        if let Some(f) = self.end_app.take() {
+                            f();
+                        }
+                        if let Some(Ok(s)) = &sandbox {
+                            s.end_all();
+                        }
+                        return report;
+                    }
+                }
+            }
+            if nodes.is_empty() {
+                return report;
+            }
+            // Quickly while the sandbox is still being built, else on a
+            // change in the folder, on the end of the app, or after a second.
+            let timeout = if sandbox.is_none() { 50 } else { 1000 };
+            let mut fds = vec![];
+            if self.wake >= 0 {
+                fds.push(libc::pollfd {
+                    fd: self.wake,
+                    events: libc::POLLIN,
+                    revents: 0,
+                });
+            }
+            if let Some(i) = &inotify {
+                fds.push(libc::pollfd {
+                    fd: i.0.as_raw_fd(),
+                    events: libc::POLLIN,
+                    revents: 0,
+                });
+            }
+            // SAFETY: `fds` is a valid array of pollfd of the given length.
+            unsafe { libc::poll(fds.as_mut_ptr(), fds.len() as libc::nfds_t, timeout) };
+            if let Some(i) = &inotify {
+                i.drain();
+            }
         }
-        if nodes.is_empty() {
-            return report;
+    }
+
+    /// Takes an unplugged controller's node out, where that is enough.
+    fn take_out(&self, sandbox: Option<&Result<Sandbox, String>>, path: &Path) -> Result<(), String> {
+        let helper_report = match &self.unplugged {
+            Unplugged::EndApp(why) => return Err(why.clone()),
+            Unplugged::TakeOut { helper_report } => helper_report,
+        };
+        // The helper reports before it starts the app, so the report is
+        // there, or comes within moments; without it, SAM does not know.
+        let waited = std::time::Instant::now();
+        let report = loop {
+            if let Some(r) = helper_report.lock().ok().and_then(|r| r.clone()) {
+                break r;
+            }
+            if waited.elapsed() >= STATUS_WAIT {
+                return Err("SAM's helper did not report whether Landlock is in place".into());
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        };
+        if !(report.contains("landlock: fully enforced")
+            || report.contains("landlock: partially enforced"))
+        {
+            return Err(
+                "Landlock is not in place, so a handle the app holds could still reach the next device"
+                    .into(),
+            );
         }
-        // Quickly while the sandbox is still being built, else on a change
-        // in the folder, on the end of the app, or after a second.
-        let timeout = if sandbox.is_none() { 50 } else { 1000 };
-        let mut fds = vec![];
-        if wake >= 0 {
-            fds.push(libc::pollfd {
-                fd: wake,
-                events: libc::POLLIN,
-                revents: 0,
-            });
-        }
-        if let Some(i) = &inotify {
-            fds.push(libc::pollfd {
-                fd: i.0.as_raw_fd(),
-                events: libc::POLLIN,
-                revents: 0,
-            });
-        }
-        // SAFETY: `fds` is a valid array of pollfd of the given length.
-        unsafe { libc::poll(fds.as_mut_ptr(), fds.len() as libc::nfds_t, timeout) };
-        if wake >= 0 && fds[0].revents & libc::POLLIN != 0 {
-            return report;
-        }
-        if let Some(i) = &inotify {
-            i.drain();
+        match sandbox {
+            Some(Ok(s)) => s.take_out(path),
+            Some(Err(e)) => Err(e.clone()),
+            None => Err("the sandbox is not known".into()),
         }
     }
 }
@@ -375,12 +542,17 @@ impl Inotify {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::{mpsc, Arc};
+    use std::sync::mpsc;
+
+    fn landlock(report: &str) -> Unplugged {
+        Unplugged::TakeOut {
+            helper_report: Arc::new(Mutex::new(Some(report.to_string()))),
+        }
+    }
 
     /// A stand-in controller (a link to /dev/null), unplugged after the
     /// watch has started with `status`; whether SAM ended the app.
-    fn unplugged_with(status: Option<&str>) -> (Report, bool) {
+    fn unplugged_with(status: Option<&str>, unplugged: Unplugged) -> (Report, bool) {
         let t = tempfile::tempdir().unwrap();
         let node = t.path().join("event7");
         std::os::unix::fs::symlink("/dev/null", &node).unwrap();
@@ -398,8 +570,10 @@ mod tests {
                 path: node.clone(),
                 dev: m.dev(),
                 ino: m.ino(),
+                rdev: m.rdev(),
             }],
             rx,
+            unplugged,
             Box::new(move || e.store(true, Ordering::SeqCst)),
         )
         .unwrap();
@@ -424,7 +598,7 @@ mod tests {
             Some(r#"{"child-pid": 7, "mnt-namespace": 1}"#),
             Some("not a status line"),
         ] {
-            let (report, ended) = unplugged_with(status);
+            let (report, ended) = unplugged_with(status, landlock("landlock: fully enforced"));
             assert!(ended && report.ended_app, "{status:?}");
             assert!(
                 report.lines.iter().any(|l| l.contains("SAM ended the app")),
@@ -434,10 +608,74 @@ mod tests {
         }
     }
 
+    /// Where taking the node out is not enough (no Landlock, or the app
+    /// may make namespaces of its own), an unplugged controller ends the
+    /// app (review R56). A stand-in status line that names no namespace
+    /// any process has: nothing is ended but the stand-in (the whole
+    /// sandbox ending is in tests/device_watch.rs, on isolated computers).
+    #[test]
+    fn without_landlock_an_unplugged_controller_ends_the_app() {
+        let status = r#"{"child-pid": 1, "mnt-namespace": 1}"#.to_string();
+        for (unplugged, why) in [
+            (landlock("landlock: not enforced"), "Landlock is not in place"),
+            (
+                Unplugged::TakeOut {
+                    helper_report: Arc::new(Mutex::new(None)),
+                },
+                "did not report",
+            ),
+            (
+                Unplugged::EndApp("the app may make namespaces of its own".into()),
+                "namespaces of its own",
+            ),
+        ] {
+            let (report, ended) = unplugged_with(Some(&status), unplugged);
+            assert!(ended && report.ended_app, "{why}");
+            assert!(
+                report.lines.iter().any(|l| l.contains(why)),
+                "{why}: {:?}",
+                report.lines
+            );
+        }
+    }
+
+    /// When SAM ends a sandbox it cannot keep its promise in, the program
+    /// it started ends at once, whatever it does; once that program has
+    /// ended, its number is never signalled again (review R56). It sends a
+    /// signal: only on an isolated computer.
+    #[test]
+    fn ending_the_sandbox_ends_it_at_once() {
+        use std::os::unix::process::ExitStatusExt;
+        if !crate::contracts::isolated_only("ending a started program") {
+            return;
+        }
+        let mut child = std::process::Command::new("sleep").arg("30").spawn().unwrap();
+        let end = end_launched(child.id());
+        end();
+        let status = child.wait().unwrap();
+        assert_eq!(status.signal(), Some(libc::SIGKILL));
+    }
+
+    /// SAM's own namespace (that of the person's whole session) is never
+    /// taken for a sandbox, whatever the status line says: ending "the
+    /// sandbox" there would end everything (incident 2026-11-25). Only
+    /// looks: nothing is ended.
+    #[test]
+    fn sams_own_namespace_is_never_taken_for_a_sandbox() {
+        let own = std::fs::metadata("/proc/self/ns/mnt").unwrap().ino();
+        let status = format!(
+            r#"{{"child-pid": {}, "mnt-namespace": {own}}}"#,
+            std::process::id()
+        );
+        let e = Sandbox::from_status(&status).err().unwrap();
+        assert!(e.contains("SAM's own mount namespace"), "{e}");
+    }
+
     /// Nothing to watch: no watch at all.
     #[test]
     fn no_controller_no_watch() {
         let (_tx, rx) = mpsc::channel();
-        assert!(DeviceWatch::start(vec![], rx, Box::new(|| {})).is_none());
+        let none = Unplugged::EndApp(String::new());
+        assert!(DeviceWatch::start(vec![], rx, none, Box::new(|| {})).is_none());
     }
 }

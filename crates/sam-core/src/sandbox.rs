@@ -157,6 +157,8 @@ pub struct WatchedDevice {
     pub path: PathBuf,
     pub dev: u64,
     pub ino: u64,
+    /// The device number the node opens.
+    pub rdev: u64,
 }
 
 impl SandboxCommand {

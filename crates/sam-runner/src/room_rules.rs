@@ -357,6 +357,16 @@ pub const RESERVED: &str = "/.sam-room";
 const HIDING_FILE: &str = "/dev/null";
 
 impl FloorPlan {
+    /// Leaves the game controllers SAM watches out of the plan: SAM takes
+    /// one out of the app's sandbox when it is unplugged, and a room would
+    /// keep its own copy, reaching whatever device gets its number next
+    /// (review R56). A room never gets a game controller.
+    pub fn without_devices(mut self, watched: &[PathBuf]) -> FloorPlan {
+        self.entries
+            .retain(|e| !matches!(e, Entry::Dev { dst, .. } if watched.contains(dst)));
+        self
+    }
+
     /// Reads SAM's own Bubblewrap arguments for the app (up to `--`). An
     /// option SAM does not use is an error: then the start gets no rooms.
     pub fn from_bwrap_args(args: &[String]) -> Result<FloorPlan, String> {
@@ -2537,6 +2547,35 @@ mod tests {
             let e = ask(below).unwrap_err();
             assert!(e.contains("only as a whole"), "{below}: {e}");
         }
+    }
+
+    /// A room never gets a game controller SAM watches: SAM could not take
+    /// it out of the room when it is unplugged (review R56).
+    #[test]
+    fn a_room_never_gets_a_watched_game_controller() {
+        let pad = "/dev/input/event5";
+        let plan = FloorPlan::from_bwrap_args(&s(&[
+            "--tmpfs",
+            "/dev/input",
+            "--dev-bind-try",
+            pad,
+            pad,
+            "--remount-ro",
+            "/dev/input",
+            "--",
+            "x",
+        ]))
+        .unwrap();
+        let ask = |plan: &FloorPlan| {
+            plan_room(
+                plan,
+                &req(&[&["--dev-bind", pad, pad]], &["x"]),
+                AppFacts::default(),
+            )
+        };
+        assert!(ask(&plan).is_ok(), "the request itself is a fair one");
+        let without = plan.without_devices(&[PathBuf::from(pad)]);
+        assert!(ask(&without).is_err(), "a room got the watched controller");
     }
 
     /// A device that is a single file, asked for at its own place, is shown
