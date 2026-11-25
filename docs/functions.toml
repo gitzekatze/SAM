@@ -830,6 +830,7 @@ tests = ["both_forms_of_update_information_are_understood", "update_wildcards_ma
   "an_update_stopped_after_its_record_was_saved_is_finished_first",
   "removing_or_relocating_an_app_removes_its_incoming_leftovers",
   "a_stopped_update_whose_own_copy_changed_is_not_finished",
+  "a_version_being_put_in_place_survives_relocating",
   "signing_succeeds_only_with_the_named_fingerprint",
   "a_full_download_stops_at_the_published_length_whatever_the_server_sends",
   "a_mapped_file_is_unmapped_when_dropped",

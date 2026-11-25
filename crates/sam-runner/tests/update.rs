@@ -861,3 +861,61 @@ fn a_stopped_update_whose_own_copy_changed_is_not_finished() {
         "not blocked for good"
     );
 }
+
+/// Fourth review of the fix for R86: a same-name go back stopped after its
+/// record was saved keeps the earlier version only in SAM's copy that the
+/// record's mark names. Relocating the app then made the next run drop the
+/// mark and delete that copy. Now relocating is refused until the work is
+/// finished, and a mark whose target is no longer the app's file (a record
+/// changed outside SAM) keeps SAM's copy as the named way back.
+#[test]
+fn a_version_being_put_in_place_survives_relocating() {
+    use sam_intake::fingerprint::sha256_file;
+    let tmp = tempfile::tempdir().unwrap();
+    let (sam, id, v2, kept) = updated_by_hand_as(tmp.path(), true, "Tool-1.0-x86_64.AppImage");
+    let (newer, earlier) = (fs::read(&v2).unwrap(), fs::read(&kept).unwrap());
+    let fresh = kept.parent().unwrap().join("kept-1-a");
+    fs::create_dir_all(&fresh).unwrap();
+    let newer_kept = fresh.join(v2.file_name().unwrap());
+    fs::write(&newer_kept, &newer).unwrap();
+    let k = sha256_file(&kept).unwrap();
+    let mut e = sam.resolve(&id).unwrap();
+    let placing = sam_core::model::Placing {
+        file: kept.clone(),
+        sha256: k.clone(),
+        to: e.source_path.clone(),
+        checked: true,
+        going_back: true,
+    };
+    e.update_backup = Some(UpdateBackup {
+        file: newer_kept.clone(),
+        original_path: v2.clone(),
+        replaced_at: 1,
+        sha256: Some(sha256_file(&newer_kept).unwrap()),
+        placed_sha256: Some(k.clone()),
+        placing: Some(placing.clone()),
+    });
+    sam.registry().save(&mut e).unwrap();
+
+    let elsewhere = tmp.path().join("Elsewhere");
+    fs::create_dir_all(&elsewhere).unwrap();
+    let moved = elsewhere.join(v2.file_name().unwrap());
+    fs::copy(&v2, &moved).unwrap();
+    let err = sam.relocate(&id, &moved).unwrap_err();
+    assert!(format!("{err:#}").contains("Update or Go Back"), "{err:#}");
+    let e = sam.resolve(&id).unwrap();
+    assert_eq!(
+        e.update_backup.as_ref().unwrap().placing,
+        Some(placing.clone())
+    );
+
+    // A record changed outside SAM points the app elsewhere.
+    let mut e = sam.resolve(&id).unwrap();
+    e.source_path = fs::canonicalize(&moved).unwrap();
+    sam.registry().save(&mut e).unwrap();
+    let _ = sam.update(&id, false);
+    let b = sam.resolve(&id).unwrap().update_backup.unwrap();
+    assert_eq!(b.placing, None);
+    assert_eq!(b.file, kept, "SAM's copy is the named way back");
+    assert_eq!(fs::read(&kept).unwrap(), earlier, "and it is still there");
+}

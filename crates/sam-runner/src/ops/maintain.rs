@@ -234,35 +234,51 @@ impl Sam {
     }
 
     pub fn relocate(&self, query: &str, new_path: &Path) -> Result<AppEntry> {
-        let mut entry = self.resolve(query)?;
+        let entry = self.resolve(query)?;
+        // Held for the whole change, like an update or a go back: they
+        // read and write the same record (review of the fix for R86).
+        let (_change, entry) = self.lock_for_change(&entry, &sam_core::i18n::tr("relocate it"))?;
+        // An update or go back stopped after it was recorded puts a version
+        // in place at the old path; relocating would leave its copy to no
+        // record, and the next run would delete it (review of the fix for
+        // R86).
+        if let Some(p) = entry
+            .update_backup
+            .as_ref()
+            .and_then(|b| b.placing.as_ref())
+        {
+            bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "SAM is still putting a version of this app in place (its own copy is at {file}), so it does not relocate the app now. Finish it with Update or Go Back first.",
+                    &[("file", &tildify(&p.file))]
+                )
+            );
+        }
         let p = fs::canonicalize(new_path)?;
         let fp = fingerprint::compute(&p)?;
         // Half-written copies a stopped update or go back left next to the
-        // old place would stay there for good (review of the fix for R89);
-        // removed only while no change of this app is writing one.
-        if let Ok(Some(_change)) =
-            crate::app_lock::for_change_within(&self.paths, &entry.id, std::time::Duration::ZERO)
-        {
-            remove_incoming_leftovers(&entry);
-        }
+        // old place would stay there for good (review of the fix for R89).
+        remove_incoming_leftovers(&entry);
         let same = entry
             .extraction
             .as_ref()
             .is_some_and(|x| x.source.sha256 == fp.sha256);
-        entry.source_path = p;
-        entry.source = fp;
-        entry.state = if same {
-            AppState::Ready
-        } else {
-            AppState::Stale
-        };
-        if same {
-            if let Some(x) = entry.extraction.as_mut() {
-                x.source = entry.source.clone();
+        let saved = self.registry().update(&entry.id, |e| {
+            e.source_path = p.clone();
+            e.source = fp.clone();
+            e.state = if same {
+                AppState::Ready
+            } else {
+                AppState::Stale
+            };
+            if same {
+                if let Some(x) = e.extraction.as_mut() {
+                    x.source = fp.clone();
+                }
             }
-        }
-        self.registry().save(&mut entry)?;
-        Ok(entry)
+        })?;
+        saved.with_context(|| sam_core::i18n::trf("no registered app '{id}'", &[("id", &entry.id)]))
     }
 
     /// Remove the sandbox. Returns the removed entry and problems that did
@@ -1061,7 +1077,9 @@ impl Sam {
         // (`finish_placing`), and SAM's download folder is cleared by the
         // next update.
         let new_copy = fresh.join(PLACING_NAME);
-        if let Err(e) = move_file(&tmp, &new_copy) {
+        let kept_new =
+            move_file(&tmp, &new_copy).and_then(|()| Ok(fs::File::open(&new_copy)?.sync_all()?));
+        if let Err(e) = kept_new {
             let _ = remove_tree(&fresh);
             return Err(e);
         }
@@ -1167,11 +1185,17 @@ impl Sam {
             Ok(e) => e,
             Err(err) => {
                 // A failure, not a stop: the way back stays, nothing is
-                // left to finish.
-                let _ = self.registry().update(&entry.id, |f| {
-                    f.update_backup = Some(done.clone());
-                });
-                let _ = fs::remove_file(&new_copy);
+                // left to finish. The copy goes only once no record names
+                // it.
+                if self
+                    .registry()
+                    .update(&entry.id, |f| {
+                        f.update_backup = Some(done.clone());
+                    })
+                    .is_ok()
+                {
+                    let _ = fs::remove_file(&new_copy);
+                }
                 return Err(err);
             }
         };
@@ -1460,11 +1484,17 @@ impl Sam {
         let mut e = match unpacked {
             Ok(e) => e,
             Err(err) => {
-                // A failure, not a stop: nothing is left to finish.
-                let _ = self.registry().update(&entry.id, |f| {
-                    f.update_backup = Some(done.clone());
-                });
-                forget_earlier_backups(&root, &fresh);
+                // A failure, not a stop: nothing is left to finish. The
+                // earlier backup goes only once no record names it.
+                if self
+                    .registry()
+                    .update(&entry.id, |f| {
+                        f.update_backup = Some(done.clone());
+                    })
+                    .is_ok()
+                {
+                    forget_earlier_backups(&root, &fresh);
+                }
                 return Err(err);
             }
         };
@@ -1497,11 +1527,37 @@ impl Sam {
                 }
             })
         };
-        let ours = fs::canonicalize(&root)
-            .is_ok_and(|r| fs::canonicalize(&p.file).is_ok_and(|f| f.starts_with(&r)))
-            && p.to == entry.source_path;
-        if !ours {
+        let in_backups = fs::canonicalize(&root)
+            .is_ok_and(|r| fs::canonicalize(&p.file).is_ok_and(|f| f.starts_with(&r)));
+        if !in_backups {
             clear()?;
+            return Ok(None);
+        }
+        if p.to != entry.source_path {
+            // The app is somewhere else now (a record changed outside SAM):
+            // nothing is put anywhere. An earlier version a go back was
+            // putting in place stays as the named way back, never deleted
+            // as an unnamed backup (review of the fix for R86); an update's
+            // download is simply dropped, the way back it had stays.
+            self.registry().update(&entry.id, |f| {
+                if let Some(b) = f.update_backup.as_mut() {
+                    if p.going_back {
+                        *b = UpdateBackup {
+                            file: p.file.clone(),
+                            original_path: p.to.clone(),
+                            replaced_at: now(),
+                            sha256: p.checked.then(|| p.sha256.clone()),
+                            placed_sha256: None,
+                            placing: None,
+                        };
+                    } else {
+                        b.placing = None;
+                    }
+                }
+            })?;
+            if !p.going_back {
+                let _ = fs::remove_file(&p.file);
+            }
             return Ok(None);
         }
         if fingerprint::sha256_file(&p.file).ok().as_deref() != Some(p.sha256.as_str()) {
