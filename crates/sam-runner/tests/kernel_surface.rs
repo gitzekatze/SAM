@@ -2,6 +2,8 @@
 //! an app and for unpacking (audit S-F7, S-F9, I-F17):
 //! - kernel crypto (`AF_ALG`) and virtual-machine (`AF_VSOCK`) sockets do
 //!   not open; an internet socket does (the control);
+//! - nor does a pair of crypto sockets (`socketpair`, review R66); a
+//!   local pair does (the control);
 //! - a call through the x32 ABI is refused by the filter (`EPERM`; without
 //!   the filter the kernel answers it or says it has no such call);
 //! - the same holds for an unpacking tool run on untrusted input, and for
@@ -37,6 +39,13 @@ def fam(n, f, t):
 fam("ALG", socket.AF_ALG, socket.SOCK_SEQPACKET)
 fam("VSOCK", socket.AF_VSOCK, socket.SOCK_STREAM)
 fam("INET", socket.AF_INET, socket.SOCK_DGRAM)
+def pair(n, f, t):
+    try:
+        a, b = socket.socketpair(f, t); a.close(); b.close(); print(n + "=open")
+    except OSError as e:
+        print(n + "=" + errno.errorcode.get(e.errno, str(e.errno)))
+pair("PAIR_ALG", socket.AF_ALG, socket.SOCK_SEQPACKET)
+pair("PAIR_UNIX", socket.AF_UNIX, socket.SOCK_STREAM)
 libc = ctypes.CDLL(None, use_errno=True)
 r = libc.syscall(39 | 0x40000000)
 print("X32=" + ("ok" if r >= 0 else errno.errorcode.get(ctypes.get_errno(), "?")))
@@ -89,6 +98,25 @@ fn assert_shut(text: &str, what: &str) {
             host.get(door)
         );
     }
+    // A pair of sockets keeps to the same families (review R66). Where
+    // the kernel has no crypto sockets it refuses the pair itself, and the
+    // refusal below would not be the filter's: a run that must prove
+    // everything fails then, never passes silently.
+    if host.get("PAIR_ALG").map(String::as_str) == Some("EAFNOSUPPORT") {
+        sam_runner::contracts::skip("this kernel has no crypto sockets (AF_ALG)")
+            .unwrap_or_else(|e| panic!("{e}"));
+    }
+    assert_eq!(
+        inside.get("PAIR_UNIX").map(String::as_str),
+        Some("open"),
+        "{what}: {inside:?}"
+    );
+    assert_eq!(
+        inside.get("PAIR_ALG").map(String::as_str),
+        Some("EAFNOSUPPORT"),
+        "{what}: PAIR_ALG (here without SAM: {:?})",
+        host.get("PAIR_ALG")
+    );
     assert_eq!(
         inside.get("X32").map(String::as_str),
         Some("EPERM"),

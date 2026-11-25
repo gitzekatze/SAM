@@ -86,12 +86,12 @@ msgstr ""
 msgid "User namespaces are available."
 msgstr ""
 
-#: crates/sam-core/src/host.rs:455
+#: crates/sam-core/src/host.rs:476
 #. Keep the {placeholders}; their order may change.
 msgid "Install it: {command}"
 msgstr ""
 
-#: crates/sam-core/src/host.rs:456
+#: crates/sam-core/src/host.rs:477
 #. Keep the {placeholders}; their order may change.
 msgid "Install the package \"{package}\" with your distribution's package manager."
 msgstr ""
@@ -927,7 +927,7 @@ msgstr ""
 msgid "User namespaces unavailable"
 msgstr ""
 
-#: crates/sam-core/src/warnings.rs:348 crates/sam-sandbox/src/lib.rs:2093
+#: crates/sam-core/src/warnings.rs:348 crates/sam-sandbox/src/lib.rs:2206
 msgid "Wayland socket not available"
 msgstr ""
 
@@ -935,7 +935,7 @@ msgstr ""
 msgid "The Wayland socket is not available. Enable X11 or log in to a Wayland session."
 msgstr ""
 
-#: crates/sam-core/src/warnings.rs:355 crates/sam-sandbox/src/lib.rs:2113
+#: crates/sam-core/src/warnings.rs:355 crates/sam-sandbox/src/lib.rs:2226
 msgid "X11 display not available"
 msgstr ""
 
@@ -4136,7 +4136,7 @@ msgstr ""
 msgid "Show the fix"
 msgstr ""
 
-#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:153 crates/sam-sandbox/src/lib.rs:1675
+#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:153 crates/sam-sandbox/src/lib.rs:1730 crates/sam-sandbox/src/lib.rs:1788
 #. Keep the {placeholders}; their order may change.
 msgid "SAM cannot pass on {path}: its name is not valid text. Rename it, then start the app again."
 msgstr ""
@@ -4532,7 +4532,7 @@ msgstr ""
 msgid "ran in its sandbox and ended by itself ({summary})"
 msgstr ""
 
-#: crates/sam-jail-cli/src/output.rs:234
+#: crates/sam-jail-cli/src/output.rs:216
 msgid "Why this profile"
 msgstr ""
 
@@ -4970,7 +4970,7 @@ msgstr ""
 msgid "The sound server is not PipeWire, so SAM cannot run its sound relay and apps get no sound. An app gets sound only with \"Sound without SAM's relay\", which lets it load code into the sound server outside the sandbox"
 msgstr ""
 
-#: crates/sam-runner/src/doctor.rs:311 crates/sam-sandbox/src/lib.rs:2166
+#: crates/sam-runner/src/doctor.rs:311 crates/sam-sandbox/src/lib.rs:2279
 msgid "No sound server found. Audio may not work."
 msgstr ""
 
@@ -5095,7 +5095,7 @@ msgstr ""
 msgid "loading the seccomp filter"
 msgstr ""
 
-#: crates/sam-runner/src/kernel.rs:673
+#: crates/sam-runner/src/kernel.rs:689
 msgid "seccomp filters are not supported on this architecture"
 msgstr ""
 
@@ -6644,83 +6644,103 @@ msgstr ""
 msgid "the assembled file does not match the published checksum"
 msgstr ""
 
-#: crates/sam-sandbox/src/lib.rs:1608
+#: crates/sam-sandbox/src/lib.rs:1675
 msgid "Bubblewrap is not installed. Install the 'bubblewrap' package."
 msgstr ""
 
-#: crates/sam-sandbox/src/lib.rs:1616
+#: crates/sam-sandbox/src/lib.rs:1683
 msgid "xdg-dbus-proxy not found: filtered session D-Bus will be disabled"
 msgstr ""
 
-#: crates/sam-sandbox/src/lib.rs:1637
+#: crates/sam-sandbox/src/lib.rs:1707
+#. Keep the {placeholders}; their order may change.
+msgid "the extra Bubblewrap arguments end with {option}, which needs more values; SAM does not start the app until the setting is complete"
+msgstr ""
+
+#: crates/sam-sandbox/src/lib.rs:1711
+#. Keep the {placeholders}; their order may change.
+msgid "the extra Bubblewrap arguments hold {word} where an option belongs, which Bubblewrap would run instead of the app; SAM does not start the app until the setting is fixed"
+msgstr ""
+
+#: crates/sam-sandbox/src/lib.rs:1715
+#. Keep the {placeholders}; their order may change.
+msgid "the extra Bubblewrap arguments hold {option}, an option SAM does not know; SAM does not start the app until the setting is changed"
+msgstr ""
+
+#: crates/sam-sandbox/src/lib.rs:1738
+#. Keep the {placeholders}; their order may change.
+msgid "SAM cannot pass on {path}: its name holds \"..\". Set the folder without \"..\", then start the app again."
+msgstr ""
+
+#: crates/sam-sandbox/src/lib.rs:1750
 #. Keep the {placeholders}; their order may change.
 msgid "the home folder is not set (HOME is \"{home}\"); SAM does not start apps without one"
 msgstr ""
 
-#: crates/sam-sandbox/src/lib.rs:1648
+#: crates/sam-sandbox/src/lib.rs:1761
 msgid "bubblewrap (bwrap) is not installed"
 msgstr ""
 
-#: crates/sam-sandbox/src/lib.rs:1992
+#: crates/sam-sandbox/src/lib.rs:2105
 #. Keep the {placeholders}; their order may change.
 msgid "{key} folder does not exist on the host; not bound"
 msgstr ""
 
-#: crates/sam-sandbox/src/lib.rs:1996
+#: crates/sam-sandbox/src/lib.rs:2109
 #. Keep the {placeholders}; their order may change.
 msgid "{key} folder is set to {path}, which shows more than a user folder (the home, a folder above it, a system or SAM folder, or a protected place); not bound"
 msgstr ""
 
-#: crates/sam-sandbox/src/lib.rs:2044
+#: crates/sam-sandbox/src/lib.rs:2157
 #. Keep the {placeholders}; their order may change.
 msgid "granted access to the opened folder {path}"
 msgstr ""
 
-#: crates/sam-sandbox/src/lib.rs:2049
+#: crates/sam-sandbox/src/lib.rs:2162
 #. Keep the {placeholders}; their order may change.
 msgid "granted access to the opened file {path}"
 msgstr ""
 
-#: crates/sam-sandbox/src/lib.rs:2164
+#: crates/sam-sandbox/src/lib.rs:2277
 msgid "SAM's sound relay is not running, so the app has no sound (the sound server's own connection would let it load code outside the sandbox). The start message says why."
 msgstr ""
 
-#: crates/sam-sandbox/src/lib.rs:2221
+#: crates/sam-sandbox/src/lib.rs:2334
 msgid "No game controller is plugged in; controllers connected later are not seen until the app restarts"
 msgstr ""
 
-#: crates/sam-sandbox/src/lib.rs:2229
+#: crates/sam-sandbox/src/lib.rs:2342
 msgid "Bluetooth needs the system D-Bus; not granted"
 msgstr ""
 
-#: crates/sam-sandbox/src/lib.rs:2242
+#: crates/sam-sandbox/src/lib.rs:2355
 msgid "Input method needs the session D-Bus; not granted"
 msgstr ""
 
-#: crates/sam-sandbox/src/lib.rs:2265
+#: crates/sam-sandbox/src/lib.rs:2378
 msgid "session D-Bus socket not found"
 msgstr ""
 
-#: crates/sam-sandbox/src/lib.rs:2274
+#: crates/sam-sandbox/src/lib.rs:2387
 msgid "filtered D-Bus requested but no proxy is running (install xdg-dbus-proxy); session bus disabled"
 msgstr ""
 
-#: crates/sam-sandbox/src/lib.rs:2329
+#: crates/sam-sandbox/src/lib.rs:2442
 #. Keep the {placeholders}; their order may change.
 msgid "{path} is reached through a link in a folder the app can change; it is not passed into the sandbox. List the socket by its real place."
 msgstr ""
 
-#: crates/sam-sandbox/src/lib.rs:2343
+#: crates/sam-sandbox/src/lib.rs:2456
 #. Keep the {placeholders}; their order may change.
 msgid "{path} lies below a folder the app can change, so the app could swap it for another socket during the start; this setting does not pass it in. Where the app may use that folder, it still reaches the socket there."
 msgstr ""
 
-#: crates/sam-sandbox/src/lib.rs:2350
+#: crates/sam-sandbox/src/lib.rs:2463
 #. Keep the {placeholders}; their order may change.
 msgid "{path} is not a socket; it is not passed into the sandbox"
 msgstr ""
 
-#: crates/sam-sandbox/src/lib.rs:2361
+#: crates/sam-sandbox/src/lib.rs:2474
 #. Keep the {placeholders}; their order may change.
 msgid "{path} leads elsewhere: {why}. It is not passed into the sandbox; list that socket by its real place if the app needs it."
 msgstr ""
