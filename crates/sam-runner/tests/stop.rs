@@ -179,6 +179,10 @@ fn stand_in_runner(
 /// to the earlier runner's process number long after the check).
 #[test]
 fn a_launch_started_while_closing_is_left_alone() {
+    // Closing signals the stand-ins by their process numbers.
+    if !sam_runner::contracts::isolated_only("signalling processes by number") {
+        return;
+    }
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path();
     let img = root.join("Again-1.0-x86_64.AppImage");

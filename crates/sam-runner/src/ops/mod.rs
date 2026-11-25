@@ -394,8 +394,13 @@ fn safe_to_delete(d: &Path) -> Result<()> {
     Ok(())
 }
 
-/// The process has this file open.
+/// The process has this file open. Only a regular file counts, never one
+/// reached through a link: a planted link must not make another process's
+/// file count as a launch's lock (review B2 S6, R85).
 fn holds_open(pid: u32, file: &Path) -> bool {
+    if !fs::symlink_metadata(file).is_ok_and(|m| m.is_file()) {
+        return false;
+    }
     let Ok(want) = fs::canonicalize(file) else {
         return false;
     };
@@ -603,6 +608,18 @@ pub(super) struct Runner {
     fd: Option<std::os::fd::OwnedFd>,
 }
 
+/// What [`Runner::signal`] does.
+#[derive(Debug, PartialEq, Eq)]
+enum Act {
+    /// Nothing: the launch has ended, or the runner is the program that
+    /// started SAM.
+    Nothing,
+    /// The launch runs in this very program: it is asked to end.
+    EndOwnLaunch,
+    /// The signal goes to the runner.
+    Signal,
+}
+
 impl Runner {
     /// The process `pid` as a runner to close, if it holds `lock` open.
     /// The pidfd is taken after that check and the check is made once
@@ -634,19 +651,37 @@ impl Runner {
     /// Without a pidfd, [`launch_ended`](Self::launch_ended) checks right
     /// before the signal that the process still holds the lock open.
     pub(super) fn signal(&self, sig: i32) {
-        if self.launch_ended() {
-            return;
+        match self.act() {
+            Act::Nothing => {}
+            Act::EndOwnLaunch => crate::pty::request_end(),
+            Act::Signal => match &self.fd {
+                Some(fd) => pidfd_signal(fd, sig),
+                None => {
+                    let Ok(pid) = libc::pid_t::try_from(self.pid) else {
+                        return;
+                    };
+                    // SAFETY: kill takes plain integers; the process holds
+                    // the launch's lock open, checked just now.
+                    unsafe { libc::kill(pid, sig) };
+                }
+            },
         }
-        match &self.fd {
-            Some(fd) => pidfd_signal(fd, sig),
-            None => {
-                let Ok(pid) = libc::pid_t::try_from(self.pid) else {
-                    return;
-                };
-                // SAFETY: kill takes plain integers; the process holds the
-                // launch's lock open, checked just now.
-                unsafe { libc::kill(pid, sig) };
-            }
+    }
+
+    /// What a signal to this runner does. Never a signal to SAM's own
+    /// program or the program that started it: a launch run inside this
+    /// program (SAM's tests, `sam-jail bench`) has its folder named after
+    /// this program, and a signal would end the program asking to close
+    /// the app; that launch is asked to end instead (review B2 S6, R85).
+    fn act(&self) -> Act {
+        if self.launch_ended() {
+            Act::Nothing
+        } else if self.pid == std::process::id() {
+            Act::EndOwnLaunch
+        } else if self.pid == std::os::unix::process::parent_id() {
+            Act::Nothing
+        } else {
+            Act::Signal
         }
     }
 
@@ -1086,7 +1121,7 @@ mod quit_tests {
 #[cfg(test)]
 mod runner_tests {
     #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
-    use super::Runner;
+    use super::{holds_open, pidfd_open, Act, Runner};
     use std::process::{Child, Command, Stdio};
     use std::time::{Duration, Instant};
 
@@ -1145,6 +1180,9 @@ mod runner_tests {
     /// or the command line may be (review B2 S6, R85).
     #[test]
     fn a_closed_runner_counts_as_ended_before_it_is_collected() {
+        if !crate::contracts::isolated_only("signalling processes by number") {
+            return;
+        }
         let t = tempfile::tempdir().unwrap();
         let lock = t.path().join("running.lock");
         std::fs::write(&lock, "").unwrap();
@@ -1170,6 +1208,9 @@ mod runner_tests {
     /// and counts as ended once it holds it no more (review B2 S6, R85).
     #[test]
     fn without_a_pidfd_a_runner_is_signalled_only_while_it_holds_its_lock() {
+        if !crate::contracts::isolated_only("signalling processes by number") {
+            return;
+        }
         let t = tempfile::tempdir().unwrap();
         let (lock, other) = (t.path().join("running.lock"), t.path().join("other.lock"));
         std::fs::write(&lock, "").unwrap();
@@ -1214,6 +1255,9 @@ mod runner_tests {
     /// for the program that asked and then end it (review B2 S6, R85).
     #[test]
     fn a_program_whose_launch_has_ended_is_neither_waited_for_nor_signalled() {
+        if !crate::contracts::isolated_only("signalling processes by number") {
+            return;
+        }
         let t = tempfile::tempdir().unwrap();
         let lock = t.path().join("running.lock");
         std::fs::write(&lock, "").unwrap();
@@ -1228,5 +1272,64 @@ mod runner_tests {
         let _ = child.wait();
         assert!(done, "a program whose launch ended was waited for");
         assert!(spared, "a program whose launch ended was signalled");
+    }
+
+    /// A runner that is SAM's own program (a launch run inside it, as in
+    /// SAM's tests) is never signalled: its launch is asked to end instead.
+    /// The program that started SAM is never signalled either. Checked on
+    /// the decision, so a missing guard fails here instead of ending this
+    /// test program (review B2 S6, R85).
+    #[test]
+    fn sams_own_program_and_its_parent_are_never_signalled() {
+        use std::os::fd::AsRawFd;
+        let t = tempfile::tempdir().unwrap();
+        let lock = t.path().join("running.lock");
+        // This program holds the launch's lock, as an in-process launch does.
+        let held = std::fs::File::create(&lock).unwrap();
+        // SAFETY: an open file; flock only takes its descriptor.
+        let locked = unsafe { libc::flock(held.as_raw_fd(), libc::LOCK_EX) };
+        assert_eq!(locked, 0);
+        let own = Runner::holding(std::process::id(), &lock).expect("this program holds the lock");
+        assert_eq!(
+            own.act(),
+            Act::EndOwnLaunch,
+            "SAM's own program would be signalled"
+        );
+        let parent = std::os::unix::process::parent_id();
+        let fd = pidfd_open(parent).ok();
+        assert!(
+            fd.is_some(),
+            "no pidfd: SAM needs Linux 5.3 or later for this test"
+        );
+        let starter = Runner {
+            pid: parent,
+            lock: lock.clone(),
+            fd,
+        };
+        assert_eq!(
+            starter.act(),
+            Act::Nothing,
+            "the program that started SAM would be signalled"
+        );
+        drop(held);
+    }
+
+    /// A launch's lock reached through a link is never taken as held, nor
+    /// as held open by a runner: a planted link must not make another
+    /// process's file count as a running launch (review B2 S6, R85).
+    #[test]
+    fn a_lock_reached_through_a_link_is_never_taken() {
+        let t = tempfile::tempdir().unwrap();
+        let lock = t.path().join("elsewhere.lock");
+        std::fs::write(&lock, "").unwrap();
+        let link = t.path().join("running.lock");
+        std::os::unix::fs::symlink(&lock, &link).unwrap();
+        let mut child = holder(&lock, true);
+        let real = soon(|| holds_open(child.id(), &lock) && crate::launch::lock_held(&lock));
+        let through_link = holds_open(child.id(), &link) || crate::launch::lock_held(&link);
+        let _ = child.kill();
+        let _ = child.wait();
+        assert!(real, "the stand-in did not hold the lock");
+        assert!(!through_link, "a lock reached through a link was taken");
     }
 }

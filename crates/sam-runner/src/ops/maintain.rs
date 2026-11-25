@@ -359,6 +359,8 @@ impl Sam {
                     r.signal(libc::SIGKILL);
                 }
                 if !wait(3) {
+                    // What a killed runner left is cleared also here.
+                    let _ = self.running(&entry.id);
                     bail!(
                         "{}",
                         sam_core::i18n::trf(
