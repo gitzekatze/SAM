@@ -909,9 +909,10 @@ mod tests {
     /// The command line and the window name risk with the same words, and
     /// the command line's filter understands both names. Medium has words
     /// of its own since owner decision 17 of 2026-11-23 (it read "Harmless"
-    /// like Low before, and `harmless` selected both).
+    /// like Low before, and `harmless` selected both), so the test now
+    /// checks four words; its name stays as it was.
     #[test]
-    fn risk_has_the_same_words_everywhere() {
+    fn risk_has_the_same_three_words_everywhere() {
         assert_eq!(RiskLevel::Low.words(), "Harmless");
         assert_eq!(RiskLevel::Medium.words(), "Some access");
         assert_eq!(RiskLevel::High.words(), "Think twice");
