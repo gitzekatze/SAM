@@ -106,17 +106,18 @@ impl Sam {
         })()
         .in_function(2)?;
 
-        // Same content as a registered app whose file went missing: relocate.
-        if let Some(mut moved) = all
-            .into_iter()
-            .find(|a| a.source.sha256 == fp.sha256 && !a.source_path.exists())
-        {
+        // Same content as what SAM unpacked for a registered app whose file
+        // went missing: the app's file was moved, so it follows the file.
+        // Every other field and mark of the record stays as it is.
+        if let Some(mut moved) = all.into_iter().find(|a| is_moved_copy(a, &fp.sha256)) {
             moved.source_path = source.clone();
             moved.source = fp;
             if let Some(x) = moved.extraction.as_mut() {
                 x.source = moved.source.clone();
             }
-            if moved.state == AppState::Missing {
+            // The file is again the one SAM unpacked: what Missing and Stale
+            // said (no file, or a file that differs) is over, as in `refresh`.
+            if matches!(moved.state, AppState::Missing | AppState::Stale) {
                 moved.state = AppState::Ready;
             }
             reg.save(&mut moved)?;
@@ -508,6 +509,21 @@ impl Sam {
             let _ = logs.prune(id, kind, 5);
         }
     }
+}
+
+/// Whether a file with this checksum is `app`'s moved AppImage: the app's
+/// file is gone and the checksum is that of what SAM unpacked for it. Not
+/// the file's last seen checksum: the change check records a swapped file
+/// there, and once the swapping app moved it elsewhere, adding it took the
+/// swapped content for the unpacked one, which the update check and the
+/// update then trusted (review B2 S6, R96). An app that was never unpacked
+/// is not matched: its file is added as an app of its own.
+pub(super) fn is_moved_copy(app: &AppEntry, sha256: &str) -> bool {
+    !app.source_path.exists()
+        && app
+            .extraction
+            .as_ref()
+            .is_some_and(|x| x.source.sha256 == sha256)
 }
 
 /// The program to start for an app without `AppRun`: the first word of its

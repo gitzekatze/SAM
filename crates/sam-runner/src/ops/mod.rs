@@ -111,7 +111,8 @@ pub struct AddOutcome {
 pub struct ScanItem {
     pub path: PathBuf,
     pub registered: Option<String>,
-    /// A missing registered app whose checksum matches this file.
+    /// A missing registered app whose unpacked AppImage has this file's
+    /// checksum.
     pub moved_from: Option<String>,
     pub size: u64,
 }

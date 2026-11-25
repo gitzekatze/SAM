@@ -7251,26 +7251,26 @@ msgstr ""
 "besoin, le téléchargement s’est donc probablement interrompu. Télécharge-le "
 "à nouveau."
 
-#: crates/sam-runner/src/ops/add.rs:283
+#: crates/sam-runner/src/ops/add.rs:284
 msgid "Unusual files in the AppImage"
 msgstr "Fichiers inhabituels dans l’AppImage"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/add.rs:286
+#: crates/sam-runner/src/ops/add.rs:287
 msgid "{n} item was made safe while unpacking: {items}"
 msgid_plural "{n} items were made safe while unpacking: {items}"
 msgstr[0] "{n} élément a été rendu sûr lors de la décompression : {items}"
 msgstr[1] "{n} éléments ont été rendus sûrs lors de la décompression : {items}"
 
-#: crates/sam-runner/src/ops/add.rs:303
+#: crates/sam-runner/src/ops/add.rs:304
 msgid "The AppImage unpacked itself"
 msgstr "L’AppImage s’est décompressé lui-même"
 
-#: crates/sam-runner/src/ops/add.rs:303
+#: crates/sam-runner/src/ops/add.rs:304
 msgid "The AppImage unpacked itself inside a restricted sandbox."
 msgstr "L’AppImage s’est décompressé lui-même dans un bac à sable restreint."
 
-#: crates/sam-runner/src/ops/add.rs:342 crates/sam-runner/src/ops/add.rs:402
+#: crates/sam-runner/src/ops/add.rs:343 crates/sam-runner/src/ops/add.rs:403
 msgid ""
 "the AppImage has not been unpacked yet; unpack it with Unpack Again (sam-"
 "jail reextract APP)"
@@ -7278,19 +7278,19 @@ msgstr ""
 "l’AppImage n’a pas encore été décompressé ; décompresse-le avec "
 "« Décompresser à nouveau » (sam-jail reextract APP)"
 
-#: crates/sam-runner/src/ops/add.rs:413
+#: crates/sam-runner/src/ops/add.rs:414
 msgid "Looking for the app's programs and libraries"
 msgstr "Recherche des programmes et bibliothèques de l’application"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/add.rs:420
+#: crates/sam-runner/src/ops/add.rs:421
 msgid "{done} of {n} program file read"
 msgid_plural "{done} of {n} program files read"
 msgstr[0] "{done} fichier de programme lu sur {n}"
 msgstr[1] "{done} fichiers de programme lus sur {n}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/add.rs:431
+#: crates/sam-runner/src/ops/add.rs:432
 msgid "dependency detection failed: {error}"
 msgstr "échec de la détection des dépendances : {error}"
 
@@ -7570,7 +7570,7 @@ msgstr ""
 "jour."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/mod.rs:388
+#: crates/sam-runner/src/ops/mod.rs:389
 msgid "refusing to delete {folder}: it is not one of SAM's own folders"
 msgstr "refus de supprimer {folder} : ce n’est pas un dossier propre à SAM"
 
@@ -7643,18 +7643,18 @@ msgstr "La signature ne correspond pas"
 msgid "could not hide the menu entry {file}: {error}"
 msgstr "impossible de masquer l’entrée de menu {file} : {error}"
 
-#: crates/sam-runner/src/ops/overview.rs:500
+#: crates/sam-runner/src/ops/overview.rs:505
 msgid "Bubblewrap cannot run on this computer"
 msgstr "Bubblewrap ne peut pas fonctionner sur cet ordinateur"
 
-#: crates/sam-runner/src/ops/overview.rs:502
+#: crates/sam-runner/src/ops/overview.rs:507
 msgid "SAM's command line (sam-jail) is not next to this program"
 msgstr ""
 "la ligne de commande de SAM (sam-jail) ne se trouve pas à côté de ce "
 "programme"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/overview.rs:506
+#: crates/sam-runner/src/ops/overview.rs:511
 msgid ""
 "SAM unpacks AppImages only inside a sandbox, and none can be built here: "
 "{reason}. Diagnostics (sam-jail doctor) says what is missing."

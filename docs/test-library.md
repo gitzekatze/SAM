@@ -389,7 +389,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-451 tests.
+453 tests.
 
 | Promise | Test |
 |---|---|
@@ -490,7 +490,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | With "this computer only", the app reaches only the ports on this computer the user lists. | [`only_listed_host_ports`](../crates/sam-runner/src/netns.rs#L184) |
 | The app's ports are offered on this computer's loopback addresses only, for IPv4 and IPv6 alike, never on every address (audit L-F7). | [`the_apps_ports_listen_on_loopback_only`](../crates/sam-runner/src/netns.rs#L204) |
 | Local services whose clients would hand an app control or secrets are never taken over automatically. | [`well_known_local_services_are_never_taken_over`](../crates/sam-runner/src/netns.rs#L237) |
-| An app without AppRun starts the program its menu entry names, found inside the app; a name that points outside it is never used. | [`the_entry_from_exec_stays_inside_the_app`](../crates/sam-runner/src/ops/add.rs#L533) |
+| An app without AppRun starts the program its menu entry names, found inside the app; a name that points outside it is never used. | [`the_entry_from_exec_stays_inside_the_app`](../crates/sam-runner/src/ops/add.rs#L549) |
 | A change works on the app's record as it is once it holds the app, not on the copy read when the change was asked for: another change may have saved in between (review L2). | [`a_change_works_on_the_record_as_it_is_under_the_lock`](../crates/sam-runner/src/ops/maintain.rs#L1610) |
 | ⟲ Regression (audit U-L4): the data of an app whose record SAM could not read (damaged, or written by a newer SAM) was listed as left over, and "remove leftover data" deleted the app's private home. | [`data_of_an_unreadable_record_is_not_offered_for_deletion`](../crates/sam-runner/src/ops/maintain.rs#L1634) |
 | A download that waited for an answer about an update for more than a week (the question was never answered) is deleted when updates are checked; a younger one stays for its answer. | [`a_download_never_answered_is_deleted_after_a_week`](../crates/sam-runner/src/ops/maintain.rs#L1677) |
@@ -498,16 +498,16 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | The unpack location can be any folder, for example `~/Documents`. | [`a_shared_unpack_folder_keeps_everything_that_is_not_sams`](../crates/sam-runner/src/ops/maintain.rs#L1747) |
 | Updates are downloaded into a fresh folder inside SAM's data folder that only SAM's user can enter (audit U-H4): never the AppImage's folder, never one with leftovers. | [`a_download_folder_is_fresh_private_and_sams_own`](../crates/sam-runner/src/ops/maintain.rs#L1823) |
 | Across file systems (a download in SAM's folder, the AppImage on another drive) a move is a copy: into a new file with the same permissions, never through a link planted at the target and never over a file that is there (audit U-H4: `fs::copy` followed links). | [`a_move_across_drives_never_writes_through_a_link`](../crates/sam-runner/src/ops/maintain.rs#L1843) |
-| When SAM's recommendation improves, the user's own changes are kept. | [`user_changes_survive_better_recommendation`](../crates/sam-runner/src/ops/mod.rs#L644) |
-| An update signed with the same key but earlier than the installed version is an older version; later, equal, another key, unsigned or without a time is not judged here. | [`an_older_signed_version_is_recognized`](../crates/sam-runner/src/ops/mod.rs#L750) |
-| An update signed with another key, or not signed at all, is noticed. | [`key_changes_are_noticed`](../crates/sam-runner/src/ops/mod.rs#L791) |
-| A signature recorded as "not checked" (GnuPG was missing) lets no key through: once the new file's signature can be read, whatever it is (another key, none, a bad one) counts as a change; both unchecked is no news (review 2026-11-23, U-3). | [`a_signature_that_was_never_checked_lets_no_key_through`](../crates/sam-runner/src/ops/mod.rs#L819) |
-| A signed app whose update cannot be checked (GnuPG missing) is not waved through: SAM cannot tell whether the key changed. | [`an_update_that_cannot_be_checked_needs_consent_after_a_valid_signature`](../crates/sam-runner/src/ops/mod.rs#L841) |
-| The processes below an app's sandbox are its children and their children, and nothing else: quitting asks only those (mutation run 2026-11-24: the walk could take every other process instead, so stopping one app would have asked other sandboxes to quit). | [`only_the_processes_below_a_sandbox_are_its_own`](../crates/sam-runner/src/ops/mod.rs#L876) |
-| Review 2026-11-23 F3: asking an app to quit reaches the app's own processes, also one whose program is called `bwrap`, and nothing of SAM's: not the program the launcher started (here a stand-in for pasta that quits on SIGTERM, which would take the sandbox down at once), not a helper beside the sandbox (as the sound relay). | [`only_the_apps_own_processes_are_asked_to_quit`](../crates/sam-runner/src/ops/mod.rs#L916) |
-| A menu start unpacks in a sandbox with the cli next to it. | [`a_menu_start_unpacks_in_a_sandbox_with_the_cli_next_to_it`](../crates/sam-runner/src/ops/overview.rs#L523) |
-| Sams programs never unpack without a sandbox. | [`sams_programs_never_unpack_without_a_sandbox`](../crates/sam-runner/src/ops/overview.rs#L551) |
-| Tests and benchmarks may unpack in their own process. | [`tests_and_benchmarks_may_unpack_in_their_own_process`](../crates/sam-runner/src/ops/overview.rs#L573) |
+| When SAM's recommendation improves, the user's own changes are kept. | [`user_changes_survive_better_recommendation`](../crates/sam-runner/src/ops/mod.rs#L645) |
+| An update signed with the same key but earlier than the installed version is an older version; later, equal, another key, unsigned or without a time is not judged here. | [`an_older_signed_version_is_recognized`](../crates/sam-runner/src/ops/mod.rs#L751) |
+| An update signed with another key, or not signed at all, is noticed. | [`key_changes_are_noticed`](../crates/sam-runner/src/ops/mod.rs#L792) |
+| A signature recorded as "not checked" (GnuPG was missing) lets no key through: once the new file's signature can be read, whatever it is (another key, none, a bad one) counts as a change; both unchecked is no news (review 2026-11-23, U-3). | [`a_signature_that_was_never_checked_lets_no_key_through`](../crates/sam-runner/src/ops/mod.rs#L820) |
+| A signed app whose update cannot be checked (GnuPG missing) is not waved through: SAM cannot tell whether the key changed. | [`an_update_that_cannot_be_checked_needs_consent_after_a_valid_signature`](../crates/sam-runner/src/ops/mod.rs#L842) |
+| The processes below an app's sandbox are its children and their children, and nothing else: quitting asks only those (mutation run 2026-11-24: the walk could take every other process instead, so stopping one app would have asked other sandboxes to quit). | [`only_the_processes_below_a_sandbox_are_its_own`](../crates/sam-runner/src/ops/mod.rs#L877) |
+| Review 2026-11-23 F3: asking an app to quit reaches the app's own processes, also one whose program is called `bwrap`, and nothing of SAM's: not the program the launcher started (here a stand-in for pasta that quits on SIGTERM, which would take the sandbox down at once), not a helper beside the sandbox (as the sound relay). | [`only_the_apps_own_processes_are_asked_to_quit`](../crates/sam-runner/src/ops/mod.rs#L917) |
+| A menu start unpacks in a sandbox with the cli next to it. | [`a_menu_start_unpacks_in_a_sandbox_with_the_cli_next_to_it`](../crates/sam-runner/src/ops/overview.rs#L528) |
+| Sams programs never unpack without a sandbox. | [`sams_programs_never_unpack_without_a_sandbox`](../crates/sam-runner/src/ops/overview.rs#L556) |
+| Tests and benchmarks may unpack in their own process. | [`tests_and_benchmarks_may_unpack_in_their_own_process`](../crates/sam-runner/src/ops/overview.rs#L578) |
 | A name the app asks for is refused when it belongs to an installed app (audit D-M6: a terminal's name runs host commands), to a desktop protocol, to an on-demand service (also through a wildcard, L-F13), or to another app in SAM; its own name passes; a media player's name passes with the media switch (L-Q1). | [`a_name_is_allowed_only_when_nobody_else_has_it`](../crates/sam-runner/src/own_names.rs#L190) |
 | Menu entry ids come from file names, subfolders joined with `-`; only `.desktop` files count. | [`menu_ids_are_the_file_names`](../crates/sam-runner/src/own_names.rs#L232) |
 | Each check reports what it finds, not what it hopes: run on facts that are the same on every computer, a check whose expectation is wrong fails, one whose expectation is right passes, and the report counts them (found by mutation testing: a check turning every failure into a pass went unnoticed). | [`a_check_reports_what_it_finds_not_what_it_hopes`](../crates/sam-runner/src/probe.rs#L602) |
@@ -716,9 +716,11 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | B27: a hostile AppImage cannot add lines to the menu entry SAM writes for it. | [`a_hostile_name_adds_no_line_to_sams_menu_entry`](../crates/sam-runner/tests/adversarial.rs#L169) |
 | An always blocked name cannot be owned from inside the sandbox. | [`an_always_blocked_name_cannot_be_owned_from_inside_the_sandbox`](../crates/sam-runner/tests/always_blocked_names.rs#L33) |
 | Every security promise holds inside a real sandbox: each breakout attempt fails. | [`every_breakout_attempt_from_a_real_sandbox_fails`](../crates/sam-runner/tests/breakout.rs#L156) |
-| A swapped appimage does not start until it is confirmed. | [`a_swapped_appimage_does_not_start_until_it_is_confirmed`](../crates/sam-runner/tests/changed_appimage.rs#L13) |
-| ⟲ Regression (audit U-H1, Part 5): changing any switch cleared the mark of a swapped AppImage file, so it started without the person looking at it. | [`a_swapped_appimage_stays_marked_when_a_switch_changes`](../crates/sam-runner/tests/changed_appimage.rs#L71) |
-| ⟲ Regression (audit U-H2): "Check all AppImages for changes" (or moving the file with relocate) recorded the swapped file's checksum, so the following "Unpack Again" compared the file with itself: the swapped content ran with the old app's permissions, unmarked, and its signature was not checked again. | [`a_swapped_appimage_is_marked_also_after_the_change_check`](../crates/sam-runner/tests/changed_appimage.rs#L111) |
+| A swapped appimage does not start until it is confirmed. | [`a_swapped_appimage_does_not_start_until_it_is_confirmed`](../crates/sam-runner/tests/changed_appimage.rs#L16) |
+| ⟲ Regression (audit U-H1, Part 5): changing any switch cleared the mark of a swapped AppImage file, so it started without the person looking at it. | [`a_swapped_appimage_stays_marked_when_a_switch_changes`](../crates/sam-runner/tests/changed_appimage.rs#L74) |
+| ⟲ Regression (audit U-H2): "Check all AppImages for changes" (or moving the file with relocate) recorded the swapped file's checksum, so the following "Unpack Again" compared the file with itself: the swapped content ran with the old app's permissions, unmarked, and its signature was not checked again. | [`a_swapped_appimage_is_marked_also_after_the_change_check`](../crates/sam-runner/tests/changed_appimage.rs#L114) |
+| ⟲ Regression (review B2 S6, R96): another app swaps an AppImage, the change check records the swapped file as the file last seen, and the app moves the swapped file elsewhere. | [`a_swapped_appimage_moved_elsewhere_is_not_taken_for_the_apps_own_file`](../crates/sam-runner/tests/changed_appimage.rs#L190) |
+| An AppImage moved to another folder and added there is followed, as before: the app keeps its sandbox, its unpacked checksum and its marks. | [`a_moved_appimage_added_again_is_followed_with_its_marks`](../crates/sam-runner/tests/changed_appimage.rs#L256) |
 | Default desktop services reach only their own objects. | [`default_desktop_services_reach_only_their_own_objects`](../crates/sam-runner/tests/default_bus_names.rs#L57) |
 | An unplugged controller is taken out of the running sandbox; the app keeps running (review R56). | [`an_unplugged_controller_leaves_the_running_sandbox`](../crates/sam-runner/tests/device_watch.rs#L318) |
 | Another device at an unplugged controller's name (a keyboard that got its number) is never reachable: the node is taken out (review R56). | [`another_device_at_a_controllers_name_is_never_shown`](../crates/sam-runner/tests/device_watch.rs#L332) |
@@ -1048,4 +1050,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 961 automated Rust tests plus 8 scripted checks.
+Total: 963 automated Rust tests plus 8 scripted checks.
