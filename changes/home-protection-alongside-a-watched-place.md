@@ -2,8 +2,8 @@
 
 - When an app that may write the whole home started while another app
   ran that saw a start folder such as `~/.local/bin` missing, SAM made
-  that folder for the new start and then moved it aside again at once:
-  the running app's watch keeps such a place empty. The new start then
+  that folder for the new start and then moved it aside again at once,
+  because the other app had seen it missing. The new start then
   told you of something moved aside that no app had made, and lost the
   read-only lock on that folder anyway.
 - SAM now leaves such a place missing while the other app runs. Both

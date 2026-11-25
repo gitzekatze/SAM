@@ -176,10 +176,12 @@ const ETC_NETWORK: &[&str] = &[
 const ETC_GPU: &[&str] = &["vulkan", "OpenCL", "nvidia"];
 const ETC_AUDIO: &[&str] = &["alsa", "asound.conf", "pulse", "pipewire"];
 
-/// Protected paths created (empty) before a full-home read/write start when
-/// they are missing, so they can be mounted read-only: an app could create
-/// them otherwise. Only where an empty one behaves like a missing one
-/// (not `.bash_profile`, which hides `.profile`, `.xinitrc` or `.vimrc`).
+/// Protected paths created (empty) before a start that shows them writable
+/// when they are missing, so they can be mounted read-only: an app could
+/// create them otherwise. Not while another launch watches one as empty
+/// ([`prepare_home_protection_alongside`]). Only where an empty one behaves
+/// like a missing one (not `.bash_profile`, which hides `.profile`,
+/// `.xinitrc` or `.vimrc`).
 const PROTECTED_CREATE_DIRS: &[&str] = &[
     ".local/share/applications",
     ".config/autostart",
@@ -311,12 +313,15 @@ pub fn prepare_home_protection_alongside(ctx: &LaunchContext, running: &[HomeWat
     }
     let home = &ctx.host.home;
     let views = Views::base(ctx);
-    // Every watch names each protected place itself, not only a folder
-    // above it ([`watched_places`]).
+    // A folder above the place counts too: a record from an older SAM may
+    // not name every place this one makes.
     let watched_empty = |place: &str| {
-        running
-            .iter()
-            .any(|r| &r.home == home && r.absent.iter().any(|a| a == place))
+        running.iter().any(|r| {
+            &r.home == home
+                && r.absent
+                    .iter()
+                    .any(|a| a == place || place.starts_with(&format!("{a}/")))
+        })
     };
     for d in PROTECTED_CREATE_DIRS {
         let path = home.join(d);
@@ -4630,12 +4635,23 @@ mod guard_tests {
         assert!(moved.contains(&".config/sway".to_string()), "{moved:?}");
     }
 
-    /// Review B2 R52: launch A may write `~/.config` only and saw
-    /// `~/.local/bin` missing at its start; launch B, which may write the
-    /// whole home, starts while A runs. SAM never makes `~/.local/bin` for
-    /// B: A's watch (and B's, which takes A's over) would move that empty
-    /// folder aside at once and say so. The place stays watched by both, and
-    /// without A it is made, so it can be locked.
+    /// A launch never makes a start place that another running launch on
+    /// the same home watches as empty: nothing is reported moved aside, both
+    /// watches still move aside what an app puts there, and without such a
+    /// launch the place is made. Review B2 R52: launch A may write
+    /// `~/.config` only and saw `~/.local/bin` missing; launch B, which may
+    /// write the whole home, starts while A runs. A's watch (and B's, which
+    /// takes A's over) moved the empty folder SAM made for B aside at once
+    /// and said so.
+    fn hex_of(p: &Path) -> String {
+        use std::os::unix::ffi::OsStrExt;
+        p.as_os_str()
+            .as_bytes()
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect()
+    }
+
     #[test]
     fn a_launch_alongside_another_never_makes_a_place_the_other_watches_as_empty() {
         let t = tempfile::tempdir().unwrap();
@@ -4673,9 +4689,26 @@ mod guard_tests {
         let moved: Vec<String> = a.settle(&aside_a).into_iter().map(|m| m.place).collect();
         assert_eq!(moved, [".local"], "watched by A");
 
-        // Without A, B makes it, so it can be locked.
-        prepare_home_protection_alongside(&ctx_b, &[]);
-        assert!(home.join(".local/bin").is_dir());
+        // A running launch on another home changes nothing here.
+        let elsewhere = HomeWatch::from_lines([
+            format!("home {}", hex_of(&t.path().join("other"))).as_str(),
+            format!("absent {}", hex_of(Path::new(".local/bin"))).as_str(),
+        ])
+        .unwrap();
+        prepare_home_protection_alongside(&ctx_b, std::slice::from_ref(&elsewhere));
+        assert!(home.join(".local/bin").is_dir(), "another home's record");
+        // A record that names only a folder above the place (an older SAM).
+        fs::remove_dir_all(home.join(".local")).unwrap();
+        let older = HomeWatch::from_lines([
+            format!("home {}", hex_of(&home)).as_str(),
+            format!("absent {}", hex_of(Path::new(".local"))).as_str(),
+        ])
+        .unwrap();
+        prepare_home_protection_alongside(&ctx_b, std::slice::from_ref(&older));
+        assert!(
+            fs::symlink_metadata(home.join(".local")).is_err(),
+            "below a watched place"
+        );
     }
 
     /// SAM's own folders stay hidden inside a folder opened with the app, and

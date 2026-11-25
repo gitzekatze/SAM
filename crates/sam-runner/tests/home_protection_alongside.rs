@@ -107,6 +107,9 @@ fn a_launch_alongside_another_reports_nothing_it_did_not_find() {
     );
 
     // Nothing was made where A watches an empty place, so nothing moved.
+    // The records tell the two apart: before the fix, B's start (or A's
+    // live watch) moved the folder SAM had made for B aside, so B's app
+    // found it missing then too.
     assert!(log_b.contains("BIN=missing"), "{log_b}");
     assert!(rec_b.moved_aside.is_empty(), "B: {:?}", rec_b.moved_aside);
     assert!(rec_a.moved_aside.is_empty(), "A: {:?}", rec_a.moved_aside);
