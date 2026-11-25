@@ -10,8 +10,10 @@
 //!   `@/tmp/.X11-unix/X0`, which is reachable whenever the app shares the
 //!   host network namespace.
 //! * Seccomp filters are compiled with seccompiler and loaded by the same
-//!   helper right before exec: a baseline filter (on by default, similar to
-//!   Flatpak's) and an optional strict one. Loading them in the helper rather
+//!   helper right before exec: a baseline filter (on by default; without
+//!   nested sandboxes it blocks what Flatpak's default filter blocks except
+//!   `ptrace`, some `personality` values and `modify_ldt`, and more: see
+//!   docs/security.md) and an optional strict one. Loading them in the helper rather
 //!   than via `bwrap --seccomp <fd>` also works when bwrap runs under pasta,
 //!   which does not pass extra file descriptors on.
 
@@ -333,6 +335,18 @@ fn baseline_syscalls(allow_userns: bool) -> Vec<(&'static str, i64)> {
         libc::SYS_io_uring_setup,
         libc::SYS_io_uring_enter,
         libc::SYS_io_uring_register,
+        // Blocked by Flatpak's default filter too, and needed by no
+        // desktop app (review R69; owner, 2026-11-25): the NUMA memory
+        // calls (which memory banks of a many-processor server a program
+        // uses; reading them tells another process's placement, changing
+        // them moves pages of the machine). `chroot` is with the namespace
+        // calls below: Chromium's own sandbox needs it.
+        libc::SYS_mbind,
+        libc::SYS_move_pages,
+        libc::SYS_migrate_pages,
+        libc::SYS_get_mempolicy,
+        libc::SYS_set_mempolicy,
+        libc::SYS_set_mempolicy_home_node,
     ];
     // On every processor (it sat with the x86-only calls, so ARM did not
     // block it; found by the review list test on ARM).
@@ -357,6 +371,12 @@ fn baseline_syscalls(allow_userns: bool) -> Vec<(&'static str, i64)> {
             libc::SYS_fsconfig,
             libc::SYS_fspick,
             libc::SYS_mount_setattr,
+            // Changing the root folder (review R69, as in Flatpak). It
+            // needs a right the app has only in a namespace of its own, so
+            // the kernel refuses it there anyway; with nested sandboxes
+            // Chromium's sandbox (Electron, CEF) uses it to drop the file
+            // system, and refusing it would push apps to `--no-sandbox`.
+            libc::SYS_chroot,
         ]);
         // open_tree and mount_setattr in one call (Linux 6.15): blocked
         // like the two it combines (review R67). The libc crate has no
@@ -369,9 +389,12 @@ fn baseline_syscalls(allow_userns: bool) -> Vec<(&'static str, i64)> {
 
 /// Additionally blocked by the strict filter: `ptrace` and every call
 /// that reaches into another process as far (its memory, its descriptors,
-/// its kernel objects), `personality`, and every NUMA memory call (review
-/// R68: the help text promised these, six were missing). The full promise
-/// is written in `docs/security.md`, section "strict filter".
+/// its kernel objects), and `personality` (review R68: the help text
+/// promised these, three were missing). The NUMA memory calls the strict
+/// filter used to add are in the baseline since review R69. `ptrace` and
+/// `personality` stay here: crash reporters and Wine use them, and
+/// programs ask `personality` for their mode. The full promise is written
+/// in `docs/security.md`, section "strict filter".
 fn strict_extra_syscalls() -> Vec<(&'static str, i64)> {
     calls![
         libc::SYS_ptrace,
@@ -381,12 +404,6 @@ fn strict_extra_syscalls() -> Vec<(&'static str, i64)> {
         libc::SYS_pidfd_getfd,
         libc::SYS_kcmp,
         libc::SYS_personality,
-        libc::SYS_mbind,
-        libc::SYS_move_pages,
-        libc::SYS_migrate_pages,
-        libc::SYS_get_mempolicy,
-        libc::SYS_set_mempolicy,
-        libc::SYS_set_mempolicy_home_node,
     ]
 }
 
@@ -590,6 +607,7 @@ const I386_CALLS: &[(&str, u32)] = &[
     ("pidfd_getfd", 438),
     ("kcmp", 349),
     ("personality", 136),
+    ("chroot", 61),
     ("mbind", 274),
     ("move_pages", 317),
     ("migrate_pages", 294),
@@ -1015,10 +1033,17 @@ mod tests {
         ];
         let control = errnos(None, &calls);
         assert!(!control.contains(&libc::EPERM), "{control:?}");
+        let baseline = errnos(Some(&SeccompSpec::default()), &calls);
         assert_eq!(
-            errnos(Some(&SeccompSpec::default()), &calls),
-            control,
-            "the baseline leaves them"
+            baseline[..3],
+            control[..3],
+            "the baseline leaves the process calls"
+        );
+        // The NUMA calls are in the baseline since review R69.
+        assert_eq!(
+            baseline[3..],
+            [libc::EPERM; 3],
+            "the baseline blocks NUMA calls"
         );
         let strict = SeccompSpec {
             strict: true,
@@ -1029,6 +1054,40 @@ mod tests {
             [libc::EPERM; 6],
             "control {control:?}"
         );
+    }
+
+    /// Review R69: the baseline blocks what Flatpak's default filter blocks
+    /// and no desktop app needs: `chroot` and the NUMA memory calls. Each
+    /// gets arguments that change nothing (a null folder, no pages, the
+    /// default policy); the control shows the kernel never answers "not
+    /// permitted" itself here. With nested sandboxes `chroot` stays open
+    /// (Chromium's own sandbox uses it), the NUMA calls stay blocked.
+    #[test]
+    fn the_baseline_blocks_what_no_desktop_app_needs() {
+        let calls: Vec<fn() -> libc::c_long> = vec![
+            || raw(libc::SYS_chroot, 0, 0),
+            || raw(libc::SYS_mbind, 0, 0),
+            || raw(libc::SYS_move_pages, 0, 0),
+            || raw(libc::SYS_migrate_pages, 0, 0),
+            || raw(libc::SYS_get_mempolicy, 0, 0),
+            || raw(libc::SYS_set_mempolicy, 0, 0),
+            || raw(libc::SYS_set_mempolicy_home_node, 0, 0),
+        ];
+        let control = errnos(None, &calls);
+        assert!(!control.contains(&libc::EPERM), "{control:?}");
+        let n = calls.len();
+        assert_eq!(
+            errnos(Some(&SeccompSpec::default()), &calls),
+            vec![libc::EPERM; n],
+            "control {control:?}"
+        );
+        let nested = SeccompSpec {
+            allow_userns: true,
+            ..SeccompSpec::default()
+        };
+        let mut nested_want = vec![libc::EPERM; n];
+        nested_want[0] = control[0];
+        assert_eq!(errnos(Some(&nested), &calls), nested_want, "nested");
     }
 
     /// `socketpair(family, type, protocol, NULL)`: no place for the pair,
@@ -1377,8 +1436,9 @@ mod tests {
             ..SeccompSpec::default()
         };
         assert_eq!(errnos(Some(&strict), &calls[13..]), [eperm], "strict");
-        // The six calls the strict filter gained (review R68), each through
-        // its own 32-bit number, with arguments that change nothing.
+        // The six calls the strict filter gained (review R68; the three
+        // NUMA ones are in the baseline since R69), each through its own
+        // 32-bit number, with arguments that change nothing.
         let reach: Vec<fn() -> libc::c_long> = vec![
             || call32(440, -1i32 as u32, 0, 0), // process_madvise(-1)
             || call32(438, -1i32 as u32, 0, 0), // pidfd_getfd(-1)
@@ -1395,6 +1455,20 @@ mod tests {
         let open_tree = errnos(None, &tree);
         assert_ne!(open_tree, [eperm], "the kernel's own answer");
         assert_eq!(errnos(Some(&spec), &tree), [eperm], "32-bit open_tree_attr");
+        // Review R69: `chroot` and the NUMA calls the baseline gained,
+        // through their 32-bit numbers.
+        let gained: Vec<fn() -> libc::c_long> = vec![
+            || call32(61, 0, 0, 0),  // chroot(NULL)
+            || call32(274, 0, 0, 0), // mbind, no pages
+            || call32(317, 0, 0, 0), // move_pages, no pages
+            || call32(294, 0, 0, 0), // migrate_pages, no nodes
+            || call32(275, 0, 0, 0), // get_mempolicy(NULL)
+            || call32(276, 0, 0, 0), // set_mempolicy(MPOL_DEFAULT)
+            || call32(450, 0, 0, 0), // set_mempolicy_home_node, no pages
+        ];
+        let open_gained = errnos(None, &gained);
+        assert!(!open_gained.contains(&eperm), "{open_gained:?}");
+        assert_eq!(errnos(Some(&spec), &gained), [eperm; 7], "32-bit baseline");
         let nested_tree = SeccompSpec {
             i386: true,
             allow_userns: true,

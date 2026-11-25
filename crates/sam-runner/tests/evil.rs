@@ -196,8 +196,16 @@ fn every_hostile_appimage_fails_to_escape() {
         format!("gdbus call --timeout 5 --session --dest {dest} --object-path / --method org.freedesktop.DBus.Peer.Ping >/dev/null 2>&1 && echo RESULT=escaped || echo RESULT=blocked")
     };
     let mut apps = vec![
-        // The control: an allowed service must be reachable.
-        evil("Control", ping("org.freedesktop.Notifications").replace("escaped", "reached")),
+        // The control: an allowed service must be reachable, at its own
+        // object (B2 R76: an allowed desktop service reaches only its own
+        // objects, so the bus's root path "/" of the program behind it is
+        // refused).
+        evil(
+            "Control",
+            ping("org.freedesktop.Notifications")
+                .replace("--object-path /", "--object-path /org/freedesktop/Notifications")
+                .replace("escaped", "reached"),
+        ),
         evil("ReadKey", format!("cat {h}/.ssh/id_ed25519 2>/dev/null && echo RESULT=escaped || echo RESULT=blocked")),
         evil("ReadSamSettings", format!("cat {} 2>/dev/null && echo RESULT=escaped || echo RESULT=blocked", sam.paths.config_file().display())),
         evil("ReadOtherApp", format!("cat {}/secret 2>/dev/null && echo RESULT=escaped || echo RESULT=blocked", other.display())),

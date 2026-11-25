@@ -1,13 +1,16 @@
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
-.TH sam-jail-run 1 2026-11-16 "SAM 0.1.0" "SAM - Sandboxed AppImage Manager"
+.TH sam-jail-run 1 2026-11-25 "SAM 0.1.0" "SAM - Sandboxed AppImage Manager"
 .SH NAME
 sam\-jail\-run \- Run an app in its sandbox
 .SH SYNOPSIS
-\fBsam\-jail run\fR [\fB\-h\fR|\fB\-\-help\fR] <\fIAPP\fR> [\fIARGS\fR] 
+\fBsam\-jail run\fR [\fB\-\-start\-anyway\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIAPP\fR> [\fIARGS\fR] 
 .SH DESCRIPTION
 Run an app in its sandbox
 .SH OPTIONS
+.TP
+\fB\-\-start\-anyway\fR
+Start it even when a protection its settings ask for cannot be set up this time (SAM\*(Aqs helper missing, the Wayland security context refused); without it, such a start is refused. Only for this start
 .TP
 \fB\-h\fR, \fB\-\-help\fR
 Print help

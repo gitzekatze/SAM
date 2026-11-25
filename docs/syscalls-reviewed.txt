@@ -54,7 +54,7 @@ capset	allowed
 chdir	allowed
 chmod	allowed
 chown	allowed
-chroot	allowed
+chroot	blocked unless nested sandboxes
 clock_adjtime	blocked
 clock_adjtime64	allowed
 clock_getres	allowed
@@ -137,7 +137,7 @@ futex_waitv	allowed
 futex_wake	allowed
 futimesat	allowed
 get_kernel_syms	allowed
-get_mempolicy	blocked by the strict filter
+get_mempolicy	blocked
 get_robust_list	allowed
 get_thread_area	allowed
 getcpu	allowed
@@ -219,11 +219,11 @@ lstat	allowed
 lstat64	allowed
 madvise	allowed
 map_shadow_stack	allowed
-mbind	blocked by the strict filter
+mbind	blocked
 membarrier	allowed
 memfd_create	allowed
 memfd_secret	allowed
-migrate_pages	blocked by the strict filter
+migrate_pages	blocked
 mincore	allowed
 mkdir	allowed
 mkdirat	allowed
@@ -238,7 +238,7 @@ modify_ldt	allowed
 mount	blocked unless nested sandboxes
 mount_setattr	blocked unless nested sandboxes
 move_mount	blocked unless nested sandboxes
-move_pages	blocked by the strict filter
+move_pages	blocked
 mprotect	allowed
 mq_getsetattr	allowed
 mq_notify	allowed
@@ -358,8 +358,8 @@ sendfile64	allowed
 sendmmsg	allowed
 sendmsg	allowed
 sendto	allowed
-set_mempolicy	blocked by the strict filter
-set_mempolicy_home_node	blocked by the strict filter
+set_mempolicy	blocked
+set_mempolicy_home_node	blocked
 set_robust_list	allowed
 set_thread_area	allowed
 set_tid_address	allowed

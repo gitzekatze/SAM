@@ -82,7 +82,23 @@ fn a_start_without_the_helper_reports_its_missing_layers() {
         .to_string();
     // Settings nobody has confirmed do not start (audit U-M11).
     assert!(sam(&["review", &id]).status.success());
-    let run = sam(&["run", &id]);
+    // B2 R75 (owner, 2026-11-25: "refuse, with override"): without the
+    // helper the start stops before the app runs, with its own code, and
+    // the command line says how to start it anyway this one time.
+    let refused = sam(&["--json", "run", &id]);
+    assert!(!refused.status.success(), "the start stops");
+    assert_eq!(json(&refused)["code"], "protection-missing", "{refused:?}");
+    let refused = sam(&["run", &id]);
+    assert!(
+        String::from_utf8_lossy(&refused.stderr).contains("--start-anyway"),
+        "says how: {refused:?}"
+    );
+    let info = json(&sam(&["--json", "info", &id]));
+    assert!(
+        info["data"]["entry"]["last_launch"].is_null(),
+        "the app did not run: {info}"
+    );
+    let run = sam(&["run", "--start-anyway", &id]);
     let err = String::from_utf8_lossy(&run.stderr);
     assert!(
         err.contains("this start ran without"),

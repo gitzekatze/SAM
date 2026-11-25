@@ -116,6 +116,8 @@ fn a_missing_layer_is_told_once_when_sam_starts_the_app_again() {
             args: vec!["org.example.Wanted".into()],
             owd: Some(home.clone()),
             on_missing_layers: Some(tell),
+            // Chosen for this start: the layer goes missing (B2 R77).
+            start_anyway: true,
             ..Default::default()
         },
         &app.config,

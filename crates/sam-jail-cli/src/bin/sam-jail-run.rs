@@ -2,7 +2,7 @@
 //! (`Exec=sam-jail-run --app-id <id> %F`), and the in-sandbox helper that
 //! applies Landlock before exec (`--sandbox-exec <spec> -- <cmd>`).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{bail, Context, Result};
@@ -28,7 +28,13 @@ fn notify_with_fix(title: &str, body: &str, app_id: &str) {
         return notify(title, body);
     };
     let clean = |s: &str| sam_core::util::display_safe(s, 400).replace('&', "&amp;");
-    let script = r#"a=$("$1" --app-name="SAM - Sandboxed AppImage Manager" --icon=dialog-warning --action=open="$6" "$2" "$3") && [ "$a" = open ] && exec "$4" --page app-repair --app "$5""#;
+    // A notify-send without buttons (libnotify before 0.8) shows the
+    // notification without one (review of B2 R75).
+    let script = r#"if a=$("$1" --app-name="SAM - Sandboxed AppImage Manager" --icon=dialog-warning --action=open="$6" "$2" "$3"); then
+  [ "$a" = open ] && exec "$4" --page app-repair --app "$5"
+else
+  exec "$1" --app-name="SAM - Sandboxed AppImage Manager" --icon=dialog-warning "$2" "$3"
+fi"#;
     let spawned = Command::new("/bin/sh")
         .args(["-c", script, "sh"])
         .arg(n)
@@ -43,6 +49,88 @@ fn notify_with_fix(title: &str, body: &str, app_id: &str) {
         .spawn();
     if spawned.is_err() {
         notify(title, body);
+    }
+}
+
+/// The first argument that starts the app although a protection its
+/// settings ask for is missing this time (B2 R75, R77).
+const START_ANYWAY: &str = "--start-anyway";
+
+/// The refusal of a start that lacks a protection, with a "Start anyway"
+/// button that starts the same app with the same files once more, for this
+/// one start. Waited for in a background process, so the launcher can
+/// exit; names, files and messages are arguments, never shell code.
+fn notify_start_anyway(title: &str, body: &str, asked: &[String]) {
+    // The program menu entries start (SAM's AppImage, or this launcher),
+    // which outlives this start: a launcher inside SAM's mounted AppImage
+    // would be gone by the time the button is pressed.
+    let me = sam_intake::desktop::runner_command();
+    if std::io::IsTerminal::is_terminal(&std::io::stderr()) {
+        // Also said where it was started, with the command as it runs.
+        let mut command = vec![sam_core::util::shell_quote(&me), START_ANYWAY.to_string()];
+        command.extend(asked.iter().map(|a| sam_core::util::shell_quote(a)));
+        errln!(
+            "{}",
+            sam_core::i18n::trf(
+                "To start it anyway this one time: {command}",
+                &[("command", &command.join(" "))]
+            )
+        );
+    }
+    let Some(n) = which("notify-send") else {
+        return notify(title, body);
+    };
+    let clean = |s: &str| sam_core::util::display_safe(s, 400).replace('&', "&amp;");
+    let spawned = start_anyway_command(
+        &n,
+        Path::new(&me),
+        &clean(title),
+        &clean(body),
+        &clean(&sam_core::i18n::tr("Start anyway")),
+        asked,
+    )
+    .stdin(std::process::Stdio::null())
+    .stdout(std::process::Stdio::null())
+    .stderr(std::process::Stdio::null())
+    .spawn();
+    if spawned.is_err() {
+        notify(title, body);
+    }
+}
+
+/// The background process of [`notify_start_anyway`]: the notification
+/// with its button (`notify_send`), and on "start" the same start once
+/// more through `me` with [`START_ANYWAY`] first. A `notify-send` without
+/// buttons (libnotify before 0.8) shows the notification without one.
+fn start_anyway_command(
+    notify_send: &Path,
+    me: &Path,
+    title: &str,
+    body: &str,
+    label: &str,
+    asked: &[String],
+) -> Command {
+    let script = r#"n=$1 title=$2 body=$3 label=$4 me=$5; shift 5
+if a=$("$n" --app-name="SAM - Sandboxed AppImage Manager" --icon=dialog-warning --action=start="$label" "$title" "$body"); then
+  [ "$a" = start ] && exec "$me" --start-anyway "$@"
+else
+  exec "$n" --app-name="SAM - Sandboxed AppImage Manager" --icon=dialog-warning "$title" "$body"
+fi"#;
+    let mut cmd = Command::new("/bin/sh");
+    cmd.args(["-c", script, "sh"])
+        .arg(notify_send)
+        .args([title, body, label])
+        .arg(me)
+        .args(asked);
+    cmd
+}
+
+/// "Start anyway" as the first argument (only there, as the notice starts
+/// it): whether it was given, and the arguments after it.
+fn start_anyway_first(args: Vec<String>) -> (bool, Vec<String>) {
+    match args.split_first() {
+        Some((first, rest)) if first == START_ANYWAY => (true, rest.to_vec()),
+        _ => (false, args),
     }
 }
 
@@ -173,7 +261,11 @@ fn main() {
     }
     // Starting from the menu is function 19; steps of another function
     // (unpacking again: 3) mark their errors themselves.
-    match launch(args).in_function(19) {
+    // "Start anyway, this time" (B2 R75, R77): only as the first argument,
+    // as the refusal's notification starts it.
+    let (start_anyway, args) = start_anyway_first(args);
+    let asked = args.clone();
+    match launch(args, start_anyway).in_function(19) {
         Ok(code) => std::process::exit(code),
         Err(e) => {
             let message = sam_core::error::message_of(&e);
@@ -185,6 +277,15 @@ fn main() {
             if sam_core::error::code_of(&e) == Some("app-being-changed") {
                 notify(&sam_core::i18n::tr("SAM could not start the app"), &message);
                 std::process::exit(1);
+            }
+            // A protection is missing for this start: the person decides.
+            if sam_core::error::code_of(&e) == Some(sam_runner::launch::PROTECTION_MISSING) {
+                notify_start_anyway(
+                    &sam_core::i18n::tr("SAM did not start the app"),
+                    &message,
+                    &asked,
+                );
+                std::process::exit(sam_core::error::EXIT_PROTECTION_MISSING);
             }
             notify(
                 &sam_core::i18n::tr("SAM could not start the app"),
@@ -200,10 +301,11 @@ fn main() {
 
 /// How a start from the menu runs: with the files it was given, and told
 /// at once when it lacks a protection layer.
-fn launch_options(args: Vec<String>) -> LaunchOptions {
+fn launch_options(args: Vec<String>, start_anyway: bool) -> LaunchOptions {
     LaunchOptions {
         args,
         on_missing_layers: Some(tell_missing_layers),
+        start_anyway,
         ..Default::default()
     }
 }
@@ -255,7 +357,7 @@ fn hold_terminal_window(terminal: bool, exit_code: Option<i32>, stdin_tty: bool)
     terminal && exit_code != Some(0) && stdin_tty
 }
 
-fn launch(args: Vec<String>) -> Result<i32> {
+fn launch(args: Vec<String>, start_anyway: bool) -> Result<i32> {
     let (id, rest) = parse_launch_args(&args).unwrap_or_else(|| usage());
     let app = Sam::open()?;
     let mut entry = app
@@ -286,13 +388,42 @@ fn launch(args: Vec<String>) -> Result<i32> {
         }
         return Err(e);
     }
-    let rec = run(
+    let first = run(
         &mut entry,
-        &launch_options(rest),
+        &launch_options(rest.clone(), start_anyway),
         &app.config,
         &app.paths,
         &host,
-    )?;
+    );
+    // A terminal program asks in its own window, which would otherwise
+    // close before anyone read the refusal (review of B2 R75).
+    let rec = match first {
+        Err(e)
+            if sam_core::error::code_of(&e) == Some(sam_runner::launch::PROTECTION_MISSING)
+                && entry.metadata.terminal
+                && sam_runner::pty::is_tty(0) =>
+        {
+            errln!("sam-jail-run: {}", sam_core::error::message_of(&e));
+            sam_core::terminal::print_err_raw_end(&sam_core::i18n::tr(
+                "Start it anyway, this one time? [y/N] ",
+            ));
+            let mut answer = String::new();
+            let _ = std::io::stdin().read_line(&mut answer);
+            // "yes" in the languages SAM speaks (the question offers y, j, s, o).
+            let yes = ["y", "yes", "j", "ja", "s", "si", "sí", "o", "oui"];
+            if !yes.contains(&answer.trim().to_lowercase().as_str()) {
+                std::process::exit(sam_core::error::EXIT_PROTECTION_MISSING);
+            }
+            run(
+                &mut entry,
+                &launch_options(rest, true),
+                &app.config,
+                &app.paths,
+                &host,
+            )?
+        }
+        other => other?,
+    };
     // Ended: the window's "press Enter" below must not hold it.
     drop(start);
     if hold_terminal_window(
@@ -361,7 +492,88 @@ fn launch(args: Vec<String>) -> Result<i32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
     use std::os::unix::ffi::OsStringExt;
+
+    /// B2 R75: "Start anyway" counts only as the first argument, as the
+    /// notice starts it; anywhere else it is a file for the app.
+    #[test]
+    fn start_anyway_counts_only_as_the_first_argument() {
+        let v = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(
+            start_anyway_first(v(&["--start-anyway", "--app-id", "x", "f"])),
+            (true, v(&["--app-id", "x", "f"]))
+        );
+        assert_eq!(
+            start_anyway_first(v(&["--app-id", "x", "--start-anyway"])),
+            (false, v(&["--app-id", "x", "--start-anyway"]))
+        );
+        assert_eq!(start_anyway_first(vec![]), (false, vec![]));
+    }
+
+    /// B2 R75: the notice's button starts the same app with the same files
+    /// once more, each exactly as given (names that look like options,
+    /// `--`, spaces), with "Start anyway" first; a `notify-send` without
+    /// buttons still shows the notice, and nothing is started then.
+    #[test]
+    fn the_start_anyway_button_starts_the_same_files_once_more() {
+        let t = tempfile::tempdir().unwrap();
+        let script = |name: &str, body: &str| {
+            let p = t.path().join(name);
+            fs::write(&p, format!("#!/bin/sh\n{body}\n")).unwrap();
+            fs::set_permissions(&p, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+            p
+        };
+        let calls = t.path().join("calls");
+        let me = script(
+            "me",
+            &format!(
+                "for a in \"$@\"; do printf '%s\\n' \"$a\"; done > {}",
+                calls.display()
+            ),
+        );
+        // Presses the button.
+        let presses = script("presses", "echo start");
+        let asked: Vec<String> = ["--app-id", "x", "-x", "--", "--start-anyway", "a b"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let run = |n: &Path| {
+            start_anyway_command(n, &me, "T", "B", "Start anyway", &asked)
+                .status()
+                .unwrap()
+        };
+        assert!(run(&presses).success());
+        let got = fs::read_to_string(&calls).unwrap();
+        let mut want = vec!["--start-anyway".to_string()];
+        want.extend(asked.iter().cloned());
+        assert_eq!(got.lines().collect::<Vec<_>>(), want, "{got}");
+
+        // Too old for buttons: it refuses --action, then shows the notice.
+        fs::remove_file(&calls).unwrap();
+        let shown = t.path().join("shown");
+        let old = script(
+            "old",
+            &format!(
+                "case \"$*\" in *--action=*) exit 1 ;; esac\nprintf '%s\\n' \"$@\" > {}",
+                shown.display()
+            ),
+        );
+        assert!(run(&old).success());
+        let notice = fs::read_to_string(&shown).unwrap();
+        assert!(
+            notice.lines().any(|l| l == "T") && notice.lines().any(|l| l == "B"),
+            "{notice}"
+        );
+        assert!(!calls.exists(), "nothing started");
+
+        // Closed without pressing: nothing started, no second notice.
+        fs::remove_file(&shown).unwrap();
+        let closes = script("closes", &format!("echo > {}", shown.display()));
+        let _ = run(&closes);
+        assert!(!calls.exists(), "nothing started");
+        assert_eq!(fs::read_to_string(&shown).unwrap(), "\n", "shown once");
+    }
 
     /// A file name with bytes that are not text is named in the message,
     /// never passed on changed and never a crash (audit S-F15).
@@ -475,7 +687,7 @@ mod tests {
     /// protection layer, and the notification names each missing layer.
     #[test]
     fn a_menu_start_is_told_when_a_protection_layer_is_missing() {
-        let opts = launch_options(vec!["a.txt".into()]);
+        let opts = launch_options(vec!["a.txt".into()], false);
         assert_eq!(opts.args, ["a.txt"]);
         assert!(
             opts.on_missing_layers.is_some(),

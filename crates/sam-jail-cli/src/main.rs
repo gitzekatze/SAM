@@ -76,6 +76,11 @@ fn main() {
     sam_core::i18n::init(true);
     let cli = Cli::parse();
     let json_mode = cli.json;
+    // The app a refused `run` names, for the hint how to start it anyway.
+    let run_app = match &cli.cmd {
+        Cmd::Run { app, .. } => Some(app.clone()),
+        _ => None,
+    };
     let function = function_for(&cli.cmd);
     let result = match function {
         Some(id) => real_main(cli).in_function(id),
@@ -103,6 +108,25 @@ fn main() {
                     sam_core::i18n::trf("SAM function {id}", &[("id", &id)])
                 ),
                 None => errln!("{} {message}", paint("error:", "1;31")),
+            }
+            // How to choose "Start anyway" here (B2 R75, R77): only after
+            // `run`, the one command that takes it.
+            if let Some(q) = run_app.as_ref().filter(|_| {
+                sam_core::error::code_of(&e) == Some(sam_runner::launch::PROTECTION_MISSING)
+            }) {
+                errln!(
+                    "{}",
+                    sam_core::i18n::trf(
+                        "To start it anyway this one time: {command}",
+                        &[(
+                            "command",
+                            &format!(
+                                "sam-jail run --start-anyway {}",
+                                sam_core::util::shell_quote(q)
+                            ),
+                        )],
+                    )
+                );
             }
         }
         std::process::exit(1);
@@ -862,7 +886,11 @@ fn real_main(cli: Cli) -> Result<()> {
                 }
             });
         }
-        Cmd::Run { app: q, args } => {
+        Cmd::Run {
+            app: q,
+            args,
+            start_anyway,
+        } => {
             let mut e = app.resolve(&q)?;
             app.ensure_unpacked(&mut e)?;
             let _start = app.start_lock(&mut e)?;
@@ -873,6 +901,7 @@ fn real_main(cli: Cli) -> Result<()> {
                     args,
                     // With --json, standard output is SAM's reply alone.
                     app_output_to_stderr: cli.json,
+                    start_anyway,
                     ..Default::default()
                 },
                 &app.config,
@@ -910,6 +939,9 @@ fn real_main(cli: Cli) -> Result<()> {
                 &e,
                 &LaunchOptions {
                     args,
+                    // Shown, not started: a missing protection is part of
+                    // what the command shows (B2 R75).
+                    preview: true,
                     ..Default::default()
                 },
                 &app.config,

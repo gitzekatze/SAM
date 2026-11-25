@@ -44,6 +44,59 @@ pub fn wanted_name(line: &str) -> Option<String> {
     sam_core::permissions::is_bus_name(name).then(|| name.to_string())
 }
 
+/// The desktop services SAM allows by default or through an integration
+/// switch, with the object paths of their own protocol (`/x/*`: that path
+/// and everything below it).
+///
+/// The filter (xdg-dbus-proxy) gives a program's unique name (`:1.10`) the
+/// rules of every name it owns, and a plain `--talk` lets every call
+/// through. One program often holds many names: on KDE Plasma 6,
+/// plasmashell owns the notification service and also Klipper (the
+/// clipboard history) and the shell's script runner; kded6 owns the tray
+/// watcher and the desktop's background services; KWin owns the screen
+/// saver name and its own scripting; Dolphin owns the file manager name and
+/// its menu actions. So for these names the app gets calls and signals on
+/// the service's own objects only, which the filter checks for the unique
+/// name too (B2 R76, 2026-11-25). The keyring keeps `--talk`: that switch
+/// hands out stored passwords anyway.
+const SERVICE_PATHS: &[(&str, &[&str])] = &[
+    (
+        "org.freedesktop.Notifications",
+        &["/org/freedesktop/Notifications"],
+    ),
+    ("org.kde.StatusNotifierWatcher", &["/StatusNotifierWatcher"]),
+    (
+        "org.freedesktop.ScreenSaver",
+        &["/ScreenSaver", "/org/freedesktop/ScreenSaver"],
+    ),
+    // Only its inhibit object: the main one also offers suspend, and on
+    // some desktops shut down.
+    (
+        "org.freedesktop.PowerManagement",
+        &["/org/freedesktop/PowerManagement/Inhibit"],
+    ),
+    (
+        "org.freedesktop.FileManager1",
+        &["/org/freedesktop/FileManager1"],
+    ),
+    // The input methods' sandbox frontends (defence in depth: Fcitx 5 runs
+    // its portal on a connection of its own, apart from its controller).
+    (
+        "org.freedesktop.portal.Fcitx",
+        &["/org/freedesktop/portal/*", "/inputmethod"],
+    ),
+    ("org.freedesktop.portal.IBus", &["/org/freedesktop/IBus/*"]),
+];
+
+/// The object paths the app may reach on `name`, when it is one of
+/// [`SERVICE_PATHS`] (exact names only).
+fn service_paths(name: &str) -> Option<&'static [&'static str]> {
+    SERVICE_PATHS
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map(|(_, paths)| *paths)
+}
+
 /// The proxy's filter for `perms`: what the app may talk to and own, and
 /// the names the settings allow that SAM refused (name, why).
 /// `may_own` is the start's full check of a name ([`crate::own_names::NameCheck`]).
@@ -65,7 +118,16 @@ fn filter_args(
     // out already).
     let denied = |n: &str| sam_core::permissions::bus_name_denied(&perms.deny, n);
     for name in perms.allow.iter().filter(|n| !denied(n)) {
-        args.push(format!("--talk={name}"));
+        match service_paths(name) {
+            // A desktop service SAM knows: only its own objects (B2 R76).
+            Some(paths) => {
+                for path in paths {
+                    args.push(format!("--call={name}=*@{path}"));
+                    args.push(format!("--broadcast={name}=*@{path}"));
+                }
+            }
+            None => args.push(format!("--talk={name}")),
+        }
     }
     let tray_names = perms.tray_own_names();
     let mut refused = Vec::new();
@@ -176,8 +238,8 @@ impl DbusProxy {
             let wanted = wanted.clone();
             let mut log = log;
             std::thread::spawn(move || {
-                use std::io::{BufRead, Write};
-                for line in std::io::BufReader::new(out).lines().map_while(|l| l.ok()) {
+                use std::io::Write;
+                for line in record_lines(out) {
                     if let Some(f) = log.as_mut() {
                         let _ = writeln!(f, "{line}");
                     }
@@ -194,7 +256,16 @@ impl DbusProxy {
         // that connected in between was refused (seen in CI). Wait until a
         // connection really succeeds.
         while !accepting(&socket) {
-            if let Some(st) = child.try_wait()? {
+            let ended = match child.try_wait() {
+                Ok(ended) => ended,
+                Err(e) => {
+                    // Never left running without an owner (B2 R81).
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(e.into());
+                }
+            };
+            if let Some(st) = ended {
                 bail!(
                     "{}",
                     sam_core::i18n::trf(
@@ -205,6 +276,8 @@ impl DbusProxy {
             }
             if Instant::now() > deadline {
                 let _ = child.kill();
+                // Reaped, not left as a zombie until SAM ends (B2 R81).
+                let _ = child.wait();
                 bail!(
                     "{}",
                     sam_core::i18n::tr("xdg-dbus-proxy did not create its socket in time")
@@ -264,6 +337,91 @@ mod tests {
         );
     }
 
+    /// B2 R76: a desktop service SAM allows by default or through a switch
+    /// gets calls and signals on its own objects only, never a plain
+    /// `--talk`, which would open every object of the program behind it
+    /// (on Plasma 6, plasmashell's clipboard history and script runner
+    /// behind the notification service). A name SAM does not know keeps
+    /// `--talk`; an always-blocked one gets no rule at all.
+    #[test]
+    fn known_desktop_services_reach_only_their_own_objects() {
+        let mut p = DbusPerms::default().session;
+        for name in super::SERVICE_PATHS
+            .iter()
+            .map(|(n, _)| *n)
+            .chain(["org.example.Other"])
+        {
+            // The defaults are there already.
+            if !p.allow.iter().any(|a| a == name) {
+                p.allow.push(name.into());
+            }
+        }
+        p.deny = vec!["org.freedesktop.FileManager1".into()];
+        let (args, _) = super::filter_args(&p, &Default::default(), "appimage-x", &|_| true);
+        for (name, paths) in super::SERVICE_PATHS {
+            assert!(
+                !args.contains(&format!("--talk={name}")),
+                "{name}: {args:?}"
+            );
+            if *name == "org.freedesktop.FileManager1" {
+                assert!(!args.iter().any(|a| a.contains(name)), "blocked: {args:?}");
+                continue;
+            }
+            let rules: Vec<&String> = args
+                .iter()
+                .filter(|a| a.contains(&format!("={name}=")))
+                .collect();
+            assert_eq!(rules.len(), 2 * paths.len(), "{name}: {rules:?}");
+            for path in *paths {
+                assert!(path.starts_with('/'), "{name}: {path}");
+                for kind in ["--call", "--broadcast"] {
+                    assert!(
+                        args.contains(&format!("{kind}={name}=*@{path}")),
+                        "{kind} {name} {path}: {args:?}"
+                    );
+                }
+            }
+        }
+        // Every name SAM allows by default or through a switch is among
+        // them, except the portal (its own rules, `effective_session_bus`)
+        // and the keyring (which hands out passwords anyway).
+        let all = sam_core::permissions::IntegrationPerms {
+            keyring: false,
+            media_controls: true,
+            file_manager: true,
+            input_method: true,
+            ..Default::default()
+        };
+        let defaults = sam_core::permissions::default_session_allow();
+        for name in defaults
+            .iter()
+            .map(String::as_str)
+            .filter(|n| *n != sam_core::permissions::PORTAL_NAME)
+            .chain(all.bus_names().0)
+        {
+            assert!(super::service_paths(name).is_some(), "{name}");
+        }
+        assert!(
+            args.contains(&"--talk=org.example.Other".to_string()),
+            "{args:?}"
+        );
+        // The paths are the ones these services use (checked 2026-11-25 on
+        // KDE Plasma 6 and in the Fcitx 5 and IBus sources).
+        assert_eq!(
+            super::service_paths("org.freedesktop.Notifications"),
+            Some(&["/org/freedesktop/Notifications"][..])
+        );
+        assert_eq!(
+            super::service_paths("org.kde.StatusNotifierWatcher"),
+            Some(&["/StatusNotifierWatcher"][..])
+        );
+        // Inhibiting only, never the main object's suspend or shut down.
+        assert_eq!(
+            super::service_paths("org.freedesktop.PowerManagement"),
+            Some(&["/org/freedesktop/PowerManagement/Inhibit"][..])
+        );
+    }
+
     /// Only the proxy's "wants to own" lines name a name to learn, and
     /// only a well-formed one (what the app printed never reaches this).
     #[test]
@@ -280,6 +438,22 @@ mod tests {
         ] {
             assert_eq!(wanted_name(no), None, "{no}");
         }
+    }
+
+    /// B2 R83: a line of the proxy's record that is not valid UTF-8 (the
+    /// proxy prints parts of the app's messages unchecked) does not end
+    /// the reading: the lines after it are still read, so the proxy never
+    /// writes into a closed pipe, and a name asked for later is learned.
+    #[test]
+    fn a_record_line_that_is_not_text_does_not_end_the_reading() {
+        let record: &[u8] = b"C1: -> \xff\xfe call\nFiltering message due to arg0 org.example.Later, policy: 0 (required 3)\nlast";
+        let lines: Vec<String> = super::record_lines(record).collect();
+        assert_eq!(lines.len(), 3, "{lines:?}");
+        assert_eq!(
+            super::wanted_name(&lines[1]).as_deref(),
+            Some("org.example.Later")
+        );
+        assert_eq!(lines[2], "last");
     }
 
     /// A name is kept once, and no more than eight in all.
@@ -358,6 +532,27 @@ mod tests {
         assert!(!args.contains(&"--talk=org.a.B".to_string()), "{args:?}");
         assert!(args.contains(&"--talk=org.c.D".to_string()), "{args:?}");
     }
+}
+
+/// The lines of the proxy's record, each as text also when it is not valid
+/// UTF-8: the proxy prints parts of the app's messages unchecked, and a
+/// reader that stopped at such a line would close the pipe, after which
+/// the proxy dies at its next line and the app loses its bus (B2 R83).
+fn record_lines(out: impl std::io::Read) -> impl Iterator<Item = String> {
+    use std::io::BufRead;
+    let mut r = std::io::BufReader::new(out);
+    std::iter::from_fn(move || {
+        let mut buf = Vec::new();
+        match r.read_until(b'\n', &mut buf) {
+            Ok(0) | Err(_) => None,
+            Ok(_) => {
+                if buf.last() == Some(&b'\n') {
+                    buf.pop();
+                }
+                Some(String::from_utf8_lossy(&buf).into_owned())
+            }
+        }
+    })
 }
 
 /// Whether something listens on the Unix socket at `path` (an existing

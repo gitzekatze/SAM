@@ -660,7 +660,7 @@ playbook = "These are long-stable standards; a change would show in SAM's own fo
 # --------------------------------------------- SAM's own names (not contracts)
 
 [[own]]
-covers = ["env:SAM_*", "program:sam-jail-run", "program:sam-jail-gui", "option:--sandbox-exec", "option:--not-text", "option:--app-id", "option:--help", "option:-h", "option:--max-bytes", "option:--max-files", "option:--max-seconds"]
+covers = ["env:SAM_*", "program:sam-jail-run", "program:sam-jail-gui", "option:--sandbox-exec", "option:--not-text", "option:--app-id", "option:--start-anyway", "option:--help", "option:-h", "option:--max-bytes", "option:--max-files", "option:--max-seconds"]
 why = "SAM's own programs, their options and SAM's own variables."
 
 [[own]]

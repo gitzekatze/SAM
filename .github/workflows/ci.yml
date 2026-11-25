@@ -5,6 +5,8 @@ on:
   push:
     branches: [main]
   pull_request:
+    # ready_for_review: a draft marked ready runs every job (see `changes`).
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
 permissions:
@@ -25,9 +27,18 @@ jobs:
   # minute. Some documents are part of the code: docs/guide.md and
   # docs/contracts.toml are built into SAM, and tests read others
   # (scripts/workflow-check.py checks that every one is listed here).
+  # A draft pull request runs only these quick checks too (owner,
+  # 2026-11-25): small pull requests of a batch are opened as drafts and
+  # tested whole once, through the batch's pull request, which is not a
+  # draft. GitHub never merges a draft, and marking one ready runs every
+  # job.
   changes:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    # To ask whether the pull request is a draft now (see DRAFT below).
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       code: ${{ steps.check.outputs.code }}
     steps:
@@ -38,11 +49,23 @@ jobs:
       - id: check
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          PR: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ github.token }}
         run: |
+          # Whether the pull request is a draft now, asked of GitHub: the
+          # event's own record is frozen, so a run started while it was a
+          # draft and re-run after it was marked ready would skip again.
+          # When the answer cannot be had, every job runs.
+          DRAFT=false
+          if [ -n "$PR" ]; then
+            DRAFT=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq .draft 2>/dev/null) || DRAFT=false
+          fi
           docs='^(docs/|[^/]+\.md$|scripts/site\.py$|\.github/ISSUE_TEMPLATE/)'
           # Documents SAM builds in or its checks read: they count as code.
           code_docs='^docs/((guide|architecture|permissions)\.md|syscalls-reviewed\.txt|contracts\.toml|functions\.toml)$'
-          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+          if [ "$DRAFT" = true ]; then
+            code=false   # a draft: the quick checks only
+          elif [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             code=true    # run by hand, or no earlier commit to compare with
           elif git diff --name-only "$BASE" "$GITHUB_SHA" | grep -Ev "$docs" | grep -q . \
             || git diff --name-only "$BASE" "$GITHUB_SHA" | grep -Eq "$code_docs"; then
@@ -51,7 +74,13 @@ jobs:
             code=false
           fi
           echo "code=$code" >> "$GITHUB_OUTPUT"
-          [ "$code" = true ] && echo "Code changed: every job runs." || echo "Only documents changed: the code jobs are skipped."
+          if [ "$DRAFT" = true ]; then
+            echo "A draft pull request: only the quick checks run; marking it ready runs every job."
+          elif [ "$code" = true ]; then
+            echo "Code changed: every job runs."
+          else
+            echo "Only documents changed: the code jobs are skipped."
+          fi
 
   # The scripts and workflows through their linters (audit P10, P11):
   # shellcheck for shell scripts, ruff for the Python ones (ruff.toml),
