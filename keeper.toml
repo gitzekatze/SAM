@@ -29,6 +29,7 @@ critical = [
   "crates/sam-detect/src/signature.rs",
   "crates/sam-core/src/permissions.rs",
   "crates/sam-core/src/risk.rs",
+  "crates/sam-core/src/places.rs",
   "docs/contracts.toml",
   "docs/syscalls-reviewed.txt",
   "docs/threat-model.md",
