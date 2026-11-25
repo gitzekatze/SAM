@@ -66,7 +66,7 @@ fn undoing_repair_steps_restores_the_settings_from_before_the_first_step() {
     for step in steps.iter().take(2) {
         let e = sam.resolve(&id).unwrap();
         if let Some(s) = sam.find_suggestion(&e, &step.id) {
-            let _ = sam.apply_suggestion(&id, &s, true);
+            let _ = sam.apply_suggestion(&id, &s, true, true);
         }
     }
     assert_ne!(
@@ -103,7 +103,7 @@ fn undoing_repair_steps_keeps_what_the_person_changed_since() {
         })
         .expect("the ladder has a step that sets one permission");
     let before = e.profile.permissions.get_key(&key).unwrap();
-    sam.apply_suggestion(&id, &step, true).unwrap();
+    sam.apply_suggestion(&id, &step, true, true).unwrap();
     // Afterwards the person changes another setting.
     sam.set_permission(&id, "filesystem.music", "ro").unwrap();
     let back = sam.undo_repairs(&id).unwrap();
@@ -132,7 +132,7 @@ fn undoing_repair_steps_keeps_what_the_person_changed_since() {
         risk: sam_core::risk::RiskLevel::High,
         from_app_output: false,
     };
-    sam.apply_suggestion(&id, &network, true).unwrap();
+    sam.apply_suggestion(&id, &network, true, true).unwrap();
     sam.set_permission(&id, "network.mode", "localhost")
         .unwrap();
     let back = sam.undo_repairs(&id).unwrap();
@@ -442,7 +442,7 @@ fn switching_off_one_repair_step_keeps_the_others() {
     assert_eq!(steps.len(), 2, "two setting steps to apply");
     let before = sam.resolve(&id).unwrap().profile.permissions;
     for s in &steps {
-        sam.apply_suggestion(&id, s, true).unwrap();
+        sam.apply_suggestion(&id, s, true, true).unwrap();
     }
     let both = sam.resolve(&id).unwrap().profile.permissions;
     let e = sam.undo_repair_step(&id, &steps[0].id).unwrap();

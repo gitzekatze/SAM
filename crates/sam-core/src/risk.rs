@@ -25,22 +25,31 @@ impl RiskLevel {
             RiskLevel::Dangerous => 35,
         }
     }
-    /// The words people see, in the window and on the command line alike:
-    /// three levels (low and medium are both harmless), translated.
+    /// The words people see, in the window and on the command line alike,
+    /// translated: each level has its own words. Medium says "Some access"
+    /// and no longer "Harmless" like Low: sound, the GPU or a shared folder
+    /// are ordinary grants, but they are access, and calling them harmless
+    /// said less than SAM knows (owner decision 17 of 2026-11-23). When SAM
+    /// asks first does not depend on these words: it still asks from High
+    /// on ([`new_risks`]).
     pub fn words(self) -> String {
         match self {
-            RiskLevel::Low | RiskLevel::Medium => crate::i18n::tr("Harmless"),
+            RiskLevel::Low => crate::i18n::tr("Harmless"),
+            RiskLevel::Medium => crate::i18n::tr("Some access"),
             RiskLevel::High => crate::i18n::tr("Think twice"),
             RiskLevel::Dangerous => crate::i18n::tr("Dangerous"),
         }
     }
     /// Whether `name` names this level: the internal name (`low`, `high`, …)
-    /// or the words people see (`harmless`, `think-twice`, `dangerous`).
+    /// or the words people see (`harmless`, `some-access`, `think-twice`,
+    /// `dangerous`; a space or `_` works like `-`). `harmless` names Low
+    /// only (owner decision 17 of 2026-11-23).
     pub fn is_named(self, name: &str) -> bool {
         let n = name.trim().to_lowercase().replace([' ', '_'], "-");
         n == self.label().to_lowercase()
             || match self {
-                RiskLevel::Low | RiskLevel::Medium => n == "harmless",
+                RiskLevel::Low => n == "harmless",
+                RiskLevel::Medium => n == "some-access",
                 RiskLevel::High => n == "think-twice",
                 RiskLevel::Dangerous => false,
             }
@@ -484,12 +493,14 @@ pub fn assess(p: &PermissionSet) -> RiskAssessment {
             RiskLevel::Dangerous,
         ),
     }
+    // The agent decrypts, signs and logs in as you with your unlocked
+    // keys (owner decision 11 of 2026-11-23).
     if p.sockets.ssh_agent {
         item(
             &mut items,
             "sockets.ssh_agent",
             "SSH agent",
-            RiskLevel::High,
+            RiskLevel::Dangerous,
         );
     }
     if p.sockets.cups {
@@ -583,6 +594,9 @@ pub fn assess(p: &PermissionSet) -> RiskAssessment {
         || fs.ssh
         || fs.gnupg
         || p.sockets.ssh_agent
+        // An extra socket that is a key agent (GnuPG's, an SSH agent) hands
+        // out the same keys (owner decision 11 of 2026-11-23).
+        || p.sockets.custom.iter().any(|s| crate::permissions::key_agent_socket(s))
         || p.integrations.keyring
         || p.dbus
             .session
@@ -897,16 +911,54 @@ mod tests {
         assert!(assess(&p).level <= RiskLevel::Medium.max(base));
     }
 
-    /// The command line and the window name risk with the same three words,
-    /// and the command line's filter understands both names.
+    /// The command line and the window name risk with the same words, and
+    /// the command line's filter understands both names. Medium has words
+    /// of its own since owner decision 17 of 2026-11-23 (it read "Harmless"
+    /// like Low before, and `harmless` selected both), so the test now
+    /// checks four words; its name stays as it was.
     #[test]
     fn risk_has_the_same_three_words_everywhere() {
         assert_eq!(RiskLevel::Low.words(), "Harmless");
-        assert_eq!(RiskLevel::Medium.words(), "Harmless");
+        assert_eq!(RiskLevel::Medium.words(), "Some access");
         assert_eq!(RiskLevel::High.words(), "Think twice");
         assert_eq!(RiskLevel::Dangerous.words(), "Dangerous");
         assert!(RiskLevel::High.is_named("think twice") && RiskLevel::High.is_named("high"));
-        assert!(RiskLevel::Medium.is_named("harmless") && !RiskLevel::High.is_named("harmless"));
+        assert!(!RiskLevel::Medium.is_named("harmless") && !RiskLevel::High.is_named("harmless"));
+    }
+
+    /// Each of the four levels has words of its own, and each word names
+    /// exactly its level: `harmless` selects only Low, `some-access` (or
+    /// "some access") only Medium (owner decision 17 of 2026-11-23).
+    #[test]
+    fn each_risk_level_has_words_of_its_own() {
+        let all = [
+            RiskLevel::Low,
+            RiskLevel::Medium,
+            RiskLevel::High,
+            RiskLevel::Dangerous,
+        ];
+        let words: std::collections::BTreeSet<String> = all.iter().map(|l| l.words()).collect();
+        assert_eq!(words.len(), all.len(), "{words:?}");
+        for (name, level) in [
+            ("harmless", RiskLevel::Low),
+            ("Harmless", RiskLevel::Low),
+            ("low", RiskLevel::Low),
+            ("some-access", RiskLevel::Medium),
+            ("some access", RiskLevel::Medium),
+            ("Some_Access", RiskLevel::Medium),
+            ("medium", RiskLevel::Medium),
+            ("think-twice", RiskLevel::High),
+            ("high", RiskLevel::High),
+            ("dangerous", RiskLevel::Dangerous),
+        ] {
+            for l in all {
+                assert_eq!(l.is_named(name), l == level, "{name:?} names {l:?}?");
+            }
+        }
+        // Each level's own words name it, whatever their case.
+        for l in all {
+            assert!(l.is_named(&l.words()), "{l:?}");
+        }
     }
 
     /// The one ask rule: a change asks when it adds something rated Think
@@ -1499,5 +1551,81 @@ mod tests {
         let mut p = PermissionSet::strict_gui();
         p.sockets.custom = vec!["/tmp/app.sock".into()];
         assert_eq!(assess(&p).level, RiskLevel::High, "an ordinary socket");
+    }
+
+    /// Key agents are Dangerous: whoever reaches one uses your unlocked
+    /// keys to decrypt, sign or log in to other computers as you (owner
+    /// decision 11 of 2026-11-23). The SSH agent switch, and an extra
+    /// socket at each usual place of GnuPG's agent or an SSH agent; an
+    /// ordinary socket stays Think twice.
+    #[test]
+    fn key_agents_are_rated_dangerous() {
+        let mut p = PermissionSet::strict_gui();
+        p.sockets.ssh_agent = true;
+        let switch = assess(&p);
+        assert_eq!(switch.level, RiskLevel::Dangerous, "the SSH agent switch");
+        assert!(
+            switch
+                .items
+                .iter()
+                .any(|i| i.key == "sockets.ssh_agent" && i.level == RiskLevel::Dangerous),
+            "{switch:?}"
+        );
+        for s in [
+            "/run/user/1000/gnupg/S.gpg-agent",
+            "/run/user/1000/gnupg/S.gpg-agent.ssh",
+            "/run/user/1000/gnupg/S.gpg-agent.extra",
+            "/run/user/1000/gnupg/S.gpg-agent.browser",
+            "/home/me/.gnupg/S.gpg-agent",
+            "/tmp/ssh-XXXXabc123/agent.4242",
+            "/tmp//ssh-q1w2e3/./agent.77",
+            // OpenSSH's default place since 10.1 (review of decision 11).
+            "/home/me/.ssh/agent/s.AbCdEf123",
+            "~/.ssh/agent/s.x",
+            "/run/user/1000/ssh-agent.socket",
+            "/home/me/.bitwarden-ssh-agent.sock",
+            "/run/user/1000/openssh_agent",
+            "/run/user/1000/keyring/ssh",
+            "/run/user/1000/gcr/ssh",
+            "/home/me/.1password/agent.sock",
+        ] {
+            assert!(key_agent_socket(s), "{s}");
+            let why = dangerous_socket(s).unwrap_or_else(|| panic!("{s} not dangerous"));
+            assert!(why.contains("unlocked keys"), "{s}: {why}");
+            let mut p = PermissionSet::strict_gui();
+            p.sockets.custom = vec![s.into()];
+            assert_eq!(assess(&p).level, RiskLevel::Dangerous, "{s}");
+        }
+        for s in [
+            "/run/user/1000/kpxc_server",
+            "/tmp/app.sock",
+            "/tmp/ssh-XXXXabc123/control.sock",
+            "/run/user/1000/agent.sock",
+        ] {
+            assert!(!key_agent_socket(s), "{s}");
+            assert!(dangerous_socket(s).is_none(), "{s}");
+            let mut p = PermissionSet::strict_gui();
+            p.sockets.custom = vec![s.into()];
+            assert_eq!(assess(&p).level, RiskLevel::High, "{s}");
+        }
+    }
+
+    /// An extra socket that is a key agent counts as reading your keys:
+    /// with the full network, the app can send what the agent decrypts
+    /// (owner decision 11 of 2026-11-23). An ordinary socket does not.
+    #[test]
+    fn a_key_agent_socket_with_the_network_can_send_what_it_reads() {
+        let combo = |socket: &str| {
+            let mut p = PermissionSet::strict_gui();
+            p.network.mode = NetworkMode::Full;
+            p.sockets.custom = vec![socket.into()];
+            assess(&p)
+                .items
+                .iter()
+                .any(|i| i.key == "combination.read_and_send" && i.level == RiskLevel::Dangerous)
+        };
+        assert!(combo("/run/user/1000/gnupg/S.gpg-agent"), "GnuPG's agent");
+        assert!(combo("/tmp/ssh-XXXXabc123/agent.4242"), "an SSH agent");
+        assert!(!combo("/run/user/1000/kpxc_server"), "an ordinary socket");
     }
 }

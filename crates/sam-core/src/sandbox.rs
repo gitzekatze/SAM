@@ -77,9 +77,12 @@ pub struct LaunchContext {
     /// Per-app folder holding `upper/` and `work/` for the writable app
     /// folder overlay (`advanced.writable_appdir`).
     pub appdir_overlay: Option<PathBuf>,
-    /// SAM's own folders (config, data, extraction): hidden whenever a
-    /// granted folder would make them visible, so an app cannot change its
-    /// own permissions or another app's files.
+    /// Where this SAM keeps its own folders (config, data, extraction:
+    /// `Paths::sam_dirs`): hidden whenever a granted folder would make them
+    /// visible, wherever they lead, so an app cannot change its own
+    /// permissions or another app's files. The sandbox adds the folders
+    /// named like them that count as SAM's in this start
+    /// (`places::sams_folders`).
     pub sam_dirs: Vec<PathBuf>,
     /// SAM's own programs outside the sandbox (`util::own_programs`): its
     /// AppImage file and `sam-jail-run`, which every menu entry runs.

@@ -32,7 +32,7 @@ the same tool Flatpak uses, and its window works like Flatseal's.
   private home folder and its own window. SAM adds only what this app shows
   it needs: sound for a music player, the network for a browser.
 - **Every switch says what it costs.** Each permission is explained in one
-  sentence and marked as harmless, think twice or dangerous.
+  sentence and marked as harmless, some access, think twice or dangerous.
 - **SAM finds out why an app struggles.** After a failed start, SAM reads what
   went wrong and offers the one change that helps, from mild to strong. You
   can undo every change.
@@ -84,7 +84,7 @@ repository.
   the reason for each), and <!-- fact:apps_refused -->1<!-- /fact --> built for another processor
   is turned away with a clear message
   ([report of <!-- fact:apps_date -->2026-11-20<!-- /fact -->](docs/reports/real-apps-2026-11-20.md)).
-- **<!-- fact:tests -->1,006<!-- /fact --> automated tests guard <!-- fact:functions -->42<!-- /fact --> functions.**
+- **<!-- fact:tests -->1,049<!-- /fact --> automated tests guard <!-- fact:functions -->42<!-- /fact --> functions.**
   [Functions and their proofs](docs/functions.md) shows which tests prove
   which function. A fixed bug gets a test that fails without the fix.
 - **Every security promise is attacked by a test, most from inside a real sandbox.**
@@ -137,8 +137,9 @@ report it privately ([SECURITY.md](SECURITY.md)).
 ### Permissions
 
 Every permission has a plain-language explanation and a risk level (*low*,
-*medium*, *high*, *dangerous*); tags show them in three colours: grey for
-harmless, amber for think twice, red for dangerous. Risky choices show a
+*medium*, *high*, *dangerous*), named *Harmless*, *Some access*, *Think twice*
+and *Dangerous*; tags show them in three colours: grey for harmless and some
+access, amber for think twice, red for dangerous. Risky choices show a
 warning before they apply.
 
 - **Files:** private home, XDG folders (read-only or read/write), your own
@@ -151,7 +152,9 @@ warning before they apply.
   also reports itself as one), USB, all input devices.
 - **Desktop integration:** passwords and keyring, media controls, screen
   sharing, "show in folder", input methods (Fcitx5, IBus).
-- **Advanced:** sockets, environment variables, a writable app folder for
+- **Advanced:** sockets (a key agent, such as the SSH agent or GnuPG's,
+  is rated dangerous: the app could sign, decrypt or log in as you),
+  environment variables, a writable app folder for
   portable apps, syscall filters, nested namespaces.
 
 ### Making apps work
@@ -249,7 +252,7 @@ sam-jail remove krita                           # remove the sandbox; the AppIma
 **When an app does not work:**
 
 ```sh
-sam-jail hints krita            # first-run check, with fixes
+sam-jail hints krita            # first-run check, with fixes (a risky one needs --yes)
 sam-jail repair krita           # what went wrong last time
 sam-jail repair krita --next    # apply the next repair step
 sam-jail repair krita --undo    # undo all repair steps

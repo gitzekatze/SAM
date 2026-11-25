@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Summarizes a D-Bus log written by SAM's proxy (SAM_DBUS_LOG=FILE when
-starting an app): how many calls the app made, which calls never got an
+starting an app with a developer build of SAM): how many calls the app made, which calls never got an
 answer (candidates for an app that waits and feels slow), and which calls
 the proxy blocked, by service.
 

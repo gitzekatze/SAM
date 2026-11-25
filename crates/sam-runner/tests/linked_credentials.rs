@@ -8,9 +8,12 @@
 //! - a credential place that is a named pipe (`~/.netrc` fed by a password
 //!   manager, so the secret never lies on disk) or a socket: only files and
 //!   folders were hidden, so the app could read the pipe.
+//! - a key agent's socket in the home (1Password's, Bitwarden's, OpenSSH's
+//!   in `~/.ssh/agent`): a read-only home still lets the app connect and
+//!   use your unlocked keys (owner decision 11 of 2026-11-23).
 //!
 //! Controls show the attack would have been seen: the protected place's
-//! other files are readable.
+//! other files are readable, and an ordinary socket in the home is seen.
 //!
 //! In its own file because it sets `HOME` for the test process.
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
@@ -32,6 +35,10 @@ cat "$H/.config/git/credentials" 2>/dev/null | grep -q SECRET && echo TARGET=rea
 cat "$H/.config/git/config" 2>/dev/null | grep -q mine && echo CONFIG=read || echo CONFIG=hidden
 [ -p "$H/.netrc" ] && echo NETRC=pipe || echo NETRC=hidden
 [ -S "$H/.authinfo" ] && echo AUTHINFO=socket || echo AUTHINFO=hidden
+[ -S "$H/.1password/agent.sock" ] && echo ONEPASSWORD=socket || echo ONEPASSWORD=hidden
+[ -S "$H/.bitwarden-ssh-agent.sock" ] && echo BITWARDEN=socket || echo BITWARDEN=hidden
+[ -S "$H/.ssh/agent/s.test" ] && echo OPENSSH=socket || echo OPENSSH=hidden
+[ -S "$H/plain.sock" ] && echo PLAIN=socket || echo PLAIN=hidden
 echo END=1
 "#;
 
@@ -72,6 +79,17 @@ fn credentials_behind_links_pipes_and_sockets_stay_hidden() {
     // SAFETY: a valid, NUL-terminated path.
     assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0, "mkfifo");
     let _socket = std::os::unix::net::UnixListener::bind(home.join(".authinfo")).unwrap();
+    fs::create_dir_all(home.join(".1password")).unwrap();
+    fs::create_dir_all(home.join(".ssh/agent")).unwrap();
+    let _agents: Vec<_> = [
+        ".1password/agent.sock",
+        ".bitwarden-ssh-agent.sock",
+        ".ssh/agent/s.test",
+        "plain.sock",
+    ]
+    .iter()
+    .map(|s| std::os::unix::net::UnixListener::bind(home.join(s)).unwrap())
+    .collect();
     std::env::set_var("HOME", &home);
     std::env::set_var("XDG_CONFIG_HOME", home.join(".config"));
     std::env::set_var("XDG_DATA_HOME", home.join(".local/share"));
@@ -117,11 +135,15 @@ fn credentials_behind_links_pipes_and_sockets_stay_hidden() {
             "the attack ran: {r:?}"
         );
         assert_eq!(r["CONFIG"], "read", "control, home {access:?}: {r:?}");
+        assert_eq!(r["PLAIN"], "socket", "control, home {access:?}: {r:?}");
         for (k, hidden) in [
             ("LINKED", "hidden"),
             ("TARGET", "hidden"),
             ("NETRC", "hidden"),
             ("AUTHINFO", "hidden"),
+            ("ONEPASSWORD", "hidden"),
+            ("BITWARDEN", "hidden"),
+            ("OPENSSH", "hidden"),
         ] {
             assert_eq!(r[k], hidden, "{k}, home {access:?}: {r:?}");
         }

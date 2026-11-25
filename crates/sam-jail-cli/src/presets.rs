@@ -11,8 +11,9 @@ pub(crate) fn preset_cmd(app: &Sam, out: &Out, cmd: PresetCmd) -> Result<()> {
                 if all.is_empty() {
                     outln!("{}", sam_core::i18n::tr("You have no presets yet. Save an app's settings with `sam-jail preset save APP NAME`."));
                 }
+                let rw = risk_width();
                 for p in &all {
-                    outln!("{:<26} {:<10} {}", p.name, risk_str(p.risk), p.description);
+                    outln!("{:<26} {} {}", p.name, risk_cell(p.risk, rw), p.description);
                 }
             });
         }
@@ -52,8 +53,11 @@ pub(crate) fn preset_cmd(app: &Sam, out: &Out, cmd: PresetCmd) -> Result<()> {
                             "Applied “{preset}” (risk {before} → {after})",
                             &[
                                 ("preset", &r.preset),
-                                ("before", &c.risk_before),
-                                ("after", &c.risk_after)
+                                // The level's words, as `list` and
+                                // `info` show them (owner decision 17
+                                // of 2026-11-23).
+                                ("before", &c.risk_before.words()),
+                                ("after", &c.risk_after.words())
                             ]
                         )
                     );
@@ -80,7 +84,9 @@ pub(crate) fn preset_cmd(app: &Sam, out: &Out, cmd: PresetCmd) -> Result<()> {
                     "{}",
                     sam_core::i18n::trf(
                         "Saved the preset “{name}” ({risk})",
-                        &[("name", &p.name), ("risk", &p.risk)]
+                        // The level's words, not the internal name
+                        // (owner decision 17 of 2026-11-23).
+                        &[("name", &p.name), ("risk", &p.risk.words())]
                     )
                 )
             });

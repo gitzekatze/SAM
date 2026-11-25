@@ -52,13 +52,37 @@ fn rank(a: Access) -> u8 {
 }
 
 /// The checks for an app, with what each should find.
-pub fn plan(p: &PermissionSet, cfg: &Config, host: &HostInfo) -> ProbePlan {
+pub fn plan(p: &PermissionSet, cfg: &Config, paths: &Paths, host: &HostInfo) -> ProbePlan {
     let mut v: Vec<ProbeCheck> = Vec::new();
     let fs = &p.filesystem;
-    let home_level = if fs.home {
-        level(fs.home_access)
-    } else {
+    // SAM's own folders, the list the sandbox hides: also the folders
+    // named like them (`~/.local/share/sam`) while SAM keeps its own
+    // elsewhere, which the sandbox hides by name unless that would cover
+    // too much, decided for what this start shows as the sandbox decides
+    // it (independent reviews of decision 9). The check's start has no
+    // extra binds of SAM's (`verify` passes none), so this is the list
+    // the sandbox takes for it.
+    let sam_dirs = sam_core::places::sams_folders(
+        &host.home,
+        &paths.sam_dirs(&cfg.extraction.location),
+        &sam_core::places::shown_folders(p, host),
+    );
+    // With the whole home writable, a protected place the sandbox does not
+    // hide that really is the home (`~/.config/sam` planted as a link to
+    // it) is locked read-only where the app reaches it, which is the whole
+    // home: the home and everything shown through it are read-only. The
+    // answer the sandbox's note takes (independent review of decision 9:
+    // the check expected the home writable and failed a sandbox that did
+    // what it should).
+    let home_locked = fs.home
+        && fs.home_access == Perm::Rw
+        && sam_core::places::protected_place_at_home(&host.home, &sam_dirs).is_some();
+    let home_level = if !fs.home {
         Access::Hidden
+    } else if home_locked {
+        Access::ReadOnly
+    } else {
+        level(fs.home_access)
     };
 
     // Files.
@@ -99,11 +123,27 @@ pub fn plan(p: &PermissionSet, cfg: &Config, host: &HostInfo) -> ProbePlan {
         if !path.is_dir() || path == host.home {
             continue;
         }
-        let want = if rank(home_level) > rank(level(a)) {
-            home_level
-        } else {
-            level(a)
-        };
+        // A user folder set inside SAM's own folders is not shown: the
+        // sandbox refuses it and hides SAM's folders with the home
+        // (independent re-review of decision 9).
+        let want =
+            if sam_core::places::inside_sams_folders(&sam_core::places::resolve(path), &sam_dirs) {
+                Access::Hidden
+            } else if rank(home_level) > rank(level(a)) {
+                home_level
+            } else {
+                level(a)
+            };
+        // With the whole home writable the sandbox binds no user folder of
+        // its own: one in the home is shown through it, so read-only at
+        // most where the home is locked read-only (independent review of
+        // decision 9).
+        let want =
+            if home_locked && path.starts_with(&host.home) && rank(want) > rank(Access::ReadOnly) {
+                Access::ReadOnly
+            } else {
+                want
+            };
         v.push(c(
             key,
             "Files",
@@ -121,8 +161,31 @@ pub fn plan(p: &PermissionSet, cfg: &Config, host: &HostInfo) -> ProbePlan {
     ] {
         for raw in list {
             let path = sam_core::util::expand_home(raw);
+            let bound = sam_core::places::resolve(&path);
+            // A writable folder in a start place is shown read-only, also
+            // inside a writable home (owner decision 9 of 2026-11-23).
+            let in_start_place =
+                sam_core::places::start_place_of_bound_write_grant(&path, &bound, &host.home);
+            // In SAM's own folders, wherever they are kept, nothing is
+            // shown: asked as the sandbox asks it, so the check never
+            // expects a folder the sandbox leaves out (independent review
+            // of decision 9: SAM's data kept in `~/Games/sam`).
+            let in_sams = if want == Access::ReadWrite {
+                sam_core::places::write_grant_in_sams_folders(
+                    &bound,
+                    in_start_place.as_ref(),
+                    &sam_dirs,
+                    &host.home,
+                )
+            } else {
+                sam_core::places::inside_sams_folders(&bound, &sam_dirs)
+            };
             if path.is_dir() {
-                let want = if rank(home_level) > rank(want) && path.starts_with(&host.home) {
+                let want = if in_sams {
+                    Access::Hidden
+                } else if in_start_place.is_some() {
+                    Access::ReadOnly
+                } else if rank(home_level) > rank(want) && path.starts_with(&host.home) {
                     home_level
                 } else {
                     want
@@ -717,8 +780,8 @@ fn list_dev(dir: &str, prefix: &str) -> Vec<PathBuf> {
 /// passing check with the same key needs no repeat. An updated kernel or
 /// Bubblewrap, or a rebuilt SAM (all development builds carry the same
 /// version number), is checked again (audit: the key left them out).
-pub fn check_key(app: &AppEntry, cfg: &Config, host: &HostInfo) -> String {
-    let planned = plan(&app.profile.permissions, cfg, host);
+pub fn check_key(app: &AppEntry, cfg: &Config, paths: &Paths, host: &HostInfo) -> String {
+    let planned = plan(&app.profile.permissions, cfg, paths, host);
     check_key_of(app, cfg, host, &planned)
 }
 
@@ -831,7 +894,7 @@ fn wayland_context_result(made: bool, failed: bool) -> Option<ProbeResult> {
 
 /// Runs the sandbox check for an app.
 pub fn verify(app: &AppEntry, cfg: &Config, paths: &Paths, host: &HostInfo) -> Result<Outcome> {
-    let plan = plan(&app.profile.permissions, cfg, host);
+    let plan = plan(&app.profile.permissions, cfg, paths, host);
     // The key of the plan that runs, not of one made afterwards.
     let key = check_key_of(app, cfg, host, &plan);
     let prepared = prepare(
@@ -952,6 +1015,17 @@ mod tests {
         h
     }
 
+    /// SAM's own folders where no test grants anything; a case that needs
+    /// them somewhere sets its own.
+    fn sam_paths() -> Paths {
+        Paths {
+            config_dir: PathBuf::from("/nonexistent/sam-test/config"),
+            data_dir: PathBuf::from("/nonexistent/sam-test/data"),
+            applications_dir: PathBuf::from("/nonexistent/sam-test/applications"),
+            runtime_root: None,
+        }
+    }
+
     fn folder(plan: &ProbePlan, title: &str) -> Access {
         match plan
             .checks
@@ -986,7 +1060,7 @@ mod tests {
         let plan_of = |f: &dyn Fn(&mut PermissionSet)| {
             let mut p = PermissionSet::strict_gui();
             f(&mut p);
-            plan(&p, &cfg, &h)
+            plan(&p, &cfg, &sam_paths(), &h)
         };
         // Private home, Documents read-only.
         let pl = plan_of(&|p| p.filesystem.documents = Perm::Ro);
@@ -1045,7 +1119,7 @@ mod tests {
         // the home's check, not a folder check of its own.
         let mut h2 = h.clone();
         h2.xdg_dirs.insert("desktop".into(), h2.home.clone());
-        let pl = plan(&PermissionSet::strict_gui(), &cfg, &h2);
+        let pl = plan(&PermissionSet::strict_gui(), &cfg, &sam_paths(), &h2);
         assert!(!pl.checks.iter().any(|c| c.title == "Desktop folder"));
         let pl = plan_of(&|p| p.filesystem.custom_write = vec![inside.clone()]);
         assert_eq!(
@@ -1058,6 +1132,249 @@ mod tests {
             ),
             Access::ReadWrite
         );
+        // A writable folder inside a start place is shown read-only, with
+        // or without the whole home (owner decision 9 of 2026-11-23).
+        let conf_d = h.home.join(".config/fish/conf.d");
+        fs::create_dir_all(&conf_d).unwrap();
+        let conf_d = conf_d.to_string_lossy().into_owned();
+        for home in [false, true] {
+            let pl = plan_of(&|p| {
+                p.filesystem.home = home;
+                p.filesystem.home_access = Perm::Rw;
+                p.filesystem.custom_write = vec![conf_d.clone()];
+            });
+            let title = format!(
+                "Extra folder {}",
+                sam_core::util::tildify(Path::new(&conf_d))
+            );
+            assert_eq!(folder(&pl, &title), Access::ReadOnly, "home {home}");
+        }
+    }
+
+    /// An extra folder inside SAM's own folders kept in a place of the
+    /// person's choosing (SAM's data in `~/Games/sam`) is expected hidden,
+    /// read-only or writable, with or without the whole home: the sandbox
+    /// does not show it, and the check asks SAM's folders as the sandbox
+    /// does. Before, only `~/.config/sam` and `~/.local/share/sam` were
+    /// known, so the check expected the folder shown and failed a sandbox
+    /// that was right (independent review of decision 9). A folder next to
+    /// SAM's stays as granted. The folders named like SAM's
+    /// (`~/.local/share/sam`) count too while SAM keeps its own elsewhere
+    /// (independent re-review of decision 9).
+    #[test]
+    fn the_check_expects_no_folder_inside_sams_folders_wherever_they_are_kept() {
+        let t = tempfile::tempdir().unwrap();
+        let h = host_in(t.path());
+        let cfg = Config::default();
+        let paths = Paths {
+            data_dir: h.home.join("Games/sam"),
+            ..sam_paths()
+        };
+        let title = |p: &Path| format!("Extra folder {}", sam_core::util::tildify(p));
+        let saves = h.home.join("Games/sam/saves");
+        let shared = h.home.join("Games/sam/shared");
+        let next_to = h.home.join("Games/other");
+        for d in [&saves, &shared, &next_to] {
+            fs::create_dir_all(d).unwrap();
+        }
+        for home in [false, true] {
+            let mut p = PermissionSet::strict_gui();
+            p.filesystem.home = home;
+            p.filesystem.home_access = Perm::Rw;
+            p.filesystem.custom_write = vec![
+                saves.to_string_lossy().into_owned(),
+                next_to.to_string_lossy().into_owned(),
+            ];
+            p.filesystem.custom_read = vec![shared.to_string_lossy().into_owned()];
+            let pl = plan(&p, &cfg, &paths, &h);
+            assert_eq!(folder(&pl, &title(&saves)), Access::Hidden, "home {home}");
+            assert_eq!(folder(&pl, &title(&shared)), Access::Hidden, "home {home}");
+            assert_eq!(
+                folder(&pl, &title(&next_to)),
+                Access::ReadWrite,
+                "home {home}"
+            );
+        }
+        // The folders where SAM keeps its own unless told otherwise
+        // (`~/.config/sam`, `~/.local/share/sam`) count as SAM's folders
+        // also while this SAM keeps its own elsewhere: the sandbox hides
+        // them by name, with the whole home and without it, so the check
+        // expects a folder inside them hidden, read-only or writable.
+        // Before, a read-only one was expected shown, and the check failed
+        // a sandbox that hid it (independent re-review of decision 9).
+        let by_name = [
+            h.home.join(".local/share/sam/x"),
+            h.home.join(".config/sam/y"),
+        ];
+        let written = h.home.join(".local/share/sam/w");
+        for d in by_name.iter().chain([&written]) {
+            fs::create_dir_all(d).unwrap();
+        }
+        for home in [false, true] {
+            let mut p = PermissionSet::strict_gui();
+            p.filesystem.home = home;
+            p.filesystem.home_access = Perm::Rw;
+            p.filesystem.custom_read = by_name
+                .iter()
+                .map(|d| d.to_string_lossy().into_owned())
+                .collect();
+            p.filesystem.custom_write = vec![written.to_string_lossy().into_owned()];
+            let pl = plan(&p, &cfg, &paths, &h);
+            for d in by_name.iter().chain([&written]) {
+                assert_eq!(
+                    folder(&pl, &title(d)),
+                    Access::Hidden,
+                    "{} home {home}",
+                    d.display()
+                );
+            }
+        }
+        // A user folder set inside SAM's folders (where it keeps its own,
+        // or named like them) is refused by the sandbox and hidden with
+        // SAM's folders, so it is expected hidden too.
+        let mut h2 = h.clone();
+        for (key, rel) in [
+            ("documents", ".local/share/sam/docs"),
+            ("pictures", "Games/sam/pics"),
+        ] {
+            fs::create_dir_all(h2.home.join(rel)).unwrap();
+            h2.xdg_dirs.insert(key.into(), h2.home.join(rel));
+        }
+        for home in [false, true] {
+            let mut p = PermissionSet::strict_gui();
+            p.filesystem.home = home;
+            p.filesystem.home_access = Perm::Rw;
+            p.filesystem.documents = Perm::Rw;
+            p.filesystem.pictures = Perm::Ro;
+            let pl = plan(&p, &cfg, &paths, &h2);
+            for t in ["Documents", "Pictures"] {
+                assert_eq!(folder(&pl, t), Access::Hidden, "{t} home {home}");
+            }
+        }
+    }
+
+    /// A folder named like SAM's that is a link (`~/.config/sam` planted
+    /// as a link to the home while SAM keeps its own elsewhere) never
+    /// makes the check count the home as SAM's folder: a read-only and a
+    /// writable extra folder in the home are expected shown read-only, as
+    /// below any start place reached through a link, which is what the
+    /// sandbox does. Before, both were expected hidden, with the sandbox
+    /// hiding every grant in the home (independent re-review of
+    /// decision 9). With the whole home writable, the sandbox locks the
+    /// link read-only where the app reaches it, which is the whole home:
+    /// the check expects the home and the user folders in it read-only,
+    /// also Documents set to read and write; without the planted link, or
+    /// without the whole home, they stay as their settings say
+    /// (independent review of decision 9: the check expected the home
+    /// writable).
+    #[test]
+    fn the_check_never_takes_the_home_for_sams_folder_through_a_link() {
+        let t = tempfile::tempdir().unwrap();
+        let h = host_in(t.path());
+        let cfg = Config::default();
+        let paths = Paths {
+            data_dir: t.path().join("elsewhere/data"),
+            ..sam_paths()
+        };
+        for d in [".config", "notes", "work"] {
+            fs::create_dir_all(h.home.join(d)).unwrap();
+        }
+        std::os::unix::fs::symlink(&h.home, h.home.join(".config/sam")).unwrap();
+        let title = |p: &Path| format!("Extra folder {}", sam_core::util::tildify(p));
+        let (notes, work) = (h.home.join("notes"), h.home.join("work"));
+        for home in [false, true] {
+            let mut p = PermissionSet::strict_gui();
+            p.filesystem.home = home;
+            p.filesystem.home_access = Perm::Rw;
+            p.filesystem.custom_read = vec![notes.to_string_lossy().into_owned()];
+            p.filesystem.custom_write = vec![work.to_string_lossy().into_owned()];
+            let pl = plan(&p, &cfg, &paths, &h);
+            assert_eq!(folder(&pl, &title(&notes)), Access::ReadOnly, "home {home}");
+            assert_eq!(folder(&pl, &title(&work)), Access::ReadOnly, "home {home}");
+        }
+        // The whole home writable: read-only where the link leads to it.
+        let whole = |documents: Perm| {
+            let mut p = PermissionSet::strict_gui();
+            p.filesystem.home = true;
+            p.filesystem.home_access = Perm::Rw;
+            p.filesystem.documents = documents;
+            plan(&p, &cfg, &paths, &h)
+        };
+        for documents in [Perm::None, Perm::Rw] {
+            let pl = whole(documents);
+            assert_eq!(
+                folder(&pl, "Your home folder"),
+                Access::ReadOnly,
+                "{documents:?}"
+            );
+            assert_eq!(folder(&pl, "Documents"), Access::ReadOnly, "{documents:?}");
+            assert_eq!(folder(&pl, "Pictures"), Access::ReadOnly, "{documents:?}");
+        }
+        // Without the whole home, Documents is as its setting says.
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.documents = Perm::Rw;
+        let pl = plan(&p, &cfg, &paths, &h);
+        assert_eq!(folder(&pl, "Documents"), Access::ReadWrite);
+        // Without the planted link, the writable home is writable.
+        fs::remove_file(h.home.join(".config/sam")).unwrap();
+        let pl = whole(Perm::Rw);
+        assert_eq!(folder(&pl, "Your home folder"), Access::ReadWrite);
+        assert_eq!(folder(&pl, "Documents"), Access::ReadWrite);
+    }
+
+    /// The check counts another SAM's folders kept through a link
+    /// (`~/.local/share/sam` a link to `~/Sync/sam`) as SAM's, as the
+    /// sandbox does: a folder in them is expected hidden, read-only or
+    /// writable, with the whole home and with a grant of `~/Sync`. While
+    /// every link counted as an ordinary start place, both were expected
+    /// shown, read-only. A start that shows only a folder inside the place
+    /// a link named like SAM's folders leads to (`~/.config/sam` planted as
+    /// a link to `~/work`, `~/work/proj` granted) expects that folder
+    /// read-only, as the sandbox shows it (independent review of
+    /// decision 9).
+    #[test]
+    fn the_check_follows_the_sandbox_for_folders_named_like_sams_behind_links() {
+        let t = tempfile::tempdir().unwrap();
+        let h = host_in(t.path());
+        let cfg = Config::default();
+        let paths = Paths {
+            data_dir: h.home.join("Games/sam"),
+            ..sam_paths()
+        };
+        for d in [
+            ".local/share",
+            ".config",
+            "Sync/sam/apps",
+            "Sync/sam/shared",
+            "work/proj",
+        ] {
+            fs::create_dir_all(h.home.join(d)).unwrap();
+        }
+        std::os::unix::fs::symlink(h.home.join("Sync/sam"), h.home.join(".local/share/sam"))
+            .unwrap();
+        std::os::unix::fs::symlink(h.home.join("work"), h.home.join(".config/sam")).unwrap();
+        let title = |p: &Path| format!("Extra folder {}", sam_core::util::tildify(p));
+        let s = |p: &Path| p.to_string_lossy().into_owned();
+        let apps = h.home.join("Sync/sam/apps");
+        let shared = h.home.join("Sync/sam/shared");
+        for home in [true, false] {
+            let mut p = PermissionSet::strict_gui();
+            p.filesystem.home = home;
+            p.filesystem.home_access = Perm::Rw;
+            p.filesystem.custom_write = vec![s(&apps)];
+            p.filesystem.custom_read = vec![s(&shared)];
+            if !home {
+                p.filesystem.custom_read.push(s(&h.home.join("Sync")));
+            }
+            let pl = plan(&p, &cfg, &paths, &h);
+            assert_eq!(folder(&pl, &title(&apps)), Access::Hidden, "home {home}");
+            assert_eq!(folder(&pl, &title(&shared)), Access::Hidden, "home {home}");
+        }
+        let proj = h.home.join("work/proj");
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.custom_write = vec![s(&proj)];
+        let pl = plan(&p, &cfg, &paths, &h);
+        assert_eq!(folder(&pl, &title(&proj)), Access::ReadOnly);
     }
 
     /// Network, display, sound, the session bus, the SSH agent, variables
@@ -1073,13 +1390,13 @@ mod tests {
         // Network: "This computer only" plans "No internet"; full never "No network".
         let mut q = p.clone();
         q.network.mode = NetworkMode::Localhost;
-        assert!(plan(&q, &cfg, &h)
+        assert!(plan(&q, &cfg, &sam_paths(), &h)
             .checks
             .iter()
             .any(|c| c.id == "net" && c.title == "No internet"));
         q.network.mode = NetworkMode::Full;
         assert!(!matches!(
-            plan(&q, &cfg, &h)
+            plan(&q, &cfg, &sam_paths(), &h)
                 .checks
                 .iter()
                 .find(|c| c.id == "net")
@@ -1088,7 +1405,7 @@ mod tests {
         ));
         q.network.mode = NetworkMode::None;
         assert!(matches!(
-            test_of(&plan(&q, &cfg, &h), "net"),
+            test_of(&plan(&q, &cfg, &sam_paths(), &h), "net"),
             ProbeTest::NoNetwork
         ));
 
@@ -1098,7 +1415,7 @@ mod tests {
         q.display.x11 = true;
         q.audio.enabled = true;
         let expects = |q: &PermissionSet, h: &HostInfo| {
-            let pl = plan(q, &cfg, h);
+            let pl = plan(q, &cfg, &sam_paths(), h);
             let w = matches!(test_of(&pl, "wayland"), ProbeTest::Wayland { expect: true });
             let x = matches!(test_of(&pl, "x11"), ProbeTest::X11 { expect: true });
             let a = matches!(test_of(&pl, "audio"), ProbeTest::Audio { expect: true });
@@ -1144,7 +1461,7 @@ mod tests {
         // with its proxy installed.
         let bus = |q: &PermissionSet, h: &HostInfo| {
             matches!(
-                test_of(&plan(q, &cfg, h), "bus"),
+                test_of(&plan(q, &cfg, &sam_paths(), h), "bus"),
                 ProbeTest::SessionBus { expect: true }
             )
         };
@@ -1172,7 +1489,7 @@ mod tests {
         // SSH agent: setting and agent together.
         let agent = |q: &PermissionSet, h: &HostInfo| {
             matches!(
-                test_of(&plan(q, &cfg, h), "ssh-agent"),
+                test_of(&plan(q, &cfg, &sam_paths(), h), "ssh-agent"),
                 ProbeTest::Env {
                     expect: Some(_),
                     ..
@@ -1191,7 +1508,7 @@ mod tests {
         for n in ["_OK", "Ok1", "1BAD", "BAD-NAME", ""] {
             q.environment.set.insert(n.to_string(), "v".into());
         }
-        let pl = plan(&q, &cfg, &h);
+        let pl = plan(&q, &cfg, &sam_paths(), &h);
         let named: Vec<_> = pl
             .checks
             .iter()
@@ -1201,7 +1518,7 @@ mod tests {
         assert_eq!(named, ["Variable Ok1", "Variable _OK"]);
 
         // The GPU: setting and device together (whatever this computer has).
-        let gpu = |q: &PermissionSet| match test_of(&plan(q, &cfg, &h), "gpu") {
+        let gpu = |q: &PermissionSet| match test_of(&plan(q, &cfg, &sam_paths(), &h), "gpu") {
             ProbeTest::Present { expect, .. } => *expect,
             t => panic!("{t:?}"),
         };
@@ -1214,7 +1531,7 @@ mod tests {
         h.sockets.dbus_system = Some("/run/dbus/system_bus_socket".into());
         let sysbus = |q: &PermissionSet| {
             matches!(
-                test_of(&plan(q, &cfg, &h), "sysbus"),
+                test_of(&plan(q, &cfg, &sam_paths(), &h), "sysbus"),
                 ProbeTest::Present { expect: true, .. }
             )
         };
@@ -1226,7 +1543,7 @@ mod tests {
         // Nested sandboxes: blocked unless allowed.
         let blocked = |q: &PermissionSet| {
             matches!(
-                test_of(&plan(q, &cfg, &h), "userns"),
+                test_of(&plan(q, &cfg, &sam_paths(), &h), "userns"),
                 ProbeTest::UserNamespaces { blocked: true }
             )
         };
@@ -1238,7 +1555,7 @@ mod tests {
 
         // Security layers: settings, configuration and the kernel together.
         let layers = |q: &PermissionSet, c: &Config, h: &HostInfo| {
-            let pl = plan(q, c, h);
+            let pl = plan(q, c, &sam_paths(), h);
             (
                 matches!(
                     test_of(&pl, "landlock"),
@@ -1300,7 +1617,7 @@ mod tests {
         const KWIN: &str = "org.kde.KWin";
         // Name → expected reachable, for every name the plan checks.
         let names = |q: &PermissionSet| -> Vec<(String, bool)> {
-            plan(q, &cfg, &h)
+            plan(q, &cfg, &sam_paths(), &h)
                 .checks
                 .into_iter()
                 .filter_map(|c| match c.test {
@@ -1398,7 +1715,7 @@ mod tests {
         no_proxy.tools.xdg_dbus_proxy = None;
         let mut f = PermissionSet::strict_gui();
         f.dbus.session.mode = DbusMode::Filtered;
-        assert!(!plan(&f, &cfg, &no_proxy)
+        assert!(!plan(&f, &cfg, &sam_paths(), &no_proxy)
             .checks
             .iter()
             .any(|c| matches!(c.test, ProbeTest::BusName { .. })));
@@ -1413,7 +1730,7 @@ mod tests {
         let app = AppEntry::default();
         let cfg = Config::default();
         let host = sam_core::sandbox::sample_context().host;
-        let key = |h: &HostInfo| check_key(&app, &cfg, h);
+        let key = |h: &HostInfo| check_key(&app, &cfg, &sam_paths(), h);
         let same = key(&host);
         assert_eq!(key(&host.clone()), same, "the same computer");
         type Change = fn(&mut HostInfo);
@@ -1456,7 +1773,7 @@ mod tests {
             version: None,
         });
         let key = |h: &HostInfo| {
-            let planned = plan(&app.profile.permissions, &cfg, h);
+            let planned = plan(&app.profile.permissions, &cfg, &sam_paths(), h);
             check_key_with(
                 &app,
                 &cfg,
@@ -1489,7 +1806,7 @@ mod tests {
         let h = host_in(t.path());
         let (cfg, app) = (Config::default(), AppEntry::default());
         let key = |h: &HostInfo| {
-            let planned = plan(&app.profile.permissions, &cfg, h);
+            let planned = plan(&app.profile.permissions, &cfg, &sam_paths(), h);
             check_key_with(&app, &cfg, h, None, None, &planned)
         };
         let before = key(&h);
@@ -1552,13 +1869,18 @@ mod tests {
             version: None,
         });
         let expect = |h: &HostInfo| {
-            plan(&PermissionSet::strict_gui(), &Config::default(), h)
-                .checks
-                .into_iter()
-                .find_map(|c| match c.test {
-                    ProbeTest::SessionBus { expect } => Some(expect),
-                    _ => None,
-                })
+            plan(
+                &PermissionSet::strict_gui(),
+                &Config::default(),
+                &sam_paths(),
+                h,
+            )
+            .checks
+            .into_iter()
+            .find_map(|c| match c.test {
+                ProbeTest::SessionBus { expect } => Some(expect),
+                _ => None,
+            })
         };
         assert_eq!(expect(&h), Some(true), "the socket without an address");
         h.sockets.dbus_session = None;
@@ -1590,7 +1912,7 @@ mod tests {
         let cfg = Config::default();
         let mut p = PermissionSet::strict_gui();
         let abstract_names = |p: &PermissionSet, h: &HostInfo| -> Vec<(String, String)> {
-            plan(p, &cfg, h)
+            plan(p, &cfg, &sam_paths(), h)
                 .checks
                 .into_iter()
                 .filter_map(|c| match c.test {

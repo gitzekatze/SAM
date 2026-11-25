@@ -75,7 +75,7 @@ Every setting has a short explanation under its name. When a setting carries a r
 
 ### Overview
 
-The **risk** of the current settings: *low*, *medium*, *high* or *dangerous*. It is the level of the riskiest permission, not a count, so one webcam permission makes an app *high risk* however little else it may do. The label names that permission, for example **High risk · Network +1** (network and one more high-risk permission). *What raises the risk* lists every permission above *low*, and hovering over the label shows the same. Settings that take a protection away count too (the syscall filter or Landlock switched off, a passed-through variable that holds a secret), and so do combinations: the network together with your home, keys or passwords is *dangerous*, because the app can send what it reads. Below that come things worth watching out for, such as X11 access.
+The **risk** of the current settings, in four words: *Harmless* (low), *Some access* (medium: sound, the GPU or a shared folder, ordinary grants that are still access), *Think twice* (high) or *Dangerous*. SAM asks about risk only from *Think twice* on. It is the level of the riskiest permission, not a count, so one webcam permission makes an app *high risk* however little else it may do. The label names that permission, for example **High risk · Network +1** (network and one more high-risk permission). *What raises the risk* lists every permission above *low*, and hovering over the label shows the same. Settings that take a protection away count too (the syscall filter or Landlock switched off, a passed-through variable that holds a secret), and so do combinations: the network together with your home, keys or passwords is *dangerous*, because the app can send what it reads. Below that come things worth watching out for, such as X11 access.
 
 ### Network
 
@@ -109,7 +109,7 @@ How the app talks to other programs. **Filtered** (recommended) allows file dial
 
 ### Sockets and environment
 
-The SSH agent, printing, **extra sockets** (only real socket files are passed in), variables passed through from your desktop, and **environment variables** set as `NAME=value`.
+The SSH agent, printing, **extra sockets** (only real socket files are passed in), variables passed through from your desktop, and **environment variables** set as `NAME=value`. A key agent is *dangerous*: the SSH agent, and an extra socket that is a key agent at its usual places: GnuPG's agent (`S.gpg-agent`), OpenSSH's (`~/.ssh/agent/…` and `/tmp/ssh-…/agent.…`), `ssh-agent` in a name (systemd's, Bitwarden's), `openssh_agent`, GNOME Keyring's (`keyring/ssh`), gcr's (`gcr/ssh`) and 1Password's (`~/.1password/agent.sock`). While your keys are unlocked, the app can use them to decrypt, sign or log in to other computers as you.
 
 ### Advanced
 
@@ -131,7 +131,7 @@ Programs that run in a terminal (Helix, Neovim, command-line tools) open in your
 
 ## Permission Manager
 
-The button **Permission Manager** above the list of AppImages opens a page that shows every sandboxed app with tags for what it may access. The tags use the same words as the switches and come in four groups: Network, Files, Devices and Desktop. Their color shows the risk, the same way everywhere in SAM: grey means harmless, amber means think twice, and red means dangerous. A filled tag means read and write access, an outlined tag means read-only or limited access. Hovering over a tag explains what the permission allows. The app's own page shows the same tags under its name.
+The button **Permission Manager** above the list of AppImages opens a page that shows every sandboxed app with tags for what it may access. The tags use the same words as the switches and come in four groups: Network, Files, Devices and Desktop. Their color shows the risk, the same way everywhere in SAM: grey means harmless or some access, amber means think twice, and red means dangerous. A filled tag means read and write access, an outlined tag means read-only or limited access. Hovering over a tag explains what the permission allows. The app's own page shows the same tags under its name.
 
 - **Filter** by clicking a tag above the list: the first click shows only the apps that have this permission, the second click shows only the apps without it, and the third click turns the filter off. *Running*, *Needs review* and *May not start* filter by state.
 - **Select** apps with the check boxes. Shift-click selects a range, and *Select all* selects every app the filter shows. Clicking an app selects only that app.
@@ -218,6 +218,8 @@ sam-jail set app filesystem.documents ro    # change one setting
 sam-jail verify app                         # sandbox check
 sam-jail repair app --next                  # try the next repair step
                                             # (one suggested by what the app printed needs --yes)
+sam-jail hints app --apply network --yes    # apply a first-run hint
+                                            # (one rated Think twice or Dangerous needs --yes)
 sam-jail remove app --keep-data             # remove, keep its data
 sam-jail stop app                           # close a running app
 ```

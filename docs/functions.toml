@@ -111,6 +111,12 @@ promise = "SAM explains every permission in plain language and shows how risky i
 code = ["sam-core/src/permissions.rs", "sam-core/src/risk.rs", "sam-core/src/warnings.rs", "sam-gtk/src/all_perms.rs", "sam-jail-cli/src/output.rs"]
 tests = ["the_strictest_window_profile_is_low_risk", "full_home_is_dangerous", "network_and_x11_high", "each_dangerous_setting_produces_its_warning", "strict_has_no_danger", "x11_warning_can_be_disabled", "tags_and_the_risk_list_use_the_same_words", "folder_explanations_name_the_path",
   "risk_has_the_same_three_words_everywhere",
+  "the_preset_question_names_the_risk_in_its_words",
+  "presets_name_the_risk_in_its_words",
+  "the_risk_column_fits_the_widest_risk_word",
+  "each_risk_level_has_words_of_its_own",
+  "the_window_names_each_risk_level_in_its_own_words",
+  "a_medium_app_reads_some_access_in_list_and_info",
   "the_full_session_bus_is_rated_dangerous",
   "every_switch_has_one_risk_word",
   "switching_a_protection_off_counts",
@@ -128,6 +134,8 @@ tests = ["the_strictest_window_profile_is_low_risk", "full_home_is_dangerous", "
   "the_sound_servers_own_socket_is_dangerous_as_an_extra_socket",
   "a_function_of_a_password_service_counts_with_the_network",
   "a_dangerous_socket_is_known_however_it_is_written",
+  "key_agents_are_rated_dangerous",
+  "a_key_agent_socket_with_the_network_can_send_what_it_reads",
   "a_terminal_that_runs_commands_is_dangerous_to_reach",
   "a_presets_risk_word_comes_from_its_permissions",
   "every_state_risk_and_severity_is_shown_in_its_own_words",
@@ -221,6 +229,7 @@ tests = [
   "the_loaders_folders_come_from_its_config_files",
   "the_loaders_folders_on_this_computer_are_found",
   "an_app_is_never_told_a_folder_it_cannot_see",
+  "a_terminal_apps_start_line_names_only_the_folders_it_sees",
   "private_folders_and_logs_are_for_the_user_only",
   "private_dirs_stops_below_its_base",
 ]
@@ -229,13 +238,23 @@ tests = [
 id = 11
 area = "C"
 promise = "Keys, passwords and the files of your other apps stay hidden, even with full home access."
-code = ["sam-sandbox/src/lib.rs", "sam-core/src/risk.rs"]
+code = ["sam-sandbox/src/lib.rs", "sam-core/src/risk.rs", "sam-core/src/paths.rs", "sam-core/src/places.rs"]
 tests = ["a_grant_inside_sams_folder_does_not_show_it", "opened_files_are_judged_by_name_and_by_where_they_lead", "keys_start_places_and_sams_files_are_never_opened", "start_places_and_credential_stores_count_as_sensitive", "grants_of_parts_of_the_home_never_reach_start_places_or_secrets", "sams_own_folders_stay_hidden_inside_an_opened_folder", "key_and_system_folders_count_as_sensitive", "every_breakout_attempt_from_a_real_sandbox_fails", "every_hostile_appimage_fails_to_escape", "credential_files_and_folders_in_the_home_are_masked", "home_protection_is_prepared_only_for_a_writable_home", "sams_own_folders_stay_hidden_inside_a_granted_folder",
   "user_folder_locations_stay_read_only_with_a_writable_home",
   "a_linked_key_folder_is_hidden_also_when_only_its_target_is_granted",
   "places_behind_links_stay_protected_and_the_app_still_starts",
   "places_named_by_the_homes_real_path_are_protected_where_the_app_sees_them",
   "sams_own_folders_behind_a_link_are_hidden_where_the_app_reaches_them",
+  "folders_named_like_sams_are_hidden_while_sam_keeps_its_own_elsewhere",
+  "sams_folders_under_other_config_folders_are_hidden_not_only_read_only",
+  "sams_folders_hold_its_own_and_the_folders_named_like_them",
+  "sams_folders_by_name_follow_other_config_and_data_folders",
+  "a_folder_named_like_sams_is_hidden_unless_that_would_cover_too_much",
+  "a_link_named_like_sams_folder_never_hides_the_home",
+  "a_protected_place_that_really_is_the_home_is_named",
+  "a_link_named_like_sams_folder_covers_no_grant_it_only_holds",
+  "another_sams_folders_behind_a_link_stay_hidden",
+  "the_home_protections_hold_whatever_else_is_granted",
   "an_extra_folder_that_leads_to_the_whole_computer_asks_first",
   "no_later_bind_shows_a_hidden_credential_again",
   "credential_places_of_any_kind_are_hidden",
@@ -267,6 +286,7 @@ promise = "The app reaches only allowed desktop services (a filtered D-Bus) and 
 code = ["sam-runner/src/dbus_proxy.rs", "sam-sandbox/src/lib.rs", "sam-core/src/permissions.rs", "sam-runner/src/kernel.rs", "sam-core/src/host.rs"]
 tests = [
   "the_sockets_follow_the_sessions_variables",
+  "a_release_build_keeps_no_dbus_log",
   "the_user_name_is_users_or_the_home_folders",
   "a_32_bit_start_program_keeps_the_syscall_filter_on",
   "without_nested_sandboxes_clone_cannot_make_a_user_namespace",
@@ -323,6 +343,8 @@ tests = [
   "a_way_through_forty_links_is_followed_and_one_through_more_is_not",
   "an_extra_socket_that_leads_to_a_dangerous_one_is_not_passed_in",
   "an_app_cannot_turn_its_extra_socket_into_a_link_to_another_one",
+  "an_extra_socket_is_passed_in_only_as_dangerous_as_its_name",
+  "a_docker_socket_may_lead_to_podman_but_not_to_the_bus",
   "a_wildcard_over_the_portal_is_dangerous",
   "a_terminal_that_runs_commands_is_dangerous_to_reach",
   "notes_about_a_missing_bus_come_only_when_it_is_missing",
@@ -402,8 +424,8 @@ tests = [
 id = 16
 area = "C"
 promise = "The app can't make itself start later outside the sandbox (autostart, shell startup files, menu entries)."
-code = ["sam-sandbox/src/lib.rs", "sam-runner/src/kernel.rs", "sam-core/src/util.rs", "sam-runner/src/home_shared.rs"]
-tests = ["a_second_launch_never_takes_a_link_planted_meanwhile_for_the_users_own", "a_running_launch_is_never_taken_for_a_killed_one", "a_watch_read_back_from_disk_never_reaches_outside_the_home", "a_start_file_left_by_a_killed_launcher_is_still_moved_aside", "closing_an_app_that_ignores_it_still_finishes_its_launch", "grants_of_parts_of_the_home_never_reach_start_places_or_secrets", "a_writable_part_of_the_home_holding_start_places_is_watched", "full_home_access_cannot_leave_anything_that_runs_later", "the_home_protections_hold_whatever_else_is_granted", "a_new_start_file_never_stays_silently", "start_places_follow_other_config_and_data_folders", "start_places_follow_config_folders_by_where_they_lead", "a_linked_config_folder_stays_watched_under_both_names", "a_config_folder_whose_name_is_not_text_stops_the_start", "a_folder_that_cannot_be_watched_is_reported", "paths_are_resolved_through_links_also_where_they_do_not_exist_yet", "a_path_through_a_link_into_a_grant_is_visible", "a_missing_home_folder_stops_the_start", "only_what_would_run_later_is_moved_aside", "a_new_startup_file_is_moved_aside_while_the_app_runs", "a_start_file_left_in_the_home_is_moved_aside_and_named", "protected_parents_are_locked_and_linked_keys_hidden", "the_folders_above_where_a_linked_protection_lands_are_pinned", "a_start_file_kept_through_a_link_cannot_be_swapped_by_renaming_its_folder", "landlock_allows_writing_exactly_in_granted_folders", "every_breakout_attempt_from_a_real_sandbox_fails", "every_hostile_appimage_fails_to_escape", "every_known_syscall_has_been_reviewed", "the_review_list_matches_the_filter", "an_app_can_never_replace_the_programs_that_menu_entries_run", "sams_own_programs_are_read_only_wherever_an_app_could_write_them", "sams_own_programs_are_its_appimage_and_the_programs_beside_it", "places_behind_links_stay_protected_and_the_app_still_starts", "the_way_to_a_place_is_followed_link_by_link_as_the_app_follows_it", "a_way_through_forty_links_is_followed_and_one_through_more_is_not", "places_named_by_the_homes_real_path_are_protected_where_the_app_sees_them", "what_cannot_be_moved_aside_is_deleted_whatever_it_is", "a_new_folder_above_start_places_is_moved_aside_once_as_a_whole", "a_launch_alongside_another_never_makes_a_place_the_other_watches_as_empty", "a_launch_alongside_another_reports_nothing_it_did_not_find", "the_way_a_protected_link_leads_is_watched", "a_way_turned_into_a_link_is_undone_and_never_by_deleting", "a_start_file_reached_through_more_links_or_a_missing_place_cannot_be_planted"]
+code = ["sam-sandbox/src/lib.rs", "sam-runner/src/kernel.rs", "sam-core/src/util.rs", "sam-runner/src/home_shared.rs", "sam-core/src/places.rs", "sam-core/src/warnings.rs"]
+tests = ["a_second_launch_never_takes_a_link_planted_meanwhile_for_the_users_own", "a_running_launch_is_never_taken_for_a_killed_one", "a_watch_read_back_from_disk_never_reaches_outside_the_home", "a_start_file_left_by_a_killed_launcher_is_still_moved_aside", "closing_an_app_that_ignores_it_still_finishes_its_launch", "grants_of_parts_of_the_home_never_reach_start_places_or_secrets", "a_writable_part_of_the_home_holding_start_places_is_watched", "a_writable_grant_inside_a_start_place_is_bound_read_only", "a_write_grant_in_a_start_place_is_found_as_named_and_as_reached", "a_write_grant_inside_a_start_place_is_said_to_be_read_only", "the_app_page_says_what_the_sandbox_does_with_a_grant_in_sams_folders", "a_write_grant_in_sams_folders_outside_start_places_is_said_not_shown", "a_write_grant_below_a_folder_the_app_can_change_is_not_bound", "the_views_and_the_mounts_take_one_answer_per_write_grant", "a_write_grant_inside_sams_folders_is_not_shown", "a_write_grant_in_sams_folders_is_found_wherever_they_are_kept", "full_home_access_cannot_leave_anything_that_runs_later", "the_home_protections_hold_whatever_else_is_granted", "a_new_start_file_never_stays_silently", "start_places_follow_other_config_and_data_folders", "start_places_follow_config_folders_by_where_they_lead", "a_linked_config_folder_stays_watched_under_both_names", "a_config_folder_whose_name_is_not_text_stops_the_start", "a_folder_that_cannot_be_watched_is_reported", "paths_are_resolved_through_links_also_where_they_do_not_exist_yet", "a_path_through_a_link_into_a_grant_is_visible", "a_missing_home_folder_stops_the_start", "only_what_would_run_later_is_moved_aside", "a_new_startup_file_is_moved_aside_while_the_app_runs", "a_start_file_left_in_the_home_is_moved_aside_and_named", "protected_parents_are_locked_and_linked_keys_hidden", "the_folders_above_where_a_linked_protection_lands_are_pinned", "a_start_file_kept_through_a_link_cannot_be_swapped_by_renaming_its_folder", "landlock_allows_writing_exactly_in_granted_folders", "every_breakout_attempt_from_a_real_sandbox_fails", "every_hostile_appimage_fails_to_escape", "every_known_syscall_has_been_reviewed", "the_review_list_matches_the_filter", "an_app_can_never_replace_the_programs_that_menu_entries_run", "sams_own_programs_are_read_only_wherever_an_app_could_write_them", "sams_own_programs_are_its_appimage_and_the_programs_beside_it", "places_behind_links_stay_protected_and_the_app_still_starts", "the_way_to_a_place_is_followed_link_by_link_as_the_app_follows_it", "a_way_through_forty_links_is_followed_and_one_through_more_is_not", "places_named_by_the_homes_real_path_are_protected_where_the_app_sees_them", "what_cannot_be_moved_aside_is_deleted_whatever_it_is", "a_new_folder_above_start_places_is_moved_aside_once_as_a_whole", "a_launch_alongside_another_never_makes_a_place_the_other_watches_as_empty", "a_launch_alongside_another_reports_nothing_it_did_not_find", "the_way_a_protected_link_leads_is_watched", "a_way_turned_into_a_link_is_undone_and_never_by_deleting", "a_start_file_reached_through_more_links_or_a_missing_place_cannot_be_planted"]
 
 [[function]]
 id = 17
@@ -623,6 +645,9 @@ tests = [
   "as_root_only_what_no_one_else_can_change_may_run",
   "menu_entries_name_sams_launcher_by_its_whole_path",
   "an_installed_window_runs_only_the_tool_next_to_it",
+  "an_installed_window_ignores_a_program_named_in_its_environment",
+  "a_release_build_ignores_developer_variables",
+  "a_release_build_trusts_no_folder_of_test_tools",
   "a_file_name_that_is_not_text_is_refused_by_name",
   "a_folder_name_that_is_not_text_stops_the_start", "a_protected_place_whose_name_is_not_text_stops_the_start",
   "an_appimage_never_covers_sams_own_files",
@@ -657,7 +682,7 @@ id = 20
 area = "D"
 promise = "SAM checks from inside the sandbox that every setting applies (the sandbox check)."
 code = ["sam-runner/src/verify.rs", "sam-runner/src/probe.rs", "sam-runner/src/kernel.rs", "sam-sandbox/src/lib.rs", "sam-jail-cli/src/bin/sam-jail-run.rs"]
-tests = ["a_check_reports_what_it_finds_not_what_it_hopes", "a_skipped_check_is_neither_passed_nor_failed", "the_check_expects_each_folder_as_its_settings_show_it", "the_check_expects_each_desktop_service_as_the_filter_shows_it", "the_check_expects_the_rest_where_setting_and_computer_allow_it", "folder_check_tells_real_from_private", "the_sandbox_check_passes_and_catches_mismatches", "a_wanted_layer_that_was_not_applied_is_reported_missing", "a_start_without_the_helper_reports_its_missing_layers", "a_start_without_a_wanted_protection_layer_is_marked", "a_syscall_filter_that_fails_to_load_stops_the_start",
+tests = ["a_check_reports_what_it_finds_not_what_it_hopes", "a_skipped_check_is_neither_passed_nor_failed", "the_check_expects_each_folder_as_its_settings_show_it", "the_check_expects_no_folder_inside_sams_folders_wherever_they_are_kept", "the_check_never_takes_the_home_for_sams_folder_through_a_link", "the_check_follows_the_sandbox_for_folders_named_like_sams_behind_links", "the_check_expects_each_desktop_service_as_the_filter_shows_it", "the_check_expects_the_rest_where_setting_and_computer_allow_it", "folder_check_tells_real_from_private", "the_sandbox_check_passes_and_catches_mismatches", "a_wanted_layer_that_was_not_applied_is_reported_missing", "a_start_without_the_helper_reports_its_missing_layers", "a_start_without_a_wanted_protection_layer_is_marked", "a_syscall_filter_that_fails_to_load_stops_the_start",
   "sam_jail_run_refuses_a_sandbox_whose_settings_do_not_apply",
   "the_wanted_layers_follow_the_apps_switches",
   "the_helper_reports_the_socket_fence_on_its_own",
@@ -728,6 +753,11 @@ tests = [
   "fake_bwrap_error_is_not_a_sandbox_failure",
   "only_a_failed_start_leaves_a_last_problem",
   "a_hint_applies_only_what_was_asked_for",
+  "a_risky_hint_is_applied_only_with_yes",
+  "a_risky_hint_needs_yes_through_repair_too",
+  "a_risky_hint_needs_yes_and_says_what_it_allows",
+  "a_hint_is_never_rated_below_what_it_grants",
+  "the_window_confirms_a_hint_exactly_when_it_asked",
   "a_quick_failure_gets_a_notice_with_the_fix_button",
   "the_fix_button_opens_sam_only_when_sam_is_found",
   "only_a_quick_failure_counts_as_stopped_right_after_start",
@@ -996,6 +1026,7 @@ tests = [
   "only_a_folder_with_a_compiled_catalogue_holds_translations",
   "a_value_is_never_filled_in_again",
   "only_a_program_cargo_built_reads_a_checkouts_translations",
+  "a_release_build_ignores_a_translation_folder_from_the_environment",
   "every_text_the_window_builds_is_translated",
 ]
 checks = ["tests/gui/flow-atspi.sh", "scripts/i18n.py"]
@@ -1077,6 +1108,7 @@ tests = [
   "a_checked_draft_is_signed_with_its_checksum_lists_written_again",
   "a_release_that_fails_to_build_leaves_no_tag",
   "release_builds_use_one_fixed_rust_and_stop_on_overflow",
+  "release_builds_never_turn_on_debug_assertions",
   "the_owners_label_counts_only_right_after_it_is_set",
   "the_approval_check_runs_the_base_branchs_checker",
   "a_desktop_test_run_that_does_not_build_fails",

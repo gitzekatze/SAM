@@ -24,10 +24,12 @@ pub enum Family {
     Desktop,
 }
 
-/// The color of a tag: harmless, think twice, or dangerous. Folders, sound
-/// and the GPU count as harmless here: they are ordinary, limited grants.
-/// Full network, X11, the webcam or the keyring make one think twice, and
-/// full home access or raw devices are dangerous.
+/// The color of a tag: grey, amber or red. Low and Medium share the grey
+/// (`harmless` in the JSON, which keeps its names): folders, sound and the
+/// GPU are ordinary, limited grants, though Medium's words are "Some
+/// access" since owner decision 17 of 2026-11-23, not "Harmless". Full
+/// network, X11, the webcam or the keyring make one think twice (amber),
+/// and full home access or raw devices are dangerous (red).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TagLevel {
@@ -39,6 +41,7 @@ pub enum TagLevel {
 impl From<RiskLevel> for TagLevel {
     fn from(r: RiskLevel) -> Self {
         match r {
+            // One grey for both (the color, not the words).
             RiskLevel::Low | RiskLevel::Medium => TagLevel::Harmless,
             RiskLevel::High => TagLevel::Caution,
             RiskLevel::Dangerous => TagLevel::Danger,

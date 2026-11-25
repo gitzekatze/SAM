@@ -141,6 +141,21 @@ impl Paths {
             expand_home(cfg_location)
         }
     }
+    /// Where this SAM keeps its own folders, which no app ever sees,
+    /// wherever they lead: its settings, its data and its unpack folder
+    /// (`cfg_location`, config `extraction.location`). Each start adds the
+    /// folders named like them (`~/.config/sam`, `~/.local/share/sam`, also
+    /// under `XDG_CONFIG_HOME` and `XDG_DATA_HOME`) that count as SAM's for
+    /// what it shows ([`crate::places::sams_folders`]): the sandbox hides
+    /// that list, its check expects it hidden and a terminal app's start
+    /// line leaves it out (independent reviews of decision 9).
+    pub fn sam_dirs(&self, cfg_location: &str) -> Vec<PathBuf> {
+        vec![
+            self.config_dir.clone(),
+            self.data_dir.clone(),
+            self.extracted_root(cfg_location),
+        ]
+    }
 }
 
 /// The runtime folder of rooted paths: `ROOT/run`, unless that is too long
@@ -276,5 +291,45 @@ mod tests {
             file.file_stem().unwrap(),
             Paths::launcher_id("appimage-krita-9f3c").as_str()
         );
+    }
+
+    /// SAM's own folders are its settings, data and unpack folders where
+    /// they are kept, and the folders it keeps them in unless told
+    /// otherwise (`~/.config/sam`, `~/.local/share/sam`), also while it
+    /// keeps its own elsewhere (`SAM_DATA_DIR=~/Games/sam`), which the
+    /// sandbox hides by name; each once (independent re-review of
+    /// decision 9). Where it keeps its own comes first; each start adds
+    /// the folders by name.
+    #[test]
+    fn sams_folders_hold_its_own_and_the_folders_named_like_them() {
+        let t = tempfile::tempdir().unwrap();
+        let home = std::fs::canonicalize(t.path()).unwrap().join("u");
+        let p = Paths {
+            config_dir: home.join(".config/sam"),
+            data_dir: home.join("Games/sam"),
+            applications_dir: home.join(".local/share/applications"),
+            runtime_root: None,
+        };
+        let own = p.sam_dirs("");
+        assert_eq!(
+            own,
+            vec![
+                home.join(".config/sam"),
+                home.join("Games/sam"),
+                home.join("Games/sam/extracted")
+            ]
+        );
+        let places = crate::places::protected_places_with(&home, None, None);
+        let dirs = crate::places::sams_folders_in(&home, &own, &[], &places);
+        for d in [
+            ".config/sam",
+            "Games/sam",
+            "Games/sam/extracted",
+            ".local/share/sam",
+        ] {
+            let n = dirs.iter().filter(|x| **x == home.join(d)).count();
+            assert_eq!(n, 1, "{d}: {dirs:?}");
+        }
+        assert_eq!(dirs.len(), 4, "{dirs:?}");
     }
 }

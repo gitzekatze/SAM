@@ -11,6 +11,11 @@
 //! The control: before the swap, the app reaches the listed socket, so a
 //! connection through the link would have been seen.
 //!
+//! A link you list that leads to a key agent (here GnuPG's) is left out
+//! at the start as well: what the app would get is rated, not the name it
+//! was listed by (owner decision 11 of 2026-11-23). The control: listed by
+//! its real name, the agent is reached.
+//!
 //! In its own file because it sets `HOME` for the test process.
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
 
@@ -175,5 +180,60 @@ fn an_app_cannot_turn_its_extra_socket_into_a_link_to_another_one() {
     assert!(
         !was_reached(&agent_l),
         "the socket in the real home was reached through the app's link"
+    );
+
+    // A link listed by you, in a folder the app cannot change, that leads
+    // to GnuPG's agent.
+    fs::create_dir_all(home.join("gpg")).unwrap();
+    fs::create_dir_all(home.join("links")).unwrap();
+    let gpg = home.join("gpg/S.gpg-agent");
+    let gpg_l = UnixListener::bind(&gpg).unwrap();
+    let gpg_link = home.join("links/helper.sock");
+    std::os::unix::fs::symlink(&gpg, &gpg_link).unwrap();
+    let start_listing = |sock: &Path| {
+        let mut p = PermissionSet::strict_gui();
+        p.sockets.custom = vec![sock.display().to_string()];
+        for (k, v) in [
+            ("SAM_TEST_STEP", "connect".to_string()),
+            ("SAM_TEST_LISTED", sock.display().to_string()),
+        ] {
+            p.environment.set.insert(k.into(), v);
+        }
+        let mut e = app.set_permissions(&id, p).unwrap();
+        let rec = run(
+            &mut e,
+            &LaunchOptions {
+                quiet: true,
+                ..Default::default()
+            },
+            &app.config,
+            &app.paths,
+            &test_host,
+        )
+        .unwrap();
+        let log = rec.log_file.clone().unwrap();
+        let r = parse(&log);
+        assert_eq!(
+            r.get("END").map(String::as_str),
+            Some("1"),
+            "{}: the probe did not finish: {}\n{}",
+            sock.display(),
+            rec.summary,
+            fs::read_to_string(&log).unwrap_or_default()
+        );
+        r
+    };
+    // Control: listed by its real name, the agent is passed in.
+    let r = start_listing(&gpg);
+    assert_eq!(r["CONNECT"], "ok", "the agent listed by its real name");
+    assert!(was_reached(&gpg_l), "the agent was reached");
+    let r = start_listing(&gpg_link);
+    assert_ne!(
+        r["CONNECT"], "ok",
+        "the app reached GnuPG's agent through a link listed under another name"
+    );
+    assert!(
+        !was_reached(&gpg_l),
+        "GnuPG's agent was reached through a link listed under another name"
     );
 }

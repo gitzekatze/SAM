@@ -107,16 +107,16 @@ pub fn list_of(v: &Value, key: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// SAM shows risk in three levels everywhere (tags, badges, lists): the
-/// four levels of the risk model map onto them the same way as the
-/// permission tags do (sam-profile::tags::TagLevel).
+/// The words of a risk level (`low`, `medium`, … as the JSON names it):
+/// the very words the command line shows (`RiskLevel::words`), so the
+/// window cannot drift from them. Each of the four levels has its own
+/// words; Medium says "Some access" (owner decision 17 of 2026-11-23).
+/// The colors stay three (`risk_tone`): Medium is grey like Low. An
+/// unknown level has no words.
 pub fn risk_label(level: &str) -> String {
-    tr(match level {
-        "low" | "medium" => crate::i18n::n_("Harmless"),
-        "high" => crate::i18n::n_("Think twice"),
-        "dangerous" => crate::i18n::n_("Dangerous"),
-        _ => "",
-    })
+    serde_json::from_value::<sam_core::risk::RiskLevel>(Value::String(level.to_string()))
+        .map(|l| l.words())
+        .unwrap_or_default()
 }
 
 pub fn category_label(c: &str) -> String {
@@ -513,5 +513,38 @@ pub mod wrap {
 pub fn clear_box(b: &gtk::Box) {
     while let Some(c) = b.first_child() {
         b.remove(&c);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The window names each risk level with its own words, the same the
+    /// command line uses: a Medium app reads "Some access", no longer
+    /// "Harmless" like a Low one, in badges, the app page and the hover
+    /// text (owner decision 17 of 2026-11-23).
+    #[test]
+    fn the_window_names_each_risk_level_in_its_own_words() {
+        use sam_core::risk::RiskLevel;
+        let levels = [
+            ("low", RiskLevel::Low, "Harmless"),
+            ("medium", RiskLevel::Medium, "Some access"),
+            ("high", RiskLevel::High, "Think twice"),
+            ("dangerous", RiskLevel::Dangerous, "Dangerous"),
+        ];
+        for (name, level, words) in levels {
+            assert_eq!(risk_label(name), level.words(), "{name}");
+            assert_eq!(risk_label(name), words, "{name}");
+        }
+        assert_eq!(risk_label(""), "");
+        assert_eq!(risk_label("severe"), "");
+        let risk = serde_json::json!({
+            "level": "medium",
+            "items": [{ "key": "audio.enabled", "title": "Sound", "level": "medium" }],
+        });
+        let tip = risk_tooltip(&risk);
+        assert!(tip.contains("Some access: Sound"), "{tip}");
+        assert!(!tip.contains("Harmless"), "{tip}");
     }
 }

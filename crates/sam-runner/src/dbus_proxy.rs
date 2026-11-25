@@ -24,6 +24,15 @@ pub struct DbusProxy {
 /// hundreds is not looking for its own name.
 pub const MAX_WANTED_NAMES: usize = 8;
 
+/// The file `SAM_DBUS_LOG` names for the proxy's log of every call, in a
+/// developer build only (`dev`). A release build keeps no such
+/// log: a variable planted in the desktop's environment would otherwise
+/// make every app's D-Bus calls, with their arguments, end up in a file of
+/// the planter's choice (owner decision 16 of 2026-11-23).
+fn log_file_in(dev: &sam_core::util::DeveloperVars) -> Option<PathBuf> {
+    dev.get("SAM_DBUS_LOG").map(PathBuf::from)
+}
+
 /// Keeps `name` among the wanted names: once, and at most
 /// [`MAX_WANTED_NAMES`].
 fn remember(wanted: &mut Vec<String>, name: String) {
@@ -201,8 +210,9 @@ impl DbusProxy {
         args.extend(filter);
         // Diagnostics: with SAM_DBUS_LOG set to a file, the proxy logs every
         // call it passes, filters or answers itself (for finding calls an
-        // app waits on, such as a blocked service it expects to exist).
-        let log = std::env::var_os("SAM_DBUS_LOG").and_then(|p| {
+        // app waits on, such as a blocked service it expects to exist);
+        // developer builds only ([`log_file_in`]).
+        let log = log_file_in(&sam_core::util::DeveloperVars::of_this_build()).and_then(|p| {
             std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
@@ -232,7 +242,7 @@ impl DbusProxy {
             .context(sam_core::i18n::tr("starting xdg-dbus-proxy"))?;
         // Read the record as it comes (a full pipe would stall the proxy),
         // keep only refused own-name requests, and copy everything to
-        // SAM_DBUS_LOG when that is set.
+        // SAM_DBUS_LOG when that is set (developer builds only).
         let wanted = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
         if let Some(out) = child.stdout.take() {
             let wanted = wanted.clone();
@@ -311,6 +321,25 @@ impl Drop for DbusProxy {
 #[cfg(test)]
 mod tests {
     use sam_core::permissions::DbusPerms;
+
+    /// A release build keeps no D-Bus log, whatever `SAM_DBUS_LOG` says;
+    /// a developer build writes it to the file named there (owner decision
+    /// 16 of 2026-11-23). The variable is a stand-in's.
+    #[test]
+    fn a_release_build_keeps_no_dbus_log() {
+        use sam_core::util::DeveloperVars;
+        let planted = std::path::PathBuf::from("/home/ann/planted/dbus.log");
+        let env = |name: &str| (name == "SAM_DBUS_LOG").then(|| planted.clone().into());
+        assert_eq!(
+            super::log_file_in(&DeveloperVars::new(false, &env)),
+            None,
+            "a release build kept a D-Bus log"
+        );
+        assert_eq!(
+            super::log_file_in(&DeveloperVars::new(true, &env)),
+            Some(planted)
+        );
+    }
 
     /// The proxy's filter never names an always-blocked name, in any of
     /// its rules, also when the rules it is given still hold one: the
