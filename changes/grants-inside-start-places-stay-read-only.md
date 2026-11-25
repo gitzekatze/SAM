@@ -9,3 +9,7 @@
   a link or with `..`, and for the real folder a start place links to.
 - The app page and `sam-jail info` say so before the start, and the start
   notes it.
+- An extra folder that lies inside another folder the app may already
+  write (for example `~/work/project` next to `~/work`, or below the
+  writable home) is no longer bound a second time; the app still reaches
+  it through the folder above it.

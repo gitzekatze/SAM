@@ -617,9 +617,15 @@ How these stay protected with the home writable:
   (`~/.config/fish/conf.d`) or is where one really is (a dotfiles folder
   that `~/.config/fish` links to) is shown read-only, with or without the
   whole home. It is checked as written, through links and with `..`, also
-  below `XDG_CONFIG_HOME` and `XDG_DATA_HOME`. The start notes it, and the
-  app page and `sam-jail info` warn before the start; the folder's rating
-  stays as it is.
+  below `XDG_CONFIG_HOME` and `XDG_DATA_HOME` where they point inside the
+  home (start places under an `XDG_CONFIG_HOME` or `XDG_DATA_HOME` outside
+  the home are not covered, a known gap older than this rule). The start
+  notes it, and the app page and `sam-jail info` warn before the start;
+  the folder's rating stays as it is. SAM decides this once per start, on
+  the place it binds, and an extra folder below another folder the app
+  can already change (another writable extra folder, the writable home) is
+  not bound a second time: the app could otherwise turn a part of its way
+  into a link to a start place after SAM looked.
 - **User folders are only what they are.** `user-dirs.dirs` says where
   Documents, Downloads and the others are. A folder set there to the home,
   a folder above it, a system folder, a key folder, a start place or a

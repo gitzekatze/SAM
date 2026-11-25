@@ -255,17 +255,29 @@ pub struct StartPlaceGrant {
 /// link to `~/dotfiles/fish` makes `~/dotfiles/fish/conf.d` count), also
 /// under `XDG_CONFIG_HOME` and `XDG_DATA_HOME` ([`protected_places`]).
 pub fn start_place_of_write_grant(grant: &Path, home: &Path) -> Option<StartPlaceGrant> {
-    start_place_of_write_grant_in(grant, home, &protected_places(home))
+    start_place_of_bound_write_grant(grant, &resolve(grant), home)
 }
 
-/// [`start_place_of_write_grant`] for the protected places `places`.
+/// [`start_place_of_write_grant`] for a grant whose links the caller has
+/// resolved once (`bound`, the place it binds): the sandbox decides on
+/// exactly the path it mounts, never on a second look an app running
+/// alongside could change in between (independent review of decision 9).
+pub fn start_place_of_bound_write_grant(
+    written: &Path,
+    bound: &Path,
+    home: &Path,
+) -> Option<StartPlaceGrant> {
+    start_place_of_write_grant_in(written, bound, home, &protected_places(home))
+}
+
+/// [`start_place_of_bound_write_grant`] for the protected places `places`.
 pub fn start_place_of_write_grant_in(
-    grant: &Path,
+    written: &Path,
+    bound: &Path,
     home: &Path,
     places: &[String],
 ) -> Option<StartPlaceGrant> {
-    let named = lexical(grant);
-    let mut grants = vec![grant.to_path_buf(), resolve(grant), resolve(&named), named];
+    let mut grants = vec![written.to_path_buf(), lexical(written), bound.to_path_buf()];
     grants.dedup();
     let real_home = resolve(home);
     let mut found: Option<StartPlaceGrant> = None;
@@ -298,12 +310,12 @@ pub fn start_place_of_write_grant_in(
 pub fn read_only_grant_note(shown: &str, found: &StartPlaceGrant) -> String {
     if found.inside {
         crate::i18n::trf(
-            "{path} is inside {place}, where files make your computer run programs at login or start; SAM shows it read-only.",
+            "{path} is inside {place}, which SAM protects because changing it can make your computer run programs or change what SAM does; SAM shows it read-only.",
             &[("path", &shown), ("place", &format!("~/{}", found.place))],
         )
     } else {
         crate::i18n::trf(
-            "{path} makes your computer run programs at login or start; SAM shows it read-only.",
+            "{path} is a place SAM protects because changing it can make your computer run programs or change what SAM does; SAM shows it read-only.",
             &[("path", &shown)],
         )
     }
@@ -334,7 +346,10 @@ mod tests {
         std::os::unix::fs::symlink(home.join(".config/fish"), home.join("fishlink")).unwrap();
         std::os::unix::fs::symlink(home.join("dotfiles/nvim"), home.join(".config/nvim")).unwrap();
         let places = protected_places_with(&home, Some(home.join("cfg")), None);
-        let found = |g: &str| start_place_of_write_grant_in(&home.join(g), &home, &places);
+        let found = |g: &str| {
+            let g = home.join(g);
+            start_place_of_write_grant_in(&g, &resolve(&g), &home, &places)
+        };
         let inside = |place: &str| {
             Some(StartPlaceGrant {
                 place: place.into(),
@@ -370,6 +385,7 @@ mod tests {
         // Without the variable, `cfg/fish` is an ordinary folder.
         assert_eq!(
             start_place_of_write_grant_in(
+                &home.join("cfg/fish"),
                 &home.join("cfg/fish"),
                 &home,
                 &protected_places_with(&home, None, None)
