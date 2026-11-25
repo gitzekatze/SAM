@@ -17,8 +17,9 @@
 #                                    (off by default)
 #   limited                          some uses refused: ioctl typing into the
 #                                    terminal (TIOCSTI, TIOCLINUX); socket
-#                                    families other than local, internet and
-#                                    netlink (Bluetooth with its switch);
+#                                    and socketpair families other than
+#                                    local, internet and netlink (Bluetooth
+#                                    with its switch);
 #                                    clone into a new user namespace, unless
 #                                    the app may run nested sandboxes
 # clone3 keeps its flags in memory no filter can read, so without nested
@@ -391,7 +392,7 @@ sigaltstack	allowed
 signalfd	allowed
 signalfd4	allowed
 socket	limited
-socketpair	allowed
+socketpair	limited
 splice	allowed
 stat	allowed
 stat64	allowed
