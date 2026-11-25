@@ -9115,6 +9115,52 @@ msgstr ""
 "der Server hat mehr als den von SAM angefragten Teil gesendet, er beachtet "
 "also keine Teilanfragen; das teilweise Herunterladen wurde beendet"
 
+#: crates/sam-runner/src/ops/maintain.rs:240
+msgid "relocate it"
+msgstr "sie an ihren neuen Ort verweisen"
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-runner/src/ops/maintain.rs:252
+msgid ""
+"SAM is still putting a version of this app in place (its own copy is at "
+"{file}), so it does not relocate the app now. Finish it with Update or Go "
+"Back first."
+msgstr ""
+"SAM setzt noch eine Version dieser App an ihren Platz (SAMs eigene Kopie "
+"liegt unter {file}), deshalb verweist SAM die App jetzt nicht auf einen "
+"neuen Ort. Schließe das zuerst mit „Aktualisieren“ oder „Zur vorherigen "
+"Version zurück“ ab."
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-runner/src/ops/maintain.rs:1567
+msgid ""
+"An earlier update or go back was stopped before it finished, and SAM's own "
+"copy of the version it was putting in place ({file}) is gone or changed, so "
+"SAM cannot finish it. The app's file stays as it is; use Unpack Again and "
+"look at the app first."
+msgstr ""
+"Ein früheres Update oder Zurückgehen wurde angehalten, bevor es fertig war, "
+"und SAMs eigene Kopie der Version, die es an ihren Platz setzen wollte "
+"({file}), fehlt oder wurde verändert, deshalb kann SAM es nicht beenden. Die "
+"Datei der App bleibt, wie sie ist; nutze „Erneut entpacken“ und sieh dir die "
+"App zuerst an."
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-runner/src/ops/maintain.rs:2042
+msgid ""
+"An earlier attempt to go back was interrupted: the earlier version is still "
+"at {earlier}, and {file} may hold the newer one. SAM changes nothing, so "
+"that neither version is lost. Move the version you want to keep out of SAM's "
+"backup folder and relocate the app to it; once {earlier} is gone, SAM goes "
+"back and updates again."
+msgstr ""
+"Ein früherer Versuch, zur früheren Version zurückzugehen, wurde "
+"unterbrochen: Die frühere Version liegt noch unter {earlier}, und {file} "
+"enthält vielleicht die neuere. SAM ändert nichts, damit keine der beiden "
+"Versionen verloren geht. Verschiebe die Version, die du behalten willst, aus "
+"SAMs Sicherungsordner und zeig SAM ihren neuen Ort; sobald {earlier} weg "
+"ist, geht SAM wieder zurück und aktualisiert wieder."
+
 #~ msgid "To start it anyway this one time: sam-jail run --start-anyway APP"
 #~ msgstr ""
 #~ "Um sie dieses eine Mal trotzdem zu starten: sam-jail run --start-anyway "

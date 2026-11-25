@@ -981,8 +981,24 @@ downloads a file, and only when you ask:
   unpacking that failed. A version kept by an older SAM (without its
   recorded checksum) asks for a review once it is back.
 - The new file is put in place as a copy in a new file; SAM never writes
-  through a link it finds there. The sandbox is unpacked from the checked
-  download in SAM's own folder, not from the AppImage's folder, where
+  through a link it finds there. The copy is written whole under a hidden
+  name in the AppImage's folder and then renamed into place, so the folder
+  always holds the complete old version or the complete new one, also after
+  a crash or a power loss. The earlier kept version is deleted only once
+  the app's record names the new one, and a failure before that (a full
+  disk, a read-only folder) leaves the old AppImage, its record and the
+  earlier kept version as they were. Going back works in the same order:
+  before its record is saved, nothing in the backup folder is renamed or
+  overwritten. An earlier version that an older SAM left aside is
+  repaired when SAM can tell the files apart; otherwise going back and
+  updating stop and say where both files are. From the moment the record
+  names the new state until the version is unpacked, the record also says
+  what is being put in place, and SAM keeps its own checked copy of it: a
+  SAM stopped in between finishes the work at the app's next update or go
+  back from that copy, never from a file in the AppImage's folder. A
+  half-written copy left by a stopped SAM is removed at the app's next
+  update, go back, relocation or removal. The sandbox is unpacked from
+  the checked download in SAM's own folder, not from the AppImage's folder, where
   another app could swap the file in that moment; a file swapped there
   afterwards is noticed like any changed AppImage.
 - The app keeps its sandbox. When the new version asks for more (another

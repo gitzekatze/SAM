@@ -1278,6 +1278,139 @@ fn going_back_works_when_the_update_could_not_be_unpacked() {
     assert!(!e.content_changed_outside, "the old version is SAM's own");
 }
 
+/// The names in `dir`, sorted.
+fn names_in(dir: &Path) -> Vec<String> {
+    let mut v: Vec<String> = fs::read_dir(dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    v.sort();
+    v
+}
+
+/// Updates `installed` once (version 2.0, published as `first`), then
+/// publishes version 3.0 as `second` and runs `fail` around a second
+/// update that must fail. Checks that the failed update changed nothing:
+/// the AppImage's folder holds only version 2.0, complete, the record and
+/// its way back are as before, the earlier backup (version 1.0) is intact
+/// and no backup or temporary file is left over.
+fn a_failed_update_changes_nothing(
+    installed_name: &str,
+    first: &str,
+    second: &str,
+    locked: impl Fn(&Sam, &Path) -> PathBuf,
+) {
+    use std::os::unix::fs::PermissionsExt;
+    let tmp = tempfile::tempdir().unwrap();
+    let Some((server, url)) = server_or_skip(tmp.path()) else {
+        return;
+    };
+    let apps = tmp.path().join("Downloads");
+    fs::create_dir_all(&apps).unwrap();
+    let installed = apps.join(installed_name);
+    appimage(&installed, &url, "1.0");
+    let v1 = fs::read(&installed).unwrap();
+    let (sam, id) = add_reviewed(tmp.path(), &installed);
+    let v2_file = tmp.path().join("v2.AppImage");
+    appimage(&v2_file, &url, "2.0");
+    publish(&server, &v2_file, first);
+    let e = sam.update(&id, false).unwrap();
+    let placed = e.source_path.clone();
+    let v2 = fs::read(&placed).unwrap();
+    let before = e.update_backup.clone().expect("a way back");
+    assert_eq!(
+        fs::read(&before.file).unwrap(),
+        v1,
+        "{second}: the way back"
+    );
+    let backups = sam.paths.data_dir.join("update-backups").join(&id);
+    let kept_before = names_in(&backups);
+
+    let v3_file = tmp.path().join("v3.AppImage");
+    appimage(&v3_file, &url, "3.0");
+    publish(&server, &v3_file, second);
+    let dir = locked(&sam, &apps);
+    fs::set_permissions(&dir, fs::Permissions::from_mode(0o555)).unwrap();
+    let is_locked = fs::File::create(dir.join("probe")).is_err();
+    let result = sam.update(&id, false);
+    fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(
+        is_locked,
+        "a read-only folder must lock: run as a normal user"
+    );
+    assert!(result.is_err(), "{second}: the update failed");
+
+    assert_eq!(
+        names_in(&apps),
+        [placed.file_name().unwrap().to_string_lossy()],
+        "{second}: only the installed version, no temporary file"
+    );
+    assert_eq!(
+        fs::read(&placed).unwrap(),
+        v2,
+        "{second}: complete and unchanged"
+    );
+    let e = sam.resolve(&id).unwrap();
+    assert_eq!(e.source_path, placed, "{second}");
+    assert_eq!(
+        e.update_backup.as_ref(),
+        Some(&before),
+        "{second}: the record"
+    );
+    assert_eq!(
+        fs::read(&before.file).unwrap(),
+        v1,
+        "{second}: the earlier backup"
+    );
+    assert_eq!(
+        names_in(&backups),
+        kept_before,
+        "{second}: no backup left over"
+    );
+    assert_eq!(unpacked_version(&sam, &id), "2.0", "{second}");
+}
+
+/// Regression (review B2 S6, R89): an update deleted the earlier backup and
+/// the person's AppImage before it copied the new version in. A copy that
+/// failed (here: the AppImage's folder is read-only; a full disk the same)
+/// left a record that named the deleted backup, and a crash in between left
+/// no AppImage at all. Now the new copy is written under a hidden name and
+/// renamed into place, and the earlier backup goes only once the record
+/// names the new one: a failure leaves everything as it was.
+#[test]
+fn an_update_that_cannot_place_the_new_version_changes_nothing() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    a_failed_update_changes_nothing(
+        "Tool-1.0-x86_64.AppImage",
+        "Tool-2.0-x86_64.AppImage",
+        "Tool-3.0-x86_64.AppImage",
+        |_, apps| apps.to_path_buf(),
+    );
+}
+
+/// Regression (review B2 S6, R89): when the new version is in place but
+/// its record cannot be saved (here: the records' folder is read-only),
+/// the update undoes its steps: the old AppImage, the record and the
+/// earlier backup stay as they were, for a new name and for the same name
+/// (then the record is saved first and one rename replaces the file).
+#[test]
+fn an_update_whose_record_cannot_be_saved_changes_nothing() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let records = |sam: &Sam, _: &Path| sam.paths.apps_dir();
+    a_failed_update_changes_nothing(
+        "Tool-1.0-x86_64.AppImage",
+        "Tool-2.0-x86_64.AppImage",
+        "Tool-3.0-x86_64.AppImage",
+        records,
+    );
+    a_failed_update_changes_nothing(
+        "Tool-x86_64.AppImage",
+        "Tool-x86_64.AppImage",
+        "Tool-x86_64.AppImage",
+        records,
+    );
+}
+
 /// How many files and folders are below `dir`.
 fn walkdir_count(dir: &Path) -> usize {
     fs::read_dir(dir)

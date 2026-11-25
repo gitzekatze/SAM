@@ -234,24 +234,48 @@ impl Sam {
     }
 
     pub fn relocate(&self, query: &str, new_path: &Path) -> Result<AppEntry> {
-        let mut entry = self.resolve(query)?;
+        let entry = self.resolve(query)?;
+        // Held for the whole change, like an update or a go back: they
+        // read and write the same record (review of the fix for R86).
+        let (_change, entry) = self.lock_for_change(&entry, &sam_core::i18n::tr("relocate it"))?;
+        // An update or go back stopped after it was recorded puts a version
+        // in place at the old path; relocating would leave its copy to no
+        // record, and the next run would delete it (review of the fix for
+        // R86).
+        if let Some(p) = entry
+            .update_backup
+            .as_ref()
+            .and_then(|b| b.placing.as_ref())
+        {
+            bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "SAM is still putting a version of this app in place (its own copy is at {file}), so it does not relocate the app now. Finish it with Update or Go Back first.",
+                    &[("file", &tildify(&p.file))]
+                )
+            );
+        }
         let p = fs::canonicalize(new_path)?;
         let fp = fingerprint::compute(&p)?;
+        // Half-written copies a stopped update or go back left next to the
+        // old place would stay there for good (review of the fix for R89).
+        remove_incoming_leftovers(&entry);
         let same = super::add::is_unpacked_content(&entry, &fp.sha256);
-        entry.source_path = p;
-        entry.source = fp;
-        entry.state = if same {
-            AppState::Ready
-        } else {
-            AppState::Stale
-        };
-        if same {
-            if let Some(x) = entry.extraction.as_mut() {
-                x.source = entry.source.clone();
+        let saved = self.registry().update(&entry.id, |e| {
+            e.source_path = p.clone();
+            e.source = fp.clone();
+            e.state = if same {
+                AppState::Ready
+            } else {
+                AppState::Stale
+            };
+            if same {
+                if let Some(x) = e.extraction.as_mut() {
+                    x.source = fp.clone();
+                }
             }
-        }
-        self.registry().save(&mut entry)?;
-        Ok(entry)
+        })?;
+        saved.with_context(|| sam_core::i18n::trf("no registered app '{id}'", &[("id", &entry.id)]))
     }
 
     /// Remove the sandbox. Returns the removed entry and problems that did
@@ -466,6 +490,9 @@ impl Sam {
         let entry = self.resolve(query)?;
         let (_change, entry) =
             self.lock_for_change(&entry, &sam_core::i18n::tr("remove its sandbox"))?;
+        // Half-written copies a stopped update or go back left in the
+        // AppImage's folder (review of the fix for R89).
+        remove_incoming_leftovers(&entry);
         let mut problems = Vec::new();
         desktop::remove_launcher(&self.paths, &entry.id)?;
         for h in &entry.hidden_entries {
@@ -826,12 +853,18 @@ impl Sam {
     /// 4. the checked copy of the old file is kept in
     ///    `<data>/update-backups/<id>/` (so it is not listed as a second
     ///    AppImage), a copy of the new one takes its new name in the
-    ///    AppImage's folder, and the sandbox is unpacked again from the checked
+    ///    AppImage's folder (written whole under a hidden name, then renamed
+    ///    into place; the earlier backup goes only once the record names the
+    ///    new one), and the sandbox is unpacked again from the checked
     ///    download, with its settings kept.
     pub fn update(&self, query: &str, accept_key_change: bool) -> Result<AppEntry> {
         let entry = self.resolve(query)?;
         self.forget_old_waiting();
         let (_change, entry) = self.lock_for_change(&entry, &sam_core::i18n::tr("update it"))?;
+        // An update or go back stopped after it was recorded is finished
+        // first (review B2 S6, R86, R89).
+        remove_incoming_leftovers(&entry);
+        let entry = self.finish_placing(&entry)?.unwrap_or(entry);
         if !entry.source_path.exists() {
             bail!(
                 "{}",
@@ -841,6 +874,9 @@ impl Sam {
                 )
             );
         }
+        // An interrupted go back left the earlier version aside; an update
+        // would delete it with the old backups (review B2 S6, R86).
+        settle_interrupted_going_back(&entry)?;
         // Where SAM can build no sandbox, the new version could be neither
         // unpacked nor its signature checked: stop here with that reason,
         // before anything is downloaded or asked. Before, the update was
@@ -894,6 +930,9 @@ impl Sam {
         // naming its own server (review 2026-11-23, U-1).
         let installed = work.join(".installed");
         fs::copy(&old, &installed)?;
+        // It becomes the kept version: on the disk before any record names
+        // it (review B2 S6, R89).
+        fs::File::open(&installed)?.sync_all()?;
         let installed_sha256 = fingerprint::sha256_file(&installed)?;
         if installed_sha256 != unpacked_sha256(entry) {
             bail!(
@@ -1063,47 +1102,159 @@ impl Sam {
         // Keep the checked copy of the old version, then put a copy of the
         // new one in place. Copies, never moves: what is unpacked below is
         // the checked download in SAM's own folder.
-        let backup_dir = self.paths.data_dir.join("update-backups").join(&entry.id);
-        if backup_dir.exists() {
-            remove_tree(&backup_dir)?;
+        //
+        // The order keeps a way back at every moment (review B2 S6, R89).
+        // Before, the earlier backup and the person's AppImage were deleted
+        // first and the new copy written afterwards: a crash, a power loss
+        // or a full disk in between left no AppImage (or half of one) and a
+        // record that named a deleted backup. Now the AppImage's folder
+        // always holds the complete old file or the complete new one, and
+        // the earlier backup goes only once the record names the new one;
+        // a failure before that changes nothing.
+        let backups = self.paths.data_dir.join("update-backups").join(&entry.id);
+        fs::create_dir_all(&backups)?;
+        if let Some(all) = backups.parent() {
+            sync_dir(all);
         }
-        fs::create_dir_all(&backup_dir)?;
-        let backup = backup_dir.join(&old_name);
-        move_file(&installed, &backup)?;
-        fs::remove_file(&old)?;
-        let placed = match place_copy(&tmp, &target, old_mode | 0o500) {
+        // A fresh folder for the new backup, next to the earlier one.
+        let fresh = backups.join(format!("kept-{}", unique_suffix()));
+        {
+            use std::os::unix::fs::DirBuilderExt;
+            fs::DirBuilder::new().mode(0o700).create(&fresh)?;
+        }
+        let backup = fresh.join(&old_name);
+        if let Err(e) = move_file(&installed, &backup) {
+            let _ = remove_tree(&fresh);
+            return Err(e);
+        }
+        // The checked download waits next to it until it is unpacked: a
+        // stop after the record is saved is finished from this copy
+        // (`finish_placing`), and SAM's download folder is cleared by the
+        // next update.
+        let new_copy = fresh.join(PLACING_NAME);
+        let kept_new =
+            move_file(&tmp, &new_copy).and_then(|()| Ok(fs::File::open(&new_copy)?.sync_all()?));
+        if let Err(e) = kept_new {
+            let _ = remove_tree(&fresh);
+            return Err(e);
+        }
+        sync_dir(&fresh);
+        sync_dir(&backups);
+        // The new copy is written whole under a hidden name in the same
+        // folder; only a rename, which is complete or not done at all, gives
+        // it the AppImage's name.
+        let incoming = incoming_name(&dir, &entry.id);
+        let placed = match place_copy(&new_copy, &incoming, old_mode | 0o500) {
             Ok(fp) => fp,
             Err(e) => {
-                if place_copy(&backup, &old, old_mode).is_ok() {
-                    let _ = remove_tree(&backup_dir);
-                }
+                let _ = remove_tree(&fresh);
                 return Err(e.context(sam_core::i18n::tr("putting the new version in place")));
             }
+        };
+        // Undoes what this update did before its record was saved.
+        let give_up = |placed_at: &Path| {
+            let _ = fs::remove_file(placed_at);
+            let _ = remove_tree(&fresh);
         };
         // The way back is recorded before unpacking: if unpacking the new
         // version fails, the old one can still be put back (audit U-L2).
         let way_back = UpdateBackup {
             file: backup,
-            original_path: old,
+            original_path: old.clone(),
             replaced_at: now(),
             sha256: Some(installed_sha256),
-            placed_sha256: Some(new_sha256),
+            placed_sha256: Some(new_sha256.clone()),
+            // What is being put in place, until it is unpacked (review B2
+            // S6, R89): a stop after the save is finished from it.
+            placing: Some(sam_core::model::Placing {
+                file: new_copy.clone(),
+                sha256: new_sha256,
+                to: target.clone(),
+                checked: true,
+                going_back: false,
+            }),
         };
-        self.registry().update(&entry.id, |f| {
-            f.source_path = target.clone();
-            f.signature = Some(before_sig.clone());
-            f.update_backup = Some(way_back.clone());
-        })?;
-        let mut e = self.reextract_as(
+        let save = || {
+            self.registry().update(&entry.id, |f| {
+                f.source_path = target.clone();
+                f.signature = Some(before_sig.clone());
+                f.update_backup = Some(way_back.clone());
+            })
+        };
+        if target == old {
+            // The same name: the record comes first, while the old file is
+            // still in place, and the rename then replaces it in one step.
+            // A record saved without the rename names a backup of that very
+            // old file, so the way back still works.
+            if let Err(e) = save() {
+                give_up(&incoming);
+                return Err(e);
+            }
+            if let Err(e) = fs::rename(&incoming, &target) {
+                let restored = self.registry().update(&entry.id, |f| {
+                    f.source_path = old.clone();
+                    f.signature = entry.signature.clone();
+                    f.update_backup = entry.update_backup.clone();
+                });
+                if restored.is_ok() {
+                    give_up(&incoming);
+                }
+                return Err(anyhow::Error::from(e)
+                    .context(sam_core::i18n::tr("putting the new version in place")));
+            }
+            sync_dir(&dir);
+        } else {
+            // Another name: the new file takes it (never replacing a file
+            // that appeared there meanwhile), the record follows, and the
+            // old file goes last. Until then both are complete.
+            if let Err(e) = rename_noreplace(&incoming, &target) {
+                give_up(&incoming);
+                return Err(anyhow::Error::from(e)
+                    .context(sam_core::i18n::tr("putting the new version in place")));
+            }
+            sync_dir(&dir);
+            if let Err(e) = save() {
+                give_up(&target);
+                sync_dir(&dir);
+                return Err(e);
+            }
+            // The update is done and recorded; an old file that stays
+            // behind is a second complete copy, nothing is lost.
+            let _ = fs::remove_file(&old);
+            sync_dir(&dir);
+        }
+        // Only now is the earlier backup no longer anyone's way back.
+        forget_earlier_backups(&backups, &fresh);
+        let unpacked = self.reextract_as(
             &entry.id,
             false,
             Some(&Checked {
-                file: &tmp,
+                file: &new_copy,
                 placed,
                 sams_update: true,
             }),
-        )?;
-        e.update_backup = Some(way_back);
+        );
+        let mut done = way_back;
+        done.placing = None;
+        let mut e = match unpacked {
+            Ok(e) => e,
+            Err(err) => {
+                // A failure, not a stop: the way back stays, nothing is
+                // left to finish. The copy goes only once no record names
+                // it.
+                if self
+                    .registry()
+                    .update(&entry.id, |f| {
+                        f.update_backup = Some(done.clone());
+                    })
+                    .is_ok()
+                {
+                    let _ = fs::remove_file(&new_copy);
+                }
+                return Err(err);
+            }
+        };
+        e.update_backup = Some(done);
         e.update = Some(UpdateStatus {
             state: sam_core::model::UpdateState::Current,
             latest: p.filename.or(p.release),
@@ -1121,6 +1272,7 @@ impl Sam {
             checked_at: now(),
         });
         self.registry().save(&mut e)?;
+        let _ = fs::remove_file(&new_copy);
         Ok(e)
     }
 
@@ -1129,6 +1281,21 @@ impl Sam {
     pub fn undo_update(&self, query: &str) -> Result<AppEntry> {
         let entry = self.resolve(query)?;
         let (_change, entry) = self.lock_for_change(&entry, &sam_core::i18n::tr("go back"))?;
+        remove_incoming_leftovers(&entry);
+        // A go back stopped after it was recorded is finished, and that is
+        // this go back; a stopped update is finished, then SAM goes back
+        // (review B2 S6, R86, R89).
+        let was_going_back = entry
+            .update_backup
+            .as_ref()
+            .and_then(|b| b.placing.as_ref())
+            .is_some_and(|p| p.going_back);
+        let entry = match self.finish_placing(&entry)? {
+            Some(e) if was_going_back => return Ok(e),
+            Some(e) => e,
+            None => entry,
+        };
+        settle_interrupted_going_back(&entry)?;
         let b = entry.update_backup.clone().context(sam_core::i18n::tr(
             "there is no earlier version to go back to",
         ))?;
@@ -1161,7 +1328,16 @@ impl Sam {
             .parent()
             .context(sam_core::i18n::tr("no folder"))?
             .join(b.file.file_name().context(sam_core::i18n::tr("no name"))?);
-        if back_to.exists() && back_to != entry.source_path {
+        // A complete copy of the earlier version that a go back stopped
+        // between placing it and saving the record left there: the same
+        // file is about to be put there again, so it is removed just before
+        // (after every check).
+        let stray = back_to.exists()
+            && back_to != entry.source_path
+            && b.sha256.is_some()
+            && fs::symlink_metadata(&back_to).is_ok_and(|m| m.file_type().is_file())
+            && fingerprint::sha256_file(&back_to).ok() == b.sha256;
+        if back_to.exists() && back_to != entry.source_path && !stray {
             bail!(
                 "{}",
                 sam_core::i18n::trf(
@@ -1171,15 +1347,26 @@ impl Sam {
             );
         }
         let current = entry.source_path.clone();
-        let keep = b
-            .file
-            .with_file_name(current.file_name().context(sam_core::i18n::tr("no name"))?);
-        // The earlier version first steps aside inside the backup folder:
-        // when both versions have the same name, `keep` is its own path,
-        // and moving the current file there destroyed it while reporting
-        // success (regression, audit U-H5).
-        let earlier = b.file.with_file_name(".going-back");
-        move_file(&b.file, &earlier)?;
+        // Before the record is saved, nothing in the backup folder is
+        // renamed or overwritten (review B2 S6, R86, and the reviews of its
+        // fix): the earlier version stays at its kept name, is copied from
+        // there, and the newer one is kept in a fresh folder. A stop or a
+        // failure before the save leaves only a fresh folder and a hidden
+        // incoming file, which the next update or go back removes. Before,
+        // the earlier version stepped aside to `.going-back` and the newer
+        // copy could take its name, and a stop or two failing copies lost
+        // it or blocked every later go back.
+        let root = self.paths.data_dir.join("update-backups").join(&entry.id);
+        fs::create_dir_all(&root)?;
+        if let Some(all) = root.parent() {
+            sync_dir(all);
+        }
+        let fresh = root.join(format!("kept-{}", unique_suffix()));
+        {
+            use std::os::unix::fs::DirBuilderExt;
+            fs::DirBuilder::new().mode(0o700).create(&fresh)?;
+        }
+        let keep = fresh.join(current.file_name().context(sam_core::i18n::tr("no name"))?);
         // The current file is kept as the newer version, and going forward
         // again unpacks it as SAM's own: so it must be what SAM unpacked (or
         // what the update put there, when unpacking that failed), checked
@@ -1194,14 +1381,13 @@ impl Sam {
                 .unwrap_or(0o755)
                 & 0o777
         };
+        let give_up = || {
+            let _ = remove_tree(&fresh);
+        };
         let mut kept_sha256 = None;
         if current.exists() {
-            if keep != earlier {
-                // Left over from an interrupted run; never the earlier version.
-                let _ = fs::remove_file(&keep);
-            }
             if let Err(e) = place_copy(&current, &keep, current_mode) {
-                let _ = move_file(&earlier, &b.file);
+                give_up();
                 return Err(e);
             }
             let sha = fingerprint::sha256_file(&keep).ok();
@@ -1209,8 +1395,7 @@ impl Sam {
                 s == unpacked_sha256(&entry) || Some(s) == b.placed_sha256.as_deref()
             });
             if !known {
-                let _ = fs::remove_file(&keep);
-                let _ = move_file(&earlier, &b.file);
+                give_up();
                 bail!(
                     "{}",
                     sam_core::i18n::trf(
@@ -1219,37 +1404,34 @@ impl Sam {
                     )
                 );
             }
-            if let Err(e) = fs::remove_file(&current) {
-                let _ = fs::remove_file(&keep);
-                let _ = move_file(&earlier, &b.file);
-                return Err(e.into());
-            }
             kept_sha256 = sha;
         }
         // Only a version SAM checked when it kept it counts as SAM's own; one
         // kept by an older SAM (or changed since) asks for a review.
-        let earlier_checked = b.sha256.is_some()
-            && fingerprint::sha256_file(&earlier).ok().as_deref() == b.sha256.as_deref();
+        let earlier_sha256 = match fingerprint::sha256_file(&b.file) {
+            Ok(sha) => sha,
+            Err(e) => {
+                give_up();
+                return Err(e);
+            }
+        };
+        let earlier_checked = b.sha256.as_deref() == Some(earlier_sha256.as_str());
         let mode = {
             use std::os::unix::fs::PermissionsExt;
-            fs::metadata(&earlier)
+            fs::metadata(&b.file)
                 .map(|m| m.permissions().mode())
                 .unwrap_or(0o755)
                 & 0o777
         };
-        let placed = match place_copy(&earlier, &back_to, mode) {
+        // Like an update, the earlier version is written whole under a
+        // hidden name and then renamed into place, so the AppImage's folder
+        // always holds one complete version (review B2 S6, R89).
+        let dir = back_to.parent().context(sam_core::i18n::tr("no folder"))?;
+        let incoming = incoming_name(dir, &entry.id);
+        let placed = match place_copy(&b.file, &incoming, mode) {
             Ok(fp) => fp,
             Err(e) => {
-                // Put the current file back; the kept copy is never
-                // overwritten while it is the only one.
-                let mut restored = kept_sha256.is_none();
-                if !restored && place_copy(&keep, &current, current_mode).is_ok() {
-                    let _ = fs::remove_file(&keep);
-                    restored = true;
-                }
-                if restored || keep != b.file {
-                    let _ = move_file(&earlier, &b.file);
-                }
+                give_up();
                 return Err(e);
             }
         };
@@ -1260,8 +1442,8 @@ impl Sam {
             _ => back_to.clone(),
         };
         let way_forward = UpdateBackup {
-            file: keep,
-            original_path: current,
+            file: keep.clone(),
+            original_path: current.clone(),
             replaced_at: now(),
             sha256: kept_sha256,
             placed_sha256: if earlier_checked {
@@ -1269,17 +1451,82 @@ impl Sam {
             } else {
                 None
             },
+            // What is being put in place, until it is unpacked: SAM's own
+            // copy stays where it is, and a stop after the save is finished
+            // from it. Before, a stop between the save and the rename left
+            // it named by no record, and the next run deleted it (review B2
+            // S6, R86).
+            placing: Some(sam_core::model::Placing {
+                file: b.file.clone(),
+                sha256: earlier_sha256,
+                to: back_at.clone(),
+                checked: earlier_checked,
+                going_back: true,
+            }),
         };
-        self.registry().update(&entry.id, |f| {
-            f.source_path = back_at.clone();
-            f.update_backup = Some(way_forward.clone());
-        })?;
+        // The newer copy is on the disk before the record names it.
+        sync_dir(&fresh);
+        sync_dir(&root);
+        let save = || {
+            self.registry().update(&entry.id, |f| {
+                f.source_path = back_at.clone();
+                f.update_backup = Some(way_forward.clone());
+            })
+        };
+        if back_to == current {
+            // The same name: the record first, then one rename replaces the
+            // current file (see `update_in`).
+            if let Err(e) = save() {
+                let _ = fs::remove_file(&incoming);
+                give_up();
+                return Err(e);
+            }
+            if let Err(e) = fs::rename(&incoming, &back_to) {
+                let restored = self.registry().update(&entry.id, |f| {
+                    f.source_path = current.clone();
+                    f.update_backup = Some(b.clone());
+                });
+                if restored.is_ok() {
+                    let _ = fs::remove_file(&incoming);
+                    give_up();
+                }
+                return Err(anyhow::Error::from(e).context(sam_core::i18n::tr("go back")));
+            }
+            sync_dir(dir);
+        } else {
+            // Another name: the earlier version takes it, the record
+            // follows, and the current file goes last. A stop before the
+            // save leaves a complete copy of the earlier version there,
+            // which the next go back takes as its own (see above); a record
+            // that named a file not yet in place would lose the app instead.
+            if stray {
+                let _ = fs::remove_file(&back_to);
+            }
+            if let Err(e) = rename_noreplace(&incoming, &back_to) {
+                let _ = fs::remove_file(&incoming);
+                give_up();
+                return Err(anyhow::Error::from(e).context(sam_core::i18n::tr("go back")));
+            }
+            sync_dir(dir);
+            if let Err(e) = save() {
+                let _ = fs::remove_file(&back_to);
+                sync_dir(dir);
+                give_up();
+                return Err(e);
+            }
+            // Recorded; a current file that stays behind is a second
+            // complete copy of the newer version, nothing is lost.
+            let _ = fs::remove_file(&current);
+            sync_dir(dir);
+        }
+        // Recorded and in place: unpacked from SAM's own copy, which the
+        // record names until then; the old backup folder goes only after.
         let unpacked = if earlier_checked {
             self.reextract_as(
                 &entry.id,
                 false,
                 Some(&Checked {
-                    file: &earlier,
+                    file: &b.file,
                     placed,
                     sams_update: true,
                 }),
@@ -1287,12 +1534,161 @@ impl Sam {
         } else {
             self.reextract_as(&entry.id, false, None)
         };
-        let _ = fs::remove_file(&earlier);
-        let mut e = unpacked?;
-        e.update_backup = Some(way_forward);
+        let mut done = way_forward;
+        done.placing = None;
+        let mut e = match unpacked {
+            Ok(e) => e,
+            Err(err) => {
+                // A failure, not a stop: nothing is left to finish. The
+                // earlier backup goes only once no record names it.
+                if self
+                    .registry()
+                    .update(&entry.id, |f| {
+                        f.update_backup = Some(done.clone());
+                    })
+                    .is_ok()
+                {
+                    forget_earlier_backups(&root, &fresh);
+                }
+                return Err(err);
+            }
+        };
+        e.update_backup = Some(done);
         e.update = None;
         self.registry().save(&mut e)?;
+        forget_earlier_backups(&root, &fresh);
         Ok(e)
+    }
+
+    /// Finishes an update or a go back that was recorded but stopped before
+    /// its version was unpacked (`UpdateBackup::placing`; review B2 S6, R86,
+    /// R89): the version goes in place from SAM's own copy, checked by its
+    /// SHA-256 (never from a hidden incoming file in the AppImage's folder,
+    /// which another app can swap), is unpacked, and the mark is cleared.
+    /// `None` when nothing waits. A mark that does not point into this
+    /// app's backup folder and at the app's own file (a record changed
+    /// outside SAM) is dropped without acting on it; a copy that is gone
+    /// or changed is reported once.
+    fn finish_placing(&self, entry: &AppEntry) -> Result<Option<AppEntry>> {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        let Some(p) = entry.update_backup.as_ref().and_then(|b| b.placing.clone()) else {
+            return Ok(None);
+        };
+        let root = self.paths.data_dir.join("update-backups").join(&entry.id);
+        let clear = || {
+            self.registry().update(&entry.id, |f| {
+                if let Some(b) = f.update_backup.as_mut() {
+                    b.placing = None;
+                }
+            })
+        };
+        let in_backups = fs::canonicalize(&root)
+            .is_ok_and(|r| fs::canonicalize(&p.file).is_ok_and(|f| f.starts_with(&r)));
+        if !in_backups {
+            clear()?;
+            return Ok(None);
+        }
+        if p.to != entry.source_path {
+            // The app is somewhere else now (a record changed outside SAM):
+            // nothing is put anywhere. An earlier version a go back was
+            // putting in place stays as the named way back, never deleted
+            // as an unnamed backup (review of the fix for R86); an update's
+            // download is simply dropped, the way back it had stays.
+            self.registry().update(&entry.id, |f| {
+                if let Some(b) = f.update_backup.as_mut() {
+                    if p.going_back {
+                        *b = UpdateBackup {
+                            file: p.file.clone(),
+                            original_path: p.to.clone(),
+                            replaced_at: now(),
+                            sha256: p.checked.then(|| p.sha256.clone()),
+                            placed_sha256: None,
+                            placing: None,
+                        };
+                    } else {
+                        b.placing = None;
+                    }
+                }
+            })?;
+            if !p.going_back {
+                let _ = fs::remove_file(&p.file);
+            }
+            return Ok(None);
+        }
+        if fingerprint::sha256_file(&p.file).ok().as_deref() != Some(p.sha256.as_str()) {
+            clear()?;
+            bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "An earlier update or go back was stopped before it finished, and SAM's own copy of the version it was putting in place ({file}) is gone or changed, so SAM cannot finish it. The app's file stays as it is; use Unpack Again and look at the app first.",
+                    &[("file", &tildify(&p.file))]
+                )
+            );
+        }
+        let in_place = fs::symlink_metadata(&p.to).is_ok_and(|m| m.file_type().is_file())
+            && fingerprint::sha256_file(&p.to).ok().as_deref() == Some(p.sha256.as_str());
+        let placed = if in_place {
+            let m = fs::symlink_metadata(&p.to)?;
+            Fingerprint {
+                size: m.len(),
+                mtime: m.mtime(),
+                inode: m.ino(),
+                device: m.dev(),
+                sha256: String::new(),
+            }
+        } else {
+            let dir = p.to.parent().context(sam_core::i18n::tr("no folder"))?;
+            let mode = fs::metadata(&p.file)?.permissions().mode() & 0o777;
+            let mode = if p.going_back { mode } else { mode | 0o500 };
+            let incoming = incoming_name(dir, &entry.id);
+            let fp = place_copy(&p.file, &incoming, mode)?;
+            if let Err(e) = fs::rename(&incoming, &p.to) {
+                let _ = fs::remove_file(&incoming);
+                return Err(anyhow::Error::from(e)
+                    .context(sam_core::i18n::tr("putting the new version in place")));
+            }
+            sync_dir(dir);
+            fp
+        };
+        let unpacked = if p.checked {
+            self.reextract_as(
+                &entry.id,
+                false,
+                Some(&Checked {
+                    file: &p.file,
+                    placed,
+                    sams_update: true,
+                }),
+            )
+        } else {
+            self.reextract_as(&entry.id, false, None)
+        };
+        let way = self
+            .registry()
+            .get(&entry.id)?
+            .and_then(|e| e.update_backup)
+            .map(|b| b.file);
+        let tidy = || {
+            let _ = fs::remove_file(&p.file);
+            if let Some(keep) = way.as_deref().and_then(|w| top_in(&root, w)) {
+                forget_earlier_backups(&root, &keep);
+            }
+        };
+        let mut e = match unpacked {
+            Ok(e) => e,
+            Err(err) => {
+                clear()?;
+                tidy();
+                return Err(err);
+            }
+        };
+        if let Some(b) = e.update_backup.as_mut() {
+            b.placing = None;
+        }
+        e.update = None;
+        self.registry().save(&mut e)?;
+        tidy();
+        Ok(Some(e))
     }
 
     /// Updates SAM's own AppImage (`appimage`, from `$APPIMAGE`): checks the
@@ -1709,6 +2105,185 @@ fn move_file(from: &Path, to: &Path) -> Result<()> {
     copy().with_context(|| format!("copying {} to {}", from.display(), to.display()))?;
     fs::remove_file(from).with_context(|| format!("removing {}", from.display()))?;
     Ok(())
+}
+
+/// The name the earlier version took in the backup folder while an older
+/// SAM went back to it; going back no longer renames anything there.
+const GOING_BACK: &str = ".going-back";
+
+/// Settles a [`GOING_BACK`] file that a go back of an older SAM (or of an
+/// earlier state of this fix) left next to the kept file of `entry`'s way
+/// back; going back no longer moves anything there (review B2 S6, R86, and
+/// the reviews of its fix). A file SAM can tell apart is repaired: one equal
+/// to both the app's current file and the version that go back put in
+/// place is a second copy and is deleted (equal to the current file alone
+/// is not enough: another app can drop a public copy of the earlier version
+/// there); one equal to the kept version whose kept name is free goes back
+/// to that name. Otherwise the file at the kept name may be the newer copy,
+/// and going on would replace the earlier version with it: going back and
+/// updating stop, change nothing and say where both files are.
+fn settle_interrupted_going_back(entry: &AppEntry) -> Result<()> {
+    let Some(b) = &entry.update_backup else {
+        return Ok(());
+    };
+    let earlier = b.file.with_file_name(GOING_BACK);
+    let Ok(md) = fs::symlink_metadata(&earlier) else {
+        return Ok(());
+    };
+    let sha = if md.file_type().is_file() {
+        fingerprint::sha256_file(&earlier).ok()
+    } else {
+        None
+    };
+    if let Some(sha) = sha.as_deref() {
+        if b.placed_sha256.as_deref() == Some(sha)
+            && fingerprint::sha256_file(&entry.source_path).ok().as_deref() == Some(sha)
+            && fs::remove_file(&earlier).is_ok()
+        {
+            return Ok(());
+        }
+        if fs::symlink_metadata(&b.file).is_err()
+            && b.sha256.as_deref() == Some(sha)
+            && rename_noreplace(&earlier, &b.file).is_ok()
+        {
+            return Ok(());
+        }
+    }
+    bail!(
+        "{}",
+        sam_core::i18n::trf(
+            "An earlier attempt to go back was interrupted: the earlier version is still at {earlier}, and {file} may hold the newer one. SAM changes nothing, so that neither version is lost. Move the version you want to keep out of SAM's backup folder and relocate the app to it; once {earlier} is gone, SAM goes back and updates again.",
+            &[
+                ("earlier", &tildify(&earlier)),
+                ("file", &tildify(&b.file))
+            ]
+        )
+    );
+}
+
+/// Renames `from` to `to` only when nothing is at `to` (not even a link),
+/// in one step. Where the file system cannot do that (`renameat2` with
+/// `RENAME_NOREPLACE` is missing), SAM looks first and then renames.
+fn rename_noreplace(from: &Path, to: &Path) -> std::io::Result<()> {
+    use std::os::unix::ffi::OsStrExt;
+    let c = |p: &Path| {
+        std::ffi::CString::new(p.as_os_str().as_bytes())
+            .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidInput))
+    };
+    let (f, t) = (c(from)?, c(to)?);
+    // SAFETY: both are valid NUL-terminated paths that live across the
+    // call; renameat2 only reads them.
+    let r = unsafe {
+        libc::renameat2(
+            libc::AT_FDCWD,
+            f.as_ptr(),
+            libc::AT_FDCWD,
+            t.as_ptr(),
+            libc::RENAME_NOREPLACE,
+        )
+    };
+    if r == 0 {
+        return Ok(());
+    }
+    let e = std::io::Error::last_os_error();
+    match e.raw_os_error() {
+        Some(libc::EINVAL | libc::ENOSYS | libc::EOPNOTSUPP) => {
+            if fs::symlink_metadata(to).is_ok() {
+                return Err(std::io::Error::from(std::io::ErrorKind::AlreadyExists));
+            }
+            fs::rename(from, to)
+        }
+        _ => Err(e),
+    }
+}
+
+/// A hidden name in `dir` for a file that is written there whole before a
+/// rename gives it its real name. Unique, so it never meets a leftover or a
+/// file another program put there; [`place_copy`] refuses one anyway.
+fn incoming_name(dir: &Path, id: &str) -> PathBuf {
+    dir.join(format!("{}{}", incoming_prefix(id), unique_suffix()))
+}
+
+/// How the names of `id`'s incoming files begin.
+fn incoming_prefix(id: &str) -> String {
+    format!(".sam-incoming-{id}-")
+}
+
+/// Removes incoming files of `entry`'s app that a SAM stopped while
+/// writing left in the AppImage's folder: hidden, executable and as large
+/// as the app (review of the fix for R89). Only names SAM gives exactly
+/// (the app's prefix, then `<process>-<hex time>`), only files and links,
+/// and a link is removed itself, never followed. Called under the app's
+/// lock, so no other change of this app is writing one.
+fn remove_incoming_leftovers(entry: &AppEntry) {
+    let Some(dir) = entry.source_path.parent() else {
+        return;
+    };
+    let prefix = incoming_prefix(&entry.id);
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for e in entries.flatten() {
+        let name = e.file_name();
+        let Some(rest) = name.to_str().and_then(|n| n.strip_prefix(&prefix)) else {
+            continue;
+        };
+        let ours = rest.split_once('-').is_some_and(|(pid, time)| {
+            !pid.is_empty()
+                && pid.bytes().all(|c| c.is_ascii_digit())
+                && !time.is_empty()
+                && time.bytes().all(|c| c.is_ascii_hexdigit())
+        });
+        if ours && e.file_type().is_ok_and(|t| t.is_file() || t.is_symlink()) {
+            let _ = fs::remove_file(e.path());
+        }
+    }
+}
+
+/// A name part no other run uses: the process and the time in nanoseconds.
+fn unique_suffix() -> String {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    format!("{}-{nanos:x}", std::process::id())
+}
+
+/// Writes a folder's list of names to the disk, so that a rename in it
+/// survives a power loss. Where that fails, the rename itself still stands.
+fn sync_dir(dir: &Path) {
+    if let Ok(d) = fs::File::open(dir) {
+        let _ = d.sync_all();
+    }
+}
+
+/// The name SAM's checked download takes in the new backup's folder while
+/// an update puts it in place and unpacks it.
+const PLACING_NAME: &str = ".sam-placing";
+
+/// The entry directly in `root` that holds `file` (or is it).
+fn top_in(root: &Path, file: &Path) -> Option<PathBuf> {
+    let rest = file.strip_prefix(root).ok()?;
+    rest.components().next().map(|c| root.join(c.as_os_str()))
+}
+
+/// Deletes everything in an app's backup folder `backups` except `keep`:
+/// the earlier backup and leftovers of interrupted runs. Called only once
+/// the record names the backup in `keep` (review B2 S6, R89).
+fn forget_earlier_backups(backups: &Path, keep: &Path) {
+    let Ok(entries) = fs::read_dir(backups) else {
+        return;
+    };
+    for e in entries.flatten() {
+        let p = e.path();
+        if p == keep {
+            continue;
+        }
+        if e.file_type().is_ok_and(|t| t.is_dir()) {
+            let _ = remove_tree(&p);
+        } else {
+            let _ = fs::remove_file(&p);
+        }
+    }
 }
 
 #[cfg(test)]
