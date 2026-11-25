@@ -104,6 +104,15 @@ fn main() {
                 ),
                 None => errln!("{} {message}", paint("error:", "1;31")),
             }
+            // How to choose "Start anyway" here (B2 R75, R77).
+            if sam_core::error::code_of(&e) == Some(sam_runner::launch::PROTECTION_MISSING) {
+                errln!(
+                    "{}",
+                    sam_core::i18n::tr(
+                        "To start it anyway this one time: sam-jail run --start-anyway APP"
+                    )
+                );
+            }
         }
         std::process::exit(1);
     }
@@ -862,7 +871,11 @@ fn real_main(cli: Cli) -> Result<()> {
                 }
             });
         }
-        Cmd::Run { app: q, args } => {
+        Cmd::Run {
+            app: q,
+            args,
+            start_anyway,
+        } => {
             let mut e = app.resolve(&q)?;
             app.ensure_unpacked(&mut e)?;
             let _start = app.start_lock(&mut e)?;
@@ -873,6 +886,7 @@ fn real_main(cli: Cli) -> Result<()> {
                     args,
                     // With --json, standard output is SAM's reply alone.
                     app_output_to_stderr: cli.json,
+                    start_anyway,
                     ..Default::default()
                 },
                 &app.config,

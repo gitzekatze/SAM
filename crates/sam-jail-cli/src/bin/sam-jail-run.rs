@@ -46,6 +46,49 @@ fn notify_with_fix(title: &str, body: &str, app_id: &str) {
     }
 }
 
+/// The first argument that starts the app although a protection its
+/// settings ask for is missing this time (B2 R75, R77).
+const START_ANYWAY: &str = "--start-anyway";
+
+/// The refusal of a start that lacks a protection, with a "Start anyway"
+/// button that starts the same app with the same files once more, for this
+/// one start. Waited for in a background process, so the launcher can
+/// exit; names, files and messages are arguments, never shell code.
+fn notify_start_anyway(title: &str, body: &str, asked: &[String]) {
+    if std::io::IsTerminal::is_terminal(&std::io::stderr()) {
+        errln!(
+            "{}",
+            sam_core::i18n::tr(
+                "To start it anyway this one time: sam-jail-run --start-anyway --app-id APP"
+            )
+        );
+        return;
+    }
+    // The program menu entries start (SAM's AppImage, or this launcher),
+    // which outlives this start: a launcher inside SAM's mounted AppImage
+    // would be gone by the time the button is pressed.
+    let me = sam_intake::desktop::runner_command();
+    let Some(n) = which("notify-send") else {
+        return notify(title, body);
+    };
+    let clean = |s: &str| sam_core::util::display_safe(s, 400).replace('&', "&amp;");
+    let script = r#"n=$1 title=$2 body=$3 label=$4 me=$5; shift 5; a=$("$n" --app-name="SAM - Sandboxed AppImage Manager" --icon=dialog-warning --action=start="$label" "$title" "$body") && [ "$a" = start ] && exec "$me" --start-anyway "$@""#;
+    let spawned = Command::new("/bin/sh")
+        .args(["-c", script, "sh"])
+        .arg(n)
+        .args([clean(title), clean(body)])
+        .arg(clean(&sam_core::i18n::tr("Start anyway")))
+        .arg(me)
+        .args(asked)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+    if spawned.is_err() {
+        notify(title, body);
+    }
+}
+
 /// SAM's window: SAM's own AppImage, next to this program, or on $PATH.
 fn sam_gui() -> Option<PathBuf> {
     if let Some(a) = std::env::var_os("APPIMAGE")
@@ -173,7 +216,14 @@ fn main() {
     }
     // Starting from the menu is function 19; steps of another function
     // (unpacking again: 3) mark their errors themselves.
-    match launch(args).in_function(19) {
+    // "Start anyway, this time" (B2 R75, R77): only as the first argument,
+    // as the refusal's notification starts it.
+    let (start_anyway, args) = match args.split_first() {
+        Some((first, rest)) if first == START_ANYWAY => (true, rest.to_vec()),
+        _ => (false, args),
+    };
+    let asked = args.clone();
+    match launch(args, start_anyway).in_function(19) {
         Ok(code) => std::process::exit(code),
         Err(e) => {
             let message = sam_core::error::message_of(&e);
@@ -184,6 +234,15 @@ fn main() {
             // nothing to repair, it starts once that is done.
             if sam_core::error::code_of(&e) == Some("app-being-changed") {
                 notify(&sam_core::i18n::tr("SAM could not start the app"), &message);
+                std::process::exit(1);
+            }
+            // A protection is missing for this start: the person decides.
+            if sam_core::error::code_of(&e) == Some(sam_runner::launch::PROTECTION_MISSING) {
+                notify_start_anyway(
+                    &sam_core::i18n::tr("SAM did not start the app"),
+                    &message,
+                    &asked,
+                );
                 std::process::exit(1);
             }
             notify(
@@ -200,10 +259,11 @@ fn main() {
 
 /// How a start from the menu runs: with the files it was given, and told
 /// at once when it lacks a protection layer.
-fn launch_options(args: Vec<String>) -> LaunchOptions {
+fn launch_options(args: Vec<String>, start_anyway: bool) -> LaunchOptions {
     LaunchOptions {
         args,
         on_missing_layers: Some(tell_missing_layers),
+        start_anyway,
         ..Default::default()
     }
 }
@@ -255,7 +315,7 @@ fn hold_terminal_window(terminal: bool, exit_code: Option<i32>, stdin_tty: bool)
     terminal && exit_code != Some(0) && stdin_tty
 }
 
-fn launch(args: Vec<String>) -> Result<i32> {
+fn launch(args: Vec<String>, start_anyway: bool) -> Result<i32> {
     let (id, rest) = parse_launch_args(&args).unwrap_or_else(|| usage());
     let app = Sam::open()?;
     let mut entry = app
@@ -288,7 +348,7 @@ fn launch(args: Vec<String>) -> Result<i32> {
     }
     let rec = run(
         &mut entry,
-        &launch_options(rest),
+        &launch_options(rest, start_anyway),
         &app.config,
         &app.paths,
         &host,
@@ -475,7 +535,7 @@ mod tests {
     /// protection layer, and the notification names each missing layer.
     #[test]
     fn a_menu_start_is_told_when_a_protection_layer_is_missing() {
-        let opts = launch_options(vec!["a.txt".into()]);
+        let opts = launch_options(vec!["a.txt".into()], false);
         assert_eq!(opts.args, ["a.txt"]);
         assert!(
             opts.on_missing_layers.is_some(),

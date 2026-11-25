@@ -51,6 +51,11 @@ pub struct LaunchOptions {
     /// layers): a start from the menu has no terminal for the warning, and
     /// the app may run for hours (review K-4).
     pub on_missing_layers: Option<MissingLayersHook>,
+    /// "Start anyway, this time": a protection the settings ask for that
+    /// this start cannot set up (SAM's helper missing, the Wayland security
+    /// context refused) is reported instead of stopping the start (B2 R75,
+    /// R77). Never saved; each start decides again.
+    pub start_anyway: bool,
 }
 
 /// See [`LaunchOptions::on_missing_layers`].
@@ -235,6 +240,65 @@ fn helper_missing_warnings(want_layers: bool, want_rooms: bool) -> Vec<Warning> 
         ));
     }
     out
+}
+
+/// The code of the error that stops a start lacking a protection its
+/// settings ask for: callers offer "Start anyway, this time"
+/// ([`LaunchOptions::start_anyway`]).
+pub const PROTECTION_MISSING: &str = "protection-missing";
+
+/// What a start could not set up before the app starts: the kernel
+/// layers its settings ask for, because SAM's helper was not found, and
+/// the Wayland security context the desktop offers but refused (its
+/// error). A desktop without security contexts is not in it: there is
+/// nothing SAM could have applied.
+struct MissingAtStart<'a> {
+    landlock: bool,
+    seccomp: bool,
+    wayland: Option<&'a str>,
+}
+
+/// Stops the start when it lacks a protection its settings ask for (B2
+/// R75, R77; owner, 2026-11-25: "refuse, with override"), unless the person
+/// chose "Start anyway" for this start, or it is the sandbox check, which
+/// reports each layer itself. Before, such a start went on with a warning
+/// only: without its syscall filter and Landlock, or with the
+/// compositor's own socket and every privileged Wayland function.
+fn protection_check(missing: &MissingAtStart, opts: &LaunchOptions) -> Result<()> {
+    if opts.start_anyway || opts.probe.is_some() {
+        return Ok(());
+    }
+    let mut what = Vec::new();
+    if missing.landlock {
+        what.push(sam_core::i18n::tr("Landlock write protection"));
+    }
+    if missing.seccomp {
+        what.push(sam_core::i18n::tr("the syscall filter"));
+    }
+    let mut why = Vec::new();
+    if missing.landlock || missing.seccomp {
+        why.push(sam_core::i18n::tr(
+            "SAM's helper sam-jail-run was not found next to sam-jail",
+        ));
+    }
+    if let Some(e) = missing.wayland {
+        what.push(sam_core::i18n::tr("the Wayland security context"));
+        why.push(sam_core::i18n::trf(
+            "the desktop did not set up the Wayland security context: {error}",
+            &[("error", &e)],
+        ));
+    }
+    if what.is_empty() {
+        return Ok(());
+    }
+    Err(sam_core::error::CodedError::new(
+        PROTECTION_MISSING,
+        sam_core::i18n::trf(
+            "SAM did not start the app: it would run without {layers}, which its settings ask for ({why}). Start it anyway only if you trust it without that protection; this applies to that one start.",
+            &[("layers", &what.join(", ")), ("why", &why.join("; "))],
+        ),
+    )
+    .into())
 }
 
 /// second, global setting was on).
@@ -501,6 +565,9 @@ pub fn prepare(
     let mut sound = None;
     let mut wayland = None;
     let mut wayland_context_failed = false;
+    // What this start could not set up (B2 R75, R77; see `protection_check`).
+    let mut wayland_error: Option<String> = None;
+    let mut helper_missing = false;
     let home_watch;
     let mut home_record = None;
     let mut moved_at_start = Vec::new();
@@ -640,6 +707,7 @@ pub fn prepare(
                     )),
                     Err(e) => {
                         wayland_context_failed = true;
+                        wayland_error = Some(format!("{e:#}"));
                         warnings.push(Warning::warn("wayland-context-failed", "Wayland security context failed", sam_core::i18n::trf("{error}; the app uses the normal Wayland socket", &[("error", &format!("{e:#}"))])));
                     }
                 }
@@ -681,9 +749,23 @@ pub fn prepare(
                     landlock = want_landlock;
                     seccomp = want_seccomp;
                 }
-                None => warnings.extend(helper_missing_warnings(wanted.layers, wanted.rooms)),
+                None => {
+                    helper_missing = true;
+                    warnings.extend(helper_missing_warnings(wanted.layers, wanted.rooms));
+                }
             }
         }
+        // A protection the settings ask for and this start could not set up
+        // stops the start, unless the person chose "Start anyway" for this
+        // one start (B2 R75, R77; owner, 2026-11-25).
+        protection_check(
+            &MissingAtStart {
+                landlock: helper_missing && want_landlock,
+                seccomp: helper_missing && want_seccomp,
+                wayland: wayland_error.as_deref(),
+            },
+            opts,
+        )?;
     }
 
     // Room service: its socket exists before the sandbox is built (the
@@ -2957,5 +3039,75 @@ mod helper_missing_tests {
             vec!["helper-missing", "room-service-failed"]
         );
         assert!(codes(false, false).is_empty());
+    }
+
+    /// B2 R75, R77: a start that lacks a protection its settings ask for
+    /// (SAM's helper missing for Landlock or the syscall filter, the
+    /// Wayland security context refused) stops with its own code and names
+    /// each missing layer; "Start anyway" lets that one start go on, and
+    /// the sandbox check, which reports each layer itself, is never stopped.
+    #[test]
+    fn a_start_without_a_protection_it_asks_for_stops_unless_started_anyway() {
+        let none = MissingAtStart {
+            landlock: false,
+            seccomp: false,
+            wayland: None,
+        };
+        let opts = LaunchOptions::default();
+        assert!(protection_check(&none, &opts).is_ok());
+        for (missing, names) in [
+            (
+                MissingAtStart {
+                    landlock: true,
+                    seccomp: true,
+                    wayland: None,
+                },
+                vec!["Landlock", "syscall filter", "sam-jail-run"],
+            ),
+            (
+                MissingAtStart {
+                    landlock: false,
+                    seccomp: true,
+                    wayland: None,
+                },
+                vec!["syscall filter", "sam-jail-run"],
+            ),
+            (
+                MissingAtStart {
+                    landlock: true,
+                    seccomp: false,
+                    wayland: None,
+                },
+                vec!["Landlock", "sam-jail-run"],
+            ),
+            (
+                MissingAtStart {
+                    landlock: false,
+                    seccomp: false,
+                    wayland: Some("the compositor refused"),
+                },
+                vec!["Wayland security context", "the compositor refused"],
+            ),
+        ] {
+            let e = protection_check(&missing, &opts).expect_err("stops");
+            assert_eq!(sam_core::error::code_of(&e), Some(PROTECTION_MISSING));
+            let text = format!("{e:#}");
+            for name in names {
+                assert!(text.contains(name), "{name}: {text}");
+            }
+            if missing.wayland.is_none() {
+                assert!(!text.contains("Wayland"), "{text}");
+            }
+            let anyway = LaunchOptions {
+                start_anyway: true,
+                ..Default::default()
+            };
+            assert!(protection_check(&missing, &anyway).is_ok());
+            let check = LaunchOptions {
+                probe: Some(crate::probe::ProbePlan { checks: vec![] }),
+                ..Default::default()
+            };
+            assert!(protection_check(&missing, &check).is_ok());
+        }
     }
 }
