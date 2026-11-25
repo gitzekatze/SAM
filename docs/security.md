@@ -151,10 +151,10 @@ their 64-bit twins, so the filter stays on for 32-bit AppImages
 (`a_32_bit_app_gets_its_calls_filtered_not_switched_off`). It used to be
 switched off for them, which let any app choose to run without it by
 making its start program 32-bit. One gap remains, as in Flatpak: a 32-bit
-socket opened through the old `socketcall` call is not limited to the
-listed types, because its type sits where no filter can read it. Other
-apps keep ending at a 32-bit call, so a 64-bit program cannot use the
-32-bit doors.
+socket or socket pair made through the old `socketcall` call is not
+limited to the listed types, because its type sits where no filter can
+read it. Other apps keep ending at a 32-bit call, so a 64-bit program
+cannot use the 32-bit doors.
 
 The same filter applies while SAM unpacks an AppImage, to its own reader
 and to the AppImage's own extractor (`an_unpacking_tool_cannot_open_the_kernels_rarely_used_doors`).

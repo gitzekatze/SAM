@@ -98,7 +98,14 @@ fn assert_shut(text: &str, what: &str) {
             host.get(door)
         );
     }
-    // A pair of sockets keeps to the same families (review R66).
+    // A pair of sockets keeps to the same families (review R66). Where
+    // the kernel has no crypto sockets it refuses the pair itself, and the
+    // refusal below would not be the filter's: a run that must prove
+    // everything fails then, never passes silently.
+    if host.get("PAIR_ALG").map(String::as_str) == Some("EAFNOSUPPORT") {
+        sam_runner::contracts::skip("this kernel has no crypto sockets (AF_ALG)")
+            .unwrap_or_else(|e| panic!("{e}"));
+    }
     assert_eq!(
         inside.get("PAIR_UNIX").map(String::as_str),
         Some("open"),

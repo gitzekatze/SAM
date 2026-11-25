@@ -380,9 +380,9 @@ fn strict_extra_syscalls() -> Vec<(&'static str, i64)> {
 /// sandboxes need namespaces and mounts), "blocked by the strict filter"
 /// (only with the strict filter on) or "limited" (only some uses refused:
 /// `ioctl` typing into the terminal, `socket` and `socketpair` the
-/// families outside [`SOCKET_FAMILIES`], `clone` a new user namespace without nested
-/// sandboxes). Every other call is allowed (audit S-F10: the list
-/// said "blocked" for calls the default filter allows).
+/// families outside [`SOCKET_FAMILIES`], `clone` a new user namespace
+/// without nested sandboxes). Every other call is allowed (audit S-F10:
+/// the list said "blocked" for calls the default filter allows).
 pub fn review_statuses() -> BTreeMap<&'static str, &'static str> {
     let always: Vec<&str> = baseline_syscalls(true)
         .into_iter()
@@ -573,14 +573,16 @@ const I386_CLONE3: u32 = 435;
 /// apps ran with no filter at all, and an app could choose that by making
 /// its start program 32-bit). A 32-bit call gets the same answers as its
 /// 64-bit twin: the listed calls are refused, so are typing into the
-/// terminal, socket families outside [`SOCKET_FAMILIES`] and, without
+/// terminal, socket and socket-pair families outside [`SOCKET_FAMILIES`]
+/// and, without
 /// nested sandboxes, a clone into a new user namespace and clone3. Every
 /// other 32-bit call is allowed; 64-bit calls jump past this part.
 ///
 /// One gap is left, as in Flatpak: socketcall(), through which older C
 /// libraries open sockets, passes the family in memory the filter cannot
-/// read, so a 32-bit socket opened that way is not limited to the listed
-/// families. Without this branch such an app had no filter at all.
+/// read, so a 32-bit socket or socket pair made that way is not limited
+/// to the listed families. Without this branch such an app had no filter
+/// at all.
 fn i386_branch(spec: &SeccompSpec) -> Result<seccompiler::BpfProgram> {
     use seccompiler::sock_filter;
     if !(spec.i386 && cfg!(target_arch = "x86_64")) {
@@ -964,10 +966,11 @@ mod tests {
             &[libc::EAFNOSUPPORT; 4],
             "crypto, packet, VM and Bluetooth pairs (control {control:?})"
         );
-        // Packet sockets are part of every common kernel: without the
-        // filter the kernel answers for itself (no place for the pair, or
-        // no right to raw packets), never "family not supported".
-        assert_ne!(control[3], libc::EAFNOSUPPORT, "{control:?}");
+        // Without the filter the kernel writes the pair's place before it
+        // looks at the family (Linux 4.17 and later), so it answers "bad
+        // address" for every family and makes no socket; never "family
+        // not supported".
+        assert!(!control[2..].contains(&libc::EAFNOSUPPORT), "{control:?}");
         let bt = SeccompSpec {
             bluetooth: true,
             ..SeccompSpec::default()
