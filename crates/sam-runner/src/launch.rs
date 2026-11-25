@@ -509,7 +509,7 @@ pub fn prepare(
         tracer: opts.tracer.clone(),
         extra_binds: opts.extra_binds.clone(),
         appdir_overlay: None,
-        sam_dirs: paths.sam_dirs(&cfg.extraction.location),
+        sam_dirs: paths.sam_dirs(&cfg.extraction.location, &host.home),
         sam_programs: sam_core::util::own_programs(),
         room_socket: None,
     };
@@ -1603,7 +1603,11 @@ fn terminal_banner(app: &AppEntry, ctx: &LaunchContext) -> String {
     }
     for key in sam_core::permissions::XDG_DIR_KEYS {
         if !fs.home && fs.xdg_access(key).is_granted() {
-            if let Some(d) = ctx.host.xdg_dir(key) {
+            // Never a user folder set inside SAM's own folders, which the
+            // sandbox refuses (independent re-review of decision 9).
+            if let Some(d) = ctx.host.xdg_dir(key).filter(|d| {
+                !sam_core::places::inside_sams_folders(&sam_core::places::resolve(d), &ctx.sam_dirs)
+            }) {
                 sees.push(sam_core::util::tildify(d));
             }
         }
@@ -2925,6 +2929,22 @@ mod tests {
         let line = terminal_banner(&app, &ctx);
         assert!(line.contains(&at("work")), "{line}");
         assert!(line.contains(&at("notes")), "{line}");
+        assert!(!line.contains(&at("Games/sam")), "{line}");
+        // A user folder set inside SAM's folders, which the sandbox
+        // refuses, is not named either; one elsewhere is (independent
+        // re-review of decision 9).
+        for d in ["Games/sam/docs", "Pictures"] {
+            std::fs::create_dir_all(home.join(d)).unwrap();
+        }
+        ctx.host.xdg_dirs = [("documents", "Games/sam/docs"), ("pictures", "Pictures")]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), home.join(v)))
+            .collect();
+        ctx.permissions.filesystem.home = false;
+        ctx.permissions.filesystem.documents = sam_core::permissions::Access::Ro;
+        ctx.permissions.filesystem.pictures = sam_core::permissions::Access::Ro;
+        let line = terminal_banner(&app, &ctx);
+        assert!(line.contains(&at("Pictures")), "{line}");
         assert!(!line.contains(&at("Games/sam")), "{line}");
     }
 

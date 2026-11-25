@@ -17,6 +17,16 @@
 - An extra folder inside SAM's own folders is not shown, and SAM says so.
   The sandbox check and a terminal app's start line agree, also when SAM
   keeps its folders in a place you chose (for example `~/Games/sam`).
+- The folders where SAM keeps its settings and data unless told otherwise
+  (`~/.config/sam`, `~/.local/share/sam`, and the same below another
+  config or data folder you set with `XDG_CONFIG_HOME` or `XDG_DATA_HOME`)
+  are now hidden from apps also while SAM keeps its own elsewhere, with or
+  without full home access. Before, an app could read them through an
+  extra folder inside them, or through the home when they were below
+  another config folder.
+- The sandbox check and a terminal app's start line no longer count a user
+  folder (for example Documents) set inside SAM's folders as shown; the
+  sandbox never showed it.
 - Not yet covered: a link inside a start place that you did not grant
   yourself (for example `~/.config/tmux/plugins` leading into a writable
   `~/work`) is not locked yet; the app can still write where it leads.

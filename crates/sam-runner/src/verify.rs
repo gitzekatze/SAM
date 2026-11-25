@@ -85,6 +85,11 @@ pub fn plan(p: &PermissionSet, cfg: &Config, paths: &Paths, host: &HostInfo) -> 
             },
         ));
     }
+    // SAM's own folders, the list the sandbox hides: also the folders
+    // named like them (`~/.local/share/sam`) while SAM keeps its own
+    // elsewhere, which the sandbox hides by name (independent re-review of
+    // decision 9).
+    let sam_dirs = paths.sam_dirs(&cfg.extraction.location, &host.home);
     for (key, title, a) in [
         ("documents", "Documents", fs.documents),
         ("downloads", "Downloads", fs.downloads),
@@ -99,11 +104,17 @@ pub fn plan(p: &PermissionSet, cfg: &Config, paths: &Paths, host: &HostInfo) -> 
         if !path.is_dir() || path == host.home {
             continue;
         }
-        let want = if rank(home_level) > rank(level(a)) {
-            home_level
-        } else {
-            level(a)
-        };
+        // A user folder set inside SAM's own folders is not shown: the
+        // sandbox refuses it and hides SAM's folders with the home
+        // (independent re-review of decision 9).
+        let want =
+            if sam_core::places::inside_sams_folders(&sam_core::places::resolve(path), &sam_dirs) {
+                Access::Hidden
+            } else if rank(home_level) > rank(level(a)) {
+                home_level
+            } else {
+                level(a)
+            };
         v.push(c(
             key,
             "Files",
@@ -115,8 +126,6 @@ pub fn plan(p: &PermissionSet, cfg: &Config, paths: &Paths, host: &HostInfo) -> 
             },
         ));
     }
-    // SAM's own folders, the list the sandbox hides.
-    let sam_dirs = paths.sam_dirs(&cfg.extraction.location);
     for (list, want) in [
         (&fs.custom_read, Access::ReadOnly),
         (&fs.custom_write, Access::ReadWrite),
@@ -1119,7 +1128,9 @@ mod tests {
     /// does. Before, only `~/.config/sam` and `~/.local/share/sam` were
     /// known, so the check expected the folder shown and failed a sandbox
     /// that was right (independent review of decision 9). A folder next to
-    /// SAM's stays as granted.
+    /// SAM's stays as granted. The folders named like SAM's
+    /// (`~/.local/share/sam`) count too while SAM keeps its own elsewhere
+    /// (independent re-review of decision 9).
     #[test]
     fn the_check_expects_no_folder_inside_sams_folders_wherever_they_are_kept() {
         let t = tempfile::tempdir().unwrap();
@@ -1153,6 +1164,62 @@ mod tests {
                 Access::ReadWrite,
                 "home {home}"
             );
+        }
+        // The folders where SAM keeps its own unless told otherwise
+        // (`~/.config/sam`, `~/.local/share/sam`) count as SAM's folders
+        // also while this SAM keeps its own elsewhere: the sandbox hides
+        // them by name, with the whole home and without it, so the check
+        // expects a folder inside them hidden, read-only or writable.
+        // Before, a read-only one was expected shown, and the check failed
+        // a sandbox that hid it (independent re-review of decision 9).
+        let by_name = [
+            h.home.join(".local/share/sam/x"),
+            h.home.join(".config/sam/y"),
+        ];
+        let written = h.home.join(".local/share/sam/w");
+        for d in by_name.iter().chain([&written]) {
+            fs::create_dir_all(d).unwrap();
+        }
+        for home in [false, true] {
+            let mut p = PermissionSet::strict_gui();
+            p.filesystem.home = home;
+            p.filesystem.home_access = Perm::Rw;
+            p.filesystem.custom_read = by_name
+                .iter()
+                .map(|d| d.to_string_lossy().into_owned())
+                .collect();
+            p.filesystem.custom_write = vec![written.to_string_lossy().into_owned()];
+            let pl = plan(&p, &cfg, &paths, &h);
+            for d in by_name.iter().chain([&written]) {
+                assert_eq!(
+                    folder(&pl, &title(d)),
+                    Access::Hidden,
+                    "{} home {home}",
+                    d.display()
+                );
+            }
+        }
+        // A user folder set inside SAM's folders (where it keeps its own,
+        // or named like them) is refused by the sandbox and hidden with
+        // SAM's folders, so it is expected hidden too.
+        let mut h2 = h.clone();
+        for (key, rel) in [
+            ("documents", ".local/share/sam/docs"),
+            ("pictures", "Games/sam/pics"),
+        ] {
+            fs::create_dir_all(h2.home.join(rel)).unwrap();
+            h2.xdg_dirs.insert(key.into(), h2.home.join(rel));
+        }
+        for home in [false, true] {
+            let mut p = PermissionSet::strict_gui();
+            p.filesystem.home = home;
+            p.filesystem.home_access = Perm::Rw;
+            p.filesystem.documents = Perm::Rw;
+            p.filesystem.pictures = Perm::Ro;
+            let pl = plan(&p, &cfg, &paths, &h2);
+            for t in ["Documents", "Pictures"] {
+                assert_eq!(folder(&pl, t), Access::Hidden, "{t} home {home}");
+            }
         }
     }
 

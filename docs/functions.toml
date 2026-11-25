@@ -230,13 +230,17 @@ tests = [
 id = 11
 area = "C"
 promise = "Keys, passwords and the files of your other apps stay hidden, even with full home access."
-code = ["sam-sandbox/src/lib.rs", "sam-core/src/risk.rs"]
+code = ["sam-sandbox/src/lib.rs", "sam-core/src/risk.rs", "sam-core/src/paths.rs", "sam-core/src/places.rs"]
 tests = ["a_grant_inside_sams_folder_does_not_show_it", "opened_files_are_judged_by_name_and_by_where_they_lead", "keys_start_places_and_sams_files_are_never_opened", "start_places_and_credential_stores_count_as_sensitive", "grants_of_parts_of_the_home_never_reach_start_places_or_secrets", "sams_own_folders_stay_hidden_inside_an_opened_folder", "key_and_system_folders_count_as_sensitive", "every_breakout_attempt_from_a_real_sandbox_fails", "every_hostile_appimage_fails_to_escape", "credential_files_and_folders_in_the_home_are_masked", "home_protection_is_prepared_only_for_a_writable_home", "sams_own_folders_stay_hidden_inside_a_granted_folder",
   "user_folder_locations_stay_read_only_with_a_writable_home",
   "a_linked_key_folder_is_hidden_also_when_only_its_target_is_granted",
   "places_behind_links_stay_protected_and_the_app_still_starts",
   "places_named_by_the_homes_real_path_are_protected_where_the_app_sees_them",
   "sams_own_folders_behind_a_link_are_hidden_where_the_app_reaches_them",
+  "folders_named_like_sams_are_hidden_while_sam_keeps_its_own_elsewhere",
+  "sams_folders_under_other_config_folders_are_hidden_not_only_read_only",
+  "sams_folders_hold_its_own_and_the_folders_named_like_them",
+  "sams_folders_by_name_follow_other_config_and_data_folders",
   "an_extra_folder_that_leads_to_the_whole_computer_asks_first",
   "no_later_bind_shows_a_hidden_credential_again",
   "credential_places_of_any_kind_are_hidden",

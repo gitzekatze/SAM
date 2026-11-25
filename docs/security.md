@@ -566,7 +566,10 @@ so nothing bound later shows them again
 `credentials_behind_links_pipes_and_sockets_stay_hidden`).
 
 **Hidden whenever anything would show them:** SAM's own folders
-(configuration, data and unpacked apps, wherever they are), whether a
+(configuration, data and unpacked apps, wherever they are, and the folders
+where SAM keeps them unless told otherwise: `~/.config/sam` and
+`~/.local/share/sam`, also below `XDG_CONFIG_HOME` and `XDG_DATA_HOME`,
+even while SAM keeps its own elsewhere), whether a
 permission, a folder you open with the app or a path on its command line
 would show them. They are replaced by an empty, throwaway folder, so an app
 cannot change its own permissions or another app's files.
@@ -635,11 +638,14 @@ How these stay protected with the home writable:
   above a grant can swap a part of its way for a link in the short time
   between SAM's look and Bubblewrap's mount, and Bubblewrap follows that
   link, so a start place could be bound writable. This is a known gap,
-  older than this rule (SAM had the same race before), and such a program
-  can usually already write into the start place another way: through a
-  link inside it that is not granted, which SAM does not lock yet. Binding
-  each grant through an open handle, which closes the race, is planned.
-  An extra folder inside SAM's own folders is not shown at all.
+  older than this rule (SAM had the same race before); such a program can
+  also write there when a start place holds a link into a folder it can
+  write, which SAM does not lock yet. Binding each grant through an open
+  handle, which closes the race, is planned.
+  An extra folder inside SAM's own folders is not shown at all, also inside
+  the folders named like them (`~/.config/sam`, `~/.local/share/sam`) while
+  SAM keeps its own elsewhere; the sandbox check and a terminal app's start
+  line count it as not shown.
 - **User folders are only what they are.** `user-dirs.dirs` says where
   Documents, Downloads and the others are. A folder set there to the home,
   a folder above it, a system folder, a key folder, a start place or a

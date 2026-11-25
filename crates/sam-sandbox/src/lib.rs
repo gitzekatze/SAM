@@ -1594,10 +1594,18 @@ fn guard_home(a: &mut Args, home: &Path, fsp: &FilesystemPerms, views: &Views) {
         // whole home granted, Bubblewrap refused and no app started; the
         // same with `~/.config` a link, SB-6).
         for c in views.mount_points(&path) {
-            if matches!(prot.as_str(), ".config/sam" | ".local/share/sam") {
-                if c.is_dir() {
-                    a.push("--tmpfs").path(&c);
-                }
+            // SAM's own folders by name, also under `XDG_CONFIG_HOME` and
+            // `XDG_DATA_HOME` (`~/cfg/sam`): an empty folder in their
+            // place, as for SAM's folders wherever they are, and the same
+            // test of the name as SAM's list of its folders
+            // (`Paths::sam_dirs`), which the sandbox check and the start
+            // line read. `~/cfg/sam` was only locked read-only, so the app
+            // could read SAM's settings there and the check failed a
+            // sandbox that did what it should (independent re-review of
+            // decision 9). Anything there that is not a folder stays
+            // read-only, as any protected place.
+            if sam_core::places::is_sams_name(&prot) && c.is_dir() {
+                a.push("--tmpfs").path(&c);
             } else if views.writable(&c) && c.exists() {
                 a.lock(&c);
             }
@@ -5849,6 +5857,55 @@ mod guard_tests {
                 !cmd.notes.iter().any(|n| n.contains("read-only")),
                 "{grant}: {:?}",
                 cmd.notes
+            );
+        }
+    }
+
+    /// The folders where SAM keeps its own unless told otherwise
+    /// (`~/.config/sam`, `~/.local/share/sam`) are among SAM's folders
+    /// (`Paths::sam_dirs`) also while this SAM keeps its own elsewhere
+    /// (`SAM_DATA_DIR=~/Games/sam`): a grant of something inside one is
+    /// hidden with or without the whole home, and a terminal app's start
+    /// line leaves it out, as the sandbox check expects. Before, without
+    /// the whole home it was shown read-only and named on the start line,
+    /// and with it the check expected it shown while the sandbox hid it by
+    /// name (independent re-review of decision 9).
+    #[test]
+    fn folders_named_like_sams_are_hidden_while_sam_keeps_its_own_elsewhere() {
+        let t = tempfile::tempdir().unwrap();
+        let base = fs::canonicalize(t.path()).unwrap();
+        let home = base.join("home");
+        for d in [".local/share/sam/x", ".config/sam/y", "Games/sam", "notes"] {
+            fs::create_dir_all(home.join(d)).unwrap();
+        }
+        let paths = sam_core::Paths {
+            config_dir: base.join("elsewhere/config"),
+            data_dir: home.join("Games/sam"),
+            applications_dir: base.join("applications"),
+            runtime_root: None,
+        };
+        let s = |p: PathBuf| p.to_string_lossy().into_owned();
+        for whole_home in [false, true] {
+            let mut p = PermissionSet::strict_gui();
+            p.filesystem.home = whole_home;
+            p.filesystem.home_access = Access::Rw;
+            p.filesystem.custom_read = [".local/share/sam/x", ".config/sam/y", "notes"]
+                .iter()
+                .map(|g| s(home.join(g)))
+                .collect();
+            let mut ctx = ctx_for(&p, &home);
+            ctx.sam_dirs = paths.sam_dirs("", &home);
+            let a = args_of(&ctx);
+            for d in [".local/share/sam", ".config/sam"] {
+                assert!(
+                    has_seq(&a, &["--tmpfs", &s(home.join(d))]),
+                    "{d}, whole home {whole_home}: {a:?}"
+                );
+            }
+            assert_eq!(
+                shown_extra_folders(&ctx),
+                vec![s(home.join("notes"))],
+                "whole home {whole_home}"
             );
         }
     }

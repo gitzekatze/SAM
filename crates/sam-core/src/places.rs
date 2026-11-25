@@ -328,7 +328,38 @@ pub fn read_only_grant_note(shown: &str, found: &StartPlaceGrant) -> String {
 /// the only protected places named `sam`): the sandbox never shows those
 /// to an app, so a grant in them is not shown at all.
 pub fn is_sams_place(found: &StartPlaceGrant) -> bool {
-    Path::new(&found.place).file_name() == Some("sam".as_ref())
+    is_sams_name(&found.place)
+}
+
+/// Whether the protected place `place` (relative to the home, as
+/// [`protected_places`] names it) is one of SAM's own folders by name:
+/// `.config/sam`, `.local/share/sam`, and the same under `XDG_CONFIG_HOME`
+/// or `XDG_DATA_HOME` (`cfg/sam`). The sandbox hides each of them as it
+/// hides SAM's own folders, never only read-only (independent re-review
+/// of decision 9: `~/cfg/sam` was only locked read-only, while the sandbox
+/// check expected a grant inside it hidden).
+pub fn is_sams_name(place: &str) -> bool {
+    Path::new(place).file_name() == Some("sam".as_ref())
+}
+
+/// The folders under `home` that are SAM's own by name ([`is_sams_name`]):
+/// where SAM keeps its settings and data unless `SAM_CONFIG_DIR` or
+/// `SAM_DATA_DIR` say otherwise. They count as SAM's folders also while
+/// this SAM keeps its own elsewhere (a portable setup, `~/Games/sam`): the
+/// sandbox hides them by name, so its check and the start texts take them
+/// from the same list ([`crate::Paths::sam_dirs`], independent re-review
+/// of decision 9).
+pub fn sams_folders_by_name(home: &Path) -> Vec<PathBuf> {
+    sams_folders_by_name_in(home, &protected_places(home))
+}
+
+/// [`sams_folders_by_name`] among the protected places `places`.
+pub fn sams_folders_by_name_in(home: &Path, places: &[String]) -> Vec<PathBuf> {
+    places
+        .iter()
+        .filter(|p| is_sams_name(p))
+        .map(|p| home.join(p))
+        .collect()
 }
 
 /// Whether `real` (a path with its links resolved) is one of SAM's own
@@ -492,5 +523,29 @@ mod tests {
             inside: true,
         };
         assert!(!in_sam("work", Some(&fish)));
+    }
+
+    /// SAM's folders by name are every protected place named `sam`: the
+    /// usual two, and the same under `XDG_CONFIG_HOME` and `XDG_DATA_HOME`
+    /// (`~/cfg/sam`), which the sandbox now hides as SAM's own instead of
+    /// only locking them read-only; a name that only begins like it, or
+    /// another place in those folders, is none (independent re-review of
+    /// decision 9).
+    #[test]
+    fn sams_folders_by_name_follow_other_config_and_data_folders() {
+        let t = tempfile::tempdir().unwrap();
+        let home = std::fs::canonicalize(t.path()).unwrap().join("u");
+        let places = protected_places_with(&home, Some(home.join("cfg")), Some(home.join("dat")));
+        let mut found = sams_folders_by_name_in(&home, &places);
+        found.sort();
+        let mut want: Vec<PathBuf> = [".config/sam", ".local/share/sam", "cfg/sam", "dat/sam"]
+            .iter()
+            .map(|p| home.join(p))
+            .collect();
+        want.sort();
+        assert_eq!(found, want);
+        for other in [".config/samba", "cfg/fish", "dat/applications"] {
+            assert!(!is_sams_name(other), "{other}");
+        }
     }
 }

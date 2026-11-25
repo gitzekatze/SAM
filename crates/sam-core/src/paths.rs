@@ -143,14 +143,28 @@ impl Paths {
     }
     /// SAM's own folders, which no app ever sees: its settings, its data
     /// and its unpack folder (`cfg_location`, config
-    /// `extraction.location`). The sandbox hides them, and the sandbox
-    /// check expects them hidden, from this one list.
-    pub fn sam_dirs(&self, cfg_location: &str) -> Vec<PathBuf> {
-        vec![
+    /// `extraction.location`), and the folders under `home` where SAM
+    /// keeps them unless told otherwise (`~/.config/sam`,
+    /// `~/.local/share/sam`, also under `XDG_CONFIG_HOME` and
+    /// `XDG_DATA_HOME`: [`crate::places::sams_folders_by_name`]), which
+    /// the sandbox also hides by name. The sandbox hides them, its check
+    /// expects them hidden and a terminal app's start line leaves them out,
+    /// all from this one list. Without the folders by name, with SAM's
+    /// data kept in `~/Games/sam`, the sandbox hid a grant inside
+    /// `~/.local/share/sam` while its check expected it shown (independent
+    /// re-review of decision 9).
+    pub fn sam_dirs(&self, cfg_location: &str, home: &Path) -> Vec<PathBuf> {
+        let mut dirs = vec![
             self.config_dir.clone(),
             self.data_dir.clone(),
             self.extracted_root(cfg_location),
-        ]
+        ];
+        for d in crate::places::sams_folders_by_name(home) {
+            if !dirs.contains(&d) {
+                dirs.push(d);
+            }
+        }
+        dirs
     }
 }
 
@@ -287,5 +301,34 @@ mod tests {
             file.file_stem().unwrap(),
             Paths::launcher_id("appimage-krita-9f3c").as_str()
         );
+    }
+
+    /// SAM's own folders are its settings, data and unpack folders where
+    /// they are kept, and the folders it keeps them in unless told
+    /// otherwise (`~/.config/sam`, `~/.local/share/sam`), also while it
+    /// keeps its own elsewhere (`SAM_DATA_DIR=~/Games/sam`), which the
+    /// sandbox hides by name; each once (independent re-review of
+    /// decision 9).
+    #[test]
+    fn sams_folders_hold_its_own_and_the_folders_named_like_them() {
+        let t = tempfile::tempdir().unwrap();
+        let home = std::fs::canonicalize(t.path()).unwrap().join("u");
+        let p = Paths {
+            config_dir: home.join(".config/sam"),
+            data_dir: home.join("Games/sam"),
+            applications_dir: home.join(".local/share/applications"),
+            runtime_root: None,
+        };
+        let dirs = p.sam_dirs("", &home);
+        for d in [
+            ".config/sam",
+            "Games/sam",
+            "Games/sam/extracted",
+            ".local/share/sam",
+        ] {
+            let n = dirs.iter().filter(|x| **x == home.join(d)).count();
+            assert_eq!(n, 1, "{d}: {dirs:?}");
+        }
+        assert_eq!(dirs.len(), 4, "{dirs:?}");
     }
 }
