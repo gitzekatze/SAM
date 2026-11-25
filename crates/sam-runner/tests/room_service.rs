@@ -311,12 +311,17 @@ say held "$(rv room --ro-bind "$HOME/work/docs" "$HOME/work/docs" -- /usr/bin/ca
 /// over where the link leads: the app renames the folder above it in its
 /// writable home and asks a room for the folder under its new name. The
 /// room never shows the real file (review B2 S2b: it did).
+/// Since SAM also pins the folders above where a hiding lands (review B2
+/// S3, R50), the rename is refused, and a room asking for another place
+/// below the writable home is built (R43; before, it was refused while
+/// the hidden file could move).
 const LINKED_CREDENTIAL: &str = r#"
 say control "$(rv room -- /usr/bin/echo ok)"
 say netrc_app "$($P read "$HOME/dotfiles/netrc")"
 say moved "$(mv "$HOME/dotfiles" "$HOME/dotfiles-moved" 2>/dev/null && echo yes || echo no)"
 say netrc_moved_app "$($P read "$HOME/dotfiles-moved/netrc")"
 say netrc_room "$(rv room --ro-bind "$HOME/dotfiles-moved" "$HOME/dotfiles-moved" -- $P read "$HOME/dotfiles-moved/netrc")"
+say room_below "$(mkdir -p "$HOME/notes" && rv room --ro-bind "$HOME/notes" "$HOME/notes" -- /usr/bin/echo built)"
 "#;
 
 /// The person's own Bubblewrap arguments that cut the app off the network
@@ -1555,26 +1560,31 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
             &log,
             &[
                 ("netrc_app", "blocked"),
-                ("moved", "yes"),
+                ("moved", "no"),
                 ("netrc_moved_app", "blocked"),
                 ("netrc_room", "blocked|refused"),
+                ("room_below", "built"),
             ],
         )
         .into_iter()
         .map(|f| format!("linked-credential: {f}")),
     );
-    if !log.lines().any(|l| {
+    // The folder above the hidden file is pinned: no room is refused for
+    // a hidden file that could move (R43).
+    if log.lines().any(|l| {
         l.starts_with("sam-room: refused") && l.contains("could move a protected or hidden place")
     }) {
-        failures
-            .push("linked-credential: the room was not refused for the movable hidden file".into());
+        failures.push(
+            "linked-credential: a room was refused although the hidden file cannot move".into(),
+        );
     }
     // The app moved `dotfiles` (or did not): remove whichever exists, and
     // make sure the secret is gone before the next scenario starts.
     let _ = fs::remove_file(w.home.join(".netrc"));
     let _ = fs::remove_dir_all(w.home.join("dotfiles-moved"));
     let _ = fs::remove_dir_all(w.home.join("dotfiles"));
-    for left in [".netrc", "dotfiles-moved", "dotfiles"] {
+    let _ = fs::remove_dir_all(w.home.join("notes"));
+    for left in [".netrc", "dotfiles-moved", "dotfiles", "notes"] {
         assert!(
             fs::symlink_metadata(w.home.join(left)).is_err(),
             "linked-credential: {left} is still in the test home"

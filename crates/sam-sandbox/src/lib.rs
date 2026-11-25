@@ -1312,7 +1312,21 @@ fn resolve(p: &Path) -> PathBuf {
 /// ([`Views::mount_points`]): a link itself is no folder to pin, and a pin
 /// through a relative one landed on the folder it points to, writable,
 /// over a read-only grant (security review 2026-11-23, SB-6).
-fn pins(home: &Path, views: &Views, sam_dirs: &[PathBuf], programs: &[PathBuf]) -> Vec<PathBuf> {
+///
+/// Also every folder above the place where a guard lands (`guarded`, SAM's
+/// folders and programs): a protected place or credential store kept
+/// through a link (dotfiles, `stow`) is guarded where the link leads, below
+/// folders that are not above its name. Renamed (`mv ~/dotfiles ~/y`), the
+/// guard moved along, and a new `~/dotfiles/bashrc` ran outside the sandbox
+/// at the next shell while the link `~/.bashrc` stayed as it was (review
+/// B2 S3, R50). A grant's own place is a mount point already.
+fn pins(
+    home: &Path,
+    views: &Views,
+    guarded: &[PathBuf],
+    sam_dirs: &[PathBuf],
+    programs: &[PathBuf],
+) -> Vec<PathBuf> {
     let mut pins: Vec<PathBuf> = Vec::new();
     let mut pin = |p: &Path| {
         for c in views.mount_points(p) {
@@ -1341,7 +1355,42 @@ fn pins(home: &Path, views: &Views, sam_dirs: &[PathBuf], programs: &[PathBuf]) 
             pin(anc);
         }
     }
+    for place in guarded.iter().chain(sam_dirs).chain(programs) {
+        for c in views.mount_points(place) {
+            for anc in c.ancestors().skip(1) {
+                if !views.grants.iter().any(|(g, _)| g == anc) {
+                    pin(anc);
+                }
+            }
+        }
+    }
     pins
+}
+
+/// The credential stores in the home that this start hides: the key
+/// folders not given, and the other stores unless hidden files are.
+fn masked_places(fsp: &FilesystemPerms) -> Vec<&'static str> {
+    let mut masks: Vec<&'static str> = Vec::new();
+    if !fsp.ssh {
+        masks.push(".ssh");
+    }
+    if !fsp.gnupg {
+        masks.push(".gnupg");
+    }
+    if !fsp.hidden_files {
+        masks.extend(SENSITIVE_DOTFILES);
+    }
+    masks
+}
+
+/// Every place in the home that [`guard_home`] guards in this start: the
+/// protected places and the hidden credential stores.
+fn guarded_places(home: &Path, fsp: &FilesystemPerms) -> Vec<PathBuf> {
+    protected_places(home)
+        .iter()
+        .map(|p| home.join(p))
+        .chain(masked_places(fsp).iter().map(|m| home.join(m)))
+        .collect()
 }
 
 /// Step 3, after every mount: SAM's own programs (its AppImage file, the
@@ -1402,17 +1451,7 @@ fn guard_home(a: &mut Args, home: &Path, fsp: &FilesystemPerms, views: &Views) {
     // covers the hiding. With `~/.git-credentials` a link into
     // `~/.config/git`, the protected place bound read-only after it showed
     // the real file again (mutation run 2026-11-23).
-    let mut masks: Vec<&str> = Vec::new();
-    if !fsp.ssh {
-        masks.push(".ssh");
-    }
-    if !fsp.gnupg {
-        masks.push(".gnupg");
-    }
-    if !fsp.hidden_files {
-        masks.extend(SENSITIVE_DOTFILES);
-    }
-    for m in masks {
+    for m in masked_places(fsp) {
         let path = home.join(m);
         let Ok(md) = fs::symlink_metadata(&path) else {
             continue;
@@ -1980,7 +2019,8 @@ impl Section<'_> {
             });
         }
         let views = &self.views;
-        for p in pins(&home, views, &ctx.sam_dirs, &ctx.sam_programs) {
+        let guarded = guarded_places(&home, fsp);
+        for p in pins(&home, views, &guarded, &ctx.sam_dirs, &ctx.sam_programs) {
             mount(&p, &|m| m.op2("--bind", &p, &p));
         }
         // Stable: at equal depth, the order above stays (a pin after the
@@ -3903,6 +3943,86 @@ mod guard_tests {
         p.filesystem.gnupg = true;
         let a = args_of(&ctx_for(&p, &home));
         assert!(!has_seq(&a, &["--tmpfs", &target]), "{a:?}");
+    }
+
+    /// A start file or credential store kept through a link (dotfiles,
+    /// `stow`) is guarded where the link leads: every writable folder above
+    /// that place is a mount point of its own, mounted before the guard, so
+    /// the app cannot rename it away and put a file of its own where the
+    /// unchanged link leads (review B2 S3, R50). A grant's own place is not
+    /// bound again, and nothing is pinned in a read-only home.
+    #[test]
+    fn the_folders_above_where_a_linked_protection_lands_are_pinned() {
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap().join("home");
+        for d in ["dotfiles/bash", "secrets", "deep/a/b"] {
+            fs::create_dir_all(home.join(d)).unwrap();
+        }
+        for f in ["dotfiles/bash/bashrc", "secrets/netrc", "deep/a/b/profile"] {
+            fs::write(home.join(f), "").unwrap();
+        }
+        let link = |to: &Path, at: &str| std::os::unix::fs::symlink(to, home.join(at)).unwrap();
+        link(Path::new("dotfiles/bash/bashrc"), ".bashrc");
+        link(Path::new("secrets/netrc"), ".netrc");
+        link(&home.join("deep/a/b/profile"), ".profile");
+        let s = |p: &str| home.join(p).to_string_lossy().into_owned();
+        let at = |a: &[String], seq: &[&str]| {
+            a.windows(seq.len())
+                .position(|w| w.iter().zip(seq).all(|(x, y)| x == y))
+        };
+        let a = args_of(&ctx_for(&full_rw(), &home));
+        for d in [
+            "dotfiles",
+            "dotfiles/bash",
+            "secrets",
+            "deep",
+            "deep/a",
+            "deep/a/b",
+        ] {
+            assert!(
+                at(&a, &["--bind", &s(d), &s(d)]).is_some(),
+                "{d} is a mount point of its own: {a:?}"
+            );
+        }
+        let pin = at(&a, &["--bind", &s("dotfiles"), &s("dotfiles")]).unwrap();
+        let bashrc = s("dotfiles/bash/bashrc");
+        let guard = at(&a, &["--ro-bind-try", &bashrc, &bashrc]).expect("bashrc read-only");
+        assert!(pin < guard, "the pin comes before the guard");
+        let pin = at(&a, &["--bind", &s("secrets"), &s("secrets")]).unwrap();
+        let mask = at(&a, &["--ro-bind", "/dev/null", &s("secrets/netrc")]).expect("netrc hidden");
+        assert!(pin < mask, "the pin comes before the hiding");
+        let h = s("");
+        let h = h.trim_end_matches('/');
+        assert_eq!(
+            a.windows(3).filter(|w| w == &["--bind", h, h]).count(),
+            1,
+            "the home is bound once"
+        );
+        // Read-only home: nothing to pin.
+        let mut p = full_rw();
+        p.filesystem.home_access = Access::Ro;
+        let a = args_of(&ctx_for(&p, &home));
+        assert!(at(&a, &["--bind", &s("dotfiles"), &s("dotfiles")]).is_none());
+        // Only the dotfiles folder granted: the folders inside it are
+        // pinned, the grant's own place is not bound again.
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.custom_write = vec![s("dotfiles")];
+        let a = args_of(&ctx_for(&p, &home));
+        let bash = s("dotfiles/bash");
+        assert!(at(&a, &["--bind", &bash, &bash]).is_some(), "{a:?}");
+        assert!(at(&a, &["--bind", &s("dotfiles"), &s("dotfiles")]).is_none());
+        // SAM's own folder reached through a link (an unpack folder in
+        // `~/Games`, a link into `~/vault`): the folder above where it
+        // lands is pinned too.
+        fs::create_dir_all(home.join("vault/games/sam")).unwrap();
+        link(Path::new("vault/games"), "Games");
+        let mut ctx = ctx_for(&full_rw(), &home);
+        ctx.sam_dirs = vec![home.join("Games/sam")];
+        let a = args_of(&ctx);
+        assert!(
+            at(&a, &["--bind", &s("vault"), &s("vault")]).is_some(),
+            "{a:?}"
+        );
     }
 
     /// The app's way to a host path is followed link by link as Linux
