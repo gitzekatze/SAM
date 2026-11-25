@@ -873,10 +873,10 @@ mod tests {
 
     /// Review R71: the hand-written architecture check that opens
     /// [`front_filter`] is the one seccompiler builds for this processor
-    /// (same field, same number, same end), on every processor SAM builds
-    /// for. A wrong number for aarch64 would end every call there; this
-    /// test catches it on an x86_64 machine too, since both are compared
-    /// for the processor the test runs on and CI runs it on both.
+    /// (same field, same number, same end), for the processor the test
+    /// runs on. A wrong number would end every call of every app there.
+    /// CI runs it on x86_64; the aarch64 number is checked wherever the
+    /// tests run on an aarch64 machine.
     #[test]
     fn the_filter_checks_the_architecture_seccompiler_checks() {
         for spec in [
