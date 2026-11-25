@@ -296,6 +296,7 @@ tests = [
   "own_names_from_the_id_and_the_window_class",
   "filtered_dbus_uses_proxy",
   "the_app_runs_as_the_user_and_host_tools_are_replaced_by_stand_ins",
+  "the_systemd_run_stand_in_skips_options_with_a_value",
   "without_nested_namespaces_user_namespaces_are_disabled",
   "extra_sockets_must_be_sockets",
   "tray_names_follow_watcher_permission",
