@@ -239,22 +239,12 @@ impl Sam {
         // read and write the same record (review of the fix for R86).
         let (_change, entry) = self.lock_for_change(&entry, &sam_core::i18n::tr("relocate it"))?;
         // An update or go back stopped after it was recorded puts a version
-        // in place at the old path; relocating would leave its copy to no
-        // record, and the next run would delete it (review of the fix for
-        // R86).
-        if let Some(p) = entry
-            .update_backup
-            .as_ref()
-            .and_then(|b| b.placing.as_ref())
-        {
-            bail!(
-                "{}",
-                sam_core::i18n::trf(
-                    "SAM is still putting a version of this app in place (its own copy is at {file}), so it does not relocate the app now. Finish it with Update or Go Back first.",
-                    &[("file", &tildify(&p.file))]
-                )
-            );
-        }
+        // in place at the old path, which may be gone (a renamed folder, an
+        // unplugged drive): relocating ends that work instead. A go back's
+        // copy, the only copy of the earlier version, becomes the named way
+        // back; an update's download is dropped once the record no longer
+        // names it (review of the fix for R86).
+        let placing = entry.update_backup.as_ref().and_then(|b| b.placing.clone());
         let p = fs::canonicalize(new_path)?;
         let fp = fingerprint::compute(&p)?;
         // Half-written copies a stopped update or go back left next to the
@@ -265,6 +255,9 @@ impl Sam {
             .as_ref()
             .is_some_and(|x| x.source.sha256 == fp.sha256);
         let saved = self.registry().update(&entry.id, |e| {
+            if let (Some(b), Some(pl)) = (e.update_backup.as_mut(), placing.as_ref()) {
+                retire_placing(b, pl);
+            }
             e.source_path = p.clone();
             e.source = fp.clone();
             e.state = if same {
@@ -278,7 +271,13 @@ impl Sam {
                 }
             }
         })?;
-        saved.with_context(|| sam_core::i18n::trf("no registered app '{id}'", &[("id", &entry.id)]))
+        let saved = saved.with_context(|| {
+            sam_core::i18n::trf("no registered app '{id}'", &[("id", &entry.id)])
+        })?;
+        if let Some(pl) = placing.filter(|pl| !pl.going_back) {
+            let _ = fs::remove_file(&pl.file);
+        }
+        Ok(saved)
     }
 
     /// Remove the sandbox. Returns the removed entry and problems that did
@@ -1541,18 +1540,7 @@ impl Sam {
             // download is simply dropped, the way back it had stays.
             self.registry().update(&entry.id, |f| {
                 if let Some(b) = f.update_backup.as_mut() {
-                    if p.going_back {
-                        *b = UpdateBackup {
-                            file: p.file.clone(),
-                            original_path: p.to.clone(),
-                            replaced_at: now(),
-                            sha256: p.checked.then(|| p.sha256.clone()),
-                            placed_sha256: None,
-                            placing: None,
-                        };
-                    } else {
-                        b.placing = None;
-                    }
+                    retire_placing(b, &p);
                 }
             })?;
             if !p.going_back {
@@ -2141,6 +2129,27 @@ fn unique_suffix() -> String {
 fn sync_dir(dir: &Path) {
     if let Ok(d) = fs::File::open(dir) {
         let _ = d.sync_all();
+    }
+}
+
+/// Ends the work `p` describes without putting anything in place, when the
+/// app's file is no longer where `p` puts it (relocated, or a record changed
+/// outside SAM): a go back's copy, the only copy of the earlier version,
+/// becomes the named way back; for an update only the mark goes (its
+/// download is the caller's to delete once the record is saved), and the
+/// way back it had stays (review of the fix for R86).
+fn retire_placing(b: &mut UpdateBackup, p: &sam_core::model::Placing) {
+    if p.going_back {
+        *b = UpdateBackup {
+            file: p.file.clone(),
+            original_path: p.to.clone(),
+            replaced_at: now(),
+            sha256: p.checked.then(|| p.sha256.clone()),
+            placed_sha256: None,
+            placing: None,
+        };
+    } else {
+        b.placing = None;
     }
 }
 
