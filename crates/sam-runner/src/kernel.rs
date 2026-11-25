@@ -442,8 +442,11 @@ pub const SOCKET_FAMILIES: &[i32] = &[
 /// - `socket` opens only the families in [`SOCKET_FAMILIES`].
 /// - without nested sandboxes, `clone3` answers "not implemented".
 ///
-/// These only refuse; whatever passes goes on to seccompiler's filter,
-/// which checks the architecture first and ends 32-bit callers.
+/// It starts with the architecture: a call of another one (a 32-bit call
+/// of an app without [`i386_branch`]) ends the process before any number
+/// is compared, since a 32-bit number can be a different call here (41 is
+/// `dup` there, `socket` here; review R71). The rest only refuses;
+/// whatever passes goes on to seccompiler's filter.
 fn front_filter(spec: &SeccompSpec) -> seccompiler::BpfProgram {
     use seccompiler::sock_filter;
     const LD_W_ABS: u16 = 0x20; // BPF_LD | BPF_W | BPF_ABS
@@ -451,9 +454,18 @@ fn front_filter(spec: &SeccompSpec) -> seccompiler::BpfProgram {
     const JSET_K: u16 = 0x45; // BPF_JMP | BPF_JSET | BPF_K
     const RET_K: u16 = 0x06; // BPF_RET | BPF_K
     const RET_ERRNO: u32 = 0x0005_0000; // SECCOMP_RET_ERRNO
+    const RET_KILL_PROCESS: u32 = 0x8000_0000; // SECCOMP_RET_KILL_PROCESS
     const NR: u32 = 0; // seccomp_data.nr
+    const ARCH: u32 = 4; // seccomp_data.arch
     const ARG0: u32 = 16; // seccomp_data.args[0], low half (little endian)
     const X32: u32 = 0x4000_0000;
+    // AUDIT_ARCH_AARCH64 or AUDIT_ARCH_X86_64 (the filter supports only
+    // these two; see `listed_calls`).
+    const NATIVE: u32 = if cfg!(target_arch = "aarch64") {
+        0xC000_00B7
+    } else {
+        0xC000_003E
+    };
     let op = |code, k, jt, jf| sock_filter { code, jt, jf, k };
     let mut families: Vec<u32> = SOCKET_FAMILIES.iter().map(|f| *f as u32).collect();
     if spec.bluetooth {
@@ -461,6 +473,9 @@ fn front_filter(spec: &SeccompSpec) -> seccompiler::BpfProgram {
     }
     let n = families.len() as u8;
     let mut f = vec![
+        op(LD_W_ABS, ARCH, 0, 0),
+        op(JEQ_K, NATIVE, 1, 0),
+        op(RET_K, RET_KILL_PROCESS, 0, 0),
         op(LD_W_ABS, NR, 0, 0),
         op(JSET_K, X32, 0, 1),
         op(RET_K, RET_ERRNO | libc::EPERM as u32, 0, 0),
@@ -1070,6 +1085,16 @@ mod tests {
             libc::WIFSIGNALED(ended) && libc::WTERMSIG(ended) == libc::SIGSYS,
             "a 64-bit app's 32-bit call ends it: {ended:#x}"
         );
+        // Also the 32-bit numbers that are socket (41, `dup` there) and
+        // clone3 (435) here: no answer, the end (review R71).
+        let twins: [fn() -> libc::c_long; 2] = [|| call32(41, 5, 0, 0), || call32(435, 0, 0, 0)];
+        for (n, call) in twins.into_iter().enumerate() {
+            let (_, ended) = errnos_and_status(Some(&SeccompSpec::default()), &[call]);
+            assert!(
+                libc::WIFSIGNALED(ended) && libc::WTERMSIG(ended) == libc::SIGSYS,
+                "32-bit twin {n} ends a 64-bit app: {ended:#x}"
+            );
+        }
         let spec = SeccompSpec {
             i386: true,
             ..SeccompSpec::default()
