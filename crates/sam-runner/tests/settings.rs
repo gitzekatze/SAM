@@ -187,6 +187,34 @@ fn only_the_review_clears_look_at_it_first() {
     );
 }
 
+/// A review sent from a page names what the page showed: when the app
+/// changed since (here "look at it first" set after the page was drawn),
+/// nothing is confirmed and the mark stays; the review of what is there
+/// now confirms it (review L4).
+#[test]
+fn a_review_from_an_out_of_date_page_confirms_nothing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (sam, id) = named_app(tmp.path(), "Shown");
+    let shown = sam_storage::review_fingerprint(&sam.resolve(&id).unwrap()).unwrap();
+    let mut marked = sam.registry().get(&id).unwrap().unwrap();
+    marked.content_changed_outside = true;
+    sam.registry().save(&mut marked).unwrap();
+    let err = sam.mark_reviewed_as_shown(&id, Some(&shown)).unwrap_err();
+    assert_eq!(sam_core::error::code_of(&err), Some("review-out-of-date"));
+    assert!(
+        err.to_string()
+            .contains("changed since this page showed it"),
+        "{err}"
+    );
+    assert!(
+        sam.resolve(&id).unwrap().content_changed_outside,
+        "still marked"
+    );
+    let now = sam_storage::review_fingerprint(&sam.resolve(&id).unwrap()).unwrap();
+    let reviewed = sam.mark_reviewed_as_shown(&id, Some(&now)).unwrap();
+    assert!(!reviewed.content_changed_outside && reviewed.reviewed);
+}
+
 /// A running app keeps its sandbox: removing it is refused until the app
 /// is closed (a launch holds a lock in the app's runtime folder).
 #[test]
