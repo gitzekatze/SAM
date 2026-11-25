@@ -290,3 +290,93 @@ fn no_start_while_the_sandbox_is_being_changed() {
     }
     drop(lock);
 }
+
+/// `sam-jail info` names the review fingerprint of what it shows, and
+/// `sam-jail review --seen` confirms only that: settings changed again
+/// after it was shown are not confirmed, and the app stays blocked
+/// (review L4: a review from an out-of-date page confirmed them unseen).
+#[test]
+fn a_review_confirms_only_what_was_shown() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    for d in ["run", "config", "home"] {
+        fs::create_dir_all(root.join(d)).unwrap();
+    }
+    // SAM's command line as built, not a copy: a copy run right after it
+    // was written can meet "Text file busy" while other tests here fork.
+    let sam = |root: &Path, args: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_sam-jail"))
+            .args(args)
+            .env("SAM_CONFIG_DIR", root.join("config"))
+            .env("SAM_DATA_DIR", root.join("data"))
+            .env("SAM_APPLICATIONS_DIR", root.join("applications"))
+            .env("HOME", root.join("home"))
+            .env("XDG_CONFIG_HOME", root.join("home/.config"))
+            .env("XDG_DATA_HOME", root.join("home/.local/share"))
+            .env("XDG_RUNTIME_DIR", root.join("run"))
+            .env("LC_ALL", "C")
+            .env_remove("LANGUAGE")
+            .env("PATH", "/usr/bin:/bin")
+            .stdin(Stdio::null())
+            .output()
+            .unwrap()
+    };
+    let img = root.join("Quick-1.0-x86_64.AppImage");
+    let img_s = img.to_str().unwrap();
+    assert!(
+        sam(root, &["dev", "make-fixture", "--name", "Quick", img_s])
+            .status
+            .success()
+    );
+    assert!(sam(root, &["add", img_s, "--no-launcher", "--accept"])
+        .status
+        .success());
+    let id = json(&sam(root, &["--json", "list"]))["data"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let record = root.join("data/apps").join(format!("{id}.json"));
+    let change = |key: &str| {
+        let mut v: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&record).unwrap()).unwrap();
+        v["profile"]["permissions"]["devices"][key] = true.into();
+        fs::write(&record, v.to_string()).unwrap();
+    };
+    let info = |root: &Path| json(&sam(root, &["--json", "info", &id]))["data"].clone();
+    // Changed outside SAM, and shown.
+    change("gamepads");
+    let shown = info(root)["review_fingerprint"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(shown.len(), 64, "{shown}");
+    // Changed again after it was shown.
+    change("usb");
+    let late = sam(root, &["review", &id, "--seen", &shown]);
+    let err = String::from_utf8_lossy(&late.stderr);
+    assert!(!late.status.success(), "not confirmed: {err}");
+    assert!(
+        err.contains("changed since this page showed it"),
+        "and says why: {err}"
+    );
+    assert_eq!(
+        info(root)["entry"]["changed_outside"],
+        true,
+        "still blocked"
+    );
+    // What is there now, shown and confirmed.
+    let now = info(root)["review_fingerprint"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_ne!(now, shown);
+    let ok = sam(root, &["review", &id, "--seen", &now]);
+    assert!(
+        ok.status.success(),
+        "{}",
+        String::from_utf8_lossy(&ok.stderr)
+    );
+    assert!(info(root)["entry"]
+        .get("changed_outside")
+        .is_none_or(|v| v == false));
+}

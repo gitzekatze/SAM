@@ -750,6 +750,20 @@ fn confirm_outside_text(perms: Option<&Value>, file: bool) -> (String, bool) {
     }
 }
 
+/// The note of an update's needs, for the question of "Confirm Settings":
+/// the page hides that note while settings changed outside SAM wait for
+/// a look, but confirming accepts it too, so the question names it (review
+/// L4: no button confirms a notice its page never showed). None without
+/// such a note.
+fn pending_note(pending: &[String]) -> Option<String> {
+    (!pending.is_empty()).then(|| {
+        crate::i18n::trf(
+            "Confirming also accepts the note about the updated AppImage, which likely needs: {needs}.",
+            &[("needs", &pending.join(", "))],
+        )
+    })
+}
+
 /// The protection layers the app's last start lacked although its
 /// settings ask for them (an older kernel, or SAM's helper not found).
 fn missing_layers(entry: Option<&Value>) -> Vec<String> {
@@ -919,6 +933,25 @@ impl CreationProgress {
 #[cfg(test)]
 mod tests {
     use serde_json::json;
+
+    /// "Confirm Settings" names the note of an update's needs, which the
+    /// page hides meanwhile but confirming accepts (review L4).
+    #[test]
+    fn the_question_names_the_update_note_that_confirming_accepts() {
+        assert_eq!(super::pending_note(&[]), None);
+        let note = super::pending_note(&["sound".into(), "webcam".into()]).unwrap();
+        assert!(note.contains("sound, webcam"), "{note}");
+    }
+
+    /// The arguments of a review always carry what the page showed, so
+    /// SAM can refuse it when the app changed since (review L4).
+    #[test]
+    fn a_review_from_the_page_names_what_it_showed() {
+        assert_eq!(
+            super::data::review_args("app-1a2b", "f00d"),
+            ["review", "app-1a2b", "--seen", "f00d"]
+        );
+    }
 
     /// "Confirm Settings" names what the changed settings let the app do
     /// before it may start again: full home and X11 written into the record

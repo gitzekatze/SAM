@@ -407,7 +407,30 @@ impl Sam {
     }
 
     pub fn mark_reviewed(&self, query: &str) -> Result<AppEntry> {
+        self.mark_reviewed_as_shown(query, None)
+    }
+
+    /// [`Sam::mark_reviewed`] from a page that showed the app with the
+    /// review fingerprint `seen` (`sam_storage::review_fingerprint`). When
+    /// the app changed since (a mark, a notice, a setting or the AppImage),
+    /// nothing is confirmed and the error says to look again (code
+    /// `review-out-of-date`): no button may confirm what its page never
+    /// showed (review L4). Without `seen` (a person at the terminal), what
+    /// is there now is confirmed.
+    pub fn mark_reviewed_as_shown(&self, query: &str, seen: Option<&str>) -> Result<AppEntry> {
         let mut e = self.resolve(query)?;
+        if let Some(seen) = seen {
+            if sam_storage::review_fingerprint(&e)? != seen {
+                return Err(sam_core::error::CodedError::new(
+                    "review-out-of-date",
+                    sam_core::i18n::trf(
+                        "{app} changed since this page showed it. Look at it again, then confirm.",
+                        &[("app", &sam_core::util::display_safe(e.display_name(), 80))],
+                    ),
+                )
+                .into());
+            }
+        }
         e.reviewed = true;
         e.pending_changes.clear();
         // The one place that confirms changes made outside SAM.

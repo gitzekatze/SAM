@@ -1,13 +1,16 @@
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
-.TH sam-jail-review 1 2026-11-16 "SAM 0.1.0" "SAM - Sandboxed AppImage Manager"
+.TH sam-jail-review 1 2026-11-25 "SAM 0.1.0" "SAM - Sandboxed AppImage Manager"
 .SH NAME
 sam\-jail\-review \- Mark an app\*(Aqs profile as reviewed
 .SH SYNOPSIS
-\fBsam\-jail review\fR [\fB\-h\fR|\fB\-\-help\fR] <\fIAPP\fR> 
+\fBsam\-jail review\fR [\fB\-\-seen\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIAPP\fR> 
 .SH DESCRIPTION
 Mark an app\*(Aqs profile as reviewed
 .SH OPTIONS
+.TP
+\fB\-\-seen\fR \fI<FINGERPRINT>\fR
+Confirm only the state shown: the `review_fingerprint` from `sam\-jail info` when it was shown. Refused when the app changed since (a notice, a setting, or the AppImage)
 .TP
 \fB\-h\fR, \fB\-\-help\fR
 Print help

@@ -477,16 +477,37 @@ impl AppPage {
                     let Some(me) = w.upgrade() else { return };
                     let Some(app) = me.app() else { return };
                     // One click is no look at the settings: the question
-                    // names what they let the app do (audit G-F12/13), as
-                    // they are now: they may have changed again since the
-                    // page read them. Unreadable ones count as risky.
+                    // names what they let the app do (audit G-F12/13). It is
+                    // asked only about the app as this page shows it: changed
+                    // since, the page is drawn again first (review L4).
+                    // Unreadable settings count as risky.
                     glib::spawn_future_local(async move {
-                        let now = app.backend.call(&["info", &me.app_id], None).await.ok();
-                        let (body, risky) = confirm_outside_text(
-                            now.as_ref()
-                                .and_then(|i| util::get(i, "entry.profile.permissions")),
+                        let now = match app.backend.call(&["info", &me.app_id], None).await {
+                            Ok(i) => i,
+                            Err(e) => {
+                                app.report_error(&e);
+                                return;
+                            }
+                        };
+                        if util::str_of(&now, "review_fingerprint") != me.shown_fingerprint() {
+                            app.toast(&crate::i18n::trf(
+                                "{app} changed since this page showed it. Look at it again, then confirm.",
+                                &[("app", &me.name())],
+                            ));
+                            me.reload();
+                            return;
+                        }
+                        let (mut body, risky) = confirm_outside_text(
+                            util::get(&now, "entry.profile.permissions"),
                             file,
                         );
+                        let pending = util::get(&now, "entry")
+                            .map(|e| util::list_of(e, "pending_changes"))
+                            .unwrap_or_default();
+                        if let Some(note) = pending_note(&pending) {
+                            body.push_str("\n\n");
+                            body.push_str(&note);
+                        }
                         if window::confirm(
                             &app.window,
                             &crate::i18n::tr("Confirm These Settings?"),
@@ -497,7 +518,7 @@ impl AppPage {
                         .await
                         {
                             me.simple(
-                                vec!["review".into(), me.app_id.clone()],
+                                me.review_args(),
                                 &crate::i18n::tr("Settings confirmed; the app starts again"),
                             );
                         }
@@ -524,10 +545,7 @@ impl AppPage {
                 let w = Rc::downgrade(self);
                 btn.connect_clicked(move |_| {
                     if let Some(me) = w.upgrade() {
-                        me.simple(
-                            vec!["review".into(), me.app_id.clone()],
-                            &crate::i18n::tr("Marked as reviewed"),
-                        );
+                        me.simple(me.review_args(), &crate::i18n::tr("Marked as reviewed"));
                     }
                 });
                 row.add_suffix(&btn);
@@ -551,7 +569,7 @@ impl AppPage {
                 let w = Rc::downgrade(self);
                 btn.connect_clicked(move |_| {
                     if let Some(me) = w.upgrade() {
-                        me.simple(vec!["review".into(), me.app_id.clone()], "");
+                        me.simple(me.review_args(), "");
                     }
                 });
                 row.add_suffix(&btn);
