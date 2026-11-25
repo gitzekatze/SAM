@@ -6069,7 +6069,7 @@ mod guard_tests {
             let said = Bubblewrap.build(&ctx).unwrap().notes;
             let home_note = said
                 .iter()
-                .any(|n| n.contains("~/.config/sam leads to your home folder,"));
+                .any(|n| n.contains("~/.config/sam, a folder SAM protects, is not a real folder but a shortcut to your whole home folder"));
             if whole_home {
                 let home_bind = at_seq(&a, &["--bind", &home_s, &home_s]);
                 assert_eq!(home_bind.len(), 1, "{a:?}");
@@ -6086,7 +6086,7 @@ mod guard_tests {
             }
             assert!(
                 said.iter().any(|n| n.contains(&work)
-                    && n.contains("~/.config/sam leads to your home folder or a folder above it")),
+                    && n.contains("~/.config/sam, a folder SAM protects, is not a real folder but a shortcut to your home folder or a folder above it")),
                 "whole home {whole_home}: {said:?}"
             );
             assert!(

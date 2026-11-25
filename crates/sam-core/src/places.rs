@@ -340,7 +340,7 @@ pub fn start_place_of_write_grant_in(
 pub fn start_place_note(shown: &str, found: &StartPlaceGrant) -> String {
     if found.home_or_above {
         crate::i18n::trf(
-            "{place} leads to your home folder or a folder above it, so SAM protects {path} as part of {place} and shows it read-only.",
+            "SAM shows {path} read-only to this app because {place}, a folder SAM protects, is not a real folder but a shortcut to your home folder or a folder above it. Another app may have made this shortcut. If you did not make it yourself, delete the shortcut {place}; your files stay where they are. In a file manager, Ctrl+H shows hidden folders, whose names begin with a dot.",
             &[("path", &shown), ("place", &format!("~/{}", found.place))],
         )
     } else if found.inside {
@@ -564,7 +564,7 @@ pub fn protected_place_at_home_in(
 /// app page and in `sam-jail info`.
 pub fn home_read_only_note(place: &str) -> String {
     crate::i18n::trf(
-        "{place} leads to your home folder, so SAM protects your whole home folder as part of {place} and shows it read-only.",
+        "SAM shows your home folder read-only to this app because {place}, a folder SAM protects, is not a real folder but a shortcut to your whole home folder. Another app may have made this shortcut. If you did not make it yourself, delete the shortcut {place}; your files stay where they are. In a file manager, Ctrl+H shows hidden folders, whose names begin with a dot.",
         &[("place", &format!("~/{place}"))],
     )
 }
@@ -874,7 +874,7 @@ mod tests {
         let note = start_place_note("~/work", found.as_ref().unwrap());
         assert!(note.contains("read-only"), "{note}");
         assert!(
-            note.contains("~/.config/sam leads to your home folder or a folder above it")
+            note.contains("~/.config/sam, a folder SAM protects, is not a real folder but a shortcut to your home folder or a folder above it")
                 && note.contains("~/work"),
             "{note}"
         );
@@ -936,13 +936,13 @@ mod tests {
         assert!(found.home_or_above, "{found:?}");
         let note = start_place_note("~/work", &found);
         assert!(
-            note.contains("~/.config/fish leads to your home folder or a folder above it"),
+            note.contains("~/.config/fish, a folder SAM protects, is not a real folder but a shortcut to your home folder or a folder above it"),
             "{note}"
         );
         let note = home_read_only_note(".config/fish");
         assert!(
-            note.contains("~/.config/fish leads to your home folder")
-                && note.contains("whole home folder")
+            note.contains("~/.config/fish, a folder SAM protects, is not a real folder but a shortcut to your whole home folder")
+                && note.contains("delete the shortcut ~/.config/fish")
                 && note.contains("read-only"),
             "{note}"
         );

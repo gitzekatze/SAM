@@ -1069,7 +1069,7 @@ mod tests {
         // The words say where that place leads, not that `~/work` lies
         // "inside ~/.config/sam" (independent review of decision 9).
         assert!(
-            m.contains("~/.config/sam leads to your home folder or a folder above it"),
+            m.contains("~/.config/sam, a folder SAM protects, is not a real folder but a shortcut to your home folder or a folder above it"),
             "{m}"
         );
         assert!(!m.contains("is inside"), "{m}");
@@ -1094,8 +1094,8 @@ mod tests {
         assert_eq!(hit.key.as_deref(), Some("filesystem.home"));
         assert!(
             hit.message
-                .contains("~/.config/sam leads to your home folder,")
-                && hit.message.contains("whole home folder")
+                .contains("~/.config/sam, a folder SAM protects, is not a real folder but a shortcut to your whole home folder")
+                && hit.message.contains("delete the shortcut ~/.config/sam")
                 && hit.message.contains("read-only"),
             "{}",
             hit.message
