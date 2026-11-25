@@ -33,7 +33,8 @@
 # Reviewed 2026-11-16 against the headers of Linux 6.x (x86_64 and the
 # generic table aarch64 uses); statuses made exact 2026-11-19 (audit
 # S-F10), with clock_adjtime, quotactl_fd, fspick and mount_setattr now
-# blocked like their siblings.
+# blocked like their siblings; open_tree_attr (Linux 6.15) on 2026-11-25
+# (review R67).
 _sysctl	allowed
 accept	allowed
 accept4	allowed
@@ -264,7 +265,7 @@ nfsservctl	allowed
 open	allowed
 open_by_handle_at	blocked
 open_tree	blocked unless nested sandboxes
-open_tree_attr	allowed
+open_tree_attr	blocked unless nested sandboxes
 openat	allowed
 openat2	allowed
 pause	allowed

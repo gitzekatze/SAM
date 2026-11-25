@@ -358,6 +358,11 @@ fn baseline_syscalls(allow_userns: bool) -> Vec<(&'static str, i64)> {
             libc::SYS_fspick,
             libc::SYS_mount_setattr,
         ]);
+        // open_tree and mount_setattr in one call (Linux 6.15): blocked
+        // like the two it combines (review R67). The libc crate has no
+        // name for it yet; its number is 467 on x86_64, i386 and aarch64,
+        // the only processors the filter supports (see `listed_calls`).
+        v.push(("open_tree_attr", 467));
     }
     v
 }
@@ -552,6 +557,7 @@ const I386_CALLS: &[(&str, u32)] = &[
     ("fsmount", 432),
     ("fspick", 433),
     ("mount_setattr", 442),
+    ("open_tree_attr", 467),
     ("ptrace", 26),
     ("process_vm_readv", 347),
     ("process_vm_writev", 348),
@@ -888,6 +894,7 @@ mod tests {
             || raw(libc::SYS_quotactl_fd, -1, 0),
             || raw(libc::SYS_fspick, -1, 0),
             || raw(libc::SYS_mount_setattr, -1, 0),
+            || raw(467, -1, 0), // open_tree_attr (review R67)
         ];
         let spec = SeccompSpec::default();
         let filtered = errnos(Some(&spec), &calls);
@@ -903,7 +910,7 @@ mod tests {
             &[eaf; 4],
             "crypto, VM, packet, Bluetooth sockets"
         );
-        assert_eq!(&filtered[8..], &[eperm; 6], "x32 calls and the siblings");
+        assert_eq!(&filtered[8..], &[eperm; 7], "x32 calls and the siblings");
         assert!(
             control[8] != eperm && control[9] != eperm,
             "x32: the kernel's answer, not the filter's"
@@ -912,17 +919,21 @@ mod tests {
             control[10], 0,
             "clock_adjtime reads the clock without the filter"
         );
-        // quotactl_fd and mount_setattr answer "bad descriptor" or
-        // "invalid" without the filter; fspick needs administrator rights,
-        // so the kernel refuses it either way.
-        assert!(control[11] != eperm && control[13] != eperm, "{control:?}");
+        // quotactl_fd, mount_setattr and open_tree_attr answer "bad
+        // descriptor", "invalid" or (before Linux 6.15) "no such call"
+        // without the filter; fspick needs administrator rights, so the
+        // kernel refuses it either way.
+        assert!(
+            control[11] != eperm && control[13] != eperm && control[14] != eperm,
+            "{control:?}"
+        );
         // With the Bluetooth switch, Bluetooth sockets as without the filter.
         let bt = SeccompSpec {
             bluetooth: true,
             ..SeccompSpec::default()
         };
         assert_eq!(errnos(Some(&bt), &calls[7..8]), control[7..8]);
-        // Nested sandboxes keep fspick and mount_setattr.
+        // Nested sandboxes keep fspick, mount_setattr and open_tree_attr.
         let nested = SeccompSpec {
             allow_userns: true,
             ..SeccompSpec::default()
@@ -1202,6 +1213,21 @@ mod tests {
             ..SeccompSpec::default()
         };
         assert_eq!(errnos(Some(&strict), &calls[13..]), [eperm], "strict");
+        // open_tree_attr through its 32-bit number (review R67).
+        let tree: Vec<fn() -> libc::c_long> = vec![|| call32(467, -1i32 as u32, 0, 0)];
+        let open_tree = errnos(None, &tree);
+        assert_ne!(open_tree, [eperm], "the kernel's own answer");
+        assert_eq!(errnos(Some(&spec), &tree), [eperm], "32-bit open_tree_attr");
+        let nested_tree = SeccompSpec {
+            i386: true,
+            allow_userns: true,
+            ..SeccompSpec::default()
+        };
+        assert_eq!(
+            errnos(Some(&nested_tree), &tree),
+            open_tree,
+            "nested, 32-bit"
+        );
         // Nested sandboxes: the namespace calls as without the filter.
         let nested = SeccompSpec {
             i386: true,
