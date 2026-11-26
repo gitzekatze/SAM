@@ -522,17 +522,15 @@ impl AppPage {
         glib::spawn_future_local(async move {
             let title = util::str_of(&sug, "title").to_string();
             let explanation = util::str_of(&sug, "explanation").to_string();
+            let asked = window_asks(&sug);
             let ask = if util::bool_of(&sug, "from_app_output") {
                 Some(crate::i18n::trf(
                     "This suggestion is based on messages the app printed itself. A malicious app can print messages to get more access.\n\n{explanation}",
                     &[("explanation", &explanation)],
                 ))
-            } else if asks_first(&sug) {
-                Some(explanation.clone())
             } else {
-                None
+                asked.then(|| explanation.clone())
             };
-            let asked = ask.is_some();
             if let Some(body) = ask {
                 if !window::confirm(
                     &app.window,
@@ -560,7 +558,7 @@ impl AppPage {
                         app.launch(&me.app_id);
                     }
                 }
-                Err(e) => match stale_hint_notice(&e) {
+                Err(e) => match stale_rating_notice(&e) {
                     Some(text) => app.toast(&text),
                     None => app.report_error(&e),
                 },
@@ -649,36 +647,43 @@ pub(super) fn asks_first(sug: &Value) -> bool {
     risk == "high" || risk == "dangerous" || util::str_of(sug, "action.kind") == "compat"
 }
 
-/// What the window says when the command line refuses a hint for a yes
-/// the window did not give: the page showed an older, lower rating (the
-/// settings changed since). SAM draws the page again, so the next click
-/// asks first; the command line's advice to add --yes does not fit here.
-pub(super) fn stale_hint_notice(e: &crate::backend::CliError) -> Option<String> {
-    e.is("hint-needs-yes").then(|| {
-        crate::i18n::tr("The rating of this hint changed. SAM shows the page again; apply it once more to be asked first.")
-    })
+/// Whether the window asks before applying a hint or repair step, and so
+/// confirms it for the command line with --yes: one from the app's own
+/// output always (the command line refuses it without --yes, audit U-M2;
+/// regression #69), any other by [`asks_first`].
+pub(super) fn window_asks(sug: &Value) -> bool {
+    util::bool_of(sug, "from_app_output") || asks_first(sug)
+}
+
+/// What the window says when the command line refuses a hint or repair
+/// step for a yes the window did not give: the page showed an older,
+/// lower rating, or a step that did not come from the app's own output
+/// (the settings or the last start changed since). SAM draws the page
+/// again, so the next click asks first; the command line's advice to add
+/// --yes does not fit here.
+pub(super) fn stale_rating_notice(e: &crate::backend::CliError) -> Option<String> {
+    if e.is("hint-needs-yes") {
+        Some(crate::i18n::tr("The rating of this hint changed. SAM shows the page again; apply it once more to be asked first."))
+    } else if e.is("step-needs-yes") || e.is("repair-needs-yes") {
+        Some(crate::i18n::tr("The rating of this repair step changed. SAM shows the page again; apply it once more to be asked first."))
+    } else {
+        None
+    }
 }
 
 /// The command that applies hint or repair step `id` to app `app_id`.
-/// The window has asked first where a step needs it, so it confirms for
-/// the command line: a repair step always (the command line refuses one
-/// from the app's own output without --yes; regression from #69), a hint
-/// exactly when the window asked (`hints --apply` refuses a hint rated
-/// Think twice or Dangerous, or compatibility mode, without --yes; owner
-/// decision 13 of 2026-11-23).
+/// The window confirms it for the command line with --yes exactly when it
+/// has asked first: a hint or repair step rated Think twice or Dangerous,
+/// one that turns on compatibility mode, or one from the app's own output.
+/// The command line refuses each of those without --yes (`hints --apply`:
+/// owner decision 13 of 2026-11-23; `repair --apply`: decision A of
+/// 2026-11-25, and audit U-M2 for the app's own output), so a step the
+/// page showed with an older, lower rating is refused instead of being
+/// applied unasked, and the page is drawn again.
 pub(super) fn apply_args(app_id: &str, id: &str, as_repair: bool, asked: bool) -> Vec<String> {
-    let mut args: Vec<String> = if as_repair {
-        vec![
-            "repair".into(),
-            app_id.into(),
-            "--apply".into(),
-            id.into(),
-            "--yes".into(),
-        ]
-    } else {
-        vec!["hints".into(), app_id.into(), "--apply".into(), id.into()]
-    };
-    if !as_repair && asked {
+    let command = if as_repair { "repair" } else { "hints" };
+    let mut args: Vec<String> = vec![command.into(), app_id.into(), "--apply".into(), id.into()];
+    if asked {
         args.push("--yes".into());
     }
     args
