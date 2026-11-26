@@ -760,6 +760,7 @@ tests = [
   "a_risky_repair_step_needs_yes_and_says_what_it_changes",
   "a_hint_is_never_rated_below_what_it_grants",
   "the_window_confirms_a_hint_exactly_when_it_asked",
+  "the_window_confirms_a_repair_step_exactly_when_it_asked",
   "a_quick_failure_gets_a_notice_with_the_fix_button",
   "the_fix_button_opens_sam_only_when_sam_is_found",
   "only_a_quick_failure_counts_as_stopped_right_after_start",

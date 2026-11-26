@@ -9,7 +9,7 @@
 >
 > Test results are from the newest version report (2026-11-21 05:11:03).
 
-**42 functions:** 3 proven by passing tests, 38 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 1051 tests in all.
+**42 functions:** 3 proven by passing tests, 38 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 1052 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
@@ -36,7 +36,7 @@
 | 20 | [SAM checks from inside the sandbox that every setting applies (the sandbox check).](#20) | sam-jail-cli, sam-runner, sam-sandbox | 41 | ✅ 🆕 27 new tests since the report |
 | 21 | [A second start, closing, and stopping work cleanly and leave nothing behind.](#21) | sam-runner, sam-core | 31 | ✅ 🆕 23 new tests since the report |
 | 22 | [Logs of every start are kept, with old ones removed automatically.](#22) | sam-runner, sam-storage | 6 | ✅ 🆕 3 new tests since the report |
-| 23 | [After a failed start, SAM says what went wrong and offers a fix with one click.](#23) | sam-gtk, sam-runner | 20 | ✅ 🆕 13 new tests since the report |
+| 23 | [After a failed start, SAM says what went wrong and offers a fix with one click.](#23) | sam-gtk, sam-runner | 21 | ✅ 🆕 14 new tests since the report |
 | 24 | [Repair steps go from mild to strong, and each one can be undone.](#24) | sam-runner, sam-sandbox | 18 | ✅ 🆕 1 new test since the report |
 | 25 | [The diagnose run finds missing files and suggests only what helps.](#25) | sam-runner | 10 | ✅ 🆕 1 new test since the report |
 | 26 | [Compatibility mode as a last resort, with its cost explained, and it can be undone.](#26) | sam-runner | 4 | ✅ 🆕 1 new test since the report |
@@ -1053,6 +1053,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`a_risky_repair_step_needs_yes_and_says_what_it_changes`](../crates/sam-runner/src/repair.rs#L1733) | A repair step rated Think twice or Dangerous, or one that turns on compatibility mode, needs a yes like a risky hint, and the refusal names the step, what it changes and the two ways to say yes; a step rated Some access or Harmless does not. | 🆕 new |
 | [`a_hint_is_never_rated_below_what_it_grants`](../crates/sam-runner/src/repair.rs#L1524) | A first-run hint or repair step is never labelled lower than what applying it grants: for every hint and every step of the repair ladder SAM offers (apps built to trigger each one, alone and next to a home, a keyring or the network already allowed, with steps from what an app printed, on a computer that blocks Chromium's own sandbox and on one that does not), the rating is at least the highest level the change adds. | 🆕 new |
 | [`the_window_confirms_a_hint_exactly_when_it_asked`](../crates/sam-gtk/src/app_page/mod.rs#L961) | The window confirms a hint for the command line with --yes exactly when it has asked: a hint rated Think twice or Dangerous, or one that turns on compatibility mode, but not a Medium one (owner decision 13 of 2026-11-23: `hints --apply` refuses a risky hint without --yes). | 🆕 new |
+| [`the_window_confirms_a_repair_step_exactly_when_it_asked`](../crates/sam-gtk/src/app_page/mod.rs#L999) | The window confirms a repair step for the command line with --yes exactly when it has asked, as it does for a hint: a step rated Think twice or Dangerous, one that turns on compatibility mode, or one from the app's own output. | 🆕 new |
 | [`a_quick_failure_gets_a_notice_with_the_fix_button`](../crates/sam-jail-cli/tests/menu_notice.rs#L193) | An app that fails right after it started gets a notice saying so, and its button opens SAM's window at that app's repair page. | 🆕 new |
 | [`the_fix_button_opens_sam_only_when_sam_is_found`](../crates/sam-jail-cli/src/bin/sam-jail-run.rs#L655) | "Show the fix" opens SAM's own AppImage when SAM runs from one; with no SAM window anywhere there is no button (a plain notice), never a button that runs nothing. | 🆕 new |
 | [`only_a_quick_failure_counts_as_stopped_right_after_start`](../crates/sam-core/src/model.rs#L933) | Only a failure within the first ten seconds counts as "stopped right after starting" (the menu start's notice with a likely fix): not a clean end, however quick, and not a failure after the app ran for a while. | 🆕 new |
@@ -1138,7 +1139,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`a_changed_record_stays_blocked_until_it_is_confirmed`](../crates/sam-runner/tests/tamper.rs#L184) ⟲ | Regression (audit U-H1): the mark "changed outside SAM" was erased by the next save of the record. | ✅ |
 | [`a_late_save_keeps_a_change_made_meanwhile`](../crates/sam-storage/src/lib.rs#L1101) | `update` changes the record as it is on disk now, so work that took a while does not undo a change made meanwhile (audit U-M8: the update check turned a switch back on). | ✅ |
 | [`add_reminds_to_confirm_unconfirmed_settings`](../crates/sam-jail-cli/tests/commands.rs#L499) | `add` on the terminal reminds to confirm the settings of an app that is not confirmed yet (it does not start before), and not of one added with --accept. | 🆕 new |
-| [`confirming_changed_settings_names_what_they_allow`](../crates/sam-gtk/src/app_page/mod.rs#L999) | "Confirm Settings" names what the changed settings let the app do before it may start again: full home and X11 written into the record from outside appear in the question (audit G-F12/13: one click confirmed them unseen). | 🆕 new |
+| [`confirming_changed_settings_names_what_they_allow`](../crates/sam-gtk/src/app_page/mod.rs#L1042) | "Confirm Settings" names what the changed settings let the app do before it may start again: full home and X11 written into the record from outside appear in the question (audit G-F12/13: one click confirmed them unseen). | 🆕 new |
 
 **Code:** [`sam-storage/src/lib.rs`](../crates/sam-storage/src/lib.rs), [`sam-runner/src/launch.rs`](../crates/sam-runner/src/launch.rs), [`sam-runner/src/ops/profiles.rs`](../crates/sam-runner/src/ops/profiles.rs), [`sam-gtk/src/app_page/render.rs`](../crates/sam-gtk/src/app_page/render.rs)
 
@@ -1387,7 +1388,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`every_isolation_verdict_says_why`](../crates/sam-core/src/model.rs#L1071) | Each isolation verdict tells the person why, in words of its own (shown as the app's warning and in `info`). | 🆕 new |
 | [`list_filters_and_sorts_the_apps`](../crates/sam-jail-cli/tests/commands.rs#L404) | `list` finds apps by name or by id alone, by badge and by category, and sorts by the last start or by when they were added. | 🆕 new |
 | [`a_name_an_app_chose_cannot_take_over_another_apps_query`](../crates/sam-storage/src/lib.rs#L1256) ⟲ | Regression (audit U-L7): the name an AppImage gives itself came first, so one added later calling itself "firefox" was started for `sam-jail run firefox` instead of "Firefox Web Browser", with its own permissions. | 🆕 new |
-| [`the_header_is_not_green_while_a_protection_layer_was_missing`](../crates/sam-gtk/src/app_page/mod.rs#L1025) | The header's "Sandboxed" is green only while the last start had every protection layer; with one missing it is amber and names the layer (audit G-F15: it stayed green). | 🆕 new |
+| [`the_header_is_not_green_while_a_protection_layer_was_missing`](../crates/sam-gtk/src/app_page/mod.rs#L1068) | The header's "Sandboxed" is green only while the last start had every protection layer; with one missing it is amber and names the layer (audit G-F15: it stayed green). | 🆕 new |
 
 **Code:** [`sam-gtk/src/window.rs`](../crates/sam-gtk/src/window.rs), [`sam-gtk/src/pages.rs`](../crates/sam-gtk/src/pages.rs), [`sam-core/src/model.rs`](../crates/sam-core/src/model.rs), [`sam-storage/src/lib.rs`](../crates/sam-storage/src/lib.rs), [`sam-jail-cli/src/output.rs`](../crates/sam-jail-cli/src/output.rs)
 

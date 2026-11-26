@@ -957,7 +957,7 @@ mod tests {
     /// when it has asked: a hint rated Think twice or Dangerous, or one
     /// that turns on compatibility mode, but not a Medium one (owner
     /// decision 13 of 2026-11-23: `hints --apply` refuses a risky hint
-    /// without --yes). A repair step is always confirmed, as before.
+    /// without --yes).
     #[test]
     fn the_window_confirms_a_hint_exactly_when_it_asked() {
         use super::data::{apply_args, asks_first};
@@ -978,18 +978,61 @@ mod tests {
                 "{risk} {kind}: {args:?}"
             );
         }
-        assert_eq!(
-            apply_args("app-1", "x11", true, false),
-            ["repair", "app-1", "--apply", "x11", "--yes"]
-        );
         // A refusal for a rating the page did not show yet: a short
         // notice, then the page is drawn again; other errors as before.
         use crate::backend::CliError;
-        let stale = super::data::stale_hint_notice(&CliError::coded("hint-needs-yes", "x"));
+        let stale = super::data::stale_rating_notice(&CliError::coded("hint-needs-yes", "x"));
         assert!(stale.is_some_and(|t| !t.contains("--yes")));
         assert!(
-            super::data::stale_hint_notice(&CliError::coded("change-needs-yes", "x")).is_none()
+            super::data::stale_rating_notice(&CliError::coded("change-needs-yes", "x")).is_none()
         );
+    }
+
+    /// The window confirms a repair step for the command line with --yes
+    /// exactly when it has asked, as it does for a hint: a step rated
+    /// Think twice or Dangerous, one that turns on compatibility mode, or
+    /// one from the app's own output. A step it did not ask about goes
+    /// without --yes, so where SAM now rates it higher than the page showed
+    /// (review of PR #149: the window passed --yes for every repair step),
+    /// the command line refuses it and the window draws the page again
+    /// with a short notice instead of applying it unasked.
+    #[test]
+    fn the_window_confirms_a_repair_step_exactly_when_it_asked() {
+        use super::data::{apply_args, asks_first, stale_rating_notice};
+        use crate::backend::CliError;
+        let step =
+            |risk: &str, kind: &str| json!({"id": "s", "risk": risk, "action": {"kind": kind}});
+        for (risk, kind) in [
+            ("high", "set"),
+            ("dangerous", "set"),
+            ("medium", "compat"),
+            ("medium", "set"),
+            ("low", "set"),
+        ] {
+            let asked = asks_first(&step(risk, kind));
+            let args = apply_args("app-1", "s", true, asked);
+            assert_eq!(&args[..4], ["repair", "app-1", "--apply", "s"]);
+            assert_eq!(
+                args.iter().any(|a| a == "--yes"),
+                asked,
+                "{risk} {kind}: {args:?}"
+            );
+        }
+        // Not asked: no --yes, whatever step it is.
+        assert_eq!(
+            apply_args("app-1", "x11", true, false),
+            ["repair", "app-1", "--apply", "x11"]
+        );
+        assert_eq!(
+            apply_args("app-1", "x11", true, true),
+            ["repair", "app-1", "--apply", "x11", "--yes"]
+        );
+        // The command line's refusal of a step the window did not ask
+        // about becomes the short notice, never advice to add --yes.
+        for code in ["step-needs-yes", "repair-needs-yes"] {
+            let notice = stale_rating_notice(&CliError::coded(code, "x"));
+            assert!(notice.is_some_and(|t| !t.contains("--yes")), "{code}");
+        }
     }
 
     /// "Confirm Settings" names what the changed settings let the app do
