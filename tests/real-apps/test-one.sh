@@ -211,12 +211,14 @@ ok() { grep -q '"ok":true' "$out.selftest$1.json" && python3 -I -c "import json,
   round=0
   while ! ok "$round" && [ "$round" -lt 3 ]; do
       round=$((round + 1))
-      # A step rated Think twice or Dangerous waits for a yes (code
-      # step-needs-yes): the run stands in for the person who gives it in
-      # the window. A step from the app's own output or a risky first-run
-      # hint still ends the rounds, as before.
+      # A repair step or a first-run hint rated Think twice or Dangerous
+      # waits for a yes (codes step-needs-yes, hint-needs-yes): both are
+      # SAM's own suggestions, and the run stands in for the person who
+      # gives the yes in the window. A step from the app's own output
+      # (repair-needs-yes) still ends the rounds: the app controls that
+      # text, and SAM refuses it before it judges hints and steps.
       $S --json repair "$id" --next > "$out.repair$round.json" 2>&1 || {
-          grep -q '"step-needs-yes"' "$out.repair$round.json" &&
+          grep -qE '"(step|hint)-needs-yes"' "$out.repair$round.json" &&
               $S --json repair "$id" --next --yes > "$out.repair$round.json" 2>&1
       } || break
       start "$round"
