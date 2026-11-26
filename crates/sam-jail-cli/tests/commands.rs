@@ -304,60 +304,74 @@ fn a_risky_hint_needs_yes_through_repair_too() {
 }
 
 /// A step the app's own output raised stays the app's request when SAM
-/// has a first-run hint of the same name: the game's last start printed a
-/// network error (finding `network`), and the hint `network` was found
-/// first, without the mark, so `repair --next` asked for SAM's hint
-/// instead, and a script that confirms SAM's own hints granted the network
-/// on the app's word (independent review of 2026-11-27). Now `repair
-/// --next` and `repair --apply network` refuse it with `repair-needs-yes`,
-/// as for any step from the app's output, and nothing changes; with --yes
-/// it applies.
+/// has a first-run hint of the same name. The hint was found first,
+/// without the mark (independent review of 2026-11-27):
+/// - `gpu` (Some access): the app printed a graphics error, and `repair
+///   --next` turned on the GPU with no --yes at all;
+/// - `network` (Think twice): `repair --next` asked for SAM's hint
+///   (`hint-needs-yes`) instead, and a script that confirms SAM's own
+///   hints granted the network on the app's word.
+///
+/// Now `repair --next` and `repair --apply ID` refuse both with
+/// `repair-needs-yes`, as any step from the app's output, and nothing
+/// changes; with --yes they apply.
 #[test]
 fn a_step_the_apps_output_raised_stays_its_request_under_a_hints_name() {
+    use sam_core::model::{FixAction, LaunchRecord, Suggestion};
+    use sam_core::risk::RiskLevel;
     let e = Env::new();
-    let game = e.fixture("apps", "Rover", "Game;");
-    let id = e.add(&game, true);
-    let hint = e.json(&["hints", &id], None)["hints"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|h| h["id"] == "network");
-    assert!(hint, "a game without network is offered the hint");
-    e.edit_record(&id, |a| {
-        a.last_launch = Some(sam_core::model::LaunchRecord {
-            findings: vec![sam_core::model::Suggestion {
-                id: "network".into(),
-                title: "The app tried to go online".into(),
-                explanation: "Network requests failed.".into(),
-                action: sam_core::model::FixAction::Set {
-                    key: "network.mode".into(),
-                    value: "full".into(),
-                },
-                risk: sam_core::risk::RiskLevel::High,
-                from_app_output: true,
-            }],
-            ..Default::default()
-        });
-    });
-    let steps = e.json(&["repair", &id], None)["steps"].clone();
-    assert_eq!(
-        steps[0]["id"], "network",
-        "the finding comes first: {steps}"
-    );
-    let before = e.json(&["get", &id], None);
-    for args in [
-        &["--json", "repair", &id, "--next"][..],
-        &["--json", "repair", &id, "--apply", "network"][..],
+    for (name, step, key, value, risk) in [
+        ("Glider", "gpu", "devices.gpu", "true", RiskLevel::Medium),
+        ("Rover", "network", "network.mode", "full", RiskLevel::High),
     ] {
-        let o = e.run(args, None);
-        assert!(!o.status.success(), "{args:?} refused without --yes");
-        let v: Value = serde_json::from_slice(&o.stdout).unwrap();
-        assert_eq!(v["code"], "repair-needs-yes", "{args:?}: {v}");
-        assert_eq!(e.json(&["get", &id], None), before, "nothing changed");
-    }
+        let id = e.add(&e.fixture("apps", name, "Game;"), true);
+        e.edit_record(&id, |a| {
+            // What makes SAM offer its own `gpu` hint: a windowed app with
+            // programs and no toolkit or display found.
+            let d = a.detection.get_or_insert_with(Default::default);
+            d.elf_count = d.elf_count.max(1);
+            d.requirements.toolkit.clear();
+            d.requirements.wayland = false;
+            d.requirements.x11 = false;
+            a.metadata.terminal = false;
+            a.profile.permissions.devices.gpu = false;
+            a.last_launch = Some(LaunchRecord {
+                findings: vec![Suggestion {
+                    id: step.into(),
+                    title: "The app printed an error".into(),
+                    explanation: "From the app's output.".into(),
+                    action: FixAction::Set {
+                        key: key.into(),
+                        value: value.into(),
+                    },
+                    risk,
+                    from_app_output: true,
+                }],
+                ..Default::default()
+            });
+        });
+        let hints = e.json(&["hints", &id], None)["hints"].clone();
+        assert!(
+            hints.as_array().unwrap().iter().any(|h| h["id"] == step),
+            "{step}: SAM offers its own hint of that name: {hints}"
+        );
+        let steps = e.json(&["repair", &id], None)["steps"].clone();
+        assert_eq!(steps[0]["id"], step, "the finding comes first: {steps}");
+        let before = e.json(&["get", &id], None);
+        for args in [
+            &["--json", "repair", &id, "--next"][..],
+            &["--json", "repair", &id, "--apply", step][..],
+        ] {
+            let o = e.run(args, None);
+            assert!(!o.status.success(), "{args:?} refused without --yes");
+            let v: Value = serde_json::from_slice(&o.stdout).unwrap();
+            assert_eq!(v["code"], "repair-needs-yes", "{args:?}: {v}");
+            assert_eq!(e.json(&["get", &id], None), before, "{step}: unchanged");
+        }
 
-    e.json(&["repair", &id, "--next", "--yes"], None);
-    assert_eq!(e.json(&["get", &id, "network.mode"], None), "full");
+        e.json(&["repair", &id, "--next", "--yes"], None);
+        assert_ne!(e.json(&["get", &id], None), before, "{step}: applied");
+    }
 }
 
 /// `repair APP --apply ID` applies a repair step rated Think twice or
