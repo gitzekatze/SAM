@@ -756,6 +756,8 @@ tests = [
   "a_risky_hint_is_applied_only_with_yes",
   "a_risky_hint_needs_yes_through_repair_too",
   "a_risky_hint_needs_yes_and_says_what_it_allows",
+  "a_risky_repair_step_is_applied_only_with_yes",
+  "a_risky_repair_step_needs_yes_and_says_what_it_changes",
   "a_hint_is_never_rated_below_what_it_grants",
   "the_window_confirms_a_hint_exactly_when_it_asked",
   "a_quick_failure_gets_a_notice_with_the_fix_button",

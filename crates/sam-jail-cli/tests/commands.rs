@@ -303,6 +303,64 @@ fn a_risky_hint_needs_yes_through_repair_too() {
     assert_eq!(e.json(&["get", &id, "network.mode"], None), "full");
 }
 
+/// `repair APP --apply ID` applies a repair step rated Think twice or
+/// Dangerous only with --yes, as `set` and risky hints do: without it
+/// turning off the syscall filter is refused with `step-needs-yes`, names
+/// the step and changes nothing; with it the filter is off. A step rated
+/// Some access ("full-usr") needs no --yes (owner decision A of
+/// 2026-11-25: one command turned off the filter unasked).
+#[test]
+fn a_risky_repair_step_is_applied_only_with_yes() {
+    let e = Env::new();
+    let game = e.fixture("apps", "Rally", "Game;");
+    let id = e.add(&game, true);
+    let steps = e.json(&["repair", &id], None)["steps"]
+        .as_array()
+        .unwrap()
+        .clone();
+    let step = |sid: &str| {
+        steps
+            .iter()
+            .find(|s| s["id"] == sid)
+            .cloned()
+            .unwrap_or_else(|| panic!("{sid} offered: {steps:?}"))
+    };
+    let seccomp = step("seccomp-baseline");
+    assert_eq!(seccomp["risk"], "high", "{seccomp}");
+    assert_eq!(step("full-usr")["risk"], "medium");
+
+    let before = e.json(&["get", &id], None);
+    let o = e.run(
+        &["--json", "repair", &id, "--apply", "seccomp-baseline"],
+        None,
+    );
+    assert!(!o.status.success(), "refused without --yes");
+    let v: Value = serde_json::from_slice(&o.stdout).unwrap();
+    assert_eq!(v["code"], "step-needs-yes", "{v}");
+    let msg = v["error"].as_str().unwrap();
+    assert!(
+        msg.contains(seccomp["title"].as_str().unwrap()) && msg.contains("--yes"),
+        "{msg}"
+    );
+    assert_eq!(e.json(&["get", &id], None), before, "nothing changed");
+
+    e.json(&["repair", &id, "--apply", "full-usr"], None);
+    assert_eq!(e.json(&["get", &id, "advanced.host_runtime"], None), "full");
+    assert_eq!(
+        e.json(&["get", &id, "advanced.seccomp_baseline"], None),
+        true
+    );
+
+    e.json(
+        &["repair", &id, "--apply", "seccomp-baseline", "--yes"],
+        None,
+    );
+    assert_eq!(
+        e.json(&["get", &id, "advanced.seccomp_baseline"], None),
+        false
+    );
+}
+
 /// `menu list` on the terminal names an unsandboxed menu entry that starts
 /// the app, and after `menu hide` the hidden one; it says that no other
 /// entry starts the app only when there is none.

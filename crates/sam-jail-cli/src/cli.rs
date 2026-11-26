@@ -99,9 +99,9 @@ pub(crate) enum Cmd {
         /// Switch off one applied repair step (by id), keeping the others.
         #[arg(long, conflicts_with_all = ["apply", "next", "undo"])]
         undo_step: Option<String>,
-        /// Also apply a step suggested by what the app printed (the app
-        /// controls that text), or a first-run hint rated Think twice or
-        /// Dangerous; without it such a step is refused.
+        /// Also apply a step rated Think twice or Dangerous, one that turns
+        /// on compatibility mode, or one suggested by what the app printed
+        /// (the app controls that text); without it such a step is refused.
         #[arg(long)]
         yes: bool,
     },

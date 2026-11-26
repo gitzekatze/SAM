@@ -1023,7 +1023,7 @@ msgstr ""
 
 #: crates/sam-core/src/permissions.rs:1311 crates/sam-core/src/risk.rs:396
 #: crates/sam-runner/src/doctor.rs:342 crates/sam-runner/src/doctor.rs:344
-#: crates/sam-runner/src/doctor.rs:351 crates/sam-runner/src/repair.rs:933
+#: crates/sam-runner/src/doctor.rs:351 crates/sam-runner/src/repair.rs:979
 msgid "Writable app folder"
 msgstr "Dossier de l’application modifiable"
 
@@ -3198,7 +3198,7 @@ msgstr "Confirmer les réglages"
 
 #. Keep the {placeholders}; their order may change.
 #: crates/sam-gtk/src/app_page/render.rs:493
-#: crates/sam-runner/src/ops/profiles.rs:396
+#: crates/sam-runner/src/ops/profiles.rs:399
 msgid ""
 "{app} changed since this page showed it. Look at it again, then confirm."
 msgstr ""
@@ -7879,17 +7879,17 @@ msgid "sandbox check failed: {list}"
 msgstr "échec de la vérification du bac à sable : {list}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/profiles.rs:339
+#: crates/sam-runner/src/ops/profiles.rs:342
 msgid "the repair step '{step_id}' is not applied"
 msgstr "l’étape de réparation « {step_id} » n’est pas appliquée"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/profiles.rs:366
+#: crates/sam-runner/src/ops/profiles.rs:369
 msgid "no repair steps to undo for {app}"
 msgstr "aucune étape de réparation à annuler pour {app}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/profiles.rs:432
+#: crates/sam-runner/src/ops/profiles.rs:435
 msgid ""
 "the preset “{preset}” changed after it was checked; nothing was applied. "
 "Check it again."
@@ -8569,7 +8569,7 @@ msgid "{key} is not a list"
 msgstr "{key} n’est pas une liste"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/repair.rs:767
+#: crates/sam-runner/src/repair.rs:813
 msgid ""
 "SAM applies \"{title}\" ({level}) only after a yes. {effect} Look at it, "
 "then apply it with --yes, or in SAM's window, which asks."
@@ -8578,7 +8578,7 @@ msgstr ""
 "puis applique-le avec --yes, ou dans la fenêtre de SAM, qui demande."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/repair.rs:776
+#: crates/sam-runner/src/repair.rs:822
 msgid ""
 "SAM applies \"{title}\" ({level}) only after a yes. {effect} It adds "
 "{items}. Look at it, then apply it with --yes, or in SAM's window, which "
@@ -8588,60 +8588,60 @@ msgstr ""
 "{items}. Regarde-le, puis applique-le avec --yes, ou dans la fenêtre de SAM, "
 "qui demande."
 
-#: crates/sam-runner/src/repair.rs:796
+#: crates/sam-runner/src/repair.rs:842
 msgid "damaged repair record"
 msgstr "enregistrement de réparation endommagé"
 
-#: crates/sam-runner/src/repair.rs:898
+#: crates/sam-runner/src/repair.rs:944
 msgid "Show all of /usr"
 msgstr "Afficher tout /usr"
 
-#: crates/sam-runner/src/repair.rs:898
+#: crates/sam-runner/src/repair.rs:944
 msgid "Most crashes at start are a system file hidden by SAM's minimal view."
 msgstr ""
 "La plupart des plantages au démarrage viennent d’un fichier système caché "
 "par la vue minimale de SAM."
 
-#: crates/sam-runner/src/repair.rs:905
+#: crates/sam-runner/src/repair.rs:951
 msgid "Turn on X11"
 msgstr "Activer X11"
 
-#: crates/sam-runner/src/repair.rs:905
+#: crates/sam-runner/src/repair.rs:951
 msgid "For apps without Wayland support, or whose window does not appear."
 msgstr ""
 "Pour les applications sans prise en charge de Wayland, ou dont la fenêtre "
 "n’apparaît pas."
 
-#: crates/sam-runner/src/repair.rs:912
+#: crates/sam-runner/src/repair.rs:958
 msgid "Turn on GPU acceleration"
 msgstr "Activer l’accélération GPU"
 
-#: crates/sam-runner/src/repair.rs:912
+#: crates/sam-runner/src/repair.rs:958
 msgid "Some apps refuse to start without hardware graphics."
 msgstr "Certaines applications refusent de démarrer sans graphismes matériels."
 
-#: crates/sam-runner/src/repair.rs:919
+#: crates/sam-runner/src/repair.rs:965
 msgid "Allow nested namespaces"
 msgstr "Autoriser les espaces de noms imbriqués"
 
-#: crates/sam-runner/src/repair.rs:919
+#: crates/sam-runner/src/repair.rs:965
 msgid ""
 "Needed by apps that start their own sandbox (Chromium, Electron, WebKit)."
 msgstr ""
 "Nécessaire pour les applications qui lancent leur propre bac à sable "
 "(Chromium, Electron, WebKit)."
 
-#: crates/sam-runner/src/repair.rs:926
+#: crates/sam-runner/src/repair.rs:972
 msgid "Turn off the baseline syscall filter"
 msgstr "Désactiver le filtre de base des appels système"
 
-#: crates/sam-runner/src/repair.rs:926
+#: crates/sam-runner/src/repair.rs:972
 msgid "Rarely needed: some apps use kernel interfaces the filter blocks."
 msgstr ""
 "Rarement nécessaire : certaines applications utilisent des interfaces du "
 "noyau que le filtre bloque."
 
-#: crates/sam-runner/src/repair.rs:933
+#: crates/sam-runner/src/repair.rs:979
 msgid "For apps that save next to themselves."
 msgstr "Pour les applications qui enregistrent à côté d’elles."
 

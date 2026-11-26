@@ -211,7 +211,14 @@ ok() { grep -q '"ok":true' "$out.selftest$1.json" && python3 -I -c "import json,
   round=0
   while ! ok "$round" && [ "$round" -lt 3 ]; do
       round=$((round + 1))
-      $S --json repair "$id" --next > "$out.repair$round.json" 2>&1 || break
+      # A step rated Think twice or Dangerous waits for a yes (code
+      # step-needs-yes): the run stands in for the person who gives it in
+      # the window. A step from the app's own output or a risky first-run
+      # hint still ends the rounds, as before.
+      $S --json repair "$id" --next > "$out.repair$round.json" 2>&1 || {
+          grep -q '"step-needs-yes"' "$out.repair$round.json" &&
+              $S --json repair "$id" --next --yes > "$out.repair$round.json" 2>&1
+      } || break
       start "$round"
   done
   ok "$round" && started=1 || started=0
