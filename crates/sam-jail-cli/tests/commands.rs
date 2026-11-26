@@ -303,6 +303,63 @@ fn a_risky_hint_needs_yes_through_repair_too() {
     assert_eq!(e.json(&["get", &id, "network.mode"], None), "full");
 }
 
+/// A step the app's own output raised stays the app's request when SAM
+/// has a first-run hint of the same name: the game's last start printed a
+/// network error (finding `network`), and the hint `network` was found
+/// first, without the mark, so `repair --next` asked for SAM's hint
+/// instead, and a script that confirms SAM's own hints granted the network
+/// on the app's word (independent review of 2026-11-27). Now `repair
+/// --next` and `repair --apply network` refuse it with `repair-needs-yes`,
+/// as for any step from the app's output, and nothing changes; with --yes
+/// it applies.
+#[test]
+fn a_step_the_apps_output_raised_stays_its_request_under_a_hints_name() {
+    let e = Env::new();
+    let game = e.fixture("apps", "Rover", "Game;");
+    let id = e.add(&game, true);
+    let hint = e.json(&["hints", &id], None)["hints"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|h| h["id"] == "network");
+    assert!(hint, "a game without network is offered the hint");
+    e.edit_record(&id, |a| {
+        a.last_launch = Some(sam_core::model::LaunchRecord {
+            findings: vec![sam_core::model::Suggestion {
+                id: "network".into(),
+                title: "The app tried to go online".into(),
+                explanation: "Network requests failed.".into(),
+                action: sam_core::model::FixAction::Set {
+                    key: "network.mode".into(),
+                    value: "full".into(),
+                },
+                risk: sam_core::risk::RiskLevel::High,
+                from_app_output: true,
+            }],
+            ..Default::default()
+        });
+    });
+    let steps = e.json(&["repair", &id], None)["steps"].clone();
+    assert_eq!(
+        steps[0]["id"], "network",
+        "the finding comes first: {steps}"
+    );
+    let before = e.json(&["get", &id], None);
+    for args in [
+        &["--json", "repair", &id, "--next"][..],
+        &["--json", "repair", &id, "--apply", "network"][..],
+    ] {
+        let o = e.run(args, None);
+        assert!(!o.status.success(), "{args:?} refused without --yes");
+        let v: Value = serde_json::from_slice(&o.stdout).unwrap();
+        assert_eq!(v["code"], "repair-needs-yes", "{args:?}: {v}");
+        assert_eq!(e.json(&["get", &id], None), before, "nothing changed");
+    }
+
+    e.json(&["repair", &id, "--next", "--yes"], None);
+    assert_eq!(e.json(&["get", &id, "network.mode"], None), "full");
+}
+
 /// `repair APP --apply ID` applies a repair step rated Think twice or
 /// Dangerous only with --yes, as `set` and risky hints do: without it
 /// turning off the syscall filter is refused with `step-needs-yes`, names
