@@ -1139,7 +1139,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`a_changed_record_stays_blocked_until_it_is_confirmed`](../crates/sam-runner/tests/tamper.rs#L184) ⟲ | Regression (audit U-H1): the mark "changed outside SAM" was erased by the next save of the record. | ✅ |
 | [`a_late_save_keeps_a_change_made_meanwhile`](../crates/sam-storage/src/lib.rs#L1101) | `update` changes the record as it is on disk now, so work that took a while does not undo a change made meanwhile (audit U-M8: the update check turned a switch back on). | ✅ |
 | [`add_reminds_to_confirm_unconfirmed_settings`](../crates/sam-jail-cli/tests/commands.rs#L499) | `add` on the terminal reminds to confirm the settings of an app that is not confirmed yet (it does not start before), and not of one added with --accept. | 🆕 new |
-| [`confirming_changed_settings_names_what_they_allow`](../crates/sam-gtk/src/app_page/mod.rs#L1042) | "Confirm Settings" names what the changed settings let the app do before it may start again: full home and X11 written into the record from outside appear in the question (audit G-F12/13: one click confirmed them unseen). | 🆕 new |
+| [`confirming_changed_settings_names_what_they_allow`](../crates/sam-gtk/src/app_page/mod.rs#L1047) | "Confirm Settings" names what the changed settings let the app do before it may start again: full home and X11 written into the record from outside appear in the question (audit G-F12/13: one click confirmed them unseen). | 🆕 new |
 
 **Code:** [`sam-storage/src/lib.rs`](../crates/sam-storage/src/lib.rs), [`sam-runner/src/launch.rs`](../crates/sam-runner/src/launch.rs), [`sam-runner/src/ops/profiles.rs`](../crates/sam-runner/src/ops/profiles.rs), [`sam-gtk/src/app_page/render.rs`](../crates/sam-gtk/src/app_page/render.rs)
 
@@ -1388,7 +1388,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`every_isolation_verdict_says_why`](../crates/sam-core/src/model.rs#L1071) | Each isolation verdict tells the person why, in words of its own (shown as the app's warning and in `info`). | 🆕 new |
 | [`list_filters_and_sorts_the_apps`](../crates/sam-jail-cli/tests/commands.rs#L404) | `list` finds apps by name or by id alone, by badge and by category, and sorts by the last start or by when they were added. | 🆕 new |
 | [`a_name_an_app_chose_cannot_take_over_another_apps_query`](../crates/sam-storage/src/lib.rs#L1256) ⟲ | Regression (audit U-L7): the name an AppImage gives itself came first, so one added later calling itself "firefox" was started for `sam-jail run firefox` instead of "Firefox Web Browser", with its own permissions. | 🆕 new |
-| [`the_header_is_not_green_while_a_protection_layer_was_missing`](../crates/sam-gtk/src/app_page/mod.rs#L1068) | The header's "Sandboxed" is green only while the last start had every protection layer; with one missing it is amber and names the layer (audit G-F15: it stayed green). | 🆕 new |
+| [`the_header_is_not_green_while_a_protection_layer_was_missing`](../crates/sam-gtk/src/app_page/mod.rs#L1073) | The header's "Sandboxed" is green only while the last start had every protection layer; with one missing it is amber and names the layer (audit G-F15: it stayed green). | 🆕 new |
 
 **Code:** [`sam-gtk/src/window.rs`](../crates/sam-gtk/src/window.rs), [`sam-gtk/src/pages.rs`](../crates/sam-gtk/src/pages.rs), [`sam-core/src/model.rs`](../crates/sam-core/src/model.rs), [`sam-storage/src/lib.rs`](../crates/sam-storage/src/lib.rs), [`sam-jail-cli/src/output.rs`](../crates/sam-jail-cli/src/output.rs)
 

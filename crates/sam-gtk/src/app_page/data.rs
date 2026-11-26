@@ -522,17 +522,15 @@ impl AppPage {
         glib::spawn_future_local(async move {
             let title = util::str_of(&sug, "title").to_string();
             let explanation = util::str_of(&sug, "explanation").to_string();
+            let asked = window_asks(&sug);
             let ask = if util::bool_of(&sug, "from_app_output") {
                 Some(crate::i18n::trf(
                     "This suggestion is based on messages the app printed itself. A malicious app can print messages to get more access.\n\n{explanation}",
                     &[("explanation", &explanation)],
                 ))
-            } else if asks_first(&sug) {
-                Some(explanation.clone())
             } else {
-                None
+                asked.then(|| explanation.clone())
             };
-            let asked = ask.is_some();
             if let Some(body) = ask {
                 if !window::confirm(
                     &app.window,
@@ -647,6 +645,14 @@ impl AppPage {
 pub(super) fn asks_first(sug: &Value) -> bool {
     let risk = util::str_of(sug, "risk");
     risk == "high" || risk == "dangerous" || util::str_of(sug, "action.kind") == "compat"
+}
+
+/// Whether the window asks before applying a hint or repair step, and so
+/// confirms it for the command line with --yes: one from the app's own
+/// output always (the command line refuses it without --yes, audit U-M2;
+/// regression #69), any other by [`asks_first`].
+pub(super) fn window_asks(sug: &Value) -> bool {
+    util::bool_of(sug, "from_app_output") || asks_first(sug)
 }
 
 /// What the window says when the command line refuses a hint or repair

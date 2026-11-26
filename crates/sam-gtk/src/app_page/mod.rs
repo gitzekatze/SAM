@@ -998,24 +998,29 @@ mod tests {
     /// with a short notice instead of applying it unasked.
     #[test]
     fn the_window_confirms_a_repair_step_exactly_when_it_asked() {
-        use super::data::{apply_args, asks_first, stale_rating_notice};
+        use super::data::{apply_args, stale_rating_notice, window_asks};
         use crate::backend::CliError;
-        let step =
-            |risk: &str, kind: &str| json!({"id": "s", "risk": risk, "action": {"kind": kind}});
-        for (risk, kind) in [
-            ("high", "set"),
-            ("dangerous", "set"),
-            ("medium", "compat"),
-            ("medium", "set"),
-            ("low", "set"),
+        let step = |risk: &str, kind: &str, from_app: bool| json!({"id": "s", "risk": risk, "action": {"kind": kind}, "from_app_output": from_app});
+        for (risk, kind, from_app, expect) in [
+            ("high", "set", false, true),
+            ("dangerous", "set", false, true),
+            ("medium", "compat", false, true),
+            ("medium", "set", false, false),
+            ("low", "set", false, false),
+            // From the app's own output: always asked, and so confirmed,
+            // whatever its rating (regression #69: the command line
+            // refuses it without --yes, and the window would be stuck).
+            ("low", "set", true, true),
+            ("medium", "set", true, true),
         ] {
-            let asked = asks_first(&step(risk, kind));
+            let asked = window_asks(&step(risk, kind, from_app));
+            assert_eq!(asked, expect, "{risk} {kind} from app {from_app}");
             let args = apply_args("app-1", "s", true, asked);
             assert_eq!(&args[..4], ["repair", "app-1", "--apply", "s"]);
             assert_eq!(
                 args.iter().any(|a| a == "--yes"),
-                asked,
-                "{risk} {kind}: {args:?}"
+                expect,
+                "{risk} {kind} from app {from_app}: {args:?}"
             );
         }
         // Not asked: no --yes, whatever step it is.
