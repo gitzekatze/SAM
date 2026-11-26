@@ -1092,7 +1092,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-gtk: The window (logic that runs without a display)
 
-28 tests.
+29 tests.
 
 | Promise | Test |
 |---|---|
@@ -1104,8 +1104,9 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | "Confirm Settings" names the note of an update's needs, which the page hides meanwhile but confirming accepts (review L4). | [`the_question_names_the_update_note_that_confirming_accepts`](../crates/sam-gtk/src/app_page/mod.rs#L939) |
 | The arguments of a review always carry what the page showed, so SAM can refuse it when the app changed since (review L4). | [`a_review_from_the_page_names_what_it_showed`](../crates/sam-gtk/src/app_page/mod.rs#L948) |
 | The window confirms a hint for the command line with --yes exactly when it has asked: a hint rated Think twice or Dangerous, or one that turns on compatibility mode, but not a Medium one (owner decision 13 of 2026-11-23: `hints --apply` refuses a risky hint without --yes). | [`the_window_confirms_a_hint_exactly_when_it_asked`](../crates/sam-gtk/src/app_page/mod.rs#L961) |
-| "Confirm Settings" names what the changed settings let the app do before it may start again: full home and X11 written into the record from outside appear in the question (audit G-F12/13: one click confirmed them unseen). | [`confirming_changed_settings_names_what_they_allow`](../crates/sam-gtk/src/app_page/mod.rs#L999) |
-| The header's "Sandboxed" is green only while the last start had every protection layer; with one missing it is amber and names the layer (audit G-F15: it stayed green). | [`the_header_is_not_green_while_a_protection_layer_was_missing`](../crates/sam-gtk/src/app_page/mod.rs#L1025) |
+| The window confirms a repair step for the command line with --yes exactly when it has asked, as it does for a hint: a step rated Think twice or Dangerous, one that turns on compatibility mode, or one from the app's own output. | [`the_window_confirms_a_repair_step_exactly_when_it_asked`](../crates/sam-gtk/src/app_page/mod.rs#L999) |
+| "Confirm Settings" names what the changed settings let the app do before it may start again: full home and X11 written into the record from outside appear in the question (audit G-F12/13: one click confirmed them unseen). | [`confirming_changed_settings_names_what_they_allow`](../crates/sam-gtk/src/app_page/mod.rs#L1047) |
+| The header's "Sandboxed" is green only while the last start had every protection layer; with one missing it is amber and names the layer (audit G-F15: it stayed green). | [`the_header_is_not_green_while_a_protection_layer_was_missing`](../crates/sam-gtk/src/app_page/mod.rs#L1073) |
 | Preset names reach SAM after `--`, so one that starts with `-` is not read as an option (audit G-F20). | [`preset_names_are_never_read_as_options`](../crates/sam-gtk/src/backend.rs#L372) |
 | An installed (release) window runs only the command line tool next to it, never one in a neighbouring `debug` or `release` folder that an app with write access to the home could create (audit G-F10). | [`an_installed_window_runs_only_the_tool_next_to_it`](../crates/sam-gtk/src/backend.rs#L388) |
 | An installed (release) window never runs a program that a variable in its environment names (`SAM_CLI`, `SAM_RUN`); only a developer build does (owner decision 16 of 2026-11-23). | [`an_installed_window_ignores_a_program_named_in_its_environment`](../crates/sam-gtk/src/backend.rs#L413) |
@@ -1138,4 +1139,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 1051 automated Rust tests plus 8 scripted checks.
+Total: 1052 automated Rust tests plus 8 scripted checks.

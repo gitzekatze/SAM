@@ -666,7 +666,7 @@ msgstr ""
 msgid "Read-only access to GTK/Qt/KDE theme configuration so apps match your desktop."
 msgstr ""
 
-#: crates/sam-core/src/permissions.rs:1311 crates/sam-core/src/risk.rs:396 crates/sam-runner/src/doctor.rs:342 crates/sam-runner/src/doctor.rs:344 crates/sam-runner/src/doctor.rs:351 crates/sam-runner/src/repair.rs:979
+#: crates/sam-core/src/permissions.rs:1311 crates/sam-core/src/risk.rs:396 crates/sam-runner/src/doctor.rs:342 crates/sam-runner/src/doctor.rs:344 crates/sam-runner/src/doctor.rs:351 crates/sam-runner/src/repair.rs:981
 msgid "Writable app folder"
 msgstr ""
 
@@ -1794,8 +1794,12 @@ msgstr ""
 msgid "Updated; the previous version is kept"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/data.rs:658
+#: crates/sam-gtk/src/app_page/data.rs:660
 msgid "The rating of this hint changed. SAM shows the page again; apply it once more to be asked first."
+msgstr ""
+
+#: crates/sam-gtk/src/app_page/data.rs:662
+msgid "The rating of this repair step changed. SAM shows the page again; apply it once more to be asked first."
 msgstr ""
 
 #: crates/sam-gtk/src/app_page/mod.rs:123
@@ -6365,61 +6369,61 @@ msgstr ""
 msgid "{key} is not a list"
 msgstr ""
 
-#: crates/sam-runner/src/repair.rs:813
+#: crates/sam-runner/src/repair.rs:815
 #. Keep the {placeholders}; their order may change.
 msgid "SAM applies \"{title}\" ({level}) only after a yes. {effect} Look at it, then apply it with --yes, or in SAM's window, which asks."
 msgstr ""
 
-#: crates/sam-runner/src/repair.rs:822
+#: crates/sam-runner/src/repair.rs:824
 #. Keep the {placeholders}; their order may change.
 msgid "SAM applies \"{title}\" ({level}) only after a yes. {effect} It adds {items}. Look at it, then apply it with --yes, or in SAM's window, which asks."
 msgstr ""
 
-#: crates/sam-runner/src/repair.rs:842
+#: crates/sam-runner/src/repair.rs:844
 msgid "damaged repair record"
 msgstr ""
 
-#: crates/sam-runner/src/repair.rs:944
+#: crates/sam-runner/src/repair.rs:946
 msgid "Show all of /usr"
 msgstr ""
 
-#: crates/sam-runner/src/repair.rs:944
+#: crates/sam-runner/src/repair.rs:946
 msgid "Most crashes at start are a system file hidden by SAM's minimal view."
 msgstr ""
 
-#: crates/sam-runner/src/repair.rs:951
+#: crates/sam-runner/src/repair.rs:953
 msgid "Turn on X11"
 msgstr ""
 
-#: crates/sam-runner/src/repair.rs:951
+#: crates/sam-runner/src/repair.rs:953
 msgid "For apps without Wayland support, or whose window does not appear."
 msgstr ""
 
-#: crates/sam-runner/src/repair.rs:958
+#: crates/sam-runner/src/repair.rs:960
 msgid "Turn on GPU acceleration"
 msgstr ""
 
-#: crates/sam-runner/src/repair.rs:958
+#: crates/sam-runner/src/repair.rs:960
 msgid "Some apps refuse to start without hardware graphics."
 msgstr ""
 
-#: crates/sam-runner/src/repair.rs:965
+#: crates/sam-runner/src/repair.rs:967
 msgid "Allow nested namespaces"
 msgstr ""
 
-#: crates/sam-runner/src/repair.rs:965
+#: crates/sam-runner/src/repair.rs:967
 msgid "Needed by apps that start their own sandbox (Chromium, Electron, WebKit)."
 msgstr ""
 
-#: crates/sam-runner/src/repair.rs:972
+#: crates/sam-runner/src/repair.rs:974
 msgid "Turn off the baseline syscall filter"
 msgstr ""
 
-#: crates/sam-runner/src/repair.rs:972
+#: crates/sam-runner/src/repair.rs:974
 msgid "Rarely needed: some apps use kernel interfaces the filter blocks."
 msgstr ""
 
-#: crates/sam-runner/src/repair.rs:979
+#: crates/sam-runner/src/repair.rs:981
 msgid "For apps that save next to themselves."
 msgstr ""
 
