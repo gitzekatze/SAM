@@ -8,7 +8,9 @@ impl Sam {
 
     pub(super) fn save_profile(&self, entry: &mut AppEntry) -> Result<()> {
         entry.profile.user_modified = entry.profile.permissions != entry.recommended;
-        entry.pending_changes.clear();
+        // The note of an update's needs keeps what is not granted yet: a
+        // changed switch is not the person seeing it (review L5).
+        settle_update_note(entry, NoteEvent::SettingsChanged);
         // A changed switch is no confirmation that the person looked at a
         // record or file changed outside SAM: only `mark_reviewed` clears
         // those marks. Nor that they looked at the settings SAM chose from
@@ -424,7 +426,7 @@ impl Sam {
             }
         }
         e.reviewed = true;
-        e.pending_changes.clear();
+        settle_update_note(&mut e, NoteEvent::Seen);
         // The one place that confirms changes made outside SAM.
         e.changed_outside = false;
         e.content_changed_outside = false;
@@ -602,5 +604,150 @@ impl Sam {
             self.change_permissions(&id, perms)?;
         }
         Ok(n)
+    }
+}
+
+#[cfg(test)]
+mod update_note_tests {
+    use super::*;
+
+    /// An app whose update asked for the network and sound, which its
+    /// settings do not give yet.
+    fn updated_app(sam: &Sam) -> AppEntry {
+        let mut e = AppEntry {
+            id: "appimage-noted-1a2b".into(),
+            pending_changes: vec!["network".into(), "audio".into()],
+            ..Default::default()
+        };
+        e.recommended.network.mode = NetworkMode::Full;
+        e.recommended.audio.enabled = true;
+        e.profile.permissions.network.mode = NetworkMode::None;
+        e.profile.permissions.audio.enabled = false;
+        e.profile.permissions.devices.gpu = false;
+        sam.registry().save(&mut e).unwrap();
+        e
+    }
+
+    fn note(sam: &Sam, e: &AppEntry) -> Vec<String> {
+        sam.registry().get(&e.id).unwrap().unwrap().pending_changes
+    }
+
+    /// A switch the note does not name, changed on the app's page or the
+    /// command line, keeps the note: the person has not seen it by that
+    /// (review L5; before, any change cleared it).
+    #[test]
+    fn a_switch_change_unrelated_to_the_note_keeps_it() {
+        let t = tempfile::tempdir().unwrap();
+        let sam = Sam::with_paths(Paths::rooted(t.path())).unwrap();
+        let e = updated_app(&sam);
+        sam.set_permission(&e.id, "devices.gpu", "true").unwrap();
+        assert_eq!(note(&sam, &e), ["network", "audio"]);
+    }
+
+    /// A change for a group of apps on the permissions page keeps the
+    /// note of what it does not grant (review L5).
+    #[test]
+    fn a_group_change_from_the_permissions_page_keeps_the_note() {
+        let t = tempfile::tempdir().unwrap();
+        let sam = Sam::with_paths(Paths::rooted(t.path())).unwrap();
+        let e = updated_app(&sam);
+        let done = sam
+            .group_change("devices.gpu", "true", std::slice::from_ref(&e.id), false)
+            .unwrap();
+        assert!(done.apps[0].changed, "the group change saved the app");
+        assert_eq!(note(&sam, &e), ["network", "audio"]);
+    }
+
+    /// Granting what the note asked for takes exactly that need off the
+    /// note; the others stay.
+    #[test]
+    fn granting_exactly_the_requested_need_removes_it_from_the_note() {
+        let t = tempfile::tempdir().unwrap();
+        let sam = Sam::with_paths(Paths::rooted(t.path())).unwrap();
+        let e = updated_app(&sam);
+        sam.set_permission(&e.id, "network.mode", "full").unwrap();
+        assert_eq!(note(&sam, &e), ["audio"]);
+        sam.set_permission(&e.id, "audio.enabled", "true").unwrap();
+        assert!(note(&sam, &e).is_empty(), "both needs granted");
+    }
+
+    /// A folder need counts as granted only at the level the
+    /// recommendation asks for: read access does not grant read and write.
+    #[test]
+    fn a_folder_need_is_granted_only_at_the_level_asked() {
+        let t = tempfile::tempdir().unwrap();
+        let sam = Sam::with_paths(Paths::rooted(t.path())).unwrap();
+        let mut e = updated_app(&sam);
+        e.pending_changes = vec!["downloads folder".into()];
+        e.recommended.filesystem.downloads = Access::Rw;
+        e.profile.permissions.filesystem.downloads = Access::None;
+        sam.registry().save(&mut e).unwrap();
+        sam.set_permission(&e.id, "filesystem.downloads", "ro")
+            .unwrap();
+        assert_eq!(note(&sam, &e), ["downloads folder"]);
+        sam.set_permission(&e.id, "filesystem.downloads", "rw")
+            .unwrap();
+        assert!(note(&sam, &e).is_empty());
+    }
+
+    /// The note kept through a change goes with its own "Got It" (the
+    /// app's review), even with nothing granted.
+    #[test]
+    fn a_note_kept_through_a_change_goes_with_got_it() {
+        let t = tempfile::tempdir().unwrap();
+        let sam = Sam::with_paths(Paths::rooted(t.path())).unwrap();
+        let e = updated_app(&sam);
+        sam.set_permission(&e.id, "devices.gpu", "true").unwrap();
+        assert_eq!(note(&sam, &e), ["network", "audio"], "kept by the change");
+        sam.mark_reviewed(&e.id).unwrap();
+        assert!(note(&sam, &e).is_empty(), "cleared by Got It");
+    }
+
+    /// Reading the app again (an update, Unpack Again) adds what it newly
+    /// asks for and keeps what an earlier update asked for and nobody saw;
+    /// before, the new list replaced the note, so a second Unpack Again
+    /// emptied it.
+    #[test]
+    fn reading_the_app_again_keeps_an_unseen_need() {
+        let mut e = AppEntry {
+            pending_changes: vec!["network".into()],
+            ..Default::default()
+        };
+        e.recommended.network.mode = NetworkMode::Full;
+        e.recommended.devices.gpu = true;
+        e.profile.permissions.network.mode = NetworkMode::None;
+        e.profile.permissions.devices.gpu = false;
+        settle_update_note(&mut e, NoteEvent::Asked(Vec::new()));
+        assert_eq!(e.pending_changes, ["network"]);
+        settle_update_note(
+            &mut e,
+            NoteEvent::Asked(vec!["GPU".into(), "network".into()]),
+        );
+        assert_eq!(e.pending_changes, ["network", "GPU"]);
+    }
+
+    /// The note names the needs as before the one list (GPU, audio,
+    /// network, X11, folders), only those newly asked for and missing.
+    #[test]
+    fn the_note_names_new_needs_the_settings_lack() {
+        let old = PermissionSet::default();
+        let mut new = old.clone();
+        new.devices.gpu = true;
+        new.audio.enabled = true;
+        new.network.mode = NetworkMode::Full;
+        new.display.x11 = true;
+        new.filesystem.music = Access::Ro;
+        new.filesystem.downloads = Access::Rw;
+        let mut cur = old.clone();
+        cur.audio.enabled = true;
+        cur.filesystem.downloads = Access::Ro;
+        cur.devices.gpu = false;
+        cur.network.mode = NetworkMode::None;
+        cur.display.x11 = false;
+        cur.filesystem.music = Access::None;
+        assert_eq!(
+            new_requirements(&old, &new, &cur),
+            ["GPU", "network", "X11", "downloads folder", "music folder"]
+        );
     }
 }

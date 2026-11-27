@@ -497,12 +497,14 @@ impl Sam {
         // (regression, audit U-H3: v2 of a calculator could declare
         // Categories=Network and got the network without a question).
         if self.registry().exists(&entry.id) {
-            entry.pending_changes =
-                new_requirements(&old_rec, &rec.permissions, &entry.profile.permissions);
+            // What an earlier update asked for and the person has not seen
+            // stays in the note (review L5).
+            let asked = new_requirements(&old_rec, &rec.permissions, &entry.profile.permissions);
+            settle_update_note(entry, NoteEvent::Asked(asked));
             entry.profile.user_modified = entry.profile.permissions != entry.recommended;
         } else {
             entry.profile.permissions = rec.permissions.clone();
-            entry.pending_changes.clear();
+            settle_update_note(entry, NoteEvent::SettingsChanged);
         }
         entry.state = match report.as_ref().and_then(|r| r.verdict) {
             Some(IsolationVerdict::UnsafeToSandbox) => AppState::Unsafe,
