@@ -86,7 +86,10 @@ On by default where the kernel supports it. SAM's runner applies it inside
 the sandbox, just before the app starts. Turning it off for every app in
 Preferences asks first, as turning it off on one app's page does; so does
 turning off the syscall filter (`turning_a_protection_off_for_every_app_asks_first`,
-`tests/gui/flow-atspi.sh`).
+`tests/gui/flow-atspi.sh`). On the command line, `sam-jail config set` and
+`config put` turn either off only with `--yes`
+(`turning_a_protection_off_for_every_app_needs_yes`,
+`putting_a_configuration_that_turns_a_protection_off_needs_yes`).
 
 - Writes are allowed only in the app's home, its temporary folders and the
   folders granted read/write. Even if a mount were more permissive than

@@ -236,13 +236,12 @@ impl App {
 
     /// Saves one setting and loads the settings again; false when the
     /// save failed (the control that asked for it then shows the stored
-    /// value again, audit G-F15).
-    pub async fn set_config(self: &Rc<Self>, key: &str, value: &str) -> bool {
-        let saved = match self
-            .backend
-            .call(&["config", "set", key, value], None)
-            .await
-        {
+    /// value again, audit G-F15). `asked`: the window asked before this
+    /// change, which confirms it for the command line.
+    pub async fn set_config(self: &Rc<Self>, key: &str, value: &str, asked: bool) -> bool {
+        let args = config_set_args(key, value, asked);
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        let saved = match self.backend.call(&args, None).await {
             Ok(_) => true,
             Err(e) => {
                 self.report_error(&e);
@@ -933,11 +932,13 @@ impl App {
             me.set_config(
                 "general.scan_directories",
                 &serde_json::to_string(&dirs).expect("a list of paths serializes"),
+                false,
             )
             .await;
             me.set_config(
                 "general.scan_files",
                 &serde_json::to_string(&files).expect("a list of paths serializes"),
+                false,
             )
             .await;
             me.refresh_apps().await;
@@ -1351,6 +1352,7 @@ impl App {
                 me.set_config(
                     "general.scan_directories",
                     &serde_json::to_string(&dirs).expect("a list of paths serializes"),
+                    false,
                 )
                 .await;
             }
@@ -1358,6 +1360,7 @@ impl App {
                 me.set_config(
                     "general.scan_files",
                     &serde_json::to_string(&files).expect("a list of paths serializes"),
+                    false,
                 )
                 .await;
             }
@@ -1866,6 +1869,18 @@ pub async fn confirm(
     d.set_default_response(Some("cancel"));
     d.set_close_response("cancel");
     d.choose_future(Some(win)).await == "ok"
+}
+
+/// The arguments of `config set KEY VALUE`, with `--yes` exactly when the
+/// window asked first (turning a protection off for every app): the
+/// command line refuses that change without it, and must refuse any change
+/// the window did not ask about.
+pub(crate) fn config_set_args(key: &str, value: &str, asked: bool) -> Vec<String> {
+    let mut args: Vec<String> = vec!["config".into(), "set".into(), key.into(), value.into()];
+    if asked {
+        args.push("--yes".into());
+    }
+    args
 }
 
 /// The release page a "download it yourself" answer of the self-update

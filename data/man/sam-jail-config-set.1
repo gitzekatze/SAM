@@ -1,13 +1,16 @@
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
-.TH sam-jail-config-set 1 2026-11-23 "SAM 0.1.0" "SAM - Sandboxed AppImage Manager"
+.TH sam-jail-config-set 1 2026-11-27 "SAM 0.1.0" "SAM - Sandboxed AppImage Manager"
 .SH NAME
 sam\-jail\-config\-set \- Change one setting
 .SH SYNOPSIS
-\fBsam\-jail config set\fR [\fB\-h\fR|\fB\-\-help\fR] <\fIKEY\fR> <\fIVALUE\fR> 
+\fBsam\-jail config set\fR [\fB\-\-yes\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIKEY\fR> <\fIVALUE\fR> 
 .SH DESCRIPTION
 Change one setting
 .SH OPTIONS
+.TP
+\fB\-\-yes\fR
+Confirm a change that turns off Landlock or the syscall filter for every app
 .TP
 \fB\-h\fR, \fB\-\-help\fR
 Print help

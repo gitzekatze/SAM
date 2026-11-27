@@ -479,9 +479,21 @@ pub(crate) enum ConfigCmd {
     /// Print one setting (for example extraction.max_files).
     Get { key: String },
     /// Change one setting.
-    Set { key: String, value: String },
+    Set {
+        key: String,
+        value: String,
+        /// Confirm a change that turns off Landlock or the syscall filter
+        /// for every app.
+        #[arg(long)]
+        yes: bool,
+    },
     /// Replace the whole configuration from JSON on stdin.
-    Put,
+    Put {
+        /// Confirm a change that turns off Landlock or the syscall filter
+        /// for every app.
+        #[arg(long)]
+        yes: bool,
+    },
     /// Print where SAM keeps its configuration, data and logs.
     Path,
 }
