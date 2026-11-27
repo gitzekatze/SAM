@@ -13,6 +13,7 @@ pub mod icon;
 pub mod model;
 pub mod paths;
 pub mod permissions;
+pub mod place_check;
 pub mod places;
 pub mod risk;
 pub mod sandbox;
