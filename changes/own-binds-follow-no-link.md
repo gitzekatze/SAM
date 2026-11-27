@@ -26,11 +26,16 @@
   read-only. This never shows the app anything new. Anyone who can write
   in your home can use this to make a folder inside a writable folder
   read-only for the app while the link exists; the launch log names it.
+  Where the name of such a place is not valid text, the app does not
+  start, and SAM names the place, rather than leave it writable.
 - A link at a protected name can no longer keep the font settings
   writable where a granted folder shows them, also with your home kept
   behind a link. In a private home, a credential you keep as a link into
   a fonts folder (`~/.git-credentials` a link into `~/.fonts`) keeps that
-  fonts folder out, so the credential stays hidden.
+  fonts folder out, so the credential stays hidden. This also holds with
+  your home kept behind a link and an extra `~/.config`: SAM then shows
+  the font settings only where that folder shows them, where the
+  credential is hidden, and the launch log says why.
 - The launch log names each such link and where it leads in one note,
   and the app page and `sam-jail info` show the same before the start,
   under *Fonts or theme files behind a link*. An app with the whole home

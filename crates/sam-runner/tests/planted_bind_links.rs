@@ -22,7 +22,8 @@
 //! - a link at a protected name never knocks out the read-only bind of
 //!   the fonts settings, also with the home kept behind a link;
 //! - a credential kept as a link into a fonts folder stays hidden, in a
-//!   private home and with the home read-only;
+//!   private home and with the home read-only, also with the home kept
+//!   behind a link and an extra folder that shows the fonts settings;
 //! - a link you made, in a folder the app cannot change, to fonts
 //!   settings that a writable folder shows keeps them read-only there;
 //! - an extra folder's link in a folder the app can change that leads out
@@ -712,12 +713,14 @@ fn outside_tmp() -> tempfile::TempDir {
 
 /// A read-only grant never hides a link the app planted: with the whole
 /// home writable and `~/x` an extra read-only folder, the app makes `~/x`
-/// a link to `~/.local/share` and `~/.local/share/fonts` a link to a
-/// folder it is not shown, in one start. In the next start with the same
-/// permissions it reads nothing there, neither where the link leads nor
-/// through the fonts folder, and the start says why (before, `~/x`
-/// counted `~/.local/share` as a folder the app cannot change, and SAM
-/// bound the folder as the fonts).
+/// a link to `~/.local/share`, and `~/.local/share/fonts` and the extra
+/// read-only folder `~/.local/share/data` links to a folder it is not
+/// shown, in one start. In the next start with the same permissions it
+/// reads nothing there, neither where the links lead nor through them,
+/// and the start says why (before, `~/x` counted `~/.local/share` as a
+/// folder the app cannot change, and SAM bound the folder as the fonts).
+/// The fonts follow no link at all; the extra folder is the one that
+/// needs this rule.
 #[test]
 fn a_read_only_grant_never_hides_a_link_the_app_planted() {
     let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
@@ -729,15 +732,21 @@ fn a_read_only_grant_never_hides_a_link_the_app_planted() {
     fs::create_dir_all(&secret).unwrap();
     fs::write(secret.join("secret.txt"), "SECRET").unwrap();
     let (x, share) = (rig.home.join("x"), rig.home.join(".local/share"));
-    let fonts = share.join("fonts");
+    let (fonts, data) = (share.join("fonts"), share.join("data"));
     let mut p = whole_home_writable();
-    p.filesystem.custom_read = vec![s(&x)];
+    p.filesystem.custom_read = vec![s(&x), "~/.local/share/data".into()];
     let (r, text) = rig.start(
         &p,
         &[
             ("SAM_TEST_STEP", "plant".into()),
-            ("SAM_TEST_LINK", format!("{}|{}", s(&fonts), s(&x))),
-            ("SAM_TEST_TARGET", format!("{}|{}", s(&secret), s(&share))),
+            (
+                "SAM_TEST_LINK",
+                format!("{}|{}|{}", s(&fonts), s(&data), s(&x)),
+            ),
+            (
+                "SAM_TEST_TARGET",
+                format!("{}|{}|{}", s(&secret), s(&secret), s(&share)),
+            ),
         ],
     );
     assert_eq!(r["PLANTED"], "yes", "the writable home lets it: {text}");
@@ -751,30 +760,41 @@ fn a_read_only_grant_never_hides_a_link_the_app_planted() {
         &[(
             "SAM_TEST_FILES",
             format!(
-                "{}|{}|{}",
+                "{}|{}|{}|{}|{}",
                 s(&secret.join("secret.txt")),
                 s(&fonts.join("secret.txt")),
-                s(&x.join("fonts/secret.txt"))
+                s(&x.join("fonts/secret.txt")),
+                s(&data.join("secret.txt")),
+                s(&x.join("data/secret.txt"))
             ),
         )],
     );
     assert_ne!(r["READ0"], "SECRET", "{text}");
     assert_ne!(r["READ1"], "SECRET", "{text}");
     assert_ne!(r["READ2"], "SECRET", "{text}");
+    assert_ne!(r["READ3"], "SECRET", "the extra folder: {text}");
+    assert_ne!(r["READ4"], "SECRET", "the extra folder through ~/x: {text}");
     assert!(
         text.contains(&format!("~/.local/share/fonts (a link to {})", s(&secret)))
             && text.contains("SAM does not follow such a link for your fonts and theme files"),
         "the start says why: {text}"
     );
+    assert!(
+        text.contains("SAM leaves out the extra folder ~/.local/share/data for this app because")
+            && text.contains("may have made that link"),
+        "the start says why for the extra folder: {text}"
+    );
 }
 
-/// A link nobody in the sandbox could have planted (`~/.fonts` in a
-/// private home) never reaches a place where programs outside the
-/// sandbox listen, by any name: a socket directly in `/tmp` (as
-/// PostgreSQL keeps its own), a socket folder in `/tmp` by a name no list
-/// knows (`tmate-…`), and the host's runtime folder kept outside `/run`
-/// and `/tmp` (as `/mnt/wslg/runtime-dir`). The app reaches the socket
-/// neither through the link nor at its own place, and the start says why.
+/// A link nobody in the sandbox could have planted (`~/.fonts` and the
+/// extra read-only folder `~/y` in a private home) never reaches a place
+/// where programs outside the sandbox listen, by any name: a socket
+/// directly in `/tmp` (as PostgreSQL keeps its own), a socket folder in
+/// `/tmp` by a name no list knows (`tmate-…`), and the host's runtime
+/// folder kept outside `/run` and `/tmp` (as `/mnt/wslg/runtime-dir`).
+/// The app reaches the socket neither through either link nor at its own
+/// place, and the start says why, for the extra folder too: the fonts
+/// follow no link at all, the extra folder needs this rule.
 #[test]
 fn a_font_folder_link_never_reaches_sockets_by_any_name() {
     let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
@@ -782,23 +802,45 @@ fn a_font_folder_link_never_reaches_sockets_by_any_name() {
         return;
     };
     let fonts = rig.home.join(".fonts");
-    let private = PermissionSet::strict_gui();
-    let attempt = |rig: &Rig, socket: &Path, through_link: &Path, reached: &dyn Fn() -> bool| {
+    let y = rig.home.join("y");
+    let mut private = PermissionSet::strict_gui();
+    private.filesystem.custom_read = vec!["~/y".into()];
+    // `~/.fonts` and `~/y` both a link to `target`.
+    let link_to = |target: &Path| {
+        for l in [&fonts, &y] {
+            let _ = fs::remove_file(l);
+            symlink(target, l).unwrap();
+        }
+    };
+    // `inside`: the socket's name inside the place the links lead to
+    // (empty for the socket itself).
+    let attempt = |rig: &Rig, socket: &Path, inside: &str, reached: &dyn Fn() -> bool| {
+        let through = |l: &Path| {
+            if inside.is_empty() {
+                s(l)
+            } else {
+                s(&l.join(inside))
+            }
+        };
         let (r, text) = rig.start(
             &private,
             &[(
                 "SAM_TEST_SOCKETS",
-                format!("{}|{}", s(through_link), s(socket)),
+                format!("{}|{}|{}", through(&fonts), s(socket), through(&y)),
             )],
         );
-        assert_ne!(r["CONNECT0"], "ok", "through the link: {text}");
+        assert_ne!(r["CONNECT0"], "ok", "through the fonts link: {text}");
         assert_ne!(r["CONNECT1"], "ok", "at its own place: {text}");
+        assert_ne!(r["CONNECT2"], "ok", "through the extra folder: {text}");
         assert!(
             !reached(),
             "a program outside the sandbox was reached: {text}"
         );
         assert!(
-            text.contains("where programs outside the sandbox listen"),
+            text.contains("where programs outside the sandbox listen")
+                && text.contains(
+                    "SAM leaves out the extra folder ~/y for this app because it leads through a link to"
+                ),
             "the start says why: {text}"
         );
     };
@@ -811,7 +853,7 @@ fn a_font_folder_link_never_reaches_sockets_by_any_name() {
     let socket = PathBuf::from(format!("/tmp/.s.SAMTEST.{}.{stamp}", std::process::id()));
     let listener = UnixListener::bind(&socket).unwrap();
     listener.set_nonblocking(true).unwrap();
-    symlink(&socket, &fonts).unwrap();
+    link_to(&socket);
     let reached = || {
         let mut any = false;
         while listener.accept().is_ok() {
@@ -819,33 +861,25 @@ fn a_font_folder_link_never_reaches_sockets_by_any_name() {
         }
         any
     };
-    attempt(&rig, &socket, &fonts, &reached);
+    attempt(&rig, &socket, "", &reached);
     drop(listener);
     let _ = fs::remove_file(&socket);
 
     // A socket folder in `/tmp` by a name no list knows.
     let tmate = SocketFolder::at(Path::new("/tmp"), "tmate-");
-    fs::remove_file(&fonts).unwrap();
-    symlink(tmate.path(), &fonts).unwrap();
-    attempt(
-        &rig,
-        Path::new(&tmate.socket()),
-        &fonts.join("default"),
-        &|| tmate.was_reached(),
-    );
+    link_to(&tmate.path());
+    attempt(&rig, Path::new(&tmate.socket()), "default", &|| {
+        tmate.was_reached()
+    });
 
     // The host's runtime folder, kept outside `/run` and `/tmp`.
     let scratch = outside_tmp();
     let runtime = SocketFolder::at(scratch.path(), "runtime-dir-");
     rig.host.runtime_dir = Some(runtime.path());
-    fs::remove_file(&fonts).unwrap();
-    symlink(runtime.path(), &fonts).unwrap();
-    attempt(
-        &rig,
-        Path::new(&runtime.socket()),
-        &fonts.join("default"),
-        &|| runtime.was_reached(),
-    );
+    link_to(&runtime.path());
+    attempt(&rig, Path::new(&runtime.socket()), "default", &|| {
+        runtime.was_reached()
+    });
 }
 
 /// Where the way ends is not all: a link in `/tmp` made outside the
@@ -853,9 +887,12 @@ fn a_font_folder_link_never_reaches_sockets_by_any_name() {
 /// place (on WSLg the host's `/tmp/.X11-unix` is a link to
 /// `/mnt/wslg/.X11-unix`). `~/.fonts` in a private home, a link to such a
 /// link in `/tmp` whose socket folder lies outside `/tmp`, `/run` and the
-/// runtime folders: the app reaches the socket neither through the link
-/// nor at its own place, and the start says why (before, SAM judged only
-/// the folder at the end and bound it as the fonts).
+/// runtime folders, and the extra read-only folder `~/y` a link to the
+/// same: the app reaches the socket neither through either link nor at
+/// its own place, and the start says why, for the extra folder too
+/// (before, SAM judged only the folder at the end and bound it as the
+/// fonts). The fonts follow no link at all; the extra folder needs this
+/// rule.
 #[test]
 fn a_font_folder_link_through_a_link_in_tmp_never_reaches_sockets() {
     let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
@@ -870,24 +907,36 @@ fn a_font_folder_link_through_a_link_in_tmp_never_reaches_sockets() {
         .as_nanos();
     let hop = PathBuf::from(format!("/tmp/.SAMTEST-unix.{}.{stamp}", std::process::id()));
     symlink(x11.path(), &hop).unwrap();
-    let fonts = rig.home.join(".fonts");
+    let (fonts, y) = (rig.home.join(".fonts"), rig.home.join("y"));
     symlink(&hop, &fonts).unwrap();
+    symlink(&hop, &y).unwrap();
+    let mut p = PermissionSet::strict_gui();
+    p.filesystem.custom_read = vec!["~/y".into()];
     let (r, text) = rig.start(
-        &PermissionSet::strict_gui(),
+        &p,
         &[(
             "SAM_TEST_SOCKETS",
-            format!("{}|{}", s(&fonts.join("default")), x11.socket()),
+            format!(
+                "{}|{}|{}",
+                s(&fonts.join("default")),
+                x11.socket(),
+                s(&y.join("default"))
+            ),
         )],
     );
     let _ = fs::remove_file(&hop);
-    assert_ne!(r["CONNECT0"], "ok", "through the link: {text}");
+    assert_ne!(r["CONNECT0"], "ok", "through the fonts link: {text}");
     assert_ne!(r["CONNECT1"], "ok", "at its own place: {text}");
+    assert_ne!(r["CONNECT2"], "ok", "through the extra folder: {text}");
     assert!(
         !x11.was_reached(),
         "a program outside the sandbox was reached: {text}"
     );
     assert!(
-        text.contains("where programs outside the sandbox listen"),
+        text.contains("where programs outside the sandbox listen")
+            && text.contains(
+                "SAM leaves out the extra folder ~/y for this app because it leads through a link to"
+            ),
         "the start says why: {text}"
     );
 }
@@ -1143,8 +1192,11 @@ fn a_protected_link_never_knocks_out_the_read_only_font_settings_in_a_real_sandb
     fs::remove_file(config.join("vivaldi")).unwrap();
 
     // The home kept behind a link: the extra folder is shown at its real
-    // place, and the fonts settings stay read-only there and under the
-    // home's name, with and without the planted link.
+    // place, and the fonts settings stay read-only there, with and
+    // without the planted link. Under the home's name they are read-only
+    // without it; with it SAM binds nothing there (the private home would
+    // show them anew), and a write there lands in the app's private home,
+    // never in your fonts settings (checked last).
     let real = rig.home.parent().unwrap().join("tester-real");
     fs::rename(&rig.home, &real).unwrap();
     symlink(&real, &rig.home).unwrap();
@@ -1160,7 +1212,9 @@ fn a_protected_link_never_knocks_out_the_read_only_font_settings_in_a_real_sandb
         );
         let (r, text) = rig.start(&p, &[("SAM_TEST_WRITES", writes)]);
         assert_eq!(r["WRITE0"], "30", "planted {planted}, real place: {text}");
-        assert_ne!(r["WRITE1"], "ok", "planted {planted}, home's name: {text}");
+        if !planted {
+            assert_ne!(r["WRITE1"], "ok", "home's name: {text}");
+        }
         assert_eq!(r["WRITE2"], "ok", "planted {planted}, control: {text}");
         fs::remove_file(real.join(".config/other.txt")).unwrap();
     }
@@ -1211,6 +1265,59 @@ fn a_credential_kept_as_a_link_into_a_font_folder_stays_hidden_in_a_private_home
     assert_eq!(
         r["READ0"], "SECRET",
         "control, a plain file in the fonts: {text}"
+    );
+}
+
+/// With the home kept behind a link (`~` a link to its real folder, as
+/// `/home` to `/var/home` on some systems), a private home and an extra
+/// read-only `~/.config`, a credential kept as a link into the font
+/// settings (`~/.git-credentials` a link to `~/.config/fontconfig/gc`)
+/// stays hidden: SAM bound the settings a second time at the home's name
+/// in the private home, a mount that the mask at their real place did not
+/// reach, and the app read the credential at `~/.config/fontconfig/gc`.
+/// The control: without the link the same file is read there.
+#[test]
+fn a_credential_linked_into_the_font_settings_stays_hidden_behind_a_linked_home() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(rig) = Rig::new("CredLinkedHome") else {
+        return;
+    };
+    let real = rig.home.parent().unwrap().join("tester-real");
+    fs::rename(&rig.home, &real).unwrap();
+    symlink(&real, &rig.home).unwrap();
+    let settings = rig.home.join(".config/fontconfig");
+    fs::create_dir_all(real.join(".config/fontconfig")).unwrap();
+    fs::write(real.join(".config/fontconfig/gc"), "SECRET").unwrap();
+    let cred = real.join(".git-credentials");
+    symlink(settings.join("gc"), &cred).unwrap();
+    let mut p = PermissionSet::strict_gui();
+    p.filesystem.custom_read = vec!["~/.config".into()];
+    let files = || {
+        (
+            "SAM_TEST_FILES",
+            format!(
+                "{}|{}|{}",
+                s(&settings.join("gc")),
+                s(&rig.home.join(".git-credentials")),
+                s(&real.join(".config/fontconfig/gc"))
+            ),
+        )
+    };
+    let (r, text) = rig.start(&p, &[files()]);
+    assert_ne!(r["READ0"], "SECRET", "at the home's name: {text}");
+    assert_ne!(r["READ1"], "SECRET", "through the link: {text}");
+    assert_ne!(r["READ2"], "SECRET", "at the real place: {text}");
+    assert!(
+        text.contains(
+            "SAM does not bind ~/.config/fontconfig for this app on its own because it holds"
+        ),
+        "the start says why: {text}"
+    );
+    fs::remove_file(&cred).unwrap();
+    let (r, text) = rig.start(&p, &[files()]);
+    assert_eq!(
+        r["READ0"], "SECRET",
+        "control, a plain file in the font settings: {text}"
     );
 }
 

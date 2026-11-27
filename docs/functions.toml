@@ -332,6 +332,10 @@ tests = ["a_grant_inside_sams_folder_does_not_show_it", "opened_files_are_judged
   "a_credential_linked_into_the_fonts_stays_hidden_with_a_read_only_home",
   "a_link_you_made_into_a_writable_folder_keeps_the_font_settings_read_only",
   "a_font_place_inside_a_guarded_place_by_name_is_not_bound_in_a_private_home",
+  "a_grant_under_another_name_never_lets_a_font_place_hold_a_credential",
+  "a_font_place_holding_a_credential_is_bound_only_where_a_grant_shows_it",
+  "a_credential_linked_into_the_font_settings_stays_hidden_behind_a_linked_home",
+  "a_target_kept_read_only_by_a_name_that_is_not_text_stops_the_start",
 ]
 
 [[function]]

@@ -943,6 +943,7 @@ fn the_folders_above_a_read_only_user_folder_cannot_be_renamed() {
     assert!(home.join("work/ref").is_dir() && !home.join("w2").exists());
 }
 
+/// With the whole home writable and real font folders (no link), each holding an extra read-only folder, SAM binds both font folders read-only.
 /// With the whole home writable and an extra read-only folder inside each
 /// font folder (`~/.fonts/licensed`, `~/.local/share/fonts/a/licensed`),
 /// the font folders stay read-only, as SAM always binds them: the pins of

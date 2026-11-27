@@ -1055,17 +1055,14 @@ How these stay protected with the home writable:
   refuses it, and connecting to a socket there needs no write access.
   After narrowing an app's permissions, check that the extra folders
   are not links you did not make
-  (`a_font_folder_link_the_app_planted_never_reaches_host_sockets`,
-  `a_fontconfig_link_the_app_planted_never_reaches_host_sockets`,
-  `an_extra_folder_link_the_app_planted_never_reaches_host_sockets`,
-  `a_font_folder_link_never_leads_out_of_what_the_app_is_shown`,
+  (`an_extra_folder_link_the_app_planted_never_reaches_host_sockets`,
   `a_user_folder_link_the_app_planted_never_reaches_host_sockets`,
   `a_link_the_app_planted_never_makes_a_read_only_home_writable`,
   `a_link_planted_in_a_user_folder_of_a_writable_home_is_not_followed`,
   `a_read_only_grant_never_hides_a_link_the_app_planted`,
   `a_font_folder_link_never_reaches_sockets_by_any_name`,
-  `a_font_folder_link_through_a_link_in_tmp_never_reaches_sockets`, each
-  from a real sandbox; `fonts_themes_and_extra_folders_never_follow_a_planted_link`,
+  `a_font_folder_link_through_a_link_in_tmp_never_reaches_sockets` (these
+  three with an extra folder beside the fonts), each from a real sandbox; `fonts_themes_and_extra_folders_never_follow_a_planted_link`,
   `a_folder_this_start_shows_writable_holds_links_the_app_may_have_made`,
   `a_folder_this_start_shows_writable_counts_as_one_the_app_can_change`,
   `a_link_to_sams_runtime_folders_is_never_followed`,
@@ -1094,6 +1091,9 @@ How these stay protected with the home writable:
   (`a_font_link_to_an_ordinary_folder_is_not_followed_in_a_private_home`,
   `a_font_link_made_in_a_start_with_the_home_writable_is_not_followed_later`,
   `a_font_link_to_the_real_place_of_a_home_behind_a_link_shows_no_keys`,
+  `a_font_folder_link_the_app_planted_never_reaches_host_sockets`,
+  `a_fontconfig_link_the_app_planted_never_reaches_host_sockets`,
+  `a_font_folder_link_never_leads_out_of_what_the_app_is_shown`,
   `git_credentials_under_config_git_stay_hidden`,
   each from a real sandbox;
   `a_font_link_to_the_real_place_of_a_home_behind_a_link_binds_no_guarded_place`,
@@ -1103,10 +1103,10 @@ How these stay protected with the home writable:
     Atomic's `/home` a link to `/var/home`) keeps its fonts: only links
     below it count (`a_home_kept_behind_a_link_keeps_its_fonts`,
     `a_home_kept_behind_a_link_keeps_its_fonts_in_a_real_sandbox`).
-  - Where a grant of the start shows the place anyway (the whole home, an
-    extra or user folder above it, under the place's name or its real
-    place), SAM binds it read-only wherever the app reaches it: the bind
-    shows nothing new and only takes write access away. A link at a
+  - Where a grant of the start shows the place anyway at its name (the
+    whole home, an extra or user folder above it), SAM binds it read-only
+    wherever the app reaches it: the bind shows nothing new and only takes
+    write access away. A link at a
     protected name cannot knock it out: with an extra writable
     `~/.config`, `~/.config/vivaldi` made a link to
     `~/.config/fontconfig`, or `~/.aws` made a link to the home, left the
@@ -1123,14 +1123,25 @@ How these stay protected with the home writable:
     the home read-only, `~/.git-credentials` kept as a link into the
     fonts stays hidden
     (`a_credential_linked_into_the_fonts_stays_hidden_with_a_read_only_home`).
-  - Where no grant shows the place (a private home), SAM binds it at its
-    name only when it lies in no protected place, key or credential
-    store or SAM folder by its name, and holds none, by its name or where
-    a link at such a name really leads: a credential you keep as a link
-    into a fonts folder (`~/.git-credentials` a link to
+  - Where no grant shows the place at its name (a private home), SAM binds
+    it at its name only when it lies in no protected place, key or
+    credential store or SAM folder by its name, and holds none, by its
+    name or where a link at such a name really leads: a credential you
+    keep as a link into a fonts folder (`~/.git-credentials` a link to
     `~/.fonts/dots/git-credentials`) keeps `~/.fonts` out of a private
-    home, which shows no name of that link where it could be hidden
+    home, which shows no name of that link where it could be hidden. The
+    same holds where a grant shows the place only under another name:
+    with the home kept behind a link, an extra `~/.config` is shown at
+    the home's real place (`/data/u/.config`), and a bind of the font
+    settings at the home's name in the private home is a mount of its
+    own that the home's protections at `/data/u` never reach; with
+    `~/.git-credentials` a link into `~/.config/fontconfig`, SAM binds the
+    font settings only where the extra folder shows them, where the
+    credential is hidden, and the launch log says why
     (`a_credential_kept_as_a_link_into_a_font_folder_stays_hidden_in_a_private_home`,
+    `a_credential_linked_into_the_font_settings_stays_hidden_behind_a_linked_home`,
+    `a_font_place_holding_a_credential_is_bound_only_where_a_grant_shows_it`,
+    `a_grant_under_another_name_never_lets_a_font_place_hold_a_credential`,
     `a_font_place_inside_a_guarded_place_by_name_is_not_bound_in_a_private_home`,
     `an_own_place_never_leads_to_the_home_keys_or_sams_folders`,
     `sams_folders_are_guarded_where_they_really_lead`). The price:
@@ -1151,8 +1162,11 @@ How these stay protected with the home writable:
     `~/.config` you name through its link to `~/dotfiles/config`, and with
     a home kept behind a link where `~/.config` names the home's real
     place (`/data/u/dots/config`): the place is kept read-only where the
-    app reaches it under the home's name
+    app reaches it under the home's name. Where that place's name is not
+    valid text, the start stops and names it, rather than leave the place
+    writable
     (`a_link_you_made_into_a_writable_folder_keeps_the_font_settings_read_only`,
+    `a_target_kept_read_only_by_a_name_that_is_not_text_stops_the_start`,
     `fonts_themes_and_extra_folders_never_follow_a_planted_link`,
     `a_stow_style_link_binds_no_font_or_theme_place_and_says_so_once`).
     The price: anyone who can write in your home can make `~/.fonts` a
