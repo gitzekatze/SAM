@@ -33,7 +33,8 @@
   store or another place SAM protects applies where the home does not
   show that place anyway. With the whole home writable, SAM keeps showing
   `~/.fonts`, `~/.local/share/fonts` and `~/.config/fontconfig`
-  read-only, also when one of them leads into such a place (for example
+  read-only where they exist when the app starts, also when one of them
+  leads into such a place (for example
   after `~/.aws` was made a link to your home, with hidden files shown).
   Left out there, the writable home would show them writable, and the
   app could change the fonts and font settings your other programs load.
@@ -48,6 +49,13 @@
   the font settings writable. A font place that the sandbox does not show
   itself, such as `~/.fonts` in a private home, still never leads to your
   keys or credential stores.
+- Not covered, as before: a font or theme place that does not exist when
+  the app starts is not bound, so the writable home or an extra writable
+  folder that holds it lets the app create it. An extra writable folder
+  named through a link (`~/.config` a link to `~/dots/config`) shows the
+  font settings and theme files writable at the place the link leads to
+  (`~/dots/config/fontconfig`). After giving an app such a folder
+  writable, check that the fonts and theme files in it are yours.
 
 ### The app page names every user folder SAM leaves out for a link
 

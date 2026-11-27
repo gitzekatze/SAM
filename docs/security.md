@@ -977,6 +977,17 @@ How these stay protected with the home writable:
     whatever another grant shows there
     (`a_font_place_another_grant_shows_writable_stays_bound_read_only`,
     `a_writable_extra_folder_keeps_the_font_and_theme_places_in_it_read_only`).
+    Not covered, as before: a font or theme place that does not exist
+    when the app starts is not bound (Bubblewrap skips a missing place),
+    so a grant that shows its folder writable (the whole home, an extra
+    writable `~/.config`) lets the app create it, and programs outside
+    the sandbox load what it puts there; and an extra writable folder you
+    name through a link (`~/.config` a link to `~/dots/config`) is shown
+    writable at the place the link leads to, where SAM binds no font or
+    theme place read-only, so the app can change
+    `~/dots/config/fontconfig` there, whatever SAM binds at
+    `~/.config/fontconfig`. After giving an app such a folder writable,
+    check that the fonts and theme files in it are yours.
 
   SAM does not bind such a place itself, and the launch log says so: that
   SAM leaves out the extra or user folder, or does not bind the place on
@@ -1007,11 +1018,15 @@ How these stay protected with the home writable:
   anything in `/var/tmp` (as part of `/var`) are rated *Dangerous* and
   warned about; any other place in `/tmp` (such as `/tmp/tmate-1000`) is
   rated *Some access* when read-only, so SAM adds it without asking first,
-  and *Think twice* when writable. If you made such a link yourself,
-  list the place it leads to as an extra folder instead of the link, or
-  set the user folder to that place in `~/.config/user-dirs.dirs`; the
-  launch log says so only for a link that leads out of what the app is
-  shown, never for one to where programs outside the sandbox listen.
+  and *Think twice* when writable. If you made a link that leads out of
+  what the app is shown yourself, list the place it leads to as an extra
+  folder instead of the link, or set the user folder to that place in
+  `~/.config/user-dirs.dirs`; the launch log says so only for such a
+  link. For a link to where programs outside the sandbox listen there is
+  no way out, and listing the place it leads to is no remedy: named by
+  its real place, such a folder in `/tmp` (`/tmp/tmate-1000`) is shown
+  as set, with the rating above, and the app can connect to the
+  programs listening there.
   Not covered: SAM judges a link by the permissions of the start at
   hand. A link the app made in an earlier start while it had more write
   access (the whole home, or a user, extra or opened folder writable) is

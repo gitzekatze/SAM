@@ -40,8 +40,12 @@
   *Think twice* when writable.
 - Links that stay inside what the app is shown keep working, for example
   `~/.fonts` as a link to `~/.local/share/fonts`. If you made a link to an
-  extra folder yourself and the app has the whole home writable, list the
-  place it leads to as an extra folder instead of the link. The sandbox
+  extra folder yourself that leads out of what the app is shown and the
+  app has the whole home writable, list the place it leads to as an
+  extra folder instead of the link. Never do so for a link to where
+  programs outside the sandbox listen: named by its real place, such a
+  folder in `/tmp` is shown as set, and the app can connect to the
+  programs listening there. The sandbox
   check expects such a folder as the rest of the app's folders show the
   place it leads to; where the sandbox shows its own folder there (a
   system folder, `/run`, `/proc`, `/dev`, `/sys`, or the fonts and theme
