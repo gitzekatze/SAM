@@ -597,11 +597,13 @@ msgstr "Bluetooth"
 #: crates/sam-core/src/permissions.rs:1245
 msgid ""
 "Lets the app open Bluetooth connections to nearby devices; other apps "
-"cannot. Pairing and the Bluetooth service itself also need the system D-Bus."
+"cannot, except an app whose start program is 32-bit (the security page says "
+"why). Pairing and the Bluetooth service itself also need the system D-Bus."
 msgstr ""
 "Permite a la app abrir conexiones Bluetooth con dispositivos cercanos; las "
-"demás apps no pueden. El emparejamiento y el propio servicio Bluetooth "
-"necesitan además el D-Bus del sistema."
+"demás apps no pueden, salvo una app cuyo programa de inicio sea de 32 bits "
+"(la página de seguridad explica por qué). El emparejamiento y el propio "
+"servicio Bluetooth necesitan además el D-Bus del sistema."
 
 #: crates/sam-core/src/permissions.rs:1247 crates/sam-core/src/risk.rs:331
 #: crates/sam-runner/src/verify.rs:527
@@ -9584,6 +9586,15 @@ msgstr ""
 #: crates/sam-storage/src/lib.rs:641
 msgid "unknown flat preset key '{other}'"
 msgstr "clave «{other}» desconocida en la plantilla plana"
+
+#~ msgid ""
+#~ "Lets the app open Bluetooth connections to nearby devices; other apps "
+#~ "cannot. Pairing and the Bluetooth service itself also need the system D-"
+#~ "Bus."
+#~ msgstr ""
+#~ "Permite a la app abrir conexiones Bluetooth con dispositivos cercanos; "
+#~ "las demás apps no pueden. El emparejamiento y el propio servicio "
+#~ "Bluetooth necesitan además el D-Bus del sistema."
 
 #~ msgid ""
 #~ "SAM leaves out the writable folder {path} for this app because the way "
