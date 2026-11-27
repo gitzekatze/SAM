@@ -3303,6 +3303,59 @@ mod tests {
             &["--remount-ro", "/usr/lib"],
         ]);
         ok(&[dev, &["--dir", "/dev/shm/x"], &["--dir", "/dev/fdx"]]);
+        // A /dev asked for without devices is SAM's own: only its four
+        // links count, not those of Bubblewrap's `--dev` (no core, no ptmx,
+        // nothing in its shm), in whatever order.
+        for op in [
+            &["--dir", "/dev/ptmx"][..],
+            &["--dir", "/dev/core/x"],
+            &["--dir", "/dev/shm/fd"],
+            &["--symlink", "/x", "/dev/shm/stdout"],
+        ] {
+            ok(&[dev, op]);
+            ok(&[op, dev]);
+        }
+        ok(&[&["--bind", "/dev", "/dev"][..], &["--dir", "/dev/shm/fd"]]);
+        // A host name is text, not a place, even when it reads like a path
+        // behind a link of the app's that the room has too.
+        let host = &["--hostname", "/usr/lib64/x"][..];
+        for ops in [[usr, host], [host, usr]] {
+            let room = ok(&ops);
+            assert!(
+                room.steps
+                    .contains(&Step::Args(s(&["--hostname", "/usr/lib64/x"]))),
+                "{:?}",
+                room.steps
+            );
+        }
+        // A mode change at a link of the app's is a change through it, even
+        // when the mode reads like the link's target; beside it, it is fine.
+        let mut moded = plan();
+        let i = index_of("/usr/lib64");
+        moded.entries.insert(
+            i + 1,
+            Entry::Link {
+                target: "700".into(),
+                at: "/usr/l".into(),
+            },
+        );
+        let in_moded = |at: &str| {
+            plan_room(
+                &moded,
+                &req(
+                    &[
+                        &["--tmpfs", "/usr"],
+                        &["--chmod", "700", at],
+                        &["--ro-bind", "/usr", "/usr"],
+                    ],
+                    &["x"],
+                ),
+                AppFacts::default(),
+            )
+        };
+        let e = in_moded("/usr/l").unwrap_err();
+        assert!(e.contains(SAID), "{e}");
+        in_moded("/usr/l2").unwrap();
         // Nor through a link of the room's own that leads to one of the
         // app's: a remount there, in whatever order (Bubblewrap makes the
         // link first and follows both). The link itself is fine.
