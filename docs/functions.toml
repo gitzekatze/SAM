@@ -473,7 +473,7 @@ id = 18
 area = "C"
 promise = "Optional: a writable app folder (changes go to a separate layer); where that's impossible, a read-only start with an explanation."
 code = ["sam-sandbox/src/lib.rs", "sam-runner/src/launch.rs", "sam-core/src/host.rs"]
-tests = ["the_overlay_check_believes_bubblewraps_answer", "the_overlay_checks_match_the_real_bubblewrap", "writable_appdir_uses_overlay", "an_app_starts_read_only_when_its_writable_app_folder_cannot_work", "a_writable_app_folder_is_offered_only_where_it_can_work", "the_app_folder_stays_read_only_unless_writable_is_granted"]
+tests = ["the_overlay_check_believes_bubblewraps_answer", "the_overlay_checks_match_the_real_bubblewrap", "writable_appdir_uses_overlay", "an_app_starts_read_only_when_its_writable_app_folder_cannot_work", "a_writable_app_folder_is_offered_only_where_it_can_work", "the_app_folder_stays_read_only_unless_writable_is_granted", "overlays_count_from_bubblewrap_0_11"]
 
 [[function]]
 id = 41

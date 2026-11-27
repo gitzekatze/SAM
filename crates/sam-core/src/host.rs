@@ -62,8 +62,17 @@ impl UsernsStatus {
     }
 }
 
+/// The first Bubblewrap with overlays (`--overlay-src`, `--overlay`): its
+/// NEWS lists them under 0.11.0.
+const OVERLAY_SINCE: (u32, u32) = (0, 11);
+
+/// Whether a Bubblewrap whose `--version` printed `text` has overlays.
+fn version_has_overlays(text: &str) -> bool {
+    version_at_least(text, OVERLAY_SINCE)
+}
+
 /// Whether the installed Bubblewrap supports overlays (`--overlay-src`,
-/// Bubblewrap 0.10+), which the writable app folder needs. Ubuntu 24.04 and
+/// Bubblewrap 0.11+), which the writable app folder needs. Ubuntu 24.04 and
 /// Debian 12 ship older ones. Asked once per process.
 pub fn bwrap_supports_overlay() -> bool {
     static CHECKED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
@@ -75,7 +84,7 @@ pub fn bwrap_supports_overlay() -> bool {
         let text = out
             .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
             .unwrap_or_default();
-        version_at_least(&text, (0, 10))
+        version_has_overlays(&text)
     })
 }
 
@@ -173,7 +182,7 @@ fn remove_probe(probe: &std::path::Path) {
     let _ = std::fs::remove_dir_all(probe);
 }
 
-/// "bubblewrap 0.13.1" -> true for (0, 10).
+/// "bubblewrap 0.13.1" -> true for (0, 11).
 fn version_at_least(text: &str, want: (u32, u32)) -> bool {
     let v = text
         .split_whitespace()
@@ -259,6 +268,18 @@ mod version_tests {
         assert!(super::version_at_least("bubblewrap 0.10.0\n", (0, 10)));
         assert!(!super::version_at_least("bubblewrap 0.9.0", (0, 10)));
         assert!(!super::version_at_least("", (0, 10)));
+    }
+
+    /// Overlays count from Bubblewrap 0.11.0, the release that added
+    /// `--overlay-src`; a 0.10 Bubblewrap does not have them.
+    #[test]
+    fn overlays_count_from_bubblewrap_0_11() {
+        assert!(!super::version_has_overlays("bubblewrap 0.9.0"));
+        assert!(!super::version_has_overlays("bubblewrap 0.10.0\n"));
+        assert!(!super::version_has_overlays("bubblewrap 0.10.9"));
+        assert!(super::version_has_overlays("bubblewrap 0.11.0\n"));
+        assert!(super::version_has_overlays("bubblewrap 0.13.1"));
+        assert!(!super::version_has_overlays(""));
     }
 }
 
