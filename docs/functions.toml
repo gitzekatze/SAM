@@ -590,6 +590,8 @@ tests = [
   "a_link_at_the_place_is_refused",
   "a_different_object_is_refused",
   "a_place_that_is_not_the_root_of_a_mount_is_refused_where_a_mount_is_expected",
+  "the_mount_root_answer_reads_only_the_mount_root_bit",
+  "only_a_link_is_reported_as_a_link",
   "only_absolute_paths_are_opened_without_links",
   "the_statx_struct_is_the_kernels",
   "a_left_out_setting_can_be_turned_back_on",

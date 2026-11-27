@@ -9,7 +9,7 @@
 >
 > Test results are from the newest version report (2026-11-21 05:11:03).
 
-**42 functions:** 3 proven by passing tests, 38 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 1085 tests in all.
+**42 functions:** 3 proven by passing tests, 38 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 1087 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
@@ -31,7 +31,7 @@
 | 16 | [The app can't make itself start later outside the sandbox (autostart, shell startup files, menu entries).](#16) | sam-runner, sam-sandbox, sam-core | 52 | ✅ 🆕 33 new tests since the report |
 | 17 | [The app can't type into your terminal.](#17) | sam-runner, sam-sandbox, sam-core | 46 | ✅ 🆕 2 new tests since the report |
 | 18 | [Optional: a writable app folder (changes go to a separate layer); where that's impossible, a read-only start with an explanation.](#18) | sam-runner, sam-sandbox, sam-core | 10 | ✅ 🆕 6 new tests since the report |
-| 41 | [A program in an app that builds a sandbox of its own (such as GTK's image loader) gets it from SAM, built outside the app's sandbox (Room service): never with more than the app, never with less than it asked, always with SAM's protection layers, and never outliving the app.](#41) | sam-jail-cli, sam-runner, sam-core | 144 | ✅ 🆕 144 new tests since the report |
+| 41 | [A program in an app that builds a sandbox of its own (such as GTK's image loader) gets it from SAM, built outside the app's sandbox (Room service): never with more than the app, never with less than it asked, always with SAM's protection layers, and never outliving the app.](#41) | sam-jail-cli, sam-runner, sam-core | 146 | ✅ 🆕 146 new tests since the report |
 | 19 | [Starting from SAM's window, from the menu, or from the terminal always goes through the sandbox.](#19) | sam-jail-cli, sam-runner, sam-intake, sam-core | 49 | ✅ 🆕 27 new tests since the report |
 | 20 | [SAM checks from inside the sandbox that every setting applies (the sandbox check).](#20) | sam-jail-cli, sam-runner, sam-sandbox | 41 | ✅ 🆕 27 new tests since the report |
 | 21 | [A second start, closing, and stopping work cleanly and leave nothing behind.](#21) | sam-runner, sam-core | 31 | ✅ 🆕 23 new tests since the report |
@@ -843,12 +843,14 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`a_single_device_file_is_shown_by_its_exact_name`](../crates/sam-runner/src/room_rules.rs#L2597) | A device that is a single file, asked for at its own place, is shown by exactly its name (no "/" after it, which a file cannot have). | 🆕 new |
 | [`a_room_shows_only_what_sam_opened_whatever_bubblewrap_does`](../crates/sam-runner/tests/room_service_identity.rs#L238) | A room shows only what sam opened whatever bubblewrap does. | 🆕 new |
 | [`a_room_place_whose_mount_was_moved_away_and_the_original_put_back_is_refused`](../crates/sam-runner/tests/room_service_identity.rs#L320) | After Bubblewrap mounted a room's place, a program outside the app's sandbox that can write the folder holding it (another program of the person's) moves the place away (the room's mount goes with its name) and puts the very same file back at the name (a second name made beforehand, a hard link). | 🆕 new |
-| [`the_same_object_at_the_root_of_a_mount_passes`](../crates/sam-core/src/place_check.rs#L297) | The root of the file system is a mount in every mount namespace: the object SAM chose, as the root of a mount, passes. | 🆕 new |
-| [`a_link_at_the_place_is_refused`](../crates/sam-core/src/place_check.rs#L306) | A link at the place, or on its way, is refused, even when it leads to exactly the object SAM chose. | 🆕 new |
-| [`a_different_object_is_refused`](../crates/sam-core/src/place_check.rs#L336) | Another file, folder or device than SAM chose is refused, whatever differs (the inode, or the device). | 🆕 new |
-| [`a_place_that_is_not_the_root_of_a_mount_is_refused_where_a_mount_is_expected`](../crates/sam-core/src/place_check.rs#L355) | The very object SAM chose is refused where a mount was made but the place is not the root of one (a folder or a file inside a mount), and so is any place when the kernel does not say: the check fails closed, with a message that names the cause. | 🆕 new |
-| [`only_absolute_paths_are_opened_without_links`](../crates/sam-core/src/place_check.rs#L383) | A path that is not absolute is never opened without links (it would depend on the current folder). | 🆕 new |
-| [`the_statx_struct_is_the_kernels`](../crates/sam-core/src/place_check.rs#L269) | The kernel's struct, as the C library describes it: the fields read here lie where the kernel writes them, and nothing is written past the end. | 🆕 new |
+| [`the_same_object_at_the_root_of_a_mount_passes`](../crates/sam-core/src/place_check.rs#L303) | The root of the file system is a mount in every mount namespace: the object SAM chose, as the root of a mount, passes. | 🆕 new |
+| [`a_link_at_the_place_is_refused`](../crates/sam-core/src/place_check.rs#L312) | A link at the place, or on its way, is refused, even when it leads to exactly the object SAM chose. | 🆕 new |
+| [`a_different_object_is_refused`](../crates/sam-core/src/place_check.rs#L342) | Another file, folder or device than SAM chose is refused, whatever differs (the inode, or the device). | 🆕 new |
+| [`a_place_that_is_not_the_root_of_a_mount_is_refused_where_a_mount_is_expected`](../crates/sam-core/src/place_check.rs#L361) | The very object SAM chose is refused where a mount was made but the place is not the root of one (a folder or a file inside a mount), and so is any place when the kernel does not say: the check fails closed, with a message that names the cause. | 🆕 new |
+| [`the_mount_root_answer_reads_only_the_mount_root_bit`](../crates/sam-core/src/place_check.rs#L391) | The kernel's answer on the mount root: without the attribute's bit in the mask there is no answer (the check fails closed, as `MountUnknown`); with it, the attribute decides. | 🆕 new |
+| [`only_a_link_is_reported_as_a_link`](../crates/sam-core/src/place_check.rs#L430) | Only a link on the way is reported as a link: a place that is missing or may not be opened says it cannot be opened and names the error. | 🆕 new |
+| [`only_absolute_paths_are_opened_without_links`](../crates/sam-core/src/place_check.rs#L446) | A path that is not absolute is never opened without links (it would depend on the current folder). | 🆕 new |
+| [`the_statx_struct_is_the_kernels`](../crates/sam-core/src/place_check.rs#L275) | The kernel's struct, as the C library describes it: the fields read here lie where the kernel writes them, and nothing is written past the end. | 🆕 new |
 | [`a_left_out_setting_can_be_turned_back_on`](../crates/sam-profile/src/lib.rs#L796) | A setting the saved form leaves out while at its default (Room service is written only when off) can be changed back: turned off, then on again from an old copy, it is left out again, never null. | 🆕 new |
 | [`changed_room_requests_never_crash_the_readers`](../crates/sam-runner/tests/fuzz_targets.rs#L438) | Room service's readers: changed messages and changed Bubblewrap argument lists never crash the service's reader, the stand-in's reader or the rules, and whatever the rules accept stays within them (every place a plain absolute path, shown at the same place, from beneath a folder of the app's floor plan). | 🆕 new |
 | [`a_room_dies_with_sams_launcher`](../crates/sam-jail-cli/tests/room_teardown.rs#L52) | A room of an app (built by Room service, outside the app's sandbox) ends when SAM's launcher is killed outright. | 🆕 new |

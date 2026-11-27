@@ -13,7 +13,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-core: Permission model, risk, warnings, configuration and file formats
 
-178 tests.
+180 tests.
 
 | Promise | Test |
 |---|---|
@@ -100,12 +100,14 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Permissions saved as TOML load back unchanged. | [`permissions_saved_as_toml_load_back_unchanged`](../crates/sam-core/src/permissions.rs#L1797) |
 | Raw sandbox arguments saved under their old name still load. | [`old_extra_backend_args_still_load`](../crates/sam-core/src/permissions.rs#L1810) |
 | Only plain shared-library file names are accepted as system libraries: no folders, no `..`, nothing that is not a library. | [`only_plain_library_names_are_accepted`](../crates/sam-core/src/permissions.rs#L1819) |
-| The kernel's struct, as the C library describes it: the fields read here lie where the kernel writes them, and nothing is written past the end. | [`the_statx_struct_is_the_kernels`](../crates/sam-core/src/place_check.rs#L269) |
-| The root of the file system is a mount in every mount namespace: the object SAM chose, as the root of a mount, passes. | [`the_same_object_at_the_root_of_a_mount_passes`](../crates/sam-core/src/place_check.rs#L297) |
-| A link at the place, or on its way, is refused, even when it leads to exactly the object SAM chose. | [`a_link_at_the_place_is_refused`](../crates/sam-core/src/place_check.rs#L306) |
-| Another file, folder or device than SAM chose is refused, whatever differs (the inode, or the device). | [`a_different_object_is_refused`](../crates/sam-core/src/place_check.rs#L336) |
-| The very object SAM chose is refused where a mount was made but the place is not the root of one (a folder or a file inside a mount), and so is any place when the kernel does not say: the check fails closed, with a message that names the cause. | [`a_place_that_is_not_the_root_of_a_mount_is_refused_where_a_mount_is_expected`](../crates/sam-core/src/place_check.rs#L355) |
-| A path that is not absolute is never opened without links (it would depend on the current folder). | [`only_absolute_paths_are_opened_without_links`](../crates/sam-core/src/place_check.rs#L383) |
+| The kernel's struct, as the C library describes it: the fields read here lie where the kernel writes them, and nothing is written past the end. | [`the_statx_struct_is_the_kernels`](../crates/sam-core/src/place_check.rs#L275) |
+| The root of the file system is a mount in every mount namespace: the object SAM chose, as the root of a mount, passes. | [`the_same_object_at_the_root_of_a_mount_passes`](../crates/sam-core/src/place_check.rs#L303) |
+| A link at the place, or on its way, is refused, even when it leads to exactly the object SAM chose. | [`a_link_at_the_place_is_refused`](../crates/sam-core/src/place_check.rs#L312) |
+| Another file, folder or device than SAM chose is refused, whatever differs (the inode, or the device). | [`a_different_object_is_refused`](../crates/sam-core/src/place_check.rs#L342) |
+| The very object SAM chose is refused where a mount was made but the place is not the root of one (a folder or a file inside a mount), and so is any place when the kernel does not say: the check fails closed, with a message that names the cause. | [`a_place_that_is_not_the_root_of_a_mount_is_refused_where_a_mount_is_expected`](../crates/sam-core/src/place_check.rs#L361) |
+| The kernel's answer on the mount root: without the attribute's bit in the mask there is no answer (the check fails closed, as `MountUnknown`); with it, the attribute decides. | [`the_mount_root_answer_reads_only_the_mount_root_bit`](../crates/sam-core/src/place_check.rs#L391) |
+| Only a link on the way is reported as a link: a place that is missing or may not be opened says it cannot be opened and names the error. | [`only_a_link_is_reported_as_a_link`](../crates/sam-core/src/place_check.rs#L430) |
+| A path that is not absolute is never opened without links (it would depend on the current folder). | [`only_absolute_paths_are_opened_without_links`](../crates/sam-core/src/place_check.rs#L446) |
 | A writable folder counts as in a start place when it is one, lies inside one or is where one really is: as named, with `..`, through a link to the place, below a place kept in a dotfiles folder and below the places `XDG_CONFIG_HOME` names. | [`a_write_grant_in_a_start_place_is_found_as_named_and_as_reached`](../crates/sam-core/src/places.rs#L587) |
 | A writable grant counts as in SAM's own folders when it lies in one of them wherever it is kept (`~/Games/sam`, also reached through a link), or in a start place that is one of them; a folder that only holds SAM's folder, or whose name only begins like it, does not (independent review of decision 9). | [`a_write_grant_in_sams_folders_is_found_wherever_they_are_kept`](../crates/sam-core/src/places.rs#L684) |
 | SAM's folders by name are every protected place named `sam`: the usual two, and the same under `XDG_CONFIG_HOME` and `XDG_DATA_HOME` (`~/cfg/sam`), which the sandbox now hides as SAM's own instead of only locking them read-only; a name that only begins like it, or another place in those folders, is none (independent re-review of decision 9). | [`sams_folders_by_name_follow_other_config_and_data_folders`](../crates/sam-core/src/places.rs#L729) |
@@ -1172,4 +1174,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 1085 automated Rust tests plus 8 scripted checks.
+Total: 1087 automated Rust tests plus 8 scripted checks.
