@@ -489,7 +489,7 @@ pub fn recommend(
         }
         // The syscall filter stays on for a 32-bit app: when the program it
         // starts is 32-bit itself, the filter takes its 32-bit calls too
-        // (sam-runner kernel.rs, i386_branch). Switching the filter off
+        // (sam-runner kernel.rs, seccomp_program). Switching the filter off
         // here let any app choose to run without it by making its start
         // program 32-bit (review K-3). A 32-bit app started by a script
         // that fails still gets the step in its repair ladder.
