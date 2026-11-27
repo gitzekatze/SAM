@@ -258,7 +258,7 @@ fn s(p: &Path) -> String {
 /// With the whole home writable, the app makes `place` (missing so far) a
 /// link to a stand-in for tmux's socket folder in one start; in the next
 /// start it reaches the socket neither where the link leads nor through
-/// the link.
+/// the link, and the start names that danger, not the planted link.
 fn planted_link_never_reaches_host_sockets(rig: &Rig, place: &Path, p: &PermissionSet) {
     let sockets = SocketFolder::new();
     let (r, text) = rig.start(
@@ -295,6 +295,13 @@ fn planted_link_never_reaches_host_sockets(rig: &Rig, place: &Path, p: &Permissi
         !sockets.was_reached(),
         "a program outside the sandbox was reached through {}",
         place.display()
+    );
+    // The start names the danger and gives no way out: the note for a link
+    // the app may have made says to show the place it leads to.
+    assert!(
+        text.contains("where programs outside the sandbox listen")
+            && !text.contains("may have made that link"),
+        "the start names the danger: {text}"
     );
 }
 

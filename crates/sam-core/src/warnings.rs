@@ -1273,9 +1273,11 @@ mod tests {
     /// ([`crate::places::left_out_note`]), one the sandbox leaves out for a
     /// link: one that leads to a folder in `/tmp` not known by its name
     /// (`/tmp/dl`, so downloads clear themselves), to the host's runtime
-    /// folder or SAM's own, read and write or read-only, and with the whole
-    /// home writable one that is a link out of the home, where the start
-    /// says the app may have made that link and how to show the folder.
+    /// folder or SAM's own, read and write or read-only, also with the whole
+    /// home writable, where the note names the danger and no way out; and
+    /// with the whole home writable one that is a link out of the home to
+    /// an ordinary folder, where the start says the app may have made that
+    /// link and how to show the folder.
     /// The app page named none of these, while the start left them out.
     /// An ordinary folder, a link a private home cannot have planted to a
     /// folder outside `/tmp`, or a folder not granted gives no such
@@ -1380,30 +1382,40 @@ mod tests {
         assert!(warned(&p, &downloads).is_none(), "without the home");
         // Links to where programs outside the sandbox listen, whoever made
         // them: a folder in `/tmp` by any name, the host's runtime folder
-        // and SAM's.
+        // and SAM's. Also with the whole home writable, where the app may
+        // have made the link: the note names the danger and gives no way
+        // out. The note for a planted link said to set Downloads to the
+        // place it leads to, and set by its real place, a socket folder in
+        // `/tmp` by a name no list knows is shown as set.
         for (dir, place, sam) in [
             (&to_tmp, in_tmp.clone(), Vec::new()),
             (&to_run, run.join("doc"), Vec::new()),
             (&to_sam, sam_run.join("app"), vec![sam_run.clone()]),
         ] {
             for (access, write) in [(Access::Rw, true), (Access::Ro, false)] {
-                let mut q = PermissionSet::strict_gui();
-                q.filesystem.downloads = access;
-                let hit = warned_with(&q, dir, &sam)
-                    .unwrap_or_else(|| panic!("{} {access:?} is named", dir.display()));
-                assert_eq!(hit.key.as_deref(), Some("filesystem.downloads"));
-                assert_eq!(
-                    hit.message,
-                    start_note(dir, LeftOut::HostServices(place.clone()), write),
-                    "{}",
-                    dir.display()
-                );
-                assert!(
-                    hit.message
-                        .contains("where programs outside the sandbox listen"),
-                    "{}",
-                    hit.message
-                );
+                for whole_home in [false, true] {
+                    let mut q = PermissionSet::strict_gui();
+                    q.filesystem.downloads = access;
+                    q.filesystem.home = whole_home;
+                    q.filesystem.home_access = Access::Rw;
+                    let case = format!("{} {access:?}, whole home {whole_home}", dir.display());
+                    let hit =
+                        warned_with(&q, dir, &sam).unwrap_or_else(|| panic!("{case} is named"));
+                    assert_eq!(hit.key.as_deref(), Some("filesystem.downloads"));
+                    assert_eq!(
+                        hit.message,
+                        start_note(dir, LeftOut::HostServices(place.clone()), write),
+                        "{case}"
+                    );
+                    assert!(
+                        hit.message
+                            .contains("where programs outside the sandbox listen")
+                            && !hit.message.contains("may have made that link")
+                            && !hit.message.contains("user-dirs.dirs"),
+                        "{case}: {}",
+                        hit.message
+                    );
+                }
             }
         }
     }

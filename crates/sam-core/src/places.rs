@@ -1219,7 +1219,11 @@ fn shows_writable(
 /// [`user_folder_left_out`]): `writable` names the folders the app can
 /// change ([`writable_grants`]), `shown` whether the place the way leads to
 /// is shown anyway; `host` and `this` say where programs outside the
-/// sandbox listen ([`leads_to_host_services`]).
+/// sandbox listen ([`leads_to_host_services`]). Where a way both leads
+/// through a planted link and to such a place, the answer is the place
+/// ([`LeftOut::HostServices`]), whose note names the danger and no way
+/// out; only a way stuck at a link Linux would not follow answers with
+/// that link first.
 fn left_out_by_rule(
     way: Way,
     writable: &[PathBuf],
@@ -1232,11 +1236,17 @@ fn left_out_by_rule(
     // that grant lead there itself ([`writable_grants`]). This leaves out
     // more, never less.
     let can_change = |d: &Path| writable.iter().any(|g| d.starts_with(g));
-    if let Some(link) = link_the_app_could_plant(&way, &can_change) {
-        if way.stuck || !shown(&way.leads) {
-            return Some(LeftOut::Link(link));
-        }
+    let planted = link_the_app_could_plant(&way, &can_change);
+    // A way that ends at a link Linux would not follow leads nowhere SAM
+    // can judge: the link is the answer.
+    if let Some(link) = planted.as_ref().filter(|_| way.stuck) {
+        return Some(LeftOut::Link(link.clone()));
     }
+    // Before a planted link: where both refuse, the note names the danger
+    // and gives no way out. The note for a planted link tells the person
+    // to show the place it leads to, and for `/tmp/tmate-1000` that handed
+    // tmate's socket to the app (with the whole home writable and
+    // Downloads a link there).
     if !way.links.is_empty() && leads_to_host_services(&way.leads, host, this) {
         return Some(LeftOut::HostServices(way.leads));
     }
@@ -1244,10 +1254,17 @@ fn left_out_by_rule(
     // send it on to a socket folder SAM does not know by its place. A link
     // that only points into such a place either ends there (judged above)
     // or meets the next link there.
-    way.links
+    if let Some(link) = way
+        .links
         .iter()
         .find(|link| passes_host_services(link, host, this))
-        .map(|link| LeftOut::HostServices(link.clone()))
+    {
+        return Some(LeftOut::HostServices(link.clone()));
+    }
+    match planted {
+        Some(link) if !shown(&way.leads) => Some(LeftOut::Link(link)),
+        _ => None,
+    }
 }
 
 /// Whether SAM leaves out the place `named` (with `~` expanded) that it
@@ -1476,6 +1493,19 @@ pub fn guarded_places_everywhere_with(
 /// `guarded` ([`guarded_places_everywhere`]). In a private home nothing
 /// else guards what such a bind shows: `~/.fonts` made a link to `~/.ssh`
 /// showed the keys as fonts.
+///
+/// With the whole home writable, a place in the home is no reason on its
+/// own to leave the bind out: the home shows that place already,
+/// writable, the read-only bind lands where the app reaches it there and
+/// only narrows it, and the home's protections (hidden key and credential
+/// stores, locked protected places, SAM's hidden folders) apply after it.
+/// Left out, the fonts were shown writable through the home: with
+/// `~/.aws` made a link to the home in an earlier start (hidden files
+/// on), every font place led into a guarded place, and the app could
+/// plant fonts and fontconfig rules that programs outside the sandbox
+/// load. The home or a folder above it stays left out there too: bound
+/// read-only, it would lock the whole home. In a private or read-only
+/// home, a guarded place stays left out.
 pub fn own_place_left_out(
     p: &PermissionSet,
     host: &HostInfo,
@@ -1483,16 +1513,20 @@ pub fn own_place_left_out(
     guarded: &[PathBuf],
     this: &ThisStart,
 ) -> Option<LeftOut> {
+    use crate::permissions::Access;
     if let Some(why) = linked_place_left_out(p, host, named, false, this) {
         return Some(why);
     }
     let leads = follow(named).leads;
     let home_or_above = is_home_or_above(&host.home, &resolve(&host.home), &leads);
-    if home_or_above
-        || guarded
+    let fs = &p.filesystem;
+    let home_shows_it_writable = fs.home && fs.home_access == Access::Rw && in_home(host, &leads);
+    let guarded_place = || {
+        guarded
             .iter()
             .any(|g| leads.starts_with(g) || g.starts_with(&leads))
-    {
+    };
+    if home_or_above || (!home_shows_it_writable && guarded_place()) {
         return Some(LeftOut::Guarded(leads));
     }
     None
@@ -2345,7 +2379,9 @@ mod tests {
     /// One rule for every bind through links (`~/.fonts`, an extra folder):
     /// with the whole home writable, a link in it is not followed out of
     /// what the home shows (the app may have planted it), also when its
-    /// target does not exist yet; one that stays in the home is. Without a
+    /// target does not exist yet, and for one to where programs outside
+    /// the sandbox listen that is the reason given; one that stays in the
+    /// home is followed. Without a
     /// folder the app can change, a link is followed, unless it leads to
     /// where programs outside the sandbox listen. A place named by its real
     /// path (no link) is never left out: its name was rated as it is. A
@@ -2382,10 +2418,13 @@ mod tests {
             let _ = std::fs::remove_file(&fonts);
             std::os::unix::fs::symlink(target, &fonts).unwrap();
         };
+        // To the sockets: left out for them in both, also where the app
+        // may have planted the link, so the note names the danger and no
+        // way out.
         to(&sockets);
         assert_eq!(
             linked_place_left_out(&whole, &host, &fonts, false, &none()),
-            Some(LeftOut::Link(fonts.clone()))
+            Some(LeftOut::HostServices(sockets.clone()))
         );
         assert_eq!(
             linked_place_left_out(&private, &host, &fonts, false, &none()),
@@ -2940,6 +2979,81 @@ mod tests {
         }
         assert_eq!(to_outside(&elsewhere.join("cfg/myfonts"), &outside), None);
     }
+
+    /// With the whole home writable, the font places stay bound read-only
+    /// although a guarded place leads to the home: with hidden files on,
+    /// the app made `~/.aws` (or `~/.ssh`, missing while the keys are
+    /// granted) a link to the home in one start, so in the next every font
+    /// place led into a guarded place and was left out, and the home
+    /// showed the fonts and the fonts settings writable to the app. The
+    /// home shows them anyway, so the read-only bind only narrows. A font
+    /// place that leads to the home itself stays left out (bound
+    /// read-only, it would lock the whole home), and with the home
+    /// read-only or private the guarded place still leaves them out.
+    #[test]
+    fn with_the_whole_home_writable_the_font_places_stay_bound_read_only() {
+        use crate::permissions::Access;
+        let t = scratch();
+        let base = std::fs::canonicalize(t.path()).unwrap();
+        let home = base.join("home/u");
+        let places = [".fonts", ".local/share/fonts", ".config/fontconfig"];
+        for d in places {
+            std::fs::create_dir_all(home.join(d)).unwrap();
+        }
+        let host = HostInfo {
+            home: home.clone(),
+            ..Default::default()
+        };
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.home = true;
+        p.filesystem.home_access = Access::Rw;
+        p.filesystem.hidden_files = true;
+        for planted in [".aws", ".ssh"] {
+            let link = home.join(planted);
+            std::os::unix::fs::symlink(&home, &link).unwrap();
+            let guarded = guarded_places_everywhere(&home, &[]);
+            assert!(guarded.contains(&home), "{planted}: {guarded:?}");
+            for rel in places {
+                assert_eq!(
+                    own_place_left_out(&p, &host, &home.join(rel), &guarded, &none()),
+                    None,
+                    "{planted} a link to the home: ~/{rel} is bound read-only"
+                );
+            }
+            let mut ro = p.clone();
+            ro.filesystem.home_access = Access::Ro;
+            let mut private = p.clone();
+            private.filesystem.home = false;
+            for q in [&ro, &private] {
+                assert_eq!(
+                    own_place_left_out(q, &host, &home.join(".fonts"), &guarded, &none()),
+                    Some(LeftOut::Guarded(home.join(".fonts"))),
+                    "{planted}, home {} {:?}",
+                    q.filesystem.home,
+                    q.filesystem.home_access
+                );
+            }
+            std::fs::remove_file(&link).unwrap();
+        }
+        // The home itself never (a folder above it is no place the home
+        // shows: the planted link is left out first).
+        let guarded = guarded_places_everywhere(&home, &[]);
+        let fonts = home.join(".fonts");
+        std::fs::remove_dir(&fonts).unwrap();
+        for (target, why) in [
+            (home.clone(), LeftOut::Guarded(home.clone())),
+            (base.join("home"), LeftOut::Link(fonts.clone())),
+        ] {
+            let _ = std::fs::remove_file(&fonts);
+            std::os::unix::fs::symlink(&target, &fonts).unwrap();
+            assert_eq!(
+                own_place_left_out(&p, &host, &fonts, &guarded, &none()),
+                Some(why),
+                "{}",
+                target.display()
+            );
+        }
+    }
     /// With the whole home writable, a user folder set read-only is shown
     /// through the home, writable: a link the app made in it is not
     /// followed out of what the home and the user folders show, for a
@@ -3166,9 +3280,10 @@ mod tests {
 
     /// A user folder SAM binds on its own is left out where a link on its
     /// way lies in a folder the app can change and leads out of what the
-    /// home shows (with `~/Sync` writable, `~/Sync/Documents` made a link
-    /// to `/tmp/tmux-…` showed the host's tmux sockets), or where it leads
-    /// to programs listening outside the sandbox, whoever made the link.
+    /// home shows, or where it leads to programs listening outside the
+    /// sandbox, whoever made the link (with `~/Sync` writable,
+    /// `~/Sync/Documents` made a link to `/tmp/tmux-…` showed the host's
+    /// tmux sockets): where both hold, for the listening programs.
     /// Its own grant does not count, and a link you made in a home the app
     /// cannot change is followed.
     #[test]
@@ -3199,11 +3314,17 @@ mod tests {
         let mut p = PermissionSet::strict_gui();
         p.filesystem.documents = Access::Ro;
         p.filesystem.custom_write = vec![home.join("Sync").to_string_lossy().into_owned()];
-        for target in [&sockets, &outside] {
+        // The planted link to the sockets is left out for them: the note
+        // names the danger and gives no way out, which for the planted link
+        // would say to set the folder to the place it leads to.
+        for (target, why) in [
+            (&sockets, LeftOut::HostServices(sockets.clone())),
+            (&outside, LeftOut::Link(docs.clone())),
+        ] {
             to(target);
             assert_eq!(
                 user_folder_left_out(&p, &host, "documents", &none()),
-                Some(LeftOut::Link(docs.clone())),
+                Some(why),
                 "{}",
                 target.display()
             );

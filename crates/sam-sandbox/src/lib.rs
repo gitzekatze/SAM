@@ -1669,8 +1669,13 @@ fn this_start(ctx: &LaunchContext) -> sam_core::places::ThisStart {
 /// own, read-only (the fonts, the fonts settings, the theme files), or why
 /// it is left out: never through a link the app could have planted out of
 /// what it is shown, never to where programs outside the sandbox listen,
-/// and never to the home, a key or credential store, a protected place or
-/// SAM's own folders (`guarded`, [`sam_core::places::own_place_left_out`]).
+/// never to the home or a folder above it, and never to a key or
+/// credential store, a protected place or SAM's own folders (`guarded`,
+/// [`sam_core::places::own_place_left_out`]), except, with the whole home
+/// writable, to such a place in the home: the home shows it anyway, the
+/// read-only bind only narrows it, and `guard_home` and the hiding of
+/// SAM's folders come after it. Left out there, the fonts were writable
+/// through the home.
 /// With the whole home writable and `~/.fonts` missing, the app made it a
 /// link to `/tmp/tmux-1000`, and the next start bound the host's tmux
 /// sockets over the sandbox's own `/tmp`.
@@ -7917,9 +7922,10 @@ mod guard_tests {
     /// is still the topmost mount, stays unpinned.
     ///
     /// SAM does not bind a font or theme place on its own that holds a
-    /// place it protects ([`own_bind`]), so with the start file's target
-    /// inside, the place is bound read-only only where it is also an extra
-    /// read-only folder; the pins stay all the same. The same with an extra
+    /// place it protects ([`own_bind`]), except with the whole home
+    /// writable, which shows it anyway; so with the start file's target
+    /// inside, the place is bound read-only only there or where it is also
+    /// an extra read-only folder; the pins stay all the same. The same with an extra
     /// read-only folder inside instead (`~/.fonts/work/dots/licensed`),
     /// where SAM's own read-only bind is made: `dots` is pinned after the
     /// writable folder and before the extra one.
@@ -7971,18 +7977,31 @@ mod guard_tests {
             let case = format!("{ro} ({}, start file {start_file})", p.filesystem.home);
             let ro_bind = first(&["--ro-bind-try", &ro, &ro]);
             // With the start file's target inside, SAM's own bind of the
-            // place is left out, and says why; an extra read-only folder
-            // at the place is still bound.
-            let left_out = cmd.notes.iter().any(|n| {
-                n.contains(&format!(
-                    "SAM does not bind ~/{ro_rel} for this app on its own"
-                )) && n.contains("a place SAM protects")
-            });
-            assert_eq!(left_out, start_file, "{case}: {:?}", cmd.notes);
+            // place is left out in a private home, and says why; an extra
+            // read-only folder at the place is still bound. With the whole
+            // home writable, which shows the place anyway, SAM's own bind
+            // is made all the same.
+            let home_rw = p.filesystem.home && p.filesystem.home_access == Access::Rw;
+            let notes_own = |says: &str| {
+                cmd.notes.iter().any(|n| {
+                    n.contains(&format!(
+                        "SAM does not bind ~/{ro_rel} for this app on its own"
+                    )) && n.contains(says)
+                })
+            };
+            assert_eq!(
+                notes_own("a place SAM protects"),
+                start_file && !home_rw,
+                "{case}: {:?}",
+                cmd.notes
+            );
+            if home_rw {
+                assert!(!notes_own(""), "{case}: own bind made: {:?}", cmd.notes);
+            }
             let extra_at_place = p.filesystem.custom_read.contains(&ro);
             assert_eq!(
                 ro_bind.is_some(),
-                !start_file || extra_at_place,
+                !start_file || home_rw || extra_at_place,
                 "{case}: bound read-only: {a:?}"
             );
             let write = first(&["--bind-try", &work, &work]).expect("bound writable");
@@ -8020,10 +8039,10 @@ mod guard_tests {
     /// (`~/.fonts/work/dots/licensed`), whose folders above are pinned as
     /// those above a start file.
     ///
-    /// SAM does not bind a font folder on its own that holds a place it
-    /// protects ([`own_bind`]): with the start file's target inside, the
-    /// home shows `~/.fonts` writable, as everything in it, the start says
-    /// why, and the start file is still locked.
+    /// With the start file's target inside, the font folder holds a place
+    /// SAM protects; with the whole home writable SAM binds it read-only
+    /// all the same ([`own_bind`]): the home shows it anyway, and the start
+    /// file is still locked after it.
     #[test]
     fn a_writable_user_folder_the_home_shows_inside_a_font_folder_adds_no_pin() {
         let st = |p: &Path| p.to_string_lossy().into_owned();
@@ -8049,13 +8068,9 @@ mod guard_tests {
             let fonts = st(&home.join(".fonts"));
             if start_file {
                 assert!(
-                    at_seq(a, &["--ro-bind-try", &fonts, &fonts]).is_empty(),
-                    "{fonts} holds a protected place: {a:?}"
-                );
-                assert!(
-                    cmd.notes.iter().any(|n| n
-                        .contains("SAM does not bind ~/.fonts for this app on its own")
-                        && n.contains("a place SAM protects")),
+                    !cmd.notes
+                        .iter()
+                        .any(|n| n.contains("SAM does not bind ~/.fonts for this app on its own")),
                     "{:?}",
                     cmd.notes
                 );
@@ -8064,11 +8079,10 @@ mod guard_tests {
                     has_seq(a, &["--ro-bind-try", &bashrc, &bashrc]),
                     "the start file stays locked: {a:?}"
                 );
-                continue;
             }
             assert!(
                 !at_seq(a, &["--ro-bind-try", &fonts, &fonts]).is_empty(),
-                "{fonts} bound read-only: {a:?}"
+                "start file {start_file}: {fonts} bound read-only: {a:?}"
             );
             let writable_inside: Vec<&[String]> = a
                 .windows(3)
@@ -8081,6 +8095,43 @@ mod guard_tests {
             assert!(
                 writable_inside.is_empty(),
                 "nothing inside {fonts} bound writable: {writable_inside:?}"
+            );
+        }
+    }
+
+    /// With the whole home writable and hidden files on, the app made
+    /// `~/.aws` a link to the home in one start: in the next, every font
+    /// place led into a guarded place, SAM left out their read-only binds,
+    /// and the home showed `~/.fonts`, `~/.local/share/fonts` and
+    /// `~/.config/fontconfig` writable, so the app could plant fonts and
+    /// fontconfig rules that programs outside the sandbox load. They stay
+    /// bound read-only, as without the link ([`own_bind`]).
+    #[test]
+    fn a_guarded_link_to_the_home_keeps_the_font_places_read_only() {
+        let st = |p: &Path| p.to_string_lossy().into_owned();
+        let t = scratch();
+        let home = fs::canonicalize(t.path()).unwrap().join("home");
+        let places = [".fonts", ".local/share/fonts", ".config/fontconfig"];
+        for d in places {
+            fs::create_dir_all(home.join(d)).unwrap();
+        }
+        std::os::unix::fs::symlink(&home, home.join(".aws")).unwrap();
+        let mut p = full_rw();
+        p.filesystem.hidden_files = true;
+        let cmd = Bubblewrap.build(&ctx_for(&p, &home)).unwrap();
+        for rel in places {
+            let at = st(&home.join(rel));
+            assert!(
+                has_seq(&cmd.args, &["--ro-bind-try", &at, &at]),
+                "~/{rel} bound read-only: {:?}",
+                cmd.args
+            );
+            assert!(
+                !cmd.notes.iter().any(|n| n.contains(&format!(
+                    "SAM does not bind ~/{rel} for this app on its own"
+                ))),
+                "{:?}",
+                cmd.notes
             );
         }
     }
@@ -9098,7 +9149,8 @@ mod guard_tests {
     /// sandbox listen: with the whole home writable and `~/.fonts` a link
     /// to `/tmp/tmux-…`, the start bound the host's folder over its own
     /// `/tmp`. A place SAM shows on its own never leads to the keys either.
-    /// The start says why, and the views and the list of extra folders
+    /// The start says why (for a link to the sockets that danger, also
+    /// where the app may have planted it), and the views and the list of extra folders
     /// agree. A link that stays in the home, or one in a folder the app
     /// cannot change that leads to an ordinary folder, is still followed.
     #[test]
@@ -9154,14 +9206,30 @@ mod guard_tests {
             "{:?}",
             cmd.args
         );
-        for place in [
-            "~/.fonts".to_string(),
-            "~/.config/fontconfig".to_string(),
-            "~/.local/share/fonts".to_string(),
-            st(&home.join("shared/ro")),
-            st(&home.join("shared/rw")),
+        // A planted link to the sockets gets the note that names them,
+        // with no way out; one to a folder the app is not shown, the note
+        // for a planted link.
+        let listen = "where programs outside the sandbox listen";
+        for (place, why) in [
+            ("~/.fonts".to_string(), listen),
+            ("~/.config/fontconfig".to_string(), listen),
+            (
+                "~/.local/share/fonts".to_string(),
+                "may have made that link",
+            ),
+            (st(&home.join("shared/ro")), listen),
+            (st(&home.join("shared/rw")), "may have made that link"),
         ] {
-            said(&cmd.notes, &place, "may have made that link");
+            said(&cmd.notes, &place, why);
+            if why == listen {
+                assert!(
+                    !cmd.notes
+                        .iter()
+                        .any(|n| n.contains(&place) && n.contains("may have made that link")),
+                    "{place}: {:?}",
+                    cmd.notes
+                );
+            }
         }
         assert!(!Views::of(&ctx).visible(&sock.join("x")));
         assert!(!Views::of(&ctx).visible(&outside.join("x")));
@@ -9316,7 +9384,9 @@ mod guard_tests {
     /// start bound the host's sockets over its own `/tmp`. Left out in a
     /// private home and as a writable folder in a read-only home; the start
     /// says why (for a writable folder as one left out writable, since a
-    /// read-only home may still show the place), and the views agree. A
+    /// read-only home may still show the place), naming the danger and no
+    /// way out, also where the link is one the app could have planted, and
+    /// the views agree. A
     /// user folder you made a link in the home is still shown where it
     /// leads.
     #[test]
@@ -9362,10 +9432,18 @@ mod guard_tests {
                 "{:?}",
                 cmd.args
             );
+            // The note names the danger and gives no way out: the one for
+            // a planted link says to set the folder to where it leads.
             assert!(
+                cmd.notes.iter().any(|n| n.contains(&st(&docs))
+                    && n.contains(&st(&sock))
+                    && n.contains("where programs outside the sandbox listen")),
+                "{:?}",
                 cmd.notes
-                    .iter()
-                    .any(|n| n.contains(&st(&docs)) && n.contains("may have made that link")),
+            );
+            assert!(
+                !cmd.notes.iter().any(|n| n.contains(&st(&docs))
+                    && (n.contains("may have made that link") || n.contains("user-dirs.dirs"))),
                 "{:?}",
                 cmd.notes
             );
@@ -9378,8 +9456,8 @@ mod guard_tests {
             );
             assert!(!Views::of(&c).visible(&sock.join("default")));
             // The rule for links in a folder the app can change refuses it
-            // as well; this rule's reason is the one the start gives
-            // ([`user_dir`]).
+            // as well, and so does the one for planted links; the reason
+            // the start gives is the listening programs ([`user_dir`]).
             assert_eq!(
                 sam_core::places::user_folder_link_the_app_can_change(
                     &c.permissions,
@@ -9390,7 +9468,7 @@ mod guard_tests {
             );
             assert!(matches!(
                 user_dir(&c, "documents"),
-                Err(NotShown::LeftOut(_, sam_core::places::LeftOut::Link(l))) if l == docs
+                Err(NotShown::LeftOut(_, sam_core::places::LeftOut::HostServices(l))) if l == sock
             ));
         }
         // Not plantable by this app, but still the sockets.

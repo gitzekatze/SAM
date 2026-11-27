@@ -7,18 +7,38 @@
   sandbox listen. Each rule refuses on its own, so SAM shows the folder
   only where both allow it.
 - Where both refuse a folder, the launch log now gives the reason of the
-  second rule: it names the danger of a link to where programs outside
-  the sandbox listen, or says that the link leads out of what the home
-  shows and tells you how to show the folder if you made the link
-  yourself. The shorter note that only names the link stays for
+  second rule. For a link to where programs outside the sandbox listen
+  (a folder in `/tmp`, a runtime folder), it names that danger and gives
+  no way out, also where the app could have made the link, as with the
+  whole home writable. Otherwise it says that the link leads out of what
+  the home shows and tells you how to show the folder if you made the
+  link yourself. The shorter note that only names the link stays for
   a link in a folder the app can change that leads to a place the home
   shows anyway.
+- The same holds for extra folders, fonts and theme files: a link to
+  where programs outside the sandbox listen always gets the note that
+  names the danger. Before, with the whole home writable, the note for
+  such a link said to list or set the place it leads to, such as
+  `/tmp/tmate-1000`, which SAM then showed as set.
 - With the whole home writable and Downloads set to read-only, SAM mounts
   Downloads read-only over the home, so the app cannot plant a link in
   it, unless SAM refuses Downloads (for example because Downloads is
   itself a link in the writable home). Then the home shows it writable,
   as before. A link the app planted there, or in an earlier start while
   Downloads was still writable, is still not followed.
+
+### SAM keeps your fonts read-only with the whole home writable
+
+- The new rule that your fonts never lead to your keys, a credential
+  store or another place SAM protects applies where the home does not
+  show that place anyway. With the whole home writable, SAM keeps showing
+  `~/.fonts`, `~/.local/share/fonts` and `~/.config/fontconfig`
+  read-only, also when one of them leads into such a place (for example
+  after `~/.aws` was made a link to your home, with hidden files shown).
+  Left out there, the writable home would show them writable, and the
+  app could change the fonts and font settings your other programs load.
+  The home's own protections still apply after the fonts are bound; a
+  font place that leads to the home itself stays left out.
 
 ### The app page names every user folder SAM leaves out for a link
 

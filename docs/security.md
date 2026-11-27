@@ -776,7 +776,10 @@ How these stay protected with the home writable:
   (`/tmp/dl`) or to a runtime folder, which the sandbox leaves out
   whoever made the link, is named the same way; its note names the place
   and the danger, not a way out (a folder in `/tmp` set by its real
-  place, such as `/tmp/dl`, is shown as set, above)
+  place, such as `/tmp/dl`, is shown as set, above), also where the app
+  could have planted the link, as with the whole home writable: that
+  reason comes before the planted link's, whose note would say to set
+  the folder to the place the link leads to
   (`a_user_folder_the_sandbox_does_not_show_is_named_before_the_start`).
   Not covered: the app page cannot know the folders a start opens with
   the app or SAM's own writable binds, which count as folders the app can
@@ -814,8 +817,9 @@ How these stay protected with the home writable:
   the sandbox listen (see *Links never take a bind where it must not
   lead*). Each of the two rules refuses on its own, so a user folder is
   shown only where both allow it. Where both refuse it, the launch log
-  gives the note of the second rule, which names the danger (a link to
-  where programs outside the sandbox listen) or says the link leads out
+  gives the note of the second rule: for a link to where programs outside
+  the sandbox listen it names that danger and no way out, also where the
+  app could have planted the link; otherwise it says the link leads out
   of what the home shows and how to show the folder if you made the link
   yourself; the shorter note that names only the link
   is left for a link only the first rule refuses (one in a folder the
@@ -949,13 +953,27 @@ How these stay protected with the home writable:
     `/data/cfg`, `~/.fonts` a link to `~/cfg/gh` or `/data/cfg/gh` is not
     bound in a private home:
     `an_own_place_never_leads_to_the_home_keys_or_sams_folders`,
-    `git_credentials_under_config_git_stay_hidden`).
+    `git_credentials_under_config_git_stay_hidden`). With the whole home
+    writable, which shows such a place in the home anyway, the fonts stay
+    bound read-only wherever they lead in the home, except the home or a
+    folder above it: the read-only bind only narrows what the home shows,
+    and the home's protections apply after it as they do for the home
+    (key and credential stores hidden unless granted, protected places
+    locked, SAM's own folders hidden). Left out, the fonts were shown
+    writable through the home: with hidden files on, an app made `~/.aws`
+    a link to the home in one start, and in the next every font place led
+    into a guarded place, so the app could plant fonts and fontconfig
+    rules that programs outside the sandbox load
+    (`with_the_whole_home_writable_the_font_places_stay_bound_read_only`,
+    `a_guarded_link_to_the_home_keeps_the_font_places_read_only`).
 
   SAM does not bind such a place itself, and the launch log says so: that
   SAM leaves out the extra or user folder, or does not bind the place on
   its own, and why (for a planted link, what the rule weighs: what the
   home and the user folders show, for a user folder the home alone; for
-  the other two rules, where the link leads), never that the place is
+  the other two rules, where the link leads; a link to where programs
+  outside the sandbox listen gets that reason, with no way out, also
+  where the app could have planted it), never that the place is
   hidden or that SAM does not show it, since the folders around it may still
   show the link, and other extra folders, opened folders and the system's
   own places the place it leads to; the app still sees what its other
@@ -980,7 +998,9 @@ How these stay protected with the home writable:
   rated *Some access* when read-only, so SAM adds it without asking first,
   and *Think twice* when writable. If you made such a link yourself,
   list the place it leads to as an extra folder instead of the link, or
-  set the user folder to that place in `~/.config/user-dirs.dirs`.
+  set the user folder to that place in `~/.config/user-dirs.dirs`; the
+  launch log says so only for a link that leads out of what the app is
+  shown, never for one to where programs outside the sandbox listen.
   Not covered: SAM judges a link by the permissions of the start at
   hand. A link the app made in an earlier start while it had more write
   access (the whole home, or a user, extra or opened folder writable) is
