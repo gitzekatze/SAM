@@ -32,7 +32,7 @@ proves it, is in [threat-model.md](threat-model.md).
 
 | Path in the sandbox | What it is |
 |---|---|
-| `$HOME` | the app's **private home** (`~/.local/share/sam/homes/<app>`), plus the folders you granted. Also shown, read-only: your fonts (`~/.local/share/fonts`, `~/.fonts`, `~/.config/fontconfig`) and, with *Host theme settings* (on by default), your desktop's look: the GTK, Qt and KDE settings (`~/.config/gtk-3.0`, `~/.config/gtk-4.0`, `~/.config/kdeglobals` and similar), icons and themes. The file chooser's bookmarks and server list in the GTK folders stay out, unless you grant their folder |
+| `$HOME` | the app's **private home** (`~/.local/share/sam/homes/<app>`), plus the folders you granted. Also shown, read-only: your fonts (`~/.local/share/fonts`, `~/.fonts`, `~/.config/fontconfig`) and, with *Host theme settings* (on by default), your desktop's look: the GTK, Qt and KDE settings (`~/.config/gtk-3.0`, `~/.config/gtk-4.0`, `~/.config/kdeglobals` and similar), icons and themes. The file chooser's bookmarks and server list in the GTK folders stay out, unless you grant their folder. A link there is followed only where it may lead (see *Links never take a bind where it must not lead*) |
 | `/opt/app` | the unpacked app, read-only |
 | `/usr/lib`, `/usr/bin` | the system's libraries and programs, read-only (all of `/usr` with `advanced.host_runtime full` or compatibility mode) |
 | `/usr/share/…` | selected shared data (fonts, icons, locales, themes), read-only |
@@ -786,7 +786,11 @@ How these stay protected with the home writable:
   real place instead
   (`a_user_folder_behind_a_link_the_app_could_plant_is_not_shown`,
   `a_user_folder_link_the_app_planted_never_shows_where_it_leads`,
-  `a_user_folder_where_outside_programs_listen_is_not_shown`). A user folder is shown at its own access also with the whole home
+  `a_user_folder_where_outside_programs_listen_is_not_shown`).
+  Nor is one whose link the app could have planted, also in a folder only
+  this start shows writable, or one that leads to where programs outside
+  the sandbox listen (see *Links never take a bind where it must not
+  lead*). A user folder is shown at its own access also with the whole home
   granted, inside the home or outside it, unless SAM refuses it as above
   (set to the home, a folder above it, a system folder, a protected place
   such as `~/.local/share/Documents`, or inside SAM's own folders): such a
@@ -852,6 +856,119 @@ How these stay protected with the home writable:
   outside the sandbox. A grant of `/tmp`, or of those places in it, is
   rated *Dangerous* and warned about
   (`a_grant_of_tmp_or_its_listening_places_is_dangerous_even_read_only`).
+- **Links never take a bind where it must not lead.** SAM shows your
+  fonts (`~/.fonts`, `~/.local/share/fonts`, `~/.config/fontconfig`) and
+  your theme files read-only on its own, and binds each extra folder and
+  each granted user folder where its links lead. With the whole
+  home writable, an app could make a missing `~/.fonts`, or an extra
+  folder not made yet, a link to `/tmp/tmux-1000` or to `/run/user/1000`,
+  and the next start showed the host's tmux server, SSH or GnuPG agent or
+  the systemd user manager, read-only but enough to connect and run
+  commands outside the sandbox; with `~/Sync` writable, Documents set to
+  `~/Sync/Documents` did the same. Each of these binds now follows one
+  rule:
+  - a link on the way that lies in a folder the app can change (the
+    writable home and every user folder in it, whatever its own switch
+    says, a writable user or extra folder, a folder this start shows
+    writable besides them: one opened with the app while opened files are
+    writable, a writable bind of SAM's) is not followed out of what the
+    home and the user folders show, and for a writable extra folder out of
+    what they show writable: the app may have made it (with the home
+    read-only, a writable extra folder made a link to the home would
+    otherwise make the whole home writable). Any writable grant that
+    shows the folder counts, also where a read-only grant lies deeper:
+    the app may have made that grant lead there itself (with the whole
+    home writable and `~/x` an extra read-only folder, the app made `~/x`
+    a link to `~/.local/share` and `~/.local/share/fonts` a link to a
+    folder it is not shown, and the next start showed that folder as the
+    fonts). For a user folder, its own grant does not count, and only the
+    home counts as showing;
+  - a link that leads to where programs outside the sandbox listen is
+    never followed, whoever made it: the whole computer; anything in
+    `/tmp` and `/var/tmp`, a socket directly there (`/tmp/.s.PGSQL.5432`)
+    or a socket folder by any name (`/tmp/tmux-1000`, `/tmp/tmate-1000`),
+    and a folder holding one, though not a place in your home when your
+    home itself lies there (a guest session); your runtime folder
+    (`XDG_RUNTIME_DIR`) and SAM's runtime folders wherever they are (also
+    `/mnt/wslg/runtime-dir` or one in `/tmp`), and a folder holding one;
+    `/run` except drives under `/run/media`; `/proc`; `/dev`. Nor is a
+    link whose way passes a link in `/tmp` or `/var/tmp` (any program may
+    make one there, pointing anywhere; on WSLg the host's `/tmp/.X11-unix`
+    is a link to `/mnt/wslg/.X11-unix`), in a runtime folder, in `/proc`
+    or in `/dev`, also where the way ends somewhere else. Links in the rest of
+    `/run` are the system's own and are followed (NixOS's
+    `/run/current-system`). Not covered: a program running alongside
+    (also a running copy of the app) that swaps a part of the way between
+    SAM's look and the mount;
+  - a place SAM shows on its own never leads to the home or a folder above
+    it, a key or credential store, a protected place or SAM's own folders.
+
+  SAM does not bind such a place itself, and the launch log says so: that
+  SAM leaves out the extra or user folder, or does not bind the place on
+  its own, and why (for a planted link, what the rule weighs: what the
+  home and the user folders show, for a user folder the home alone; for
+  the other two rules, where the link leads), never that the place is
+  hidden or that SAM does not show it, since the folders around it may still
+  show the link, and other extra folders, opened folders and the system's
+  own places the place it leads to; the app still sees what its other
+  folders show there. Your fonts or theme files
+  stay left out after you list the place their link leads to as an extra
+  folder; the app then reaches that place through the link wherever its
+  other folders show the link
+  (`a_left_out_note_never_says_the_place_is_hidden`). The link itself
+  may still be visible through the home or a user folder, so the sandbox
+  check expects an extra or user folder left out this way as the other
+  grants show the place the link leads to: not at all where none of them
+  shows it. Where the sandbox shows its own folder at that place (the
+  system and library folders it binds read-only, `/run`, `/proc`, `/dev`,
+  `/sys`, and the fonts and theme files of a private home), the check
+  expects nothing there and makes no probe for that folder. A link that
+  stays inside what the app is shown (`~/.fonts` a
+  link to `~/.local/share/fonts`) works as before, and an extra folder you
+  name by its real place is shown as written and rated by its name: `/tmp`
+  itself, the known socket folders in it (`/tmp/tmux-1000` named so) and
+  anything in `/var/tmp` (as part of `/var`) are rated *Dangerous* and
+  warned about; any other place in `/tmp` (such as `/tmp/tmate-1000`) is
+  rated *Some access* when read-only, so SAM adds it without asking first,
+  and *Think twice* when writable. If you made such a link yourself,
+  list the place it leads to as an extra folder instead of the link, or
+  set the user folder to that place in `~/.config/user-dirs.dirs`.
+  Not covered: SAM judges a link by the permissions of the start at
+  hand. A link the app made in an earlier start while it had more write
+  access (the whole home, or a user, extra or opened folder writable) is
+  followed after you narrow its permissions, as long as it leads
+  somewhere the second and third rule allow: with a private home,
+  `~/.fonts` made a link to `/mnt/data/private` in a start with the whole
+  home writable shows that folder, which no start gave the app. A link
+  to where programs outside the sandbox listen stays refused in every
+  start, except where a program running alongside (also a running copy
+  of the app) swaps a part of the way between SAM's look and the mount.
+  After narrowing an app's permissions, check that `~/.fonts`,
+  `~/.config/fontconfig` and the extra folders are not links you did
+  not make
+  (`a_font_folder_link_the_app_planted_never_reaches_host_sockets`,
+  `a_fontconfig_link_the_app_planted_never_reaches_host_sockets`,
+  `an_extra_folder_link_the_app_planted_never_reaches_host_sockets`,
+  `a_font_folder_link_never_leads_out_of_what_the_app_is_shown`,
+  `a_user_folder_link_the_app_planted_never_reaches_host_sockets`,
+  `a_link_the_app_planted_never_makes_a_read_only_home_writable`,
+  `a_link_planted_in_a_user_folder_of_a_writable_home_is_not_followed`,
+  `a_read_only_grant_never_hides_a_link_the_app_planted`,
+  `a_font_folder_link_never_reaches_sockets_by_any_name`,
+  `a_font_folder_link_through_a_link_in_tmp_never_reaches_sockets`, each
+  from a real sandbox; `fonts_themes_and_extra_folders_never_follow_a_planted_link`,
+  `a_folder_this_start_shows_writable_holds_links_the_app_may_have_made`,
+  `a_folder_this_start_shows_writable_counts_as_one_the_app_can_change`,
+  `a_link_to_sams_runtime_folders_is_never_followed`,
+  `a_link_to_any_place_where_outside_programs_listen_is_left_out`,
+  `the_places_where_outside_programs_listen_are_known`,
+  `a_link_in_tmp_that_sends_the_way_elsewhere_is_never_followed`,
+  `a_read_only_grant_never_makes_a_folder_one_the_app_cannot_change`,
+  `a_planted_link_never_makes_a_read_only_home_writable`,
+  `a_user_folder_never_follows_a_planted_link`,
+  `a_user_folder_in_a_writable_home_counts_as_one_the_app_can_change`,
+  `ordinary_font_folders_and_links_inside_the_home_still_work`,
+  `the_check_expects_a_left_out_extra_folder_as_its_target_is_shown`).
 - **Extra sockets** (`sockets.custom`) are passed in from where their links
   lead. One reached through a link in a folder the app may change is left
   out (the app could have made that link, to the session bus or another
