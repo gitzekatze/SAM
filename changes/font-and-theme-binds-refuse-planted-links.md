@@ -1,4 +1,4 @@
-### SAM no longer follows a link an app could have planted in your fonts, theme, user or extra folders
+### SAM no longer follows a link that an app could plant with its current permissions in your fonts, theme, user or extra folders
 
 - With the whole home writable, an app could turn a missing `~/.fonts`,
   `~/.config/fontconfig` or an extra folder not made yet into a link to a
@@ -23,3 +23,12 @@
   place it leads to as an extra folder instead of the link. The sandbox
   check expects such a folder as the rest of the app's folders show the
   place it leads to.
+- SAM judges such a link by the permissions of the start at hand. A link
+  the app made in an earlier start, while it had more write access (the
+  whole home or a folder writable), is still followed after you narrow
+  its permissions, for example `~/.fonts` made a link to another drive.
+  A link to where programs outside the sandbox listen stays refused in
+  every start, and your fonts and theme files never lead to your home,
+  your keys or SAM's own files. After you narrow an app's permissions,
+  check that `~/.fonts`, `~/.config/fontconfig` and the extra folders
+  are not links you did not make.

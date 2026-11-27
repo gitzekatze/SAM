@@ -767,7 +767,18 @@ How these stay protected with the home writable:
   name by its real place is shown as written (`/tmp/tmux-1000` named so is
   rated *Dangerous* and warned about). If you made such a link yourself,
   list the place it leads to as an extra folder instead of the link, or
-  set the user folder to that place in `~/.config/user-dirs.dirs`
+  set the user folder to that place in `~/.config/user-dirs.dirs`.
+  Not covered: SAM judges a link by the permissions of the start at
+  hand. A link the app made in an earlier start while it had more write
+  access (the whole home, or a user, extra or opened folder writable) is
+  followed after you narrow its permissions, as long as it leads
+  somewhere the second and third rule allow: with a private home,
+  `~/.fonts` made a link to `/mnt/data/private` in a start with the whole
+  home writable shows that folder, which no start gave the app. A link
+  to where programs outside the sandbox listen stays refused in every
+  start. After narrowing an app's permissions, check that `~/.fonts`,
+  `~/.config/fontconfig` and the extra folders are not links you did
+  not make
   (`a_font_folder_link_the_app_planted_never_reaches_host_sockets`,
   `a_fontconfig_link_the_app_planted_never_reaches_host_sockets`,
   `an_extra_folder_link_the_app_planted_never_reaches_host_sockets`,
