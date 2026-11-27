@@ -9,6 +9,7 @@
 - What the filter refuses is unchanged. A new test records the filter's
   answers under all 16 settings, for call numbers 0 to 1023 (also with
   the x32 bit set) and four extreme numbers, with each argument the filter
-  reads varied alone over a fixed list of values. The record was made
-  from the code before the change on x86_64, and the new code gives the
-  same answers there.
+  reads varied alone over a fixed list of values. One record per
+  processor, both made from the code before the change: on x86_64 here,
+  and on aarch64 on CI's ARM runner. The new code gives the same answers
+  on x86_64 here; CI's ARM job checks aarch64.
