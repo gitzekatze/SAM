@@ -1202,7 +1202,14 @@ How these stay protected with the home writable:
   time SAM looks at the running apps (the window, `sam-jail stop`, any
   start) it takes that look and writes what it moved into that launch's
   log. A record from before the computer was restarted is dropped without
-  that look.
+  that look. Launches look at the home one at a time, so something an app
+  leaves in a place that several launches watch is normally moved aside and
+  reported once, in the record of the launch whose look found it: that may
+  be the other app's record, since SAM cannot tell which app made it. A
+  launch waits at most about a second for another launch's look, then looks
+  anyway; in that case, and while a launch of an older SAM still runs, the
+  second look may also report a link of yours that the first look had just
+  put back.
 - **Key folders that are links** (dotfiles managed with `stow`, for example)
   are hidden where they point, also when only the folder they point into is
   granted (`~/.gnupg` a link to `~/Sync/gnupg`, and `~/Sync` granted);
@@ -1225,7 +1232,9 @@ home, an app can still change other files that programs outside the sandbox
 read: settings of programs not in the table above, scripts in project
 folders. SAM protects the places that make a computer run something by
 themselves; it cannot know every program's settings. And a file the app
-creates in a watched place exists for a moment (usually well under a second)
+creates in a watched place exists for a moment (usually well under a second;
+while another app's launch is looking at the home, up to about a second
+longer, because launches look one at a time and none waits longer than that)
 before SAM moves it aside: a program outside that reads it in exactly that
 moment would see it. So full home access is meant only for apps you trust,
 and SAM warns when you grant it.

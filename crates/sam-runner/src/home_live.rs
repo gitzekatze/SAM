@@ -4,7 +4,9 @@
 //! terminal opened meanwhile would have run it. Now Linux reports every
 //! change in the folders that hold the watched places (inotify), and SAM
 //! looks again at once (`HomeWatch::settle`): the file is moved aside and a
-//! replaced link put back within moments.
+//! replaced link put back within moments. It looks in its turn with the
+//! other launches ([`Turns`]), so a file several watches see is reported
+//! once.
 //!
 //! Cost: the thread sleeps in `poll` until something changes in those few
 //! folders or the app ends; no timer, no regular wake-ups.
@@ -14,6 +16,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::PathBuf;
 use std::thread::JoinHandle;
 
+use crate::home_shared::Turns;
 use sam_sandbox::{HomeWatch, MovedAside};
 
 /// The running watcher; [`LiveWatch::finish`] ends it and returns what it
@@ -26,12 +29,16 @@ pub struct LiveWatch {
 
 impl LiveWatch {
     /// Starts watching the folders of `watch`; what is found goes to
-    /// `aside`. The watch is `None` when there is nothing to watch or Linux
-    /// refuses; the text says what is not watched while the app runs, so
-    /// that is never silent (regression, audit L-F4: another app can use up
+    /// `aside`, each look in its turn (`turns`). The watch is `None` when
+    /// there is nothing to watch or Linux refuses; the text says what is
+    /// not watched while the app runs, so that is never silent (regression, audit L-F4: another app can use up
     /// the inotify instances, and one watched folder out of many counted as
     /// watching). What is not watched is still moved aside when the app ends.
-    pub fn start(watch: &HomeWatch, aside: PathBuf) -> (Option<LiveWatch>, Option<String>) {
+    pub fn start(
+        watch: &HomeWatch,
+        aside: PathBuf,
+        turns: Turns,
+    ) -> (Option<LiveWatch>, Option<String>) {
         let dirs = watch.watched_dirs();
         if dirs.is_empty() {
             return (None, None);
@@ -113,7 +120,7 @@ impl LiveWatch {
                     // folders is the moment to look again.
                     // SAFETY: `buf` is writable for its length; the descriptor is non-blocking.
                     while unsafe { libc::read(fd, buf.as_mut_ptr().cast(), buf.len()) } > 0 {}
-                    moved.extend(w.settle(&aside));
+                    moved.extend(turns.settle(&w, &aside));
                 }
             }
             // SAFETY: the inotify descriptor belongs to this thread alone from here on.
@@ -192,7 +199,8 @@ mod tests {
         p.filesystem.home = true;
         p.filesystem.home_access = sam_core::permissions::Access::Rw;
         let watch = HomeWatch::before(&ctx_for(&p, &home)).unwrap();
-        let (live, warning) = LiveWatch::start(&watch, t.path().join("aside"));
+        let turns = Turns::waiting(t.path(), Duration::from_secs(1));
+        let (live, warning) = LiveWatch::start(&watch, t.path().join("aside"), turns);
         assert_eq!(warning, None, "every folder is watched");
         let live = live.expect("watching");
         let gone = |path: &std::path::Path| {
@@ -227,6 +235,52 @@ mod tests {
         );
     }
 
+    /// The live watch looks in its turn: while another launch is looking
+    /// at the home, it waits, then moves the planted file once. Before, two
+    /// live watches on one place acted at the same moment, and the second
+    /// reported the file the first had moved as deleted or as still there.
+    /// (Fails when the live watch calls the watch directly, as before: it
+    /// moves the file within moments.)
+    #[test]
+    fn a_live_watch_takes_its_turn() {
+        use std::os::fd::AsRawFd;
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path().join("home");
+        fs::create_dir_all(&home).unwrap();
+        let mut p = sam_core::permissions::PermissionSet::strict_gui();
+        p.filesystem.home = true;
+        p.filesystem.home_access = sam_core::permissions::Access::Rw;
+        let watch = HomeWatch::before(&ctx_for(&p, &home)).unwrap();
+        // Another launch is in the middle of its look.
+        let records = t.path().join("records");
+        fs::create_dir_all(&records).unwrap();
+        let held = fs::File::create(records.join(".settle")).unwrap();
+        // SAFETY: `held` is open; flock only takes its descriptor.
+        let locked = unsafe { libc::flock(held.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+        assert_eq!(locked, 0, "the turn is free at first");
+        let turns = Turns::waiting(&records, Duration::from_secs(30));
+        let (live, warning) = LiveWatch::start(&watch, t.path().join("aside"), turns);
+        assert_eq!(warning, None, "every folder is watched");
+        let live = live.expect("watching");
+        fs::write(home.join(".bash_profile"), "plant").unwrap();
+        std::thread::sleep(Duration::from_millis(300));
+        assert!(
+            home.join(".bash_profile").exists(),
+            "looked while another launch had its turn"
+        );
+        drop(held);
+        let end = Instant::now() + Duration::from_secs(10);
+        while fs::symlink_metadata(home.join(".bash_profile")).is_ok() {
+            assert!(Instant::now() < end, "never looked once the turn was free");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let moved = live.finish();
+        assert_eq!(moved.len(), 1, "{moved:?}");
+        assert_eq!(moved[0].place, ".bash_profile");
+        assert_eq!(moved[0].how, sam_sandbox::Aside::Moved);
+        assert_eq!(fs::read_to_string(&moved[0].to).unwrap(), "plant");
+    }
+
     /// A folder Linux will not watch is said, not skipped silently (audit
     /// L-F4); what is in it is still moved aside when the app ends.
     #[test]
@@ -241,7 +295,8 @@ mod tests {
         let watch = sam_sandbox::HomeWatch::before(&ctx_for(&p, &home)).unwrap();
         std::fs::set_permissions(home.join(".config"), std::fs::Permissions::from_mode(0o000))
             .unwrap();
-        let (live, warning) = LiveWatch::start(&watch, t.path().join("aside"));
+        let turns = Turns::waiting(t.path(), Duration::from_secs(1));
+        let (live, warning) = LiveWatch::start(&watch, t.path().join("aside"), turns);
         std::fs::set_permissions(home.join(".config"), std::fs::Permissions::from_mode(0o755))
             .unwrap();
         let warning = warning.expect("a warning");
