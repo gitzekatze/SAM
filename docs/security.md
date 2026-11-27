@@ -830,7 +830,8 @@ How these stay protected with the home writable:
   such as `~/.local/share/Documents`, or inside SAM's own folders): such a
   folder gets no place of its own, so a read-only Documents at
   `~/.local/share/Documents` is writable through a writable home, and no
-  note names it. Otherwise Documents set to read-only is
+  note names it. Otherwise, apart from a home kept behind a link (see
+  *Not covered* below), Documents set to read-only is
   read-only under a writable home, also where the app made an extra
   writable folder a link into it
   (`a_planted_link_never_makes_a_read_only_user_folder_writable`, below),

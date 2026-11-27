@@ -24,8 +24,12 @@
   Downloads read-only over the home, so the app cannot plant a link in
   it, unless SAM refuses Downloads (for example because Downloads is
   itself a link in the writable home). Then the home shows it writable,
-  as before. A link the app planted there, or in an earlier start while
-  Downloads was still writable, is still not followed.
+  as before. The same holds with your home kept behind a link (`/home/u`
+  a link to `/data/u`): SAM mounts Downloads read-only only at its real
+  place (`/data/u/Downloads`), and the app still reaches it writable
+  through the home (`/home/u/Downloads`), as before. A link the app
+  planted there, or in an earlier start while Downloads was still
+  writable, is still not followed.
 
 ### SAM keeps your fonts read-only with the whole home writable
 

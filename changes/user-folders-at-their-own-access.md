@@ -6,6 +6,10 @@
   now shows each user folder at its own access, inside or outside the
   home, unless it refuses the folder (see below): a read-only Documents under a writable home is really read-only,
   and a start file kept as a link into it stays locked.
+- Not covered: a home kept behind a link (`/home/u` a link to
+  `/data/u`). There SAM shows a read-only Documents read-only only at its
+  real place (`/data/u/Documents`), while the app still reaches it
+  writable through the home (`/home/u/Documents`).
 - An extra folder set to read and write inside a read-only user folder
   (`~/Documents/proj`) stays writable, as its switch says.
 - SAM no longer shows a user folder set to `/tmp` or to a folder in it
