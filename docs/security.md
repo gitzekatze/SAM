@@ -745,16 +745,31 @@ How these stay protected with the home writable:
   rule:
   - a link on the way that lies in a folder the app can change (the
     writable home and every user folder in it, whatever its own switch
-    says, a writable user or extra folder) is not followed out of what the
+    says, a writable user or extra folder, a folder this start shows
+    writable besides them: one opened with the app while opened files are
+    writable, a writable bind of SAM's) is not followed out of what the
     home and the user folders show, and for a writable extra folder out of
     what they show writable: the app may have made it (with the home
     read-only, a writable extra folder made a link to the home would
-    otherwise make the whole home writable). For a user folder, its own
-    grant does not count, and only the home counts as showing;
-  - a link that leads to where programs outside the sandbox listen (the
-    whole computer, `/tmp` and its socket folders, `/run` except drives
-    under `/run/media`, `/proc`, `/dev`) is never followed, whoever made
-    it;
+    otherwise make the whole home writable). Any writable grant that
+    shows the folder counts, also where a read-only grant lies deeper:
+    the app may have made that grant lead there itself (with the whole
+    home writable and `~/x` an extra read-only folder, the app made `~/x`
+    a link to `~/.local/share` and `~/.local/share/fonts` a link to a
+    folder it is not shown, and the next start showed that folder as the
+    fonts). For a user folder, its own grant does not count, and only the
+    home counts as showing;
+  - a link that leads to where programs outside the sandbox listen is
+    never followed, whoever made it: the whole computer; anything in
+    `/tmp` and `/var/tmp`, a socket directly there (`/tmp/.s.PGSQL.5432`)
+    or a socket folder by any name (`/tmp/tmux-1000`, `/tmp/tmate-1000`),
+    and a folder holding one, though not a place in your home when your
+    home itself lies there (a guest session); your runtime folder
+    (`XDG_RUNTIME_DIR`) and SAM's runtime folders wherever they are (also
+    `/mnt/wslg/runtime-dir` or one in `/tmp`), and a folder holding one;
+    `/run` except drives under `/run/media`; `/proc`; `/dev`. Not
+    covered: a program running alongside (also a running copy of the app)
+    that swaps a part of the way between SAM's look and the mount;
   - a place SAM shows on its own never leads to the home or a folder above
     it, a key or credential store, a protected place or SAM's own folders.
 
@@ -776,7 +791,9 @@ How these stay protected with the home writable:
   `~/.fonts` made a link to `/mnt/data/private` in a start with the whole
   home writable shows that folder, which no start gave the app. A link
   to where programs outside the sandbox listen stays refused in every
-  start. After narrowing an app's permissions, check that `~/.fonts`,
+  start, except where a program running alongside (also a running copy
+  of the app) swaps a part of the way between SAM's look and the mount.
+  After narrowing an app's permissions, check that `~/.fonts`,
   `~/.config/fontconfig` and the extra folders are not links you did
   not make
   (`a_font_folder_link_the_app_planted_never_reaches_host_sockets`,
@@ -785,8 +802,16 @@ How these stay protected with the home writable:
   `a_font_folder_link_never_leads_out_of_what_the_app_is_shown`,
   `a_user_folder_link_the_app_planted_never_reaches_host_sockets`,
   `a_link_the_app_planted_never_makes_a_read_only_home_writable`,
-  `a_link_planted_in_a_user_folder_of_a_writable_home_is_not_followed`, each
+  `a_link_planted_in_a_user_folder_of_a_writable_home_is_not_followed`,
+  `a_read_only_grant_never_hides_a_link_the_app_planted`,
+  `a_font_folder_link_never_reaches_sockets_by_any_name`, each
   from a real sandbox; `fonts_themes_and_extra_folders_never_follow_a_planted_link`,
+  `a_folder_this_start_shows_writable_holds_links_the_app_may_have_made`,
+  `a_folder_this_start_shows_writable_counts_as_one_the_app_can_change`,
+  `a_link_to_sams_runtime_folders_is_never_followed`,
+  `a_link_to_any_place_where_outside_programs_listen_is_left_out`,
+  `the_places_where_outside_programs_listen_are_known`,
+  `a_read_only_grant_never_makes_a_folder_one_the_app_cannot_change`,
   `a_planted_link_never_makes_a_read_only_home_writable`,
   `a_user_folder_never_follows_a_planted_link`,
   `a_user_folder_in_a_writable_home_counts_as_one_the_app_can_change`,

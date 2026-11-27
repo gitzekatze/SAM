@@ -130,6 +130,19 @@ pub fn plan(p: &PermissionSet, cfg: &Config, paths: &Paths, host: &HostInfo) -> 
     // answer the sandbox's note takes (independent review of decision 9:
     // the check expected the home writable and failed a sandbox that did
     // what it should).
+    // What the check's start adds to its permissions for the binds made
+    // where their links lead: nothing writable (it opens no folder and
+    // has no binds of SAM's) and SAM's runtime folders, the folder that
+    // holds every app's start folders, as the sandbox takes them.
+    let this = sam_core::places::ThisStart {
+        writable: Vec::new(),
+        sam_runtime: paths
+            .runtime_dir("app")
+            .parent()
+            .map(Path::to_path_buf)
+            .into_iter()
+            .collect(),
+    };
     let home_locked = fs.home
         && fs.home_access == Perm::Rw
         && sam_core::places::protected_place_at_home(&host.home, &sam_dirs).is_some();
@@ -218,7 +231,8 @@ pub fn plan(p: &PermissionSet, cfg: &Config, paths: &Paths, host: &HostInfo) -> 
         // link the app could have planted, or to where programs outside
         // the sandbox listen: by the sandbox's rule.
         let binds_own = !fs.home || (fs.home_access != Perm::Rw && a == Perm::Rw);
-        let left_out = binds_own && sam_core::places::user_folder_left_out(p, host, key).is_some();
+        let left_out =
+            binds_own && sam_core::places::user_folder_left_out(p, host, key, &this).is_some();
         if binds_own && !left_out {
             shown.push((sam_core::places::resolve(path), want));
         }
@@ -258,9 +272,14 @@ pub fn plan(p: &PermissionSet, cfg: &Config, paths: &Paths, host: &HostInfo) -> 
             // what it is shown, or through a link to where programs outside
             // the sandbox listen: the sandbox leaves it out, by the same
             // rule.
-            let left_out =
-                sam_core::places::linked_place_left_out(p, host, &path, want == Access::ReadWrite)
-                    .is_some();
+            let left_out = sam_core::places::linked_place_left_out(
+                p,
+                host,
+                &path,
+                want == Access::ReadWrite,
+                &this,
+            )
+            .is_some();
             let want = if in_sams {
                 Access::Hidden
             } else if in_start_place.is_some() {
@@ -1123,6 +1142,25 @@ mod tests {
 
     /// SAM's own folders where no test grants anything; a case that needs
     /// them somewhere sets its own.
+    /// A scratch folder outside `/tmp` and `/var/tmp`, beside the test
+    /// program: there a link's target is an ordinary folder, while
+    /// anything in `/tmp` counts as a place where programs outside the
+    /// sandbox listen ([`sam_core::places::leads_to_host_services`]).
+    fn scratch() -> tempfile::TempDir {
+        let exe = std::env::current_exe().unwrap();
+        let t = tempfile::Builder::new()
+            .prefix("verify-")
+            .tempdir_in(exe.parent().unwrap())
+            .unwrap();
+        let real = fs::canonicalize(t.path()).unwrap();
+        assert!(
+            !real.starts_with("/tmp") && !real.starts_with("/var/tmp"),
+            "the test program lies in a temp folder: {}",
+            real.display()
+        );
+        t
+    }
+
     fn sam_paths() -> Paths {
         Paths {
             config_dir: PathBuf::from("/nonexistent/sam-test/config"),
@@ -1490,7 +1528,7 @@ mod tests {
     /// The same link in a read-only home is expected as listed.
     #[test]
     fn the_check_expects_an_extra_folder_behind_a_planted_link_as_not_shown() {
-        let t = tempfile::tempdir().unwrap();
+        let t = scratch();
         let h = host_in(t.path());
         let cfg = Config::default();
         let outside = t.path().join("outside");
@@ -1582,7 +1620,7 @@ mod tests {
     /// made in the home, it is expected as its switch says.
     #[test]
     fn the_check_expects_a_user_folder_behind_a_planted_link_as_its_target_is_shown() {
-        let t = tempfile::tempdir().unwrap();
+        let t = scratch();
         let mut h = host_in(t.path());
         let cfg = Config::default();
         let outside = t.path().join("outside");

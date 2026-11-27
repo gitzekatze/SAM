@@ -17,7 +17,11 @@
 //! - a link in a folder the app can change that leads out of what the app
 //!   is shown is not followed (the app may have made it);
 //! - a link that leads to a place where programs outside the sandbox
-//!   listen is not followed, whoever made it;
+//!   listen is not followed, whoever made it: also a socket directly in
+//!   `/tmp`, a socket folder there by any name, and the host's runtime
+//!   folder kept outside `/run` and `/tmp`;
+//! - a read-only grant the app made lead into a folder it can change
+//!   does not hide a link it planted there;
 //! - a link that leads from a fonts place to your keys is not followed;
 //! - a user folder reached through a link the app planted is not bound;
 //! - a writable extra folder the app made a link to a read-only home does
@@ -47,18 +51,20 @@ use sam_runner::ops::{AddOptions, Sam};
 /// The tests share `HOME` and the runtime folder of the test process.
 static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
 
-/// `plant`: put a link at `SAM_TEST_LINK` to `SAM_TEST_TARGET`, as an app
-/// with the folder writable can. Then connect to every socket in
+/// `plant`: put a link at each place in `SAM_TEST_LINK` to the place at
+/// the same position in `SAM_TEST_TARGET`, as an app with the folder
+/// writable can. Then connect to every socket in
 /// `SAM_TEST_SOCKETS`, read every file in `SAM_TEST_FILES` and create
 /// every file in `SAM_TEST_WRITES` (each list split by `|`), saying for
 /// each what happened.
 const PROBE_PY: &str = r#"
 import os, socket
 if os.environ.get("SAM_TEST_STEP") == "plant":
-    link = os.environ["SAM_TEST_LINK"]
     try:
-        os.makedirs(os.path.dirname(link), exist_ok=True)
-        os.symlink(os.environ["SAM_TEST_TARGET"], link)
+        for link, target in zip(os.environ["SAM_TEST_LINK"].split("|"),
+                                os.environ["SAM_TEST_TARGET"].split("|")):
+            os.makedirs(os.path.dirname(link), exist_ok=True)
+            os.symlink(target, link)
         print("PLANTED=yes")
     except OSError as e:
         print("PLANTED=" + str(e.errno))
@@ -105,9 +111,14 @@ struct SocketFolder {
 impl SocketFolder {
     fn new() -> SocketFolder {
         // Named like tmux's own, in the machine's real `/tmp`.
+        SocketFolder::at(Path::new("/tmp"), "tmux-")
+    }
+
+    /// One named `prefix…` in `parent`.
+    fn at(parent: &Path, prefix: &str) -> SocketFolder {
         let dir = tempfile::Builder::new()
-            .prefix("tmux-")
-            .tempdir_in("/tmp")
+            .prefix(prefix)
+            .tempdir_in(parent)
             .unwrap();
         let listener = UnixListener::bind(dir.path().join("default")).unwrap();
         listener.set_nonblocking(true).unwrap();
@@ -585,5 +596,157 @@ fn a_link_planted_in_a_user_folder_of_a_writable_home_is_not_followed() {
     assert!(
         text.contains("may have made that link"),
         "the start says why: {text}"
+    );
+}
+
+/// A folder outside `/tmp` and `/var/tmp` (in the build's own scratch
+/// folder), so only the rule for links the app could have planted, or
+/// for runtime folders, keeps it out: anything in `/tmp` counts as a
+/// place where programs outside the sandbox listen anyway.
+fn outside_tmp() -> tempfile::TempDir {
+    let t = tempfile::tempdir_in(env!("CARGO_TARGET_TMPDIR")).unwrap();
+    let real = fs::canonicalize(t.path()).unwrap();
+    assert!(
+        !real.starts_with("/tmp") && !real.starts_with("/var/tmp"),
+        "the build's scratch folder lies in a temp folder: {}",
+        real.display()
+    );
+    t
+}
+
+/// A read-only grant never hides a link the app planted: with the whole
+/// home writable and `~/x` an extra read-only folder, the app makes `~/x`
+/// a link to `~/.local/share` and `~/.local/share/fonts` a link to a
+/// folder it is not shown, in one start. In the next start with the same
+/// permissions it reads nothing there, neither where the link leads nor
+/// through the fonts folder, and the start says why (before, `~/x`
+/// counted `~/.local/share` as a folder the app cannot change, and SAM
+/// bound the folder as the fonts).
+#[test]
+fn a_read_only_grant_never_hides_a_link_the_app_planted() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(rig) = Rig::new("ReadOnlyGrant") else {
+        return;
+    };
+    let scratch = outside_tmp();
+    let secret = fs::canonicalize(scratch.path()).unwrap().join("secret");
+    fs::create_dir_all(&secret).unwrap();
+    fs::write(secret.join("secret.txt"), "SECRET").unwrap();
+    let (x, share) = (rig.home.join("x"), rig.home.join(".local/share"));
+    let fonts = share.join("fonts");
+    let mut p = whole_home_writable();
+    p.filesystem.custom_read = vec![s(&x)];
+    let (r, text) = rig.start(
+        &p,
+        &[
+            ("SAM_TEST_STEP", "plant".into()),
+            ("SAM_TEST_LINK", format!("{}|{}", s(&fonts), s(&x))),
+            ("SAM_TEST_TARGET", format!("{}|{}", s(&secret), s(&share))),
+        ],
+    );
+    assert_eq!(r["PLANTED"], "yes", "the writable home lets it: {text}");
+    assert!(fs::symlink_metadata(&x).unwrap().file_type().is_symlink());
+    assert!(fs::symlink_metadata(&fonts)
+        .unwrap()
+        .file_type()
+        .is_symlink());
+    let (r, text) = rig.start(
+        &p,
+        &[(
+            "SAM_TEST_FILES",
+            format!(
+                "{}|{}|{}",
+                s(&secret.join("secret.txt")),
+                s(&fonts.join("secret.txt")),
+                s(&x.join("fonts/secret.txt"))
+            ),
+        )],
+    );
+    assert_ne!(r["READ0"], "SECRET", "{text}");
+    assert_ne!(r["READ1"], "SECRET", "{text}");
+    assert_ne!(r["READ2"], "SECRET", "{text}");
+    assert!(
+        text.contains("may have made that link"),
+        "the start says why: {text}"
+    );
+}
+
+/// A link nobody in the sandbox could have planted (`~/.fonts` in a
+/// private home) never reaches a place where programs outside the
+/// sandbox listen, by any name: a socket directly in `/tmp` (as
+/// PostgreSQL keeps its own), a socket folder in `/tmp` by a name no list
+/// knows (`tmate-…`), and the host's runtime folder kept outside `/run`
+/// and `/tmp` (as `/mnt/wslg/runtime-dir`). The app reaches the socket
+/// neither through the link nor at its own place, and the start says why.
+#[test]
+fn a_font_folder_link_never_reaches_sockets_by_any_name() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(mut rig) = Rig::new("AnyName") else {
+        return;
+    };
+    let fonts = rig.home.join(".fonts");
+    let private = PermissionSet::strict_gui();
+    let attempt = |rig: &Rig, socket: &Path, through_link: &Path, reached: &dyn Fn() -> bool| {
+        let (r, text) = rig.start(
+            &private,
+            &[(
+                "SAM_TEST_SOCKETS",
+                format!("{}|{}", s(through_link), s(socket)),
+            )],
+        );
+        assert_ne!(r["CONNECT0"], "ok", "through the link: {text}");
+        assert_ne!(r["CONNECT1"], "ok", "at its own place: {text}");
+        assert!(
+            !reached(),
+            "a program outside the sandbox was reached: {text}"
+        );
+        assert!(
+            text.contains("where programs outside the sandbox listen"),
+            "the start says why: {text}"
+        );
+    };
+
+    // A socket directly in `/tmp`.
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let socket = PathBuf::from(format!("/tmp/.s.SAMTEST.{}.{stamp}", std::process::id()));
+    let listener = UnixListener::bind(&socket).unwrap();
+    listener.set_nonblocking(true).unwrap();
+    symlink(&socket, &fonts).unwrap();
+    let reached = || {
+        let mut any = false;
+        while listener.accept().is_ok() {
+            any = true;
+        }
+        any
+    };
+    attempt(&rig, &socket, &fonts, &reached);
+    drop(listener);
+    let _ = fs::remove_file(&socket);
+
+    // A socket folder in `/tmp` by a name no list knows.
+    let tmate = SocketFolder::at(Path::new("/tmp"), "tmate-");
+    fs::remove_file(&fonts).unwrap();
+    symlink(tmate.path(), &fonts).unwrap();
+    attempt(
+        &rig,
+        Path::new(&tmate.socket()),
+        &fonts.join("default"),
+        &|| tmate.was_reached(),
+    );
+
+    // The host's runtime folder, kept outside `/run` and `/tmp`.
+    let scratch = outside_tmp();
+    let runtime = SocketFolder::at(scratch.path(), "runtime-dir-");
+    rig.host.runtime_dir = Some(runtime.path());
+    fs::remove_file(&fonts).unwrap();
+    symlink(runtime.path(), &fonts).unwrap();
+    attempt(
+        &rig,
+        Path::new(&runtime.socket()),
+        &fonts.join("default"),
+        &|| runtime.was_reached(),
     );
 }

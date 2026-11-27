@@ -11,12 +11,25 @@
   files, every extra folder, read-only or writable, and a user folder
   such as Documents that SAM shows on its own: a link in a folder the app
   can change is not followed out of what the app is shown, and a link to
-  where programs outside the sandbox listen is never followed. A user
-  folder inside a writable home counts as writable, and a writable extra
-  folder follows such a link only where the app may write anyway, so a
-  planted link can no longer make a read-only home writable.
+  where programs outside the sandbox listen is never followed, whoever
+  made it. Not covered: a program running alongside (also a running copy
+  of the app) that swaps a part of the way between SAM's look and the
+  mount. A user folder inside a writable home counts as writable, and a
+  writable extra folder follows such a link only where the app may write
+  anyway, so a planted link can no longer make a read-only home writable.
   Your fonts and theme files are also never shown through a link to your
   home, your keys or SAM's own files.
+- A folder counts as one the app can change whenever any writable
+  permission shows it, also where an extra read-only folder lies deeper:
+  an app could make that read-only folder a link into such a folder and
+  plant a second link there. A folder opened with the app while opened
+  files are writable counts as well.
+- Where programs outside the sandbox listen now means anything in `/tmp`
+  and `/var/tmp`, a socket directly there (as PostgreSQL keeps its own)
+  or a socket folder by any name, and your runtime folder and SAM's
+  wherever they are, also outside `/run` (as on WSL). A place in your home
+  stays judged by the other rules when your home itself lies in `/tmp`,
+  as in a guest session.
 - Links that stay inside what the app is shown keep working, for example
   `~/.fonts` as a link to `~/.local/share/fonts`. If you made a link to an
   extra folder yourself and the app has the whole home writable, list the
@@ -28,7 +41,7 @@
   whole home or a folder writable), is still followed after you narrow
   its permissions, for example `~/.fonts` made a link to another drive.
   A link to where programs outside the sandbox listen stays refused in
-  every start, and your fonts and theme files never lead to your home,
-  your keys or SAM's own files. After you narrow an app's permissions,
-  check that `~/.fonts`, `~/.config/fontconfig` and the extra folders
-  are not links you did not make.
+  every start (with the limit above), and your fonts and theme files
+  never lead to your home, your keys or SAM's own files. After you narrow
+  an app's permissions, check that `~/.fonts`, `~/.config/fontconfig` and
+  the extra folders are not links you did not make.
