@@ -29,7 +29,13 @@
   or a socket folder by any name, and your runtime folder and SAM's
   wherever they are, also outside `/run` (as on WSL). A place in your home
   stays judged by the other rules when your home itself lies in `/tmp`,
-  as in a guest session.
+  as in a guest session. A link whose way only passes such a place, such
+  as a link in `/tmp` that points elsewhere (on WSLg `/tmp/.X11-unix`
+  points to the X server's folder in `/mnt/wslg`), counts as well.
+- An extra folder you name by its real place is shown as written and
+  rated by its name: the known socket folders such as `/tmp/tmux-1000`
+  are rated *Dangerous*, any other place in `/tmp` or `/var/tmp` only
+  *Think twice*.
 - Links that stay inside what the app is shown keep working, for example
   `~/.fonts` as a link to `~/.local/share/fonts`. If you made a link to an
   extra folder yourself and the app has the whole home writable, list the

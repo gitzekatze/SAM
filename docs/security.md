@@ -767,9 +767,15 @@ How these stay protected with the home writable:
     home itself lies there (a guest session); your runtime folder
     (`XDG_RUNTIME_DIR`) and SAM's runtime folders wherever they are (also
     `/mnt/wslg/runtime-dir` or one in `/tmp`), and a folder holding one;
-    `/run` except drives under `/run/media`; `/proc`; `/dev`. Not
-    covered: a program running alongside (also a running copy of the app)
-    that swaps a part of the way between SAM's look and the mount;
+    `/run` except drives under `/run/media`; `/proc`; `/dev`. Nor is a
+    link whose way passes a link in `/tmp` or `/var/tmp` (any program may
+    make one there, pointing anywhere; on WSLg the host's `/tmp/.X11-unix`
+    is a link to `/mnt/wslg/.X11-unix`), in a runtime folder, in `/proc`
+    or in `/dev`, also where the way ends somewhere else. Links in the rest of
+    `/run` are the system's own and are followed (NixOS's
+    `/run/current-system`). Not covered: a program running alongside
+    (also a running copy of the app) that swaps a part of the way between
+    SAM's look and the mount;
   - a place SAM shows on its own never leads to the home or a folder above
     it, a key or credential store, a protected place or SAM's own folders.
 
@@ -779,8 +785,10 @@ How these stay protected with the home writable:
   grants show the place the link leads to: not at all where none of them
   shows it. A link that stays inside what the app is shown (`~/.fonts` a
   link to `~/.local/share/fonts`) works as before, and an extra folder you
-  name by its real place is shown as written (`/tmp/tmux-1000` named so is
-  rated *Dangerous* and warned about). If you made such a link yourself,
+  name by its real place is shown as written and rated by its name: the
+  known socket folders (`/tmp/tmux-1000` named so) are rated *Dangerous*
+  and warned about, any other place in `/tmp` or `/var/tmp` (such as
+  `/tmp/tmate-1000`) only *Think twice*. If you made such a link yourself,
   list the place it leads to as an extra folder instead of the link, or
   set the user folder to that place in `~/.config/user-dirs.dirs`.
   Not covered: SAM judges a link by the permissions of the start at
@@ -804,13 +812,15 @@ How these stay protected with the home writable:
   `a_link_the_app_planted_never_makes_a_read_only_home_writable`,
   `a_link_planted_in_a_user_folder_of_a_writable_home_is_not_followed`,
   `a_read_only_grant_never_hides_a_link_the_app_planted`,
-  `a_font_folder_link_never_reaches_sockets_by_any_name`, each
+  `a_font_folder_link_never_reaches_sockets_by_any_name`,
+  `a_font_folder_link_through_a_link_in_tmp_never_reaches_sockets`, each
   from a real sandbox; `fonts_themes_and_extra_folders_never_follow_a_planted_link`,
   `a_folder_this_start_shows_writable_holds_links_the_app_may_have_made`,
   `a_folder_this_start_shows_writable_counts_as_one_the_app_can_change`,
   `a_link_to_sams_runtime_folders_is_never_followed`,
   `a_link_to_any_place_where_outside_programs_listen_is_left_out`,
   `the_places_where_outside_programs_listen_are_known`,
+  `a_link_in_tmp_that_sends_the_way_elsewhere_is_never_followed`,
   `a_read_only_grant_never_makes_a_folder_one_the_app_cannot_change`,
   `a_planted_link_never_makes_a_read_only_home_writable`,
   `a_user_folder_never_follows_a_planted_link`,

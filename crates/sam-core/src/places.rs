@@ -699,8 +699,33 @@ pub struct ThisStart {
 /// such a place hands them over: through tmux's socket the app runs
 /// commands outside the sandbox.
 pub fn leads_to_host_services(real: &Path, host: &HostInfo, this: &ThisStart) -> bool {
+    host_services_at(real, host, this, true)
+}
+
+/// Whether the link `place`, on the way to a bind, lies where programs
+/// outside the sandbox listen: in `/tmp` or `/var/tmp` (not in a home kept
+/// there), in the host's or SAM's runtime folders, or under `/proc` and
+/// `/dev`, as [`leads_to_host_services`] counts them; not in a folder that
+/// only holds one (a link in `/` or `/mnt`).
+///
+/// Where the way ends is not all: any program may make a link in `/tmp`,
+/// pointing wherever it likes, also to a place SAM does not know as one
+/// where programs listen. On WSLg the host's `/tmp/.X11-unix` is a link
+/// to `/mnt/wslg/.X11-unix`, and `~/.fonts` made a link to
+/// `/tmp/.X11-unix` bound the X server's socket folder there. A link in
+/// `/proc` (`/proc/<pid>/root`) leads into another program's view of the
+/// computer. Only root makes links in the rest of `/run`, to the system's
+/// own places: NixOS's `/run/current-system` leads to the fonts and themes
+/// in `/nix/store`, and that way stays open.
+pub fn passes_host_services(place: &Path, host: &HostInfo, this: &ThisStart) -> bool {
+    host_services_at(place, host, this, false)
+}
+
+/// [`leads_to_host_services`] (`holds`: also a folder holding such a place)
+/// and [`passes_host_services`] (only what lies in one).
+fn host_services_at(real: &Path, host: &HostInfo, this: &ThisStart, holds: bool) -> bool {
     let under = |d: &str| real.starts_with(d);
-    let at_or_holds = |d: &Path| real.starts_with(d) || d.starts_with(real);
+    let at_or_holds = |d: &Path| real.starts_with(d) || (holds && d.starts_with(real));
     let homes = [host.home.clone(), resolve(&host.home)];
     let in_home_kept_in = |t: &Path| {
         homes
@@ -718,11 +743,11 @@ pub fn leads_to_host_services(real: &Path, host: &HostInfo, this: &ThisStart) ->
         .flat_map(|r| [r.clone(), resolve(r)])
         .filter(|r| r.is_absolute() && !homes.iter().any(|h| h.starts_with(r)))
         .any(|r| at_or_holds(&r));
-    real == Path::new("/")
+    let system = real == Path::new("/") || (under("/run") && !under("/run/media"));
+    (holds && system)
         || crate::risk::shows_host_sockets(&real.to_string_lossy())
         || temp
         || runtime
-        || (under("/run") && !under("/run/media"))
         || under("/proc")
         || under("/dev")
 }
@@ -736,8 +761,9 @@ pub enum LeftOut {
     /// leads out of what the app is shown: the app may have made the link
     /// in an earlier start (`ln -s /tmp/tmux-1000 ~/.fonts`).
     Link(PathBuf),
-    /// Through a link it leads to this place, where programs outside the
-    /// sandbox listen ([`leads_to_host_services`]), whoever made the link.
+    /// Through a link it leads to this place, or passes it on the way,
+    /// where programs outside the sandbox listen ([`leads_to_host_services`],
+    /// [`passes_host_services`]), whoever made the link.
     HostServices(PathBuf),
     /// It leads to this place, which is or holds the home, a key or
     /// credential store, a protected place or SAM's own folders (only for
@@ -839,7 +865,14 @@ fn left_out_by_rule(
     if !way.links.is_empty() && leads_to_host_services(&way.leads, host, this) {
         return Some(LeftOut::HostServices(way.leads));
     }
-    None
+    // Where the way ends is not all: a link in `/tmp` the host made may
+    // send it on to a socket folder SAM does not know by its place. A link
+    // that only points into such a place either ends there (judged above)
+    // or meets the next link there.
+    way.links
+        .iter()
+        .find(|link| passes_host_services(link, host, this))
+        .map(|link| LeftOut::HostServices(link.clone()))
 }
 
 /// Whether SAM leaves out the place `named` (with `~` expanded) that it
@@ -860,9 +893,11 @@ fn left_out_by_rule(
 ///   link to the home bound the whole home writable);
 /// - a link that leads to a place where programs outside the sandbox listen
 ///   ([`leads_to_host_services`]: anything in `/tmp` and `/var/tmp`, the
-///   host's and SAM's runtime folders wherever they are) is not followed,
-///   whoever made it: that place is bound over the sandbox's own `/tmp` or
-///   runtime folder and hands their sockets over.
+///   host's and SAM's runtime folders wherever they are), or whose way
+///   passes a link in such a place ([`passes_host_services`]: a link in
+///   `/tmp` that sends the way on elsewhere, a way through `/proc`), is
+///   not followed, whoever made it: that place is bound over the sandbox's
+///   own `/tmp` or runtime folder and hands their sockets over.
 ///
 /// An extra folder named by its real place (no link on the way) is shown
 /// as written: its name was rated, and warned about, as it is.
@@ -1700,6 +1735,117 @@ mod tests {
                 && note.contains("where programs outside the sandbox listen"),
             "{note}"
         );
+    }
+
+    /// Where the way ends is not all: a link in `/tmp` made outside the
+    /// sandbox (on WSLg the host's `/tmp/.X11-unix`, a link to
+    /// `/mnt/wslg/.X11-unix`) sends the way on to a place SAM does not
+    /// know as one where programs listen. `~/.fonts` in a private or
+    /// read-only home, a link to such a link, is left out for the link in
+    /// `/tmp`; so is one whose way runs through `/proc`. A link through an
+    /// ordinary folder, and one in a home kept in `/tmp` (a guest
+    /// session) that stays in it, are followed. A link in `/run` other
+    /// than the runtime folders is root's own (NixOS's
+    /// `/run/current-system`) and does not count, nor `/` that every way
+    /// starts at.
+    #[test]
+    fn a_link_in_tmp_that_sends_the_way_elsewhere_is_never_followed() {
+        let t = scratch();
+        let base = std::fs::canonicalize(t.path()).unwrap();
+        let home = base.join("home/u");
+        let outside = base.join("outside");
+        for d in [home.clone(), outside.clone()] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        let in_tmp = tempfile::Builder::new()
+            .prefix("sam-hop-")
+            .tempdir_in("/tmp")
+            .unwrap();
+        let hop = std::fs::canonicalize(in_tmp.path()).unwrap().join("x11");
+        std::os::unix::fs::symlink(&outside, &hop).unwrap();
+        let host = HostInfo {
+            home: home.clone(),
+            ..Default::default()
+        };
+        let private = PermissionSet::strict_gui();
+        let mut ro = PermissionSet::strict_gui();
+        ro.filesystem.home = true;
+        ro.filesystem.home_access = crate::permissions::Access::Ro;
+        let fonts = home.join(".fonts");
+        let to = |target: &Path| {
+            let _ = std::fs::remove_file(&fonts);
+            std::os::unix::fs::symlink(target, &fonts).unwrap();
+        };
+        to(&hop);
+        assert_eq!(follow(&fonts).leads, outside);
+        for p in [&private, &ro] {
+            assert_eq!(
+                linked_place_left_out(p, &host, &fonts, false, &none()),
+                Some(LeftOut::HostServices(hop.clone()))
+            );
+        }
+        // Through `/proc`: `/proc/self/root` leads back to `/`.
+        let through_proc = Path::new("/proc/self/root").join(outside.strip_prefix("/").unwrap());
+        to(&through_proc);
+        assert_eq!(follow(&fonts).leads, outside);
+        assert!(matches!(
+            linked_place_left_out(&private, &host, &fonts, false, &none()),
+            Some(LeftOut::HostServices(at)) if at.starts_with("/proc")
+        ));
+        // Through an ordinary folder: followed.
+        let plain_hop = base.join("hop");
+        std::os::unix::fs::symlink(&outside, &plain_hop).unwrap();
+        to(&plain_hop);
+        assert_eq!(
+            linked_place_left_out(&private, &host, &fonts, false, &none()),
+            None
+        );
+        // A guest session's home in `/tmp`: a link that stays in it is
+        // followed.
+        let guest_tmp = tempfile::Builder::new()
+            .prefix("sam-guest-")
+            .tempdir_in("/tmp")
+            .unwrap();
+        let guest_home = std::fs::canonicalize(guest_tmp.path()).unwrap().join("u");
+        std::fs::create_dir_all(guest_home.join("myfonts")).unwrap();
+        std::os::unix::fs::symlink(guest_home.join("myfonts"), guest_home.join(".fonts")).unwrap();
+        let guest = HostInfo {
+            home: guest_home.clone(),
+            ..Default::default()
+        };
+        assert_eq!(
+            linked_place_left_out(&private, &guest, &guest_home.join(".fonts"), false, &none()),
+            None
+        );
+        // What counts on the way.
+        let host = HostInfo {
+            home: "/home/u".into(),
+            runtime_dir: Some("/mnt/wslg/runtime-dir".into()),
+            ..Default::default()
+        };
+        let passes = |p: &str| passes_host_services(Path::new(p), &host, &none());
+        for p in [
+            "/tmp",
+            "/tmp/.X11-unix",
+            "/tmp/anything",
+            "/var/tmp/x",
+            "/mnt/wslg/runtime-dir/x",
+            "/proc/self",
+            "/proc/1/root",
+            "/dev/shm/x",
+        ] {
+            assert!(passes(p), "{p}");
+        }
+        for p in [
+            "/",
+            "/mnt",
+            "/var",
+            "/home",
+            "/run/current-system",
+            "/nix/store/fonts",
+        ] {
+            assert!(!passes(p), "{p}");
+        }
     }
 
     /// A place SAM shows on its own (`~/.fonts`) never leads to the home,

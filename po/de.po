@@ -1107,7 +1107,7 @@ msgstr ""
 "beginnen."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:1001
+#: crates/sam-core/src/places.rs:1036
 msgid ""
 "SAM does not show {path} to this app because the way there leads through the "
 "link {link}, which lies in a folder the app can change, to a place the app "
@@ -1121,7 +1121,7 @@ msgstr ""
 "führt, als weiteren Ordner hinzu."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:1005
+#: crates/sam-core/src/places.rs:1040
 msgid ""
 "SAM does not show {path} to this app because the way there leads through the "
 "link {link}, which lies in a folder the app can change, to a place the app "
@@ -1135,7 +1135,7 @@ msgstr ""
 "führt, statt dieses Eintrags als weiteren Ordner ein."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:1009
+#: crates/sam-core/src/places.rs:1044
 msgid ""
 "SAM does not show {path} to this app because the way there leads through the "
 "link {link}, which lies in a folder the app can change, to a place the app "
@@ -1150,7 +1150,7 @@ msgstr ""
 "Benutzerordner in ~/.config/user-dirs.dirs auf den Ort, zu dem sie führt."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:1015
+#: crates/sam-core/src/places.rs:1050
 msgid ""
 "SAM does not show {path} to this app because it leads through a link to "
 "{place}, where programs outside the sandbox listen: through them the app "
@@ -1161,7 +1161,7 @@ msgstr ""
 "die App Befehle außerhalb der Sandbox ausführen."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:1019
+#: crates/sam-core/src/places.rs:1054
 msgid ""
 "SAM does not show {path} to this app because it leads to {place}, which is "
 "or holds your home folder, your keys or passwords, a place SAM protects or "

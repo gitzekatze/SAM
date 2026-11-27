@@ -146,7 +146,6 @@ impl SocketFolder {
 /// A fake home with the probe app added, and starts of it.
 struct Rig {
     _tmp: tempfile::TempDir,
-    root: PathBuf,
     home: PathBuf,
     app: Sam,
     id: String,
@@ -200,7 +199,6 @@ impl Rig {
         host.xdg_dirs.clear();
         Some(Rig {
             _tmp: tmp,
-            root,
             home,
             app,
             id,
@@ -325,10 +323,10 @@ fn a_fontconfig_link_the_app_planted_never_reaches_host_sockets() {
 
 /// An extra read-only folder that did not exist yet, planted as a link to
 /// a socket folder in `/tmp`; also one planted as a link to a folder
-/// outside the home that the app is not shown (not a place of sockets:
-/// the link rule alone). The control: listed by its real place in `/tmp`,
-/// a socket folder is still passed in (you were warned), and the probe
-/// reaches its socket.
+/// outside the home and outside `/tmp` that the app is not shown (not a
+/// place of sockets: the link rule alone, and the start names it). The
+/// control: listed by its real place in `/tmp`, a socket folder is still
+/// passed in (you were warned), and the probe reaches its socket.
 #[test]
 fn an_extra_folder_link_the_app_planted_never_reaches_host_sockets() {
     let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
@@ -349,8 +347,10 @@ fn an_extra_folder_link_the_app_planted_never_reaches_host_sockets() {
     p.filesystem.custom_read = vec![s(&place)];
     planted_link_never_reaches_host_sockets(&rig, &place, &p);
 
-    // A folder outside the home the app is never shown.
-    let outside = rig.root.join("outside");
+    // A folder outside the home and outside `/tmp` the app is never
+    // shown: only the link rule keeps it out.
+    let scratch = outside_tmp();
+    let outside = fs::canonicalize(scratch.path()).unwrap().join("outside");
     fs::create_dir_all(&outside).unwrap();
     fs::write(outside.join("secret.txt"), "SECRET").unwrap();
     let place = rig.home.join("shared/ro2");
@@ -377,6 +377,10 @@ fn an_extra_folder_link_the_app_planted_never_reaches_host_sockets() {
     );
     assert_ne!(r["READ0"], "SECRET", "{text}");
     assert_ne!(r["READ1"], "SECRET", "{text}");
+    assert!(
+        text.contains("may have made that link"),
+        "the start says why: {text}"
+    );
 }
 
 /// Each rule on its own, for `~/.fonts`:
@@ -393,7 +397,8 @@ fn a_font_folder_link_never_leads_out_of_what_the_app_is_shown() {
         return;
     };
     let fonts = rig.home.join(".fonts");
-    let outside = rig.root.join("outside");
+    let scratch = outside_tmp();
+    let outside = fs::canonicalize(scratch.path()).unwrap().join("outside");
     fs::create_dir_all(&outside).unwrap();
     fs::write(outside.join("secret.txt"), "SECRET").unwrap();
     symlink(&outside, &fonts).unwrap();
@@ -561,7 +566,8 @@ fn a_link_planted_in_a_user_folder_of_a_writable_home_is_not_followed() {
     rig.host
         .xdg_dirs
         .insert("downloads".into(), rig.home.join("Downloads"));
-    let outside = rig.root.join("outside");
+    let scratch = outside_tmp();
+    let outside = fs::canonicalize(scratch.path()).unwrap().join("outside");
     fs::create_dir_all(&outside).unwrap();
     fs::write(outside.join("secret.txt"), "SECRET").unwrap();
     let place = rig.home.join("Downloads/x");
@@ -748,5 +754,49 @@ fn a_font_folder_link_never_reaches_sockets_by_any_name() {
         Path::new(&runtime.socket()),
         &fonts.join("default"),
         &|| runtime.was_reached(),
+    );
+}
+
+/// Where the way ends is not all: a link in `/tmp` made outside the
+/// sandbox may send it on to a socket folder SAM does not know by its
+/// place (on WSLg the host's `/tmp/.X11-unix` is a link to
+/// `/mnt/wslg/.X11-unix`). `~/.fonts` in a private home, a link to such a
+/// link in `/tmp` whose socket folder lies outside `/tmp`, `/run` and the
+/// runtime folders: the app reaches the socket neither through the link
+/// nor at its own place, and the start says why (before, SAM judged only
+/// the folder at the end and bound it as the fonts).
+#[test]
+fn a_font_folder_link_through_a_link_in_tmp_never_reaches_sockets() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(rig) = Rig::new("ThroughTmp") else {
+        return;
+    };
+    let scratch = outside_tmp();
+    let x11 = SocketFolder::at(&fs::canonicalize(scratch.path()).unwrap(), "x11-");
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let hop = PathBuf::from(format!("/tmp/.SAMTEST-unix.{}.{stamp}", std::process::id()));
+    symlink(x11.path(), &hop).unwrap();
+    let fonts = rig.home.join(".fonts");
+    symlink(&hop, &fonts).unwrap();
+    let (r, text) = rig.start(
+        &PermissionSet::strict_gui(),
+        &[(
+            "SAM_TEST_SOCKETS",
+            format!("{}|{}", s(&fonts.join("default")), x11.socket()),
+        )],
+    );
+    let _ = fs::remove_file(&hop);
+    assert_ne!(r["CONNECT0"], "ok", "through the link: {text}");
+    assert_ne!(r["CONNECT1"], "ok", "at its own place: {text}");
+    assert!(
+        !x11.was_reached(),
+        "a program outside the sandbox was reached: {text}"
+    );
+    assert!(
+        text.contains("where programs outside the sandbox listen"),
+        "the start says why: {text}"
     );
 }

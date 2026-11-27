@@ -371,6 +371,8 @@ tests = [
   "the_way_to_a_path_follows_every_link_also_one_that_leads_nowhere_yet",
   "a_read_only_grant_never_hides_a_link_the_app_planted",
   "a_font_folder_link_never_reaches_sockets_by_any_name",
+  "a_font_folder_link_through_a_link_in_tmp_never_reaches_sockets",
+  "a_link_in_tmp_that_sends_the_way_elsewhere_is_never_followed",
   "a_read_only_grant_never_makes_a_folder_one_the_app_cannot_change",
   "a_folder_this_start_shows_writable_counts_as_one_the_app_can_change",
   "a_folder_this_start_shows_writable_holds_links_the_app_may_have_made",
