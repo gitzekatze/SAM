@@ -1303,15 +1303,31 @@ impl Views {
     /// `dotfiles/fontconfig`, the app cannot change the link, yet it could
     /// write the font settings there that programs outside the sandbox
     /// load.
+    ///
+    /// None where a place SAM would bind the target at has a name that is
+    /// not valid text (always so for a target by such a name, since each
+    /// place is the target under one of its names): Bubblewrap cannot be
+    /// given such a name, and
+    /// stopping the start instead let anyone who can write next to the
+    /// target (another app with the whole home writable) stop every start
+    /// with a planted link. The link is then only named, as every other
+    /// skipped link, the start runs, and no note says the target is kept
+    /// read-only ([`sam_core::places::GrantsShown::keeps_read_only`]
+    /// answers alike).
     fn read_only_targets(&self, home: &Path, target: &Path) -> Vec<PathBuf> {
         let real_home = resolve(home);
-        self.mount_points(target)
+        let out: Vec<PathBuf> = self
+            .mount_points(target)
             .into_iter()
             .filter(|m| {
                 !(home.starts_with(m) || real_home.starts_with(m))
                     && self.grant_of(m).is_some_and(|(g, rw)| *rw && g != m)
             })
-            .collect()
+            .collect();
+        if out.iter().any(|m| m.to_str().is_none()) {
+            return Vec::new();
+        }
+        out
     }
 }
 
@@ -2657,9 +2673,10 @@ impl Section<'_> {
         for rel in own_home_places(p) {
             let named = home.join(rel);
             // `lock`: a bind at a place a writable grant shows, which a
-            // note says SAM keeps read-only. A name that is not valid text
-            // stops the start ([`Args::lock`]) instead of leaving the place
-            // out, and so writable.
+            // note says SAM keeps read-only. `read_only_targets` gives no
+            // name that is not valid text (such a link is only named, and
+            // the start runs); [`Args::lock`] still makes sure no such bind
+            // is ever dropped without a word while the note claims it.
             let (places, lock) = match sam_core::places::own_place_decision(
                 h,
                 rel,
@@ -2673,11 +2690,13 @@ impl Section<'_> {
                 }
                 sam_core::places::OwnBind::Missing => (Vec::new(), false),
                 sam_core::places::OwnBind::Link(link) => {
-                    // A link you made, in a folder the app cannot change,
-                    // whose target a writable grant shows: that target
-                    // stays read-only there, as before the rule. Only
-                    // narrowing: the bind shows nothing a grant does not
-                    // show already.
+                    // A link whose target a writable grant shows: that
+                    // target stays read-only there, as before the rule;
+                    // it protects something where the app cannot change
+                    // the link itself. Only narrowing: the bind shows
+                    // nothing a grant does not show already. Never for a
+                    // target by a name that is not valid text
+                    // ([`Views::read_only_targets`]).
                     let mut targets = Vec::new();
                     if link.exists {
                         let target = resolve(&real_home.join(rel));
@@ -10080,43 +10099,77 @@ mod guard_tests {
         }
     }
 
-    /// A link you made at a font place whose target lies inside a writable
-    /// grant, by a name that is not valid text: with the home read-only,
-    /// `~/dotfiles` writable and `~/.config/fontconfig` a link into it, the
-    /// read-only bind at the target was left out without a word, while the
-    /// start said SAM keeps that place read-only, and the app could write
-    /// font rules there that programs outside the sandbox load. Now the
-    /// start stops and names the place. The control: by a name that is
-    /// text, the target is bound read-only.
+    /// A link at a font place whose target lies inside a writable grant, by
+    /// a name that is not valid text, never stops the start: anyone who can
+    /// write next to the target (another app with the whole home writable)
+    /// could plant `~/.fonts` as a link to `~/fonts\xff` and so stop every
+    /// later start of every app with such a grant. SAM makes no read-only
+    /// bind there, names the link in its one note, as every other skipped
+    /// link, and neither the start nor the app page says it keeps the
+    /// target read-only. Both with the home read-only and `~/dotfiles`
+    /// writable, and with the whole home writable. The control: by a name
+    /// that is text, the target is bound read-only and the note says so.
     #[test]
-    fn a_target_kept_read_only_by_a_name_that_is_not_text_stops_the_start() {
+    fn a_link_target_whose_name_is_not_text_is_only_named_and_the_start_runs() {
         use std::os::unix::ffi::OsStrExt;
         let st = |p: &Path| p.to_string_lossy().into_owned();
         let t = scratch();
         let home = fs::canonicalize(t.path()).unwrap().join("home");
-        let mut p = PermissionSet::strict_gui();
-        p.filesystem.home = true;
-        p.filesystem.home_access = Access::Ro;
-        p.filesystem.custom_write = vec![st(&home.join("dotfiles"))];
+        let mut ro_home = PermissionSet::strict_gui();
+        ro_home.filesystem.home = true;
+        ro_home.filesystem.home_access = Access::Ro;
+        ro_home.filesystem.custom_write = vec![st(&home.join("dotfiles"))];
+        let mut rw_home = PermissionSet::strict_gui();
+        rw_home.filesystem.home = true;
+        rw_home.filesystem.home_access = Access::Rw;
         fs::create_dir_all(home.join(".config")).unwrap();
-        let link = home.join(".config/fontconfig");
-        for name in [&b"font\xffconfig"[..], b"fontconfig"] {
-            let name = std::ffi::OsStr::from_bytes(name);
-            fs::create_dir_all(home.join("dotfiles").join(name)).unwrap();
-            let _ = fs::remove_file(&link);
-            std::os::unix::fs::symlink(Path::new("../dotfiles").join(name), &link).unwrap();
-            let built = Bubblewrap.build(&ctx_for(&p, &home));
-            if name.to_str().is_none() {
-                let err = built.map(|c| c.notes).expect_err("the start stops");
-                assert!(err.to_string().contains("is not valid text"), "{err}");
-            } else {
-                let cmd = built.unwrap();
-                let at = st(&home.join("dotfiles/fontconfig"));
-                assert!(
-                    has_seq(&cmd.args, &["--ro-bind-try", &at, &at]),
-                    "{:?}",
+        let cases: [(&str, &PermissionSet, &str, &str); 2] = [
+            ("read-only home", &ro_home, ".config/fontconfig", "dotfiles"),
+            ("whole home writable", &rw_home, ".fonts", ""),
+        ];
+        for (case, p, rel, dir) in cases {
+            let link = home.join(rel);
+            for name in [&b"font\xffs"[..], b"fonts"] {
+                let name = std::ffi::OsStr::from_bytes(name);
+                let target = home.join(dir).join(name);
+                fs::create_dir_all(&target).unwrap();
+                let _ = fs::remove_file(&link);
+                std::os::unix::fs::symlink(&target, &link).unwrap();
+                let text = name.to_str().is_some();
+                let case = format!("{case}, name is text {text}");
+                let ctx = ctx_for(p, &home);
+                let cmd = Bubblewrap
+                    .build(&ctx)
+                    .unwrap_or_else(|e| panic!("{case}: the start runs: {e}"));
+                let shown = st(&target);
+                assert_eq!(
+                    has_seq(&cmd.args, &["--ro-bind-try", &shown, &shown]),
+                    text,
+                    "{case}: the target bound read-only: {:?}",
                     cmd.args
                 );
+                let at = format!("SAM does not bind ~/{rel} (a link to ");
+                let note = cmd
+                    .notes
+                    .iter()
+                    .find(|n| n.contains(&at))
+                    .unwrap_or_else(|| panic!("{case}: the note names the link: {:?}", cmd.notes));
+                let keeps = note.contains("read-only where the app's other folders show them");
+                assert_eq!(keeps, text, "{case}: the note: {note}");
+                let page = sam_core::places::own_place_links_note_from_settings(
+                    p,
+                    &ctx.host,
+                    &sams_folders(&ctx),
+                    &this_start(&ctx),
+                )
+                .unwrap_or_else(|| panic!("{case}: the page names the link"));
+                assert!(page.contains(&at), "{case}: the page: {page}");
+                assert_eq!(
+                    page.contains("read-only where the app's other folders show them"),
+                    text,
+                    "{case}: the page: {page}"
+                );
+                fs::remove_file(&link).unwrap();
             }
         }
     }

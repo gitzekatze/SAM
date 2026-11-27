@@ -1163,10 +1163,13 @@ How these stay protected with the home writable:
     a home kept behind a link where `~/.config` names the home's real
     place (`/data/u/dots/config`): the place is kept read-only where the
     app reaches it under the home's name. Where that place's name is not
-    valid text, the start stops and names it, rather than leave the place
-    writable
+    valid text, SAM cannot pass it on to the sandbox: it makes no
+    read-only bind there and does not say it keeps the place read-only,
+    the note names the link as for every other link, and the start runs,
+    so no name planted in your home can stop a start; the place stays as
+    writable as the grant shows it, as without this rule
     (`a_link_you_made_into_a_writable_folder_keeps_the_font_settings_read_only`,
-    `a_target_kept_read_only_by_a_name_that_is_not_text_stops_the_start`,
+    `a_link_target_whose_name_is_not_text_is_only_named_and_the_start_runs`,
     `fonts_themes_and_extra_folders_never_follow_a_planted_link`,
     `a_stow_style_link_binds_no_font_or_theme_place_and_says_so_once`).
     The price: anyone who can write in your home can make `~/.fonts` a
@@ -1199,8 +1202,14 @@ How these stay protected with the home writable:
     `~/.config`, `~/.local` or `~/.local/share` kept as a link, fonts
     linked to a second disk, places that home-manager or Guix keep as
     links into their store). Keep the real files at that place, or grant
-    the whole home. The common link `~/.fonts` to `~/.local/share/fonts`
-    loses nothing, since SAM shows `~/.local/share/fonts` itself.
+    the whole home, which brings back a link that stays inside the home,
+    since the home shows the link and where it leads. A link that leads
+    out of the home (fonts on a second disk, the Nix or Guix store) leads
+    nowhere in the sandbox, even for an app with the whole home: keep the
+    real files at that place, or grant the whole home and add the link's
+    target as an extra read-only folder.
+    The common link `~/.fonts` to `~/.local/share/fonts` loses nothing,
+    since SAM shows `~/.local/share/fonts` itself.
   - Not covered: a program running alongside (also a running copy of the
     app) that swaps a part of the way for a link between SAM's look and
     the mount; a font or theme place that does not exist when the app

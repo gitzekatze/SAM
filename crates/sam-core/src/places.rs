@@ -1863,12 +1863,21 @@ impl GrantsShown {
     /// link at a font or theme place, read-only where a grant shows it
     /// writable: strictly inside a writable grant, never the grant's own
     /// place, the home or a folder above it ([`own_place_links_note`]).
+    /// Never where a name SAM would bind the target at is not valid text
+    /// (always so for a target by such a name): the sandbox makes no such
+    /// bind and only names the link, so the start is never stopped by a
+    /// planted name.
     pub fn keeps_read_only(&self, home: &Path, target: &Path) -> bool {
         let real_home = resolve(home);
-        self.names_of(target).iter().any(|c| {
-            !(home.starts_with(c) || real_home.starts_with(c))
-                && self.deepest(c).is_some_and(|(g, rw)| *rw && g != c)
-        })
+        let at: Vec<PathBuf> = self
+            .names_of(target)
+            .into_iter()
+            .filter(|c| {
+                !(home.starts_with(c) || real_home.starts_with(c))
+                    && self.deepest(c).is_some_and(|(g, rw)| *rw && g != c)
+            })
+            .collect();
+        !at.is_empty() && at.iter().all(|c| c.to_str().is_some())
     }
 }
 

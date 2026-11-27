@@ -15,9 +15,14 @@
   settings kept with GNU Stow or yadm, a whole `~/.config`, `~/.local` or
   `~/.local/share` kept as a link, fonts linked to a second disk, and
   places that home-manager or Guix keep as links into their store. Keep
-  the real files at that place, or give the app the whole home. The
-  common link `~/.fonts` to `~/.local/share/fonts` loses nothing, since
-  SAM shows `~/.local/share/fonts` itself.
+  the real files at that place, or give the app the whole home, which
+  brings back a link that stays inside your home. A link that leads out
+  of your home (a second disk, the Nix or Guix store) now leads nowhere
+  in the sandbox, also for an app with the whole home: keep the real
+  files at that place, or give the app the whole home and add the link's
+  target as an extra read-only folder. The common link `~/.fonts` to
+  `~/.local/share/fonts` loses nothing, since SAM shows
+  `~/.local/share/fonts` itself.
 - Where a link you made leads to a place that a writable folder of the
   app shows (with the home read-only, `~/dotfiles` writable and
   `~/.config/fontconfig` a link to `../dotfiles/fontconfig`), SAM keeps
@@ -26,8 +31,10 @@
   read-only. This never shows the app anything new. Anyone who can write
   in your home can use this to make a folder inside a writable folder
   read-only for the app while the link exists; the launch log names it.
-  Where the name of such a place is not valid text, the app does not
-  start, and SAM names the place, rather than leave it writable.
+  Where the name of such a place is not valid text, SAM cannot pass it
+  on: it does not keep that place read-only and does not say so, names
+  the link as every other, and the app starts, so no name planted in
+  your home can stop a start.
 - A link at a protected name can no longer keep the font settings
   writable where a granted folder shows them, also with your home kept
   behind a link. In a private home, a credential you keep as a link into
@@ -39,8 +46,8 @@
 - The launch log names each such link and where it leads in one note,
   and the app page and `sam-jail info` show the same before the start,
   under *Fonts or theme files behind a link*. An app with the whole home
-  sees no difference through the home, but gets this note at every start
-  while such a link exists.
+  sees no difference through the home for a link that stays inside it,
+  but gets this note at every start while such a link exists.
 - The file chooser's bookmarks and server list are now kept out only
   below a theme folder SAM shows. Below one kept as a link, the empty
   stand-in followed the link and could leave an empty file in an app's
