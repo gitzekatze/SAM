@@ -352,16 +352,12 @@ pub fn plan(p: &PermissionSet, cfg: &Config, paths: &Paths, host: &HostInfo) -> 
         }
     }
     for (name, title, granted) in [
-        (".ssh", "SSH keys", fs.ssh),
-        (".gnupg", "GnuPG keys", fs.gnupg),
+        (".ssh", "SSH keys", fs.ssh_given()),
+        (".gnupg", "GnuPG keys", fs.gnupg_given()),
     ] {
         let path = host.home.join(name);
         if path.is_dir() {
-            let want = if fs.home && granted {
-                home_level
-            } else {
-                Access::Hidden
-            };
+            let want = if granted { home_level } else { Access::Hidden };
             v.push(c(
                 "keys",
                 "Files",

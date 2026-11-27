@@ -629,6 +629,13 @@ the same way. Not covered: the start places are not locked at the top of
 the home then (`~/autostart`), so an app with the whole home writable can
 change them there. Such a folder outside the home is shown only when you
 grant it, and SAM does not hide the stores in it then.
+The switches that allow them count only with the whole home
+(`filesystem.home`): stored on without it (an old profile, a
+hand-edited file), they hide the keys and stores as if off, also where a
+granted extra folder shows them
+(`key_switches_without_the_whole_home_hide_the_keys`, and
+`places_behind_links_stay_protected_and_the_app_still_starts` from a real
+sandbox).
 
 **Hidden whenever anything would show them:** SAM's own folders
 (configuration, data and unpacked apps, wherever they are, and the folders
