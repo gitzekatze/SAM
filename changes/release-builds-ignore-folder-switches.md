@@ -11,3 +11,9 @@
 - With such a variable set, an installed window now behaves as without it:
   starting SAM again brings the open window forward instead of opening a
   second window on the same settings.
+- If you set one of these variables for an installed SAM, it now uses the
+  standard folders instead, without a message: its window shows the apps
+  recorded there, and menu entries made in the old folder start apps SAM
+  no longer knows. Move the folders' contents to the standard folders, or
+  set `XDG_CONFIG_HOME` and `XDG_DATA_HOME` (SAM then uses `sam/` and
+  `applications/` below them).
