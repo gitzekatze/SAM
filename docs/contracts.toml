@@ -219,7 +219,7 @@ playbook = "A Bubblewrap without these options builds no room: a program that as
 [[contract]]
 id = "bwrap-overlay"
 component = "bubblewrap"
-assumes = "Bubblewrap 0.10 or newer offers overlays (--overlay-src, --overlay) for a writable app folder whose changes go to a separate layer."
+assumes = "Bubblewrap 0.11 or newer offers overlays (--overlay-src, --overlay) for a writable app folder whose changes go to a separate layer."
 covers = ["option:--overlay", "option:--overlay-src"]
 functions = [18]
 probe = "bwrap-option:--overlay-src"

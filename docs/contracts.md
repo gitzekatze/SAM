@@ -112,7 +112,7 @@ Bubblewrap shows a folder or file SAM opened (--bind-fd, --ro-bind-fd) as exactl
 
 ## bwrap-overlay
 
-Bubblewrap 0.10 or newer offers overlays (--overlay-src, --overlay) for a writable app folder whose changes go to a separate layer.
+Bubblewrap 0.11 or newer offers overlays (--overlay-src, --overlay) for a writable app folder whose changes go to a separate layer.
 
 - **Component:** Bubblewrap ([releases](https://github.com/containers/bubblewrap/releases))
 - **When it breaks:** one feature is unavailable; the sandbox is unaffected.
