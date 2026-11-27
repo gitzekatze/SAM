@@ -226,6 +226,8 @@ tests = [
   "a_link_planted_inside_a_refused_read_only_folder_is_never_followed",
   "the_folders_above_a_folder_bound_at_its_own_access_are_pinned",
   "the_folders_above_a_read_only_user_folder_cannot_be_renamed",
+  "a_folder_bound_read_only_for_the_fonts_is_never_pinned",
+  "the_font_folders_stay_read_only_around_an_extra_folder_inside",
   "user_folders_at_one_place_take_one_access",
   "the_strictest_profile_shares_nothing_and_keeps_the_app_read_only",
   "files_and_folders_named_on_the_command_line",

@@ -1563,18 +1563,26 @@ fn grant_path(c: &str) -> PathBuf {
 /// guard moved along, and a new `~/dotfiles/bashrc` ran outside the sandbox
 /// at the next shell while the link `~/.bashrc` stayed as it was (review
 /// B2 S3, R50). A grant's own place is a mount point already.
+///
+/// Never on or inside a place bound read-only that the views do not record
+/// (`read_only`: the fonts, the font settings and the theme files): the app
+/// cannot rename anything there, and a pin, bound after the read-only bind
+/// at equal depth or deeper, made it writable (`~/.fonts` above an extra
+/// read-only folder `~/.fonts/licensed` with the whole home writable).
 fn pins(
     home: &Path,
     views: &Views,
     guarded: &[PathBuf],
     sam_dirs: &[PathBuf],
     programs: &[PathBuf],
+    read_only: &[PathBuf],
 ) -> Vec<PathBuf> {
     let mut pins: Vec<PathBuf> = Vec::new();
     let mut pin = |p: &Path| {
         for c in views.mount_points(p) {
             // Never `/` or one folder below it: those are not renamed.
             if views.writable(&c)
+                && !read_only.iter().any(|r| c.starts_with(r))
                 && c.components().count() > 2
                 && fs::metadata(&c).is_ok_and(|m| m.is_dir())
                 && !pins.contains(&c)
@@ -2371,15 +2379,22 @@ impl Section<'_> {
                 }
             }
         }
+        // The places bound read-only below, for the pins: the views do not
+        // record them, so a pin on or inside one (`~/.fonts` above an extra
+        // read-only folder `~/.fonts/licensed`) counted writable, landed
+        // after the read-only bind and made the place writable.
+        let mut read_only: Vec<PathBuf> = Vec::new();
         // Safe read-only user resources.
         for r in [".local/share/fonts", ".fonts", ".config/fontconfig"] {
             let at = bind_place(&self.views, &home.join(r));
             mount(&at, &|m| m.ro(&at));
+            read_only.push(at);
         }
         if p.advanced.host_themes && !fsp.home {
             for t in THEME_FILES {
                 let at = bind_place(&self.views, &home.join(t));
                 mount(&at, &|m| m.ro(&at));
+                read_only.push(at);
             }
             // Deeper than its folder, so mounted after it. Only a plain
             // file: a link inside leads where the sandbox shows nothing,
@@ -2488,7 +2503,14 @@ impl Section<'_> {
         // folders named like them are pinned as above every protected
         // place, which they are (`protected_ancestors`, and where a link
         // among them leads through `guarded`).
-        for p in pins(&home, views, &guarded, &ctx.sam_dirs, &ctx.sam_programs) {
+        for p in pins(
+            &home,
+            views,
+            &guarded,
+            &ctx.sam_dirs,
+            &ctx.sam_programs,
+            &read_only,
+        ) {
             mount(&p, &|m| m.op2("--bind", &p, &p));
         }
         let sams = &self.sams;
@@ -7259,6 +7281,57 @@ mod guard_tests {
                 );
             }
         }
+    }
+
+    /// The folders SAM always binds read-only (the fonts and the font
+    /// settings) are never pinned, on or inside: with the whole home
+    /// writable and an extra read-only folder inside a font folder
+    /// (`~/.fonts/licensed`), a pin of `~/.fonts` was bound after its
+    /// read-only bind (equal depth, stable order) and made the font folder
+    /// writable, which the start never allowed before the pins of finding
+    /// R63. The folders above it the app can change are still pinned.
+    #[test]
+    fn a_folder_bound_read_only_for_the_fonts_is_never_pinned() {
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap().join("home");
+        for d in [
+            ".fonts/licensed",
+            ".local/share/fonts/a/licensed",
+            ".config/fontconfig/conf.d",
+        ] {
+            fs::create_dir_all(home.join(d)).unwrap();
+        }
+        let st = |p: &Path| p.to_string_lossy().into_owned();
+        let mut p = full_rw();
+        p.filesystem.custom_read = vec![
+            st(&home.join(".fonts/licensed")),
+            st(&home.join(".local/share/fonts/a/licensed")),
+            st(&home.join(".config/fontconfig/conf.d")),
+        ];
+        let ctx = ctx_for(&p, &home);
+        let a = args_of(&ctx);
+        for (ro, inside) in [
+            (".fonts", ".fonts"),
+            (".local/share/fonts", ".local/share/fonts/a"),
+            (".config/fontconfig", ".config/fontconfig"),
+        ] {
+            let (ro, inside) = (st(&home.join(ro)), st(&home.join(inside)));
+            assert!(
+                !at_seq(&a, &["--ro-bind-try", &ro, &ro]).is_empty(),
+                "{ro} bound read-only: {a:?}"
+            );
+            for pin in [&ro, &inside] {
+                assert!(
+                    at_seq(&a, &["--bind", pin, pin]).is_empty(),
+                    "{pin} never pinned: {a:?}"
+                );
+            }
+        }
+        let share = st(&home.join(".local/share"));
+        assert!(
+            !at_seq(&a, &["--bind", &share, &share]).is_empty(),
+            "the folder above is pinned: {a:?}"
+        );
     }
 
     /// With the whole home granted, credential files are replaced by an
