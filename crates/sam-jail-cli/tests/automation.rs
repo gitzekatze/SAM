@@ -467,6 +467,118 @@ fn check_release_build(sam: &Path) -> Output {
     run(cmd, 60)
 }
 
+/// The release stand-in's answer to `config path` (the lines of SAM below
+/// its `"config path")` case), as a shell script of its own.
+fn stand_in_answer() -> String {
+    let answer = SAM
+        .split("\"config path\")")
+        .nth(1)
+        .and_then(|rest| rest.split(";;").next())
+        .expect("the release stand-in answers config path");
+    format!("#!/bin/sh\n{}\n", answer.trim())
+}
+
+/// The release-build check cannot reach the real home folder or the real
+/// SAM folders even when the built program is wrong: the program starts in
+/// an empty environment, inside a temporary folder of the check's own, with
+/// HOME, every XDG folder, TMPDIR and SAM's folder switches pointing into
+/// it, and nothing of the caller's environment besides PATH. The folder is
+/// gone afterwards.
+#[test]
+fn the_release_build_check_keeps_the_program_inside_a_temporary_folder() {
+    let dir = tempfile::tempdir().unwrap();
+    let seen = dir.path().join("seen");
+    let program = dir.path().join("release/sam-jail");
+    write_exec(
+        &program,
+        &format!(
+            "#!/bin/sh\nenv > '{env}'\npwd > '{pwd}'\n{answer}",
+            env = seen.join("env").display(),
+            pwd = seen.join("pwd").display(),
+            answer = &stand_in_answer()["#!/bin/sh\n".len()..],
+        ),
+    );
+    fs::create_dir_all(&seen).unwrap();
+    let mut cmd = Command::new("sh");
+    cmd.arg(root().join("scripts/check-release-build.sh"))
+        .arg(&program)
+        // The caller's own folders and switches: none may reach the program.
+        .env("XDG_CONFIG_HOME", dir.path().join("caller-config"))
+        .env("XDG_DATA_HOME", dir.path().join("caller-data"))
+        .env("XDG_RUNTIME_DIR", dir.path().join("caller-runtime"))
+        .env("SAM_CLI", dir.path().join("caller-cli"))
+        .env("DBUS_SESSION_BUS_ADDRESS", "unix:path=/nonexistent")
+        .env("TMPDIR", dir.path());
+    let out = run(cmd, 60);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+
+    let env = fs::read_to_string(seen.join("env")).unwrap();
+    let vars: Vec<(&str, &str)> = env.lines().filter_map(|l| l.split_once('=')).collect();
+    let var = |name: &str| -> &str {
+        vars.iter()
+            .find(|(k, _)| *k == name)
+            .map(|(_, v)| *v)
+            .unwrap_or_else(|| panic!("the program got no {name}:\n{env}"))
+    };
+    let home = Path::new(var("HOME"));
+    let work = home
+        .parent()
+        .expect("the home folder is below the check's folder");
+    assert!(
+        work.starts_with(dir.path()) && work != dir.path(),
+        "the check's folder {} is not a new folder below TMPDIR",
+        work.display()
+    );
+    for name in [
+        "XDG_CONFIG_HOME",
+        "XDG_DATA_HOME",
+        "XDG_CACHE_HOME",
+        "XDG_STATE_HOME",
+        "XDG_RUNTIME_DIR",
+        "XDG_CONFIG_DIRS",
+        "XDG_DATA_DIRS",
+        "TMPDIR",
+        "SAM_CONFIG_DIR",
+        "SAM_DATA_DIR",
+        "SAM_APPLICATIONS_DIR",
+        "SAM_RUNTIME_DIR",
+    ] {
+        assert!(
+            Path::new(var(name)).starts_with(work),
+            "{name}={} is outside the check's temporary folder {}",
+            var(name),
+            work.display()
+        );
+    }
+    // Only these, PATH, the language and what the shell adds itself.
+    let allowed = ["HOME", "PATH", "LC_ALL", "PWD", "OLDPWD", "SHLVL", "_"];
+    let unexpected: Vec<&str> = vars
+        .iter()
+        .map(|(k, _)| *k)
+        .filter(|k| {
+            !allowed.contains(k)
+                && !k.starts_with("XDG_")
+                && !k.starts_with("SAM_")
+                && *k != "TMPDIR"
+        })
+        .collect();
+    assert!(
+        unexpected.is_empty(),
+        "the caller's environment reached the program: {unexpected:?}"
+    );
+    assert!(
+        !env.contains("caller-"),
+        "a caller's folder reached the program:\n{env}"
+    );
+    let pwd = fs::read_to_string(seen.join("pwd")).unwrap();
+    assert_eq!(
+        Path::new(pwd.trim()),
+        work,
+        "the program did not start in the check's folder"
+    );
+    assert!(!work.exists(), "the check left {} behind", work.display());
+}
+
 /// The release-build check asks the built program itself, because Cargo
 /// takes profile settings from outside the repository too. A program that
 /// follows SAM's folder switches (here SAM's real developer build) is
@@ -509,8 +621,25 @@ fn the_release_build_check_refuses_a_program_that_follows_developer_variables() 
     write_exec(&silent, "#!/bin/sh\nexit 0\n");
     let failing = dir.path().join("failing/sam-jail");
     write_exec(&failing, "#!/bin/sh\nexit 1\n");
+    // The three folders right, but one more line naming a folder outside
+    // the temporary folder, or a line that is not `KEY /path`.
+    let outside = dir.path().join("outside/sam-jail");
+    write_exec(
+        &outside,
+        &format!(
+            "{}printf '%-14s %s\\n' logs /var/log/sam\n",
+            stand_in_answer()
+        ),
+    );
+    let stray = dir.path().join("stray/sam-jail");
+    write_exec(
+        &stray,
+        &format!("{}echo 'warning: something else'\n", stand_in_answer()),
+    );
     for (what, program) in [
         ("another data folder", other),
+        ("a folder outside the temporary folder", outside),
+        ("a line that names no folder", stray),
         ("no answer", silent),
         ("a failing program", failing),
         ("no program", dir.path().join("missing/sam-jail")),
@@ -633,6 +762,71 @@ fn release_build_paths_check_the_programs_they_build() {
              turn SAM's developer variables on in that release build unseen"
         );
     }
+
+    // Exactly these files run the check, none other: not the Makefile (its
+    // `cli` target is what a developer runs on the desktop), not a test or
+    // developer script, not a CI workflow of its own.
+    let mut files = vec![root().join("Makefile")];
+    for dir in ["scripts", "packaging", "tests", ".github"] {
+        files_below(&root().join(dir), &mut files);
+    }
+    let mut running: Vec<String> = files
+        .iter()
+        .filter(|f| **f != root().join(CHECK))
+        .filter(|f| {
+            text(&fs::read(f).unwrap())
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.starts_with('#') && !l.starts_with("@#") && !l.starts_with("//"))
+                .any(|l| l.contains("check-release-build"))
+        })
+        .map(|f| f.strip_prefix(root()).unwrap().display().to_string())
+        .collect();
+    running.sort();
+    assert!(
+        !running.iter().any(|f| f == "Makefile"),
+        "the Makefile runs {CHECK}: `make cli` and the other targets a developer runs \
+         on the desktop must not start SAM's programs; only the paths that build a \
+         shipped or signed program run the check"
+    );
+    assert_eq!(
+        running,
+        [
+            PKGBUILD,
+            SPEC,
+            "scripts/make-appimage.sh",
+            "scripts/release.sh",
+            "scripts/sign-release.sh"
+        ],
+        "the files that run {CHECK} are not exactly the paths that build a shipped or \
+         signed program"
+    );
+
+    // CI's release workflow builds the shipped AppImages through `make
+    // appimage`, which is scripts/make-appimage.sh: the check above covers it.
+    let workflow = fs::read_to_string(root().join(".github/workflows/release.yml")).unwrap();
+    assert!(
+        workflow
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.starts_with('#'))
+            .any(|l| l.contains("make appimage")),
+        "the release workflow no longer builds the AppImages with `make appimage`: \
+         check that it still runs {CHECK} on the programs it ships"
+    );
+    let makefile = fs::read_to_string(root().join("Makefile")).unwrap();
+    let recipe: Vec<&str> = makefile
+        .lines()
+        .skip_while(|l| !l.starts_with("appimage:"))
+        .skip(1)
+        .take_while(|l| l.starts_with('\t'))
+        .map(str::trim)
+        .collect();
+    assert_eq!(
+        recipe,
+        ["scripts/make-appimage.sh dist"],
+        "`make appimage` must be scripts/make-appimage.sh alone, which runs {CHECK}"
+    );
 }
 
 /// A release build ignores SAM's developer variables (folders and tools),
@@ -762,71 +956,6 @@ fn package_test_steps_build_at_optimisation_level_zero() {
     let pkgbuild: Vec<&str> = pkgbuild.lines().collect();
     let function = |name: &str| code(&pkgbuild[pkgbuild_function(&pkgbuild, name)]);
     assert_eq!(
-
-    // Exactly these files run the check, none other: not the Makefile (its
-    // `cli` target is what a developer runs on the desktop), not a test or
-    // developer script, not a CI workflow of its own.
-    let mut files = vec![root().join("Makefile")];
-    for dir in ["scripts", "packaging", "tests", ".github"] {
-        files_below(&root().join(dir), &mut files);
-    }
-    let mut running: Vec<String> = files
-        .iter()
-        .filter(|f| **f != root().join(CHECK))
-        .filter(|f| {
-            text(&fs::read(f).unwrap())
-                .lines()
-                .map(str::trim)
-                .filter(|l| !l.starts_with('#') && !l.starts_with("@#") && !l.starts_with("//"))
-                .any(|l| l.contains("check-release-build"))
-        })
-        .map(|f| f.strip_prefix(root()).unwrap().display().to_string())
-        .collect();
-    running.sort();
-    assert!(
-        !running.iter().any(|f| f == "Makefile"),
-        "the Makefile runs {CHECK}: `make cli` and the other targets a developer runs \
-         on the desktop must not start SAM's programs; only the paths that build a \
-         shipped or signed program run the check"
-    );
-    assert_eq!(
-        running,
-        [
-            PKGBUILD,
-            SPEC,
-            "scripts/make-appimage.sh",
-            "scripts/release.sh",
-            "scripts/sign-release.sh"
-        ],
-        "the files that run {CHECK} are not exactly the paths that build a shipped or \
-         signed program"
-    );
-
-    // CI's release workflow builds the shipped AppImages through `make
-    // appimage`, which is scripts/make-appimage.sh: the check above covers it.
-    let workflow = fs::read_to_string(root().join(".github/workflows/release.yml")).unwrap();
-    assert!(
-        workflow
-            .lines()
-            .map(str::trim)
-            .filter(|l| !l.starts_with('#'))
-            .any(|l| l.contains("make appimage")),
-        "the release workflow no longer builds the AppImages with `make appimage`: \
-         check that it still runs {CHECK} on the programs it ships"
-    );
-    let makefile = fs::read_to_string(root().join("Makefile")).unwrap();
-    let recipe: Vec<&str> = makefile
-        .lines()
-        .skip_while(|l| !l.starts_with("appimage:"))
-        .skip(1)
-        .take_while(|l| l.starts_with('\t'))
-        .map(str::trim)
-        .collect();
-    assert_eq!(
-        recipe,
-        ["scripts/make-appimage.sh dist"],
-        "`make appimage` must be scripts/make-appimage.sh alone, which runs {CHECK}"
-    );
         flags_before_test(&function("check"), "PKGBUILD"),
         ["_rustflags -C opt-level=0"],
         "check() in {PKGBUILD} must build the tests with \

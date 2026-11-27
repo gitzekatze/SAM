@@ -22,30 +22,65 @@
 # the answer holds for them, unless a Cargo configuration changes the
 # release profile of one package only.
 #
-# Everything the program writes stays in a temporary folder, which is
-# removed afterwards.
+# The check cannot reach the real home folder or the real SAM folders, even
+# when the built program is wrong: the program starts with an empty
+# environment (env -i) inside the temporary folder, with HOME, every XDG
+# folder, TMPDIR and SAM's own folder switches pointing into it, and the
+# temporary folder is removed afterwards, also when the check is stopped.
+# The check fails closed: a missing program, a program that fails, and an
+# answer that is missing a folder, names another folder or names any path
+# outside the temporary folder all stop the build.
 set -eu
 die() { echo "check-release-build: $*" >&2; exit 1; }
 sam=${1:-}
 [ -n "$sam" ] || die "usage: scripts/check-release-build.sh path/to/sam-jail"
 [ -f "$sam" ] && [ -x "$sam" ] || die "no program at $sam"
-work=$(mktemp -d "${TMPDIR:-/tmp}/sam-release-check.XXXXXX")
+# The program starts inside the temporary folder, so a relative path is
+# made absolute first.
+case "$sam" in /*) ;; *) sam="$PWD/$sam" ;; esac
+work=$(mktemp -d "${TMPDIR:-/tmp}/sam-release-check.XXXXXX") || die "no temporary folder"
 trap 'rm -rf "$work"' EXIT
+trap 'exit 1' HUP INT TERM
 home="$work/home"
 switched="$work/switched"
-mkdir -p "$home" "$switched"
-# Only what the check needs: no XDG folders, no other SAM variables, and no
-# language setting from the caller (the answer is read in English).
-out=$(env -i PATH="${PATH:-/usr/bin:/bin}" HOME="$home" LC_ALL=C \
+mkdir -p "$home" "$switched" "$work/tmp" "$work/runtime" "$work/system-config" "$work/system-data"
+chmod 0700 "$work/runtime"
+# Only what the check needs: every folder below the temporary folder, no
+# other SAM variables, and no language setting from the caller (the answer
+# is read in English). XDG_CONFIG_HOME and XDG_DATA_HOME name the standard
+# folders below the fresh home folder, so the expected answer stays the same
+# whether the program reads them or HOME.
+out=$( (cd "$work" && exec env -i PATH="${PATH:-/usr/bin:/bin}" HOME="$home" LC_ALL=C \
+    TMPDIR="$work/tmp" \
+    XDG_CONFIG_HOME="$home/.config" \
+    XDG_DATA_HOME="$home/.local/share" \
+    XDG_CACHE_HOME="$home/.cache" \
+    XDG_STATE_HOME="$home/.local/state" \
+    XDG_RUNTIME_DIR="$work/runtime" \
+    XDG_CONFIG_DIRS="$work/system-config" \
+    XDG_DATA_DIRS="$work/system-data" \
     SAM_CONFIG_DIR="$switched/config" \
     SAM_DATA_DIR="$switched/data" \
     SAM_APPLICATIONS_DIR="$switched/applications" \
-    "$sam" config path 2>&1) || die "$sam config path failed: $out"
+    SAM_RUNTIME_DIR="$switched/runtime" \
+    "$sam" config path) 2>&1) || die "$sam config path failed: $out"
 case "$out" in
     *"$switched"*)
         die "$sam follows SAM's developer variables, like a developer build: debug assertions are on in this release build. Look for Cargo profile settings in the environment (CARGO_PROFILE_RELEASE_*), compiler flags (RUSTFLAGS, CARGO_ENCODED_RUSTFLAGS) and Cargo configuration files in CARGO_HOME or above the source folder. It answered:
 $out" ;;
 esac
+# Every line of the answer is `KEY   /path`, with the path below the fresh
+# home folder: anything else is an answer this check does not understand.
+printf '%s\n' "$out" | while IFS= read -r line; do
+    path=$(printf '%s\n' "$line" | sed -n 's/^[a-z_][a-z_]*  *//p')
+    case "$path" in
+        *"/../"* | *"/.." | "") bad=1 ;;
+        "$home"/*) bad= ;;
+        *) bad=1 ;;
+    esac
+    [ -z "$bad" ] || die "$sam answered a line this check does not expect: '$line'. It answered:
+$out"
+done || exit 1
 # The folder named after KEY in the answer (`KEY   /path`).
 folder() { printf '%s\n' "$out" | sed -n "s/^$1  *//p"; }
 for expect in \
