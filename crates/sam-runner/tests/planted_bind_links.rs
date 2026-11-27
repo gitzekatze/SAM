@@ -1,7 +1,7 @@
 //! The places SAM shows an app from your home on its own (your fonts, the
-//! fonts settings) and the extra read-only folders are never followed
-//! through a link to a place the app must not reach, attacked from inside
-//! a real sandbox.
+//! fonts settings, the theme files) follow no link at all, and the extra
+//! read-only folders are never followed through a link to a place the app
+//! must not reach, attacked from inside a real sandbox.
 //!
 //! With the whole home writable and `~/.fonts` missing (common), an app
 //! makes `~/.fonts` a link to `/tmp/tmux-1000` in one start. At the next
@@ -14,24 +14,34 @@
 //! `/tmp`, with a listening socket the app must not reach.
 //!
 //! Each protection has its own case:
-//! - a link in a folder the app can change that leads out of what the app
-//!   is shown is not followed (the app may have made it);
-//! - a link that leads to a place where programs outside the sandbox
-//!   listen is not followed, whoever made it: also a socket directly in
-//!   `/tmp`, a socket folder there by any name, and the host's runtime
-//!   folder kept outside `/run` and `/tmp`;
+//! - a font place that is a link, or lies behind one, in the home is not
+//!   followed, whoever made the link and wherever it leads: to an
+//!   ordinary folder in the home or out of it, to your keys, to where
+//!   programs outside the sandbox listen, also a link made in an earlier
+//!   start with the whole home writable; the start names each such link;
+//! - a link at a protected name never knocks out the read-only bind of
+//!   the fonts settings, also with the home kept behind a link;
+//! - a credential kept as a link into a fonts folder stays hidden, in a
+//!   private home and with the home read-only;
+//! - a link you made, in a folder the app cannot change, to fonts
+//!   settings that a writable folder shows keeps them read-only there;
+//! - an extra folder's link in a folder the app can change that leads out
+//!   of what the app is shown is not followed (the app may have made it);
+//! - an extra folder's link that leads to a place where programs outside
+//!   the sandbox listen is not followed, whoever made it: also a socket
+//!   directly in `/tmp`, a socket folder there by any name, and the host's
+//!   runtime folder kept outside `/run` and `/tmp`;
 //! - a read-only grant the app made lead into a folder it can change
 //!   does not hide a link it planted there;
-//! - a link that leads from a fonts place to your keys is not followed;
 //! - a user folder reached through a link the app planted is not bound;
 //! - a writable extra folder the app made a link to a read-only home does
 //!   not make the home writable, nor one made a link into a user folder
 //!   set read-only under a writable home.
 //!
-//! Controls: ordinary fonts folders and links that stay inside what the
-//! app is shown still work, and an extra folder you list by its real
-//! place in `/tmp` is still passed in, so a connection would have been
-//! seen.
+//! Controls: ordinary fonts folders still work, also in a home kept
+//! behind a link and through a read-only home that shows a linked one,
+//! and an extra folder you list by its real place in `/tmp` is still
+//! passed in, so a connection would have been seen.
 //!
 //! In its own file because it sets `HOME` for the test process.
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
@@ -391,13 +401,12 @@ fn an_extra_folder_link_the_app_planted_never_reaches_host_sockets() {
     );
 }
 
-/// Each rule on its own, for `~/.fonts`:
+/// For `~/.fonts`, a link is never followed:
 /// - with the whole home writable, a link to a folder outside the home
-///   that the app is not shown (the app may have made it) is not
-///   followed;
+///   that the app is not shown (the app may have made it);
 /// - in a private home, a link to a socket folder in `/tmp` (another
-///   program made it; the app cannot change the home) is not followed;
-/// - in a private home, a link to your SSH keys is not followed.
+///   program made it; the app cannot change the home);
+/// - in a private home, a link to your SSH keys.
 #[test]
 fn a_font_folder_link_never_leads_out_of_what_the_app_is_shown() {
     let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
@@ -419,7 +428,7 @@ fn a_font_folder_link_never_leads_out_of_what_the_app_is_shown() {
     assert_ne!(r["READ0"], "SECRET", "{text}");
     assert_ne!(r["READ1"], "SECRET", "{text}");
     assert!(
-        text.contains("may have made that link"),
+        text.contains(&format!("~/.fonts (a link to {})", s(&outside))),
         "the start says why: {text}"
     );
 
@@ -451,9 +460,11 @@ fn a_font_folder_link_never_leads_out_of_what_the_app_is_shown() {
 
 /// The controls: fonts folders and links that stay inside what the app
 /// is shown still work. In a private home: `~/.local/share/fonts` as it
-/// is, `~/.fonts` a link you made to `~/myfonts`, and an extra read-only
-/// folder. With the whole home writable: `~/.fonts` a link to
-/// `~/.local/share/fonts`, which the home shows anyway.
+/// is, and an extra read-only folder. With the whole home writable:
+/// `~/.fonts` a link to `~/.local/share/fonts`, read through the home,
+/// which shows it anyway. (`~/.fonts` a link you made to `~/myfonts` in a
+/// private home is no longer followed:
+/// [`a_font_link_to_an_ordinary_folder_is_not_followed_in_a_private_home`].)
 #[test]
 fn ordinary_font_folders_and_links_inside_the_home_still_work() {
     let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
@@ -461,27 +472,22 @@ fn ordinary_font_folders_and_links_inside_the_home_still_work() {
         return;
     };
     let h = &rig.home;
-    for d in [".local/share/fonts", "myfonts", "notes"] {
+    for d in [".local/share/fonts", "notes"] {
         fs::create_dir_all(h.join(d)).unwrap();
     }
     fs::write(h.join(".local/share/fonts/a.txt"), "FONT A").unwrap();
-    fs::write(h.join("myfonts/b.txt"), "FONT B").unwrap();
     fs::write(h.join("notes/n.txt"), "NOTE").unwrap();
-    symlink(h.join("myfonts"), h.join(".fonts")).unwrap();
     let mut p = PermissionSet::strict_gui();
     p.filesystem.custom_read = vec![s(&h.join("notes"))];
     let files = format!(
-        "{}|{}|{}",
+        "{}|{}",
         s(&h.join(".local/share/fonts/a.txt")),
-        s(&h.join(".fonts/b.txt")),
         s(&h.join("notes/n.txt"))
     );
     let (r, text) = rig.start(&p, &[("SAM_TEST_FILES", files)]);
     assert_eq!(r["READ0"], "FONT A", "{text}");
-    assert_eq!(r["READ1"], "FONT B", "{text}");
-    assert_eq!(r["READ2"], "NOTE", "{text}");
+    assert_eq!(r["READ1"], "NOTE", "{text}");
 
-    fs::remove_file(h.join(".fonts")).unwrap();
     symlink(h.join(".local/share/fonts"), h.join(".fonts")).unwrap();
     let (r, text) = rig.start(
         &whole_home_writable(),
@@ -756,7 +762,8 @@ fn a_read_only_grant_never_hides_a_link_the_app_planted() {
     assert_ne!(r["READ1"], "SECRET", "{text}");
     assert_ne!(r["READ2"], "SECRET", "{text}");
     assert!(
-        text.contains("may have made that link"),
+        text.contains(&format!("~/.local/share/fonts (a link to {})", s(&secret)))
+            && text.contains("SAM does not follow such a link for your fonts and theme files"),
         "the start says why: {text}"
     );
 }
@@ -926,8 +933,8 @@ fn a_font_link_to_the_real_place_of_a_home_behind_a_link_shows_no_keys() {
             "{guarded} through ~/.fonts: {text}"
         );
         assert!(
-            text.contains("SAM does not bind ~/.fonts for this app on its own")
-                && text.contains("a place SAM protects"),
+            text.contains(&format!("~/.fonts (a link to ~/{guarded})"))
+                && text.contains("SAM does not follow such a link for your fonts and theme files"),
             "{guarded}: the start says why: {text}"
         );
     }
@@ -964,8 +971,343 @@ fn a_font_link_to_the_real_place_of_a_home_behind_a_link_shows_no_keys() {
         "SAM's folder through ~/.fonts: {text}"
     );
     assert!(
-        text.contains("SAM does not bind ~/.fonts for this app on its own")
-            && text.contains("a place SAM protects"),
+        text.contains("~/.fonts (a link to ~/Apps/sam/data)")
+            && text.contains("SAM does not follow such a link for your fonts and theme files"),
         "SAM's folder: the start says why: {text}"
+    );
+}
+
+/// How many of the start's notes name the font or theme places SAM skips
+/// for a link ([`sam_core::places::own_place_links_note`]). The log also
+/// holds the app page's entries (`# warning [own-place-links]`), with the
+/// same words; those are not counted.
+fn link_notes(text: &str) -> usize {
+    text.lines()
+        .filter(|l| {
+            l.starts_with("# note: ")
+                && l.contains("SAM does not follow such a link for your fonts and theme files")
+        })
+        .count()
+}
+
+/// In a private home, `~/.fonts` that is a link is not followed, wherever
+/// it leads and whoever made it: your own link to `~/myfonts`, a link
+/// another app made to `~/Documents`, and one to a folder outside the
+/// home and outside `/tmp`. The app reads nothing through the link nor at
+/// the place it leads to, and the start names the link and where it
+/// leads, once. Before, SAM bound where the link led, so anyone who could
+/// write in the home chose what a private home showed as the fonts.
+#[test]
+fn a_font_link_to_an_ordinary_folder_is_not_followed_in_a_private_home() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(rig) = Rig::new("FontLink") else {
+        return;
+    };
+    let h = &rig.home;
+    let scratch = outside_tmp();
+    let outside = fs::canonicalize(scratch.path()).unwrap().join("outside");
+    for d in [h.join("myfonts"), h.join("Documents"), outside.clone()] {
+        fs::create_dir_all(d).unwrap();
+    }
+    fs::write(h.join("myfonts/b.txt"), "FONT B").unwrap();
+    fs::write(h.join("Documents/secret.txt"), "SECRET").unwrap();
+    fs::write(outside.join("secret.txt"), "SECRET").unwrap();
+    let fonts = h.join(".fonts");
+    for (target, file, content, named) in [
+        (
+            PathBuf::from("myfonts"),
+            "b.txt",
+            "FONT B",
+            "~/myfonts".to_string(),
+        ),
+        (
+            h.join("Documents"),
+            "secret.txt",
+            "SECRET",
+            "~/Documents".to_string(),
+        ),
+        (outside.clone(), "secret.txt", "SECRET", s(&outside)),
+    ] {
+        let _ = fs::remove_file(&fonts);
+        symlink(&target, &fonts).unwrap();
+        let real = fs::canonicalize(&fonts).unwrap();
+        let files = format!("{}|{}", s(&fonts.join(file)), s(&real.join(file)));
+        let (r, text) = rig.start(&PermissionSet::strict_gui(), &[("SAM_TEST_FILES", files)]);
+        assert_ne!(r["READ0"], content, "{named}, through ~/.fonts: {text}");
+        assert_ne!(r["READ1"], content, "{named}, where it leads: {text}");
+        assert!(
+            text.contains(&format!("~/.fonts (a link to {named})")),
+            "{named}: the start names the link: {text}"
+        );
+        assert_eq!(link_notes(&text), 1, "{named}: one note: {text}");
+    }
+}
+
+/// An app with the whole home writable makes `~/.fonts` (missing so far)
+/// a link to a folder outside the home and outside `/tmp` in one start.
+/// In a later start with a private home, the app reads nothing there,
+/// neither through the link nor where it leads, and the start names the
+/// link and where it leads. Before, a link from an earlier start with
+/// more rights decided what a private home showed as the fonts.
+#[test]
+fn a_font_link_made_in_a_start_with_the_home_writable_is_not_followed_later() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(rig) = Rig::new("EarlierStart") else {
+        return;
+    };
+    let scratch = outside_tmp();
+    let private = fs::canonicalize(scratch.path()).unwrap().join("private");
+    fs::create_dir_all(&private).unwrap();
+    fs::write(private.join("secret.txt"), "SECRET").unwrap();
+    let fonts = rig.home.join(".fonts");
+    let (r, text) = rig.start(
+        &whole_home_writable(),
+        &[
+            ("SAM_TEST_STEP", "plant".into()),
+            ("SAM_TEST_LINK", s(&fonts)),
+            ("SAM_TEST_TARGET", s(&private)),
+        ],
+    );
+    assert_eq!(r["PLANTED"], "yes", "the writable home lets it: {text}");
+    let files = format!(
+        "{}|{}",
+        s(&fonts.join("secret.txt")),
+        s(&private.join("secret.txt"))
+    );
+    let (r, text) = rig.start(&PermissionSet::strict_gui(), &[("SAM_TEST_FILES", files)]);
+    assert_ne!(r["READ0"], "SECRET", "through ~/.fonts: {text}");
+    assert_ne!(r["READ1"], "SECRET", "where it leads: {text}");
+    assert!(
+        text.contains(&format!("~/.fonts (a link to {})", s(&private))),
+        "the start names the link: {text}"
+    );
+}
+
+/// The control for a home kept behind a link (`~` a link to its real
+/// folder, as `/home` to `/var/home` on some systems): the link that holds
+/// the home is not one below it, so a real `~/.fonts` there is shown in a
+/// private home, and the start names no link.
+#[test]
+fn a_home_kept_behind_a_link_keeps_its_fonts_in_a_real_sandbox() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(rig) = Rig::new("HomeLinkFonts") else {
+        return;
+    };
+    let real = rig.home.parent().unwrap().join("tester-real");
+    fs::rename(&rig.home, &real).unwrap();
+    symlink(&real, &rig.home).unwrap();
+    fs::create_dir_all(real.join(".fonts")).unwrap();
+    fs::write(real.join(".fonts/f.txt"), "FONT").unwrap();
+    let (r, text) = rig.start(
+        &PermissionSet::strict_gui(),
+        &[("SAM_TEST_FILES", s(&rig.home.join(".fonts/f.txt")))],
+    );
+    assert_eq!(r["READ0"], "FONT", "{text}");
+    assert_eq!(link_notes(&text), 0, "{text}");
+}
+
+/// A link at a protected name never knocks out the read-only bind of the
+/// fonts settings: in a private home with hidden files on and an extra
+/// writable `~/.config`, `~/.config/vivaldi` made a link to
+/// `~/.config/fontconfig` (an app with that folder writable can make it)
+/// left the fonts settings writable through the extra folder, so the app
+/// could plant rules that programs outside the sandbox load. With the
+/// home kept behind a link, that extra folder is shown at its real place,
+/// and the fonts settings were writable there even without the planted
+/// link. The app cannot write there; elsewhere in the extra folder it
+/// can, so a refused write would have been seen.
+#[test]
+fn a_protected_link_never_knocks_out_the_read_only_font_settings_in_a_real_sandbox() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(rig) = Rig::new("FontSettings") else {
+        return;
+    };
+    let config = rig.home.join(".config");
+    fs::create_dir_all(config.join("fontconfig")).unwrap();
+    symlink(config.join("fontconfig"), config.join("vivaldi")).unwrap();
+    let mut p = PermissionSet::strict_gui();
+    p.filesystem.hidden_files = true;
+    p.filesystem.custom_write = vec![s(&config)];
+    let writes = format!(
+        "{}|{}",
+        s(&config.join("fontconfig/x.conf")),
+        s(&config.join("other.txt"))
+    );
+    let (r, text) = rig.start(&p, &[("SAM_TEST_WRITES", writes)]);
+    assert_eq!(
+        r["WRITE0"], "30",
+        "the fonts settings stay read-only: {text}"
+    );
+    assert_eq!(r["WRITE1"], "ok", "control, the extra folder: {text}");
+    fs::remove_file(config.join("other.txt")).unwrap();
+    fs::remove_file(config.join("vivaldi")).unwrap();
+
+    // The home kept behind a link: the extra folder is shown at its real
+    // place, and the fonts settings stay read-only there and under the
+    // home's name, with and without the planted link.
+    let real = rig.home.parent().unwrap().join("tester-real");
+    fs::rename(&rig.home, &real).unwrap();
+    symlink(&real, &rig.home).unwrap();
+    for planted in [false, true] {
+        if planted {
+            symlink(config.join("fontconfig"), real.join(".config/vivaldi")).unwrap();
+        }
+        let writes = format!(
+            "{}|{}|{}",
+            s(&real.join(".config/fontconfig/x.conf")),
+            s(&config.join("fontconfig/y.conf")),
+            s(&real.join(".config/other.txt"))
+        );
+        let (r, text) = rig.start(&p, &[("SAM_TEST_WRITES", writes)]);
+        assert_eq!(r["WRITE0"], "30", "planted {planted}, real place: {text}");
+        assert_ne!(r["WRITE1"], "ok", "planted {planted}, home's name: {text}");
+        assert_eq!(r["WRITE2"], "ok", "planted {planted}, control: {text}");
+        fs::remove_file(real.join(".config/other.txt")).unwrap();
+    }
+    assert!(!real.join(".config/fontconfig/x.conf").exists());
+    assert!(!real.join(".config/fontconfig/y.conf").exists());
+}
+
+/// In a private home, a credential the person keeps as a link into a
+/// fonts folder (`~/.git-credentials` a link to
+/// `~/.fonts/dots/git-credentials`) stays hidden: SAM does not bind
+/// `~/.fonts` on its own, since it holds where that protected link really
+/// leads, and the private home shows no name of the link to mask. The
+/// control: without the link, the same file is shown as part of the
+/// fonts, so a read would have been seen.
+#[test]
+fn a_credential_kept_as_a_link_into_a_font_folder_stays_hidden_in_a_private_home() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(rig) = Rig::new("CredInFonts") else {
+        return;
+    };
+    let dots = rig.home.join(".fonts/dots");
+    fs::create_dir_all(&dots).unwrap();
+    fs::write(dots.join("git-credentials"), "SECRET").unwrap();
+    symlink(
+        dots.join("git-credentials"),
+        rig.home.join(".git-credentials"),
+    )
+    .unwrap();
+    let files = || {
+        (
+            "SAM_TEST_FILES",
+            format!(
+                "{}|{}",
+                s(&dots.join("git-credentials")),
+                s(&rig.home.join(".git-credentials"))
+            ),
+        )
+    };
+    let (r, text) = rig.start(&PermissionSet::strict_gui(), &[files()]);
+    assert_ne!(r["READ0"], "SECRET", "through the fonts: {text}");
+    assert_ne!(r["READ1"], "SECRET", "through the link: {text}");
+    assert!(
+        text.contains("SAM does not bind ~/.fonts for this app on its own because it holds"),
+        "the start says why: {text}"
+    );
+    fs::remove_file(rig.home.join(".git-credentials")).unwrap();
+    let (r, text) = rig.start(&PermissionSet::strict_gui(), &[files()]);
+    assert_eq!(
+        r["READ0"], "SECRET",
+        "control, a plain file in the fonts: {text}"
+    );
+}
+
+/// A link you made, in a folder the app cannot change, to fonts settings
+/// that a writable folder shows: with the home read-only, `~/dotfiles` an
+/// extra writable folder and `~/.config/fontconfig` a relative link to
+/// `../dotfiles/fontconfig` (GNU Stow), SAM keeps that target read-only
+/// where the writable folder shows it, and says so. The bind only takes
+/// write access away. Without it, the app could write font rules that
+/// programs outside the sandbox load. Elsewhere in `~/dotfiles` the app
+/// can write, so a refused write would have been seen.
+#[test]
+fn a_link_you_made_into_a_writable_folder_keeps_the_font_settings_read_only() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(rig) = Rig::new("StowFonts") else {
+        return;
+    };
+    let h = &rig.home;
+    fs::create_dir_all(h.join("dotfiles/fontconfig")).unwrap();
+    symlink("../dotfiles/fontconfig", h.join(".config/fontconfig")).unwrap();
+    let mut p = PermissionSet::strict_gui();
+    p.filesystem.home = true;
+    p.filesystem.home_access = Access::Ro;
+    p.filesystem.custom_write = vec![s(&h.join("dotfiles"))];
+    let writes = format!(
+        "{}|{}|{}",
+        s(&h.join("dotfiles/fontconfig/x.conf")),
+        s(&h.join(".config/fontconfig/y.conf")),
+        s(&h.join("dotfiles/other.txt"))
+    );
+    let (r, text) = rig.start(&p, &[("SAM_TEST_WRITES", writes)]);
+    assert_eq!(
+        r["WRITE0"], "30",
+        "where the writable folder shows it: {text}"
+    );
+    assert_ne!(r["WRITE1"], "ok", "through the link: {text}");
+    assert_eq!(r["WRITE2"], "ok", "control, the writable folder: {text}");
+    assert!(!h.join("dotfiles/fontconfig/x.conf").exists());
+    assert!(
+        text.contains("~/.config/fontconfig (a link to ~/dotfiles/fontconfig)")
+            && text.contains("SAM keeps ~/dotfiles/fontconfig read-only"),
+        "the start says so: {text}"
+    );
+}
+
+/// With the home read-only, a credential kept as a link into a fonts
+/// folder (`~/.git-credentials` a link to `~/.fonts/dots/gc`) stays
+/// hidden: the read-only home shows the fonts, SAM binds them read-only,
+/// and the credential is hidden where its link leads after that bind.
+/// The control: the font beside it is read.
+#[test]
+fn a_credential_linked_into_the_fonts_stays_hidden_with_a_read_only_home() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(rig) = Rig::new("CredRoHome") else {
+        return;
+    };
+    let dots = rig.home.join(".fonts/dots");
+    fs::create_dir_all(&dots).unwrap();
+    fs::write(dots.join("gc"), "SECRET").unwrap();
+    fs::write(rig.home.join(".fonts/f.txt"), "FONT").unwrap();
+    symlink(dots.join("gc"), rig.home.join(".git-credentials")).unwrap();
+    let mut p = PermissionSet::strict_gui();
+    p.filesystem.home = true;
+    p.filesystem.home_access = Access::Ro;
+    let files = format!(
+        "{}|{}",
+        s(&dots.join("gc")),
+        s(&rig.home.join(".fonts/f.txt"))
+    );
+    let (r, text) = rig.start(&p, &[("SAM_TEST_FILES", files)]);
+    assert_ne!(r["READ0"], "SECRET", "{text}");
+    assert_eq!(r["READ1"], "FONT", "control: {text}");
+}
+
+/// With the whole home read-only and `~/.fonts` a link to
+/// `~/.local/share/fonts`, the app reads the fonts through the home,
+/// which shows the link and where it leads. SAM does not bind `~/.fonts`
+/// on its own and says so, without the advice to keep the real files
+/// there: the home shows them anyway.
+#[test]
+fn a_linked_font_folder_is_read_through_a_read_only_home() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(rig) = Rig::new("RoHomeFonts") else {
+        return;
+    };
+    let h = &rig.home;
+    fs::create_dir_all(h.join(".local/share/fonts")).unwrap();
+    fs::write(h.join(".local/share/fonts/a.txt"), "FONT A").unwrap();
+    symlink(h.join(".local/share/fonts"), h.join(".fonts")).unwrap();
+    let mut p = PermissionSet::strict_gui();
+    p.filesystem.home = true;
+    p.filesystem.home_access = Access::Ro;
+    let (r, text) = rig.start(&p, &[("SAM_TEST_FILES", s(&h.join(".fonts/a.txt")))]);
+    assert_eq!(r["READ0"], "FONT A", "{text}");
+    assert!(
+        text.contains("~/.fonts (a link to ~/.local/share/fonts)")
+            && !text.contains("If you made the link yourself"),
+        "{text}"
     );
 }

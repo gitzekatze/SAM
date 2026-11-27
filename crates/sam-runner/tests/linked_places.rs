@@ -6,7 +6,8 @@
 //!   (dotfiles kept elsewhere), the app starts, and autostart stays
 //!   read-only;
 //! - with `~/.config` a link to another place nobody granted, the app
-//!   starts (also with fonts settings there, which SAM shows read-only),
+//!   starts (also with fonts settings there, which SAM does not bind on
+//!   its own behind a link, and once bound read-only where they lie),
 //!   and a `~/.config` the app puts in the link's place is moved aside
 //!   afterwards; SAM's own settings are in `~/.config/sam`, behind the
 //!   link, as on a real system (the empty folder SAM puts on them went
@@ -185,7 +186,9 @@ fn places_behind_links_stay_protected_and_the_app_still_starts() {
         "the link is back"
     );
     assert!(!home.join(".config/autostart/evil.desktop").exists());
-    // With fonts settings there too, shown read-only where they lie.
+    // With fonts settings there too: SAM binds none behind the link (it
+    // once bound them where they lie, and the start stopped, SB-6), and
+    // the app still starts.
     fs::create_dir_all(root.join("elsewhere/config/fontconfig")).unwrap();
     start(full(), &[]);
     assert!(!root

@@ -949,6 +949,7 @@ fn the_folders_above_a_read_only_user_folder_cannot_be_renamed() {
 /// the folders above a read-only extra folder (review of finding R63) once
 /// bound `~/.fonts` writable after its read-only bind. The home stays
 /// writable.
+/// SAM binds a font place only when neither it nor a folder on its way in the home is a link.
 #[test]
 fn the_font_folders_stay_read_only_around_an_extra_folder_inside() {
     let _one = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
