@@ -396,6 +396,20 @@ pub fn preflight(app: &AppEntry) -> (Vec<String>, Vec<Warning>) {
     (errors, warns)
 }
 
+/// The folder that holds every app's runtime folders, where SAM's helpers
+/// (the D-Bus proxy, the sound relay) listen: the app page and the sandbox
+/// check count a user folder or bind that leads there as one that leads to
+/// where programs outside the sandbox listen, as the sandbox does for its
+/// start ([`sam_core::places::ThisStart`]).
+pub fn sam_runtime_folders(paths: &Paths) -> Vec<PathBuf> {
+    paths
+        .runtime_dir("app")
+        .parent()
+        .map(Path::to_path_buf)
+        .into_iter()
+        .collect()
+}
+
 pub fn prepare(
     app: &AppEntry,
     opts: &LaunchOptions,
@@ -415,6 +429,7 @@ pub fn prepare(
     let perms = &app.profile.permissions;
 
     let own_dirs = paths.sam_dirs(&cfg.extraction.location);
+    let sam_runtime = sam_runtime_folders(paths);
     let ctx_w = WarningContext {
         app_needs_network: Some(crate::ops::app_needs_network(app)),
         host: Some(host),
@@ -422,6 +437,7 @@ pub fn prepare(
         warn_full_home: cfg.security.warn_full_home,
         terminal_program: app.metadata.terminal,
         sam_dirs: &own_dirs,
+        sam_runtime: &sam_runtime,
     };
     warnings.extend(evaluate(perms, &ctx_w));
     // A terminal of its own for a user's start from a terminal, and for a

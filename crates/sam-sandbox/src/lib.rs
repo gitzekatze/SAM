@@ -21,6 +21,7 @@ use anyhow::{Context, Result};
 use sam_core::permissions::*;
 use sam_core::places::{
     protected_places, resolve, sensitive_places, start_place_of_bound_write_grant,
+    UserFolderRefused,
 };
 use sam_core::util::expand_home;
 use sam_core::{BubblewrapStatus, HostInfo, LaunchContext, SandboxCommand};
@@ -1372,18 +1373,16 @@ enum NotShown {
 /// a folder the app can change, to a place the home shows anyway.
 fn user_dir(ctx: &LaunchContext, key: &str) -> std::result::Result<PathBuf, NotShown> {
     let dir = ctx.host.xdg_dir(key).ok_or(NotShown::Missing)?;
-    if let Some(why) =
-        sam_core::places::user_folder_left_out(&ctx.permissions, &ctx.host, key, &this_start(ctx))
+    // In the order the app page asks too, so it names the folder with the
+    // words of the launch note ([`sam_core::places::user_folder_refused`]).
+    match sam_core::places::user_folder_refused(&ctx.permissions, &ctx.host, key, &this_start(ctx))
     {
-        return Err(NotShown::LeftOut(dir.to_path_buf(), why));
-    }
-    if let Some(link) =
-        sam_core::places::user_folder_link_the_app_can_change(&ctx.permissions, &ctx.host, dir)
-    {
-        return Err(NotShown::Link(dir.to_path_buf(), link));
-    }
-    if sam_core::risk::shows_host_sockets(&resolve(dir).to_string_lossy()) {
-        return Err(NotShown::Sockets(dir.to_path_buf()));
+        Some(UserFolderRefused::LeftOut(why)) => {
+            return Err(NotShown::LeftOut(dir.to_path_buf(), why))
+        }
+        Some(UserFolderRefused::Link(link)) => return Err(NotShown::Link(dir.to_path_buf(), link)),
+        Some(UserFolderRefused::Sockets) => return Err(NotShown::Sockets(dir.to_path_buf())),
+        None => {}
     }
     match sam_core::places::user_folder_place(dir, &ctx.host.home) {
         Some(real) if !inside_sam(ctx, &real) => Ok(real),
@@ -1403,22 +1402,20 @@ fn user_folder_note(key: &str, why: &NotShown, write: bool) -> String {
             "{key} folder is set to {path}, which shows more than a user folder (the home, a folder above it, a system or SAM folder, or a protected place); not bound",
             &[("key", &key), ("path", &dir.display())],
         ),
-        NotShown::Sockets(dir) => sam_core::places::user_folder_sockets_note(key, dir),
-        NotShown::Link(dir, link) => sam_core::places::user_folder_link_note(key, dir, link),
-        NotShown::LeftOut(dir, why) => user_dir_left_out_note(dir, why, write),
+        // The words the app page and `sam-jail info` take as well.
+        NotShown::Sockets(dir) => refused_note(key, dir, UserFolderRefused::Sockets, write),
+        NotShown::Link(dir, link) => {
+            refused_note(key, dir, UserFolderRefused::Link(link.clone()), write)
+        }
+        NotShown::LeftOut(dir, why) => {
+            refused_note(key, dir, UserFolderRefused::LeftOut(why.clone()), write)
+        }
     }
 }
 
-/// What the start says about the user folder that `user_dir` leaves out
-/// through a link ([`NotShown::LeftOut`]); `write`: the folder is set to
-/// read/write.
-fn user_dir_left_out_note(dir: &Path, why: &sam_core::places::LeftOut, write: bool) -> String {
-    sam_core::places::left_out_note(
-        &sam_core::util::tildify(dir),
-        why,
-        sam_core::places::LeftOutPlace::UserFolder,
-        write,
-    )
+/// [`sam_core::places::user_folder_refused_note`].
+fn refused_note(key: &str, dir: &Path, why: UserFolderRefused, write: bool) -> String {
+    sam_core::places::user_folder_refused_note(key, dir, &why, write)
 }
 
 /// Whether the whole home, mounted at `home`, already shows the user folder

@@ -14,6 +14,11 @@
 //!   `~/cfg/git` is a start place kept read-only too), in the same ways;
 //!   and a credential store under `~/cfg` named on the command line ("Open
 //!   with") is not shared with the app.
+//! - with `XDG_CONFIG_HOME=~/cfg` and a private home, `~/.fonts` a link to
+//!   `~/cfg/gh` (an app with the whole home writable can make it in an
+//!   earlier start: a link needs no access to where it leads): SAM's own
+//!   read-only bind of the fonts does not show the GitHub tool's token
+//!   there (only `~/.config/gh` was guarded).
 //!
 //! The controls show the attack would have been seen: Git's settings file
 //! in the same folder stays readable, and an ordinary file named on the
@@ -41,6 +46,8 @@ cat "$H/cfg/git/credentials" 2>/dev/null | grep -q SECRET && echo MOVED=read || 
 cat "$H/cfg/git/config" 2>/dev/null | grep -q mine && echo MOVED_CONFIG=read || echo MOVED_CONFIG=hidden
 cat "$H/cfg/gh/hosts.yml" 2>/dev/null | grep -q SECRET && echo GH=read || echo GH=hidden
 cat "$H/notes.txt" 2>/dev/null | grep -q mine && echo NOTES=read || echo NOTES=hidden
+cat "$H/.fonts/hosts.yml" 2>/dev/null | grep -q SECRET && echo FONTS_GH=read || echo FONTS_GH=hidden
+cat "$H/.fonts/mine.txt" 2>/dev/null | grep -q mine && echo FONTS_MINE=read || echo FONTS_MINE=hidden
 echo END=1
 "#;
 
@@ -211,4 +218,28 @@ fn git_credentials_under_config_git_stay_hidden() {
     let r = start_with(PermissionSet::strict_gui(), "files named to open", args);
     assert_eq!(r["NOTES"], "read", "control, files named to open: {r:?}");
     assert_eq!(r["GH"], "hidden", "files named to open: {r:?}");
+
+    // A fonts folder made a link to a credential store under the moved
+    // folder: SAM's own read-only bind of the fonts does not show it in a
+    // private home. A fonts folder that is a link to an ordinary folder
+    // there is shown, so a read would have been seen.
+    let fonts = home.join(".fonts");
+    std::os::unix::fs::symlink(cfg.join("gh"), &fonts).unwrap();
+    let r = start(
+        PermissionSet::strict_gui(),
+        "a private home, ~/.fonts a link to ~/cfg/gh",
+    );
+    assert_eq!(
+        r["FONTS_GH"], "hidden",
+        "~/.fonts a link to ~/cfg/gh: {r:?}"
+    );
+    fs::remove_file(&fonts).unwrap();
+    fs::create_dir_all(cfg.join("myfonts")).unwrap();
+    fs::write(cfg.join("myfonts/mine.txt"), "mine\n").unwrap();
+    std::os::unix::fs::symlink(cfg.join("myfonts"), &fonts).unwrap();
+    let r = start(
+        PermissionSet::strict_gui(),
+        "a private home, ~/.fonts a link to ~/cfg/myfonts",
+    );
+    assert_eq!(r["FONTS_MINE"], "read", "control, ~/cfg/myfonts: {r:?}");
 }

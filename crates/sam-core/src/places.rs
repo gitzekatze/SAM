@@ -1252,16 +1252,105 @@ pub fn user_folder_left_out(
     left_out_by_rule(follow(dir), &writable, &shown, host, this)
 }
 
+/// Why SAM does not show the granted user folder `key` although the
+/// person set it, by the rules about links and about places where
+/// programs outside the sandbox listen ([`user_folder_refused`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UserFolderRefused {
+    /// Its way leads through a link the app could have planted out of what
+    /// the home shows, or to where programs outside the sandbox listen
+    /// ([`user_folder_left_out`]).
+    LeftOut(LeftOut),
+    /// Its way holds this link in a folder the app can change
+    /// ([`user_folder_link_the_app_can_change`]).
+    Link(PathBuf),
+    /// It is `/tmp` or a folder there known by its name as one where
+    /// programs outside the sandbox listen
+    /// ([`crate::risk::shows_host_sockets`]).
+    Sockets,
+}
+
+/// Whether SAM refuses the user folder `key` for a link or for programs
+/// listening there, and why, in the order the sandbox asks: first
+/// [`user_folder_left_out`], whose note names the danger or the link and
+/// the way out, then [`user_folder_link_the_app_can_change`], then the
+/// socket folders by name. One answer for the sandbox, which leaves the
+/// folder out, and the app page and `sam-jail info`, which name it before
+/// the start with the same words ([`user_folder_refused_note`]). Told only
+/// in the launch log, a Downloads set to a link to `/tmp/dl` (so
+/// downloads clear themselves) looked as before on the app page, while
+/// what the app saved there was gone when it quit. `this` is what the
+/// start adds ([`ThisStart`]); the app page cannot know the folders a
+/// start opens, so it passes only SAM's runtime folders and may name a
+/// little less than the start refuses.
+pub fn user_folder_refused(
+    p: &PermissionSet,
+    host: &HostInfo,
+    key: &str,
+    this: &ThisStart,
+) -> Option<UserFolderRefused> {
+    let dir = host.xdg_dir(key)?;
+    if let Some(why) = user_folder_left_out(p, host, key, this) {
+        return Some(UserFolderRefused::LeftOut(why));
+    }
+    if let Some(link) = user_folder_link_the_app_can_change(p, host, dir) {
+        return Some(UserFolderRefused::Link(link));
+    }
+    if crate::risk::shows_host_sockets(&resolve(dir).to_string_lossy()) {
+        return Some(UserFolderRefused::Sockets);
+    }
+    None
+}
+
+/// What the start, the app page and `sam-jail info` say about the user
+/// folder `key` set to `dir` that SAM refuses for `why`
+/// ([`user_folder_refused`]); `write`: the folder is set to read and
+/// write.
+pub fn user_folder_refused_note(
+    key: &str,
+    dir: &Path,
+    why: &UserFolderRefused,
+    write: bool,
+) -> String {
+    match why {
+        UserFolderRefused::LeftOut(why) => left_out_note(
+            &crate::util::tildify(dir),
+            why,
+            LeftOutPlace::UserFolder,
+            write,
+        ),
+        UserFolderRefused::Link(link) => user_folder_link_note(key, dir, link),
+        UserFolderRefused::Sockets => user_folder_sockets_note(key, dir),
+    }
+}
+
 /// Every place a bind SAM makes on its own must never show
 /// ([`own_place_left_out`]): the protected places, the key folders and the
 /// credential stores of the home `home`, each under the home as named,
 /// under its real place and where it really leads, and SAM's own folders
-/// (`sams`).
+/// (`sams`). The protected places and the credential stores follow
+/// `XDG_CONFIG_HOME` and `XDG_DATA_HOME` ([`protected_places`],
+/// [`sensitive_places`]): with `XDG_CONFIG_HOME=~/cfg`, `~/.fonts` made a
+/// link to `~/cfg/gh` (where the GitHub tool keeps its token) in an
+/// earlier start with the whole home writable was bound in a private home,
+/// since only `~/.config/gh` was guarded.
 pub fn guarded_places_everywhere(home: &Path, sams: &[PathBuf]) -> Vec<PathBuf> {
+    let var = |v: &str| std::env::var_os(v).map(PathBuf::from);
+    guarded_places_everywhere_with(home, sams, var("XDG_CONFIG_HOME"), var("XDG_DATA_HOME"))
+}
+
+/// [`guarded_places_everywhere`] with `XDG_CONFIG_HOME` and
+/// `XDG_DATA_HOME` given.
+pub fn guarded_places_everywhere_with(
+    home: &Path,
+    sams: &[PathBuf],
+    config: Option<PathBuf>,
+    data: Option<PathBuf>,
+) -> Vec<PathBuf> {
     let homes = [home.to_path_buf(), resolve(home)];
-    let rels = protected_places(home)
+    let rels = protected_places_with(home, config.clone(), data.clone())
         .into_iter()
-        .chain(SENSITIVE_DOTFILES.iter().map(|s| s.to_string()))
+        .chain(sensitive_places_with(home, config, data))
         .chain([".ssh".to_string(), ".gnupg".to_string()]);
     let mut out: Vec<PathBuf> = Vec::new();
     for rel in rels {
@@ -2676,6 +2765,37 @@ mod tests {
             ),
             None
         );
+        // With `XDG_CONFIG_HOME=~/cfg` and `XDG_DATA_HOME=~/dat` the
+        // credential stores under them are guarded too: `~/.fonts` made a
+        // link to `~/cfg/gh` (the GitHub tool's token) was bound in a
+        // private home, since only `~/.config/gh` was guarded.
+        for d in ["cfg/gh", "cfg/git", "dat/keyrings", "cfg/myfonts"] {
+            std::fs::create_dir_all(home.join(d)).unwrap();
+        }
+        let moved = guarded_places_everywhere_with(
+            &home,
+            &sams,
+            Some(home.join("cfg")),
+            Some(home.join("dat")),
+        );
+        let to_moved = |target: &Path| {
+            let _ = std::fs::remove_file(&fonts);
+            std::os::unix::fs::symlink(target, &fonts).unwrap();
+            own_place_left_out(&p, &host, &fonts, &moved, &none())
+        };
+        for target in [
+            home.join("cfg/gh"),
+            home.join("dat/keyrings"),
+            home.join("cfg/git"),
+            home.join(".ssh"),
+        ] {
+            assert!(
+                matches!(to_moved(&target), Some(LeftOut::Guarded(_))),
+                "{}",
+                target.display()
+            );
+        }
+        assert_eq!(to_moved(&home.join("cfg/myfonts")), None);
     }
     /// With the whole home writable, a user folder set read-only is shown
     /// through the home, writable: a link the app made in it is not

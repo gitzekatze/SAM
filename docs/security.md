@@ -753,7 +753,12 @@ How these stay protected with the home writable:
   programs outside the sandbox listen (`/tmp/tmux-1000`, `/tmp/ssh-…`,
   `/tmp/.X11-unix`: connecting to a socket needs no write access, so even
   a read-only Downloads there handed them over) is not shown, and the
-  launch log says why (a
+  launch log says why. A user folder set to its real place, with no link
+  on the way, is judged by its name, as an extra folder is: `/tmp` itself
+  and the socket folders SAM knows by name are refused, any other folder
+  in `/tmp` (`/tmp/downloads`, or a socket folder by another name such as
+  `/tmp/tmate-1000`) is shown as set, and only a link that leads there is
+  refused (below) (a
   user folder that holds one of SAM's folders is shown, with SAM's folder
   hidden inside it). With the whole home shared, the launch log names such
   a folder only when it is refused for listening programs or for a link
@@ -762,11 +767,18 @@ How these stay protected with the home writable:
   the home's protections (key folders, SAM's own folders) as they are for
   the home. The app page and `sam-jail info` name a granted
   user folder that is not shown for listening programs or for a link
-  (below) before the start, with the way out: a Downloads set to `/tmp`
-  so that downloads clear themselves is not shown, the app saves into its
-  own empty `/tmp` and what it saved is gone when it quits; set it to a
-  folder of its own such as `/tmp/downloads`
+  (below) before the start, with the words of the launch note, in the
+  order the sandbox decides, and with the way out: a Downloads set to
+  `/tmp` so that downloads clear themselves is not shown, the app saves
+  into its own empty `/tmp` and what it saved is gone when it quits; set
+  it to a folder of its own such as `/tmp/downloads`. The same holds for
+  a Downloads that is a link to a folder in `/tmp` (`/tmp/dl`) or to a
+  runtime folder, which the sandbox leaves out whoever made the link
   (`a_user_folder_the_sandbox_does_not_show_is_named_before_the_start`).
+  Not covered: the app page cannot know the folders a start opens with
+  the app or SAM's own writable binds, which count as folders the app can
+  change for that start only, so a user folder left out for a link in one
+  of them is named only in the launch log.
   A user folder
   that is a link is shown where it leads, with the link where the app looks
   for it, unless a link on its way lies in a folder the app may change in
@@ -777,7 +789,10 @@ How these stay protected with the home writable:
   and a read-only Documents that is itself such a link is not mounted at
   all, so the home shows it writable
   (`a_link_inside_a_read_only_folder_in_the_writable_home_is_not_followed`,
-  `a_link_planted_inside_a_refused_read_only_folder_is_never_followed`).
+  `a_link_planted_inside_a_refused_read_only_folder_is_never_followed`,
+  and with the place it leads to outside `/tmp`, where only this rule
+  keeps it out and the start gives its reason,
+  `a_link_planted_inside_a_refused_read_only_folder_outside_tmp_is_never_followed`).
   `user-dirs.dirs` stays locked, but the folder it names
   did not. Such a folder is not shown where the link leads, the start names
   the link, and the sandbox check expects it not shown; SAM cannot tell
@@ -786,6 +801,7 @@ How these stay protected with the home writable:
   real place instead
   (`a_user_folder_behind_a_link_the_app_could_plant_is_not_shown`,
   `a_user_folder_link_the_app_planted_never_shows_where_it_leads`,
+  `a_user_folder_link_the_app_planted_outside_tmp_never_shows_where_it_leads`,
   `a_user_folder_where_outside_programs_listen_is_not_shown`).
   Nor is one whose link the app could have planted, also in a folder only
   this start shows writable, or one that leads to where programs outside
@@ -908,7 +924,12 @@ How these stay protected with the home writable:
     (also a running copy of the app) that swaps a part of the way between
     SAM's look and the mount;
   - a place SAM shows on its own never leads to the home or a folder above
-    it, a key or credential store, a protected place or SAM's own folders.
+    it, a key or credential store, a protected place or SAM's own folders,
+    also the credential stores and protected places under a moved
+    `XDG_CONFIG_HOME` or `XDG_DATA_HOME` (with `XDG_CONFIG_HOME=~/cfg`,
+    `~/.fonts` a link to `~/cfg/gh` is not bound in a private home:
+    `an_own_place_never_leads_to_the_home_keys_or_sams_folders`,
+    `git_credentials_under_config_git_stay_hidden`).
 
   SAM does not bind such a place itself, and the launch log says so: that
   SAM leaves out the extra or user folder, or does not bind the place on

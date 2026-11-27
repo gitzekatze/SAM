@@ -136,12 +136,7 @@ pub fn plan(p: &PermissionSet, cfg: &Config, paths: &Paths, host: &HostInfo) -> 
     // holds every app's start folders, as the sandbox takes them.
     let this = sam_core::places::ThisStart {
         writable: Vec::new(),
-        sam_runtime: paths
-            .runtime_dir("app")
-            .parent()
-            .map(Path::to_path_buf)
-            .into_iter()
-            .collect(),
+        sam_runtime: crate::launch::sam_runtime_folders(paths),
     };
     let home_locked = fs.home
         && fs.home_access == Perm::Rw
