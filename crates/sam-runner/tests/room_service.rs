@@ -296,16 +296,20 @@ say grant_app "$($P read "$OTHER_APP")"
 say grant_room "$(rv room --ro-bind-try "$(dirname "$OTHER_APP")" "$(dirname "$OTHER_APP")" -- $P read "$OTHER_APP")"
 "#;
 
-/// The app tries to rename a folder it is shown away inside its writable
-/// home and to put a link to a place it is not shown in its place: a room
+/// A folder the app is shown is renamed away on the computer while the app
+/// runs and a link to a place it is not shown is put in its place: a room
 /// shows the folder the app was shown (held since the start), never the
-/// link's target. Since SAM also pins the folders above a read-only extra
-/// folder (review of finding R63), the rename is refused; the room's answer
-/// stays the one it gives when the rename succeeds.
+/// link's target. The app itself cannot rename the folder above a
+/// read-only extra folder, which SAM pins (review of finding R63:
+/// `app_renamed`); a program outside the sandbox can, where no pin reaches
+/// (`swap_after`, which writes `yes` to `held-swapped` once the link is in
+/// place).
 const HELD_SOURCES: &str = r#"
 say control "$(rv room -- /usr/bin/echo ok)"
-mv "$HOME/work" "$HOME/work-moved" 2>/dev/null && mkdir -p "$HOME/work" && ln -sfn "$SECRET_DIR" "$HOME/work/docs"
-say renamed "$([ -L "$HOME/work/docs" ] && echo yes || echo no)"
+say app_renamed "$(mv "$HOME/work" "$HOME/work-moved" 2>/dev/null && echo yes || echo no)"
+: > "$HOME/held-ready"
+i=0; while [ ! -s "$HOME/held-swapped" ] && [ $i -lt 300 ]; do sleep 0.2; i=$((i+1)); done
+say renamed "$(cat "$HOME/held-swapped" 2>/dev/null || echo no)"
 say held "$(rv room --ro-bind "$HOME/work/docs" "$HOME/work/docs" -- /usr/bin/cat "$HOME/work/docs/f")"
 "#;
 
@@ -728,6 +732,34 @@ say left_running "$([ -s "$HOME/alive" ] && echo started || echo not-started)"
 : > "$HOME/lifetime-done"
 "#
     )
+}
+
+/// Once the app has written `ready` (a file in the home on the computer),
+/// renames `home/work` away on the computer, as a program outside the
+/// sandbox can, puts a link to `secret` at `home/work/docs`, and writes
+/// `yes` to `home/held-swapped` when the link is in place (`no` when not).
+/// Gives up when `ended` is set (the start ended by itself).
+fn swap_after(
+    ready: &std::path::Path,
+    home: &std::path::Path,
+    secret: &std::path::Path,
+    ended: &std::sync::atomic::AtomicBool,
+) {
+    while !ready.exists() {
+        if ended.load(std::sync::atomic::Ordering::SeqCst) {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    let swapped = fs::rename(home.join("work"), home.join("work-moved")).is_ok()
+        && fs::create_dir(home.join("work")).is_ok()
+        && std::os::unix::fs::symlink(secret, home.join("work/docs")).is_ok()
+        && fs::symlink_metadata(home.join("work/docs")).is_ok_and(|m| m.file_type().is_symlink());
+    fs::write(
+        home.join("held-swapped"),
+        if swapped { "yes" } else { "no" },
+    )
+    .unwrap();
 }
 
 /// Ends an app's start once the app has written `marker` (a file in its
@@ -1526,20 +1558,34 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
     std::fs::write(w.home.join("work/docs/f"), "inside").unwrap();
     let id = w.add("RoomHeldSources", HELD_SOURCES);
     let docs = w.home.join("work/docs").display().to_string();
-    let log = w.start(
-        &id,
-        |p| {
-            p.filesystem.home = true;
-            p.filesystem.home_access = Access::Rw;
-            p.filesystem.custom_read = vec![docs.clone()];
-        },
-        60,
-    );
+    let ready = w.home.join("held-ready");
+    let ended = std::sync::atomic::AtomicBool::new(false);
+    let log = std::thread::scope(|s| {
+        s.spawn(|| swap_after(&ready, &w.home, &w.secret_dir, &ended));
+        let log = w.start(
+            &id,
+            |p| {
+                p.filesystem.home = true;
+                p.filesystem.home_access = Access::Rw;
+                p.filesystem.custom_read = vec![docs.clone()];
+            },
+            120,
+        );
+        ended.store(true, std::sync::atomic::Ordering::SeqCst);
+        log
+    });
     failures.extend(control_built("held", &log));
     failures.extend(
-        check(&log, &[("renamed", "no"), ("held", "inside")])
-            .into_iter()
-            .map(|f| format!("held: {f}")),
+        check(
+            &log,
+            &[
+                ("app_renamed", "no"),
+                ("renamed", "yes"),
+                ("held", "inside"),
+            ],
+        )
+        .into_iter()
+        .map(|f| format!("held: {f}")),
     );
     let _ = std::fs::rename(w.home.join("work-moved"), w.home.join("work-restored"));
 
