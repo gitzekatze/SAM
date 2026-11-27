@@ -9,6 +9,6 @@
 - SAM's launches now look at the home one at a time, and a place that is
   already empty when SAM moves it is not reported. A planted file is
   normally reported once, with the folder it went to.
-- A launch waits at most about a second for another launch's look and then
-  looks anyway, so a stopped launcher never stops the others from moving a
-  file aside.
+- A running app's watch waits at most about a second for another launch's
+  look and then looks anyway, so it keeps moving files aside while another
+  launcher is stopped in the middle of its look.

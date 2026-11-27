@@ -12,9 +12,14 @@
 //!   the watch lived only in the launcher's memory;
 //! - launches look at the home one at a time ([`Turns`]), so a file one app
 //!   plants in a place several launches watch is normally moved aside and
-//!   reported once. A launch waits at most about a second for another's
-//!   look and then looks anyway: a stopped launcher never stops the others
-//!   from moving a file aside.
+//!   reported once. A look waits at most about a second for another
+//!   launch's turn and then looks anyway, so the live watches and final
+//!   looks of running launches keep moving files aside while another
+//!   launcher is stopped in the middle of its look (Ctrl+Z). That bound is
+//!   only for the turn (`.settle`): a start, and the last look for a killed
+//!   launcher, also need `.lock`, which [`Shared::open`] waits for without
+//!   a limit, so they wait while a launcher is stopped in its start look.
+//!   And a look on a home that hangs (a network home) hangs as well.
 
 use std::fs;
 use std::io::Write;
@@ -435,12 +440,14 @@ mod tests {
         assert!(!home.join(".bash_profile").exists());
     }
 
-    /// A launcher stopped in the middle of its look (Ctrl+Z, a hung home
-    /// on the network) never stops another launch from moving a planted
-    /// file aside: a look waits for its turn at most its bound (about a
-    /// second for SAM's launches), then looks anyway; and it looks also
-    /// when the turn's lock cannot be opened. (The mutants that wait
-    /// without a bound, or skip the look, fail here.)
+    /// A look waits for another launch's turn at most its bound (about a
+    /// second for SAM's launches), then looks anyway, so a launcher stopped
+    /// in the middle of its look (Ctrl+Z) does not keep the live watches of
+    /// running launches from moving a planted file aside; and a look also
+    /// happens when the turn's lock cannot be opened. This covers only the
+    /// wait for the turn: a start, and the last look for a killed launcher,
+    /// also wait for the records' lock, without a limit. (The mutants that
+    /// wait without a bound, or skip the look, fail here.)
     #[test]
     fn a_look_never_waits_long_for_another_launch() {
         let t = tempfile::tempdir().unwrap();
