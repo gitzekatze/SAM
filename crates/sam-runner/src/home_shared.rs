@@ -144,9 +144,9 @@ impl Turns {
     /// `wait` (about a second for SAM's launches) for its turn, then looks
     /// anyway, so two looks can then overlap. Within that wait, two
     /// launches watching one place do not both act on the same file, so it
-    /// is moved and reported once (before, the second look reported it as
-    /// deleted or as still there, or moved aside a link of the person's
-    /// that the first had just put back). The look always happens: after
+    /// is normally moved and reported once (before, the second look
+    /// reported it as deleted or as still there, or moved aside a link of
+    /// the person's that the first had just put back). The look always happens: after
     /// the wait, also when the turn could not be had (a launcher stopped
     /// mid-look) or the lock file cannot be opened. The watch is the
     /// protection; the turn only keeps the reports right.
@@ -405,15 +405,16 @@ mod tests {
         HomeWatch::before(&ctx_for(&full_rw(), home)).unwrap()
     }
 
-    /// A look waits for its turn while another launch's look holds it, and
-    /// goes on as soon as that look ends, here well before its bound (SAM's
-    /// launches wait at most about a second, then look anyway, so two looks
-    /// can then overlap). Before, both looked at once and the second
-    /// reported a file the first had just moved as deleted or as still
-    /// there. (`Turns` is new with this rule; the mutant that does not wait
-    /// moves the file before the first check.)
+    /// Launches normally take turns to look at a home: a look waits while
+    /// another launch's look holds the turn, and goes on as soon as that
+    /// look ends, here well before its bound (SAM's launches wait at most
+    /// about a second, then look anyway, so two looks can then overlap).
+    /// Before, both looked at once and the second reported a file the first
+    /// had just moved as deleted or as still there. (`Turns` is new with
+    /// this rule; the mutant that does not wait moves the file before the
+    /// first check.)
     #[test]
-    fn launches_look_at_a_home_one_at_a_time() {
+    fn launches_take_turns_to_look_at_a_home() {
         let t = tempfile::tempdir().unwrap();
         let home = t.path().join("home");
         fs::create_dir_all(&home).unwrap();
@@ -447,14 +448,15 @@ mod tests {
     }
 
     /// A look waits for another launch's turn at most its bound (about a
-    /// second for SAM's launches), then looks anyway, so two looks can then
-    /// overlap, and a launcher stopped in the middle of its look (Ctrl+Z)
-    /// does not keep the live watches of running launches from moving a
-    /// planted file aside; and a look also happens when the turn's lock
-    /// cannot be opened. This covers only the wait for the turn: a start,
+    /// second for SAM's launches: at least 0.9 and at most 2 seconds here),
+    /// then looks anyway, so two looks can then overlap, and a launcher
+    /// stopped in the middle of its look (Ctrl+Z) does not keep the live
+    /// watches of running launches from moving a planted file aside; and a
+    /// look also happens when the turn's lock cannot be opened. This covers only the wait for the turn: a start,
     /// and the last look for a killed launcher, also wait for the records
     /// of the running apps, and that wait has no time limit yet. (The
-    /// mutants that wait without a bound, or skip the look, fail here.)
+    /// mutants that wait without a bound, not at all or for several
+    /// seconds, or skip the look, fail here.)
     #[test]
     fn a_look_never_waits_long_for_another_launch() {
         let t = tempfile::tempdir().unwrap();
@@ -485,8 +487,18 @@ mod tests {
         let m = look(Turns::waiting(&dir, Duration::from_millis(200)), "one");
         assert_eq!(m.len(), 1, "{m:?}");
         assert_eq!(fs::read_to_string(&m[0].to).unwrap(), "one");
-        // SAM's own bound.
+        // SAM's own bound: it really waits for its turn, about a second.
+        let started = std::time::Instant::now();
         let m = look(Turns::at(&dir), "two");
+        let waited = started.elapsed();
+        assert!(
+            waited >= Duration::from_millis(900),
+            "SAM's launch did not wait for its turn: it looked after {waited:?}"
+        );
+        assert!(
+            waited <= Duration::from_secs(2),
+            "SAM's launch waited longer than about a second for its turn: {waited:?}"
+        );
         assert_eq!(m.len(), 1, "{m:?}");
         assert_eq!(fs::read_to_string(&m[0].to).unwrap(), "two");
         // The lock cannot be opened: its folder is a file.
