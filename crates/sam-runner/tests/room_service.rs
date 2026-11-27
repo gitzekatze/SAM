@@ -185,6 +185,13 @@ say loader_layout done
 say trap_link "$(rv bwrap --symlink ../.sam-room /usr/lib --ro-bind / / -- /usr/bin/echo ok)"
 say trap_link_later "$(rv bwrap --symlink /tmp /usr --ro-bind / / -- /usr/bin/echo ok)"
 say trap_link_name "$(rv bwrap --symlink .sam-room /usr --ro-bind / / -- /usr/bin/echo ok)"
+# A link of the app's that a room asking for everything has too (a system
+# folder that is a link here, as SAM copies it from the computer): nothing
+# of the room's own is made through it; beside it, it is.
+L=""
+for d in /lib /lib64 /bin /sbin; do if [ -L "$d" ]; then L="$d"; break; fi; done
+say app_link_dir "$(if [ -n "$L" ]; then rv bwrap --ro-bind / / --dir "$L/sam-room-through-link" -- /usr/bin/echo ok; else echo no-system-link; fi)"
+say app_link_beside "$(rv bwrap --ro-bind / / --dir /sam-room-beside-link -- /usr/bin/echo ok)"
 say moved_folder "$(rv room --ro-bind /usr /elsewhere -- /usr/bin/echo ok)"
 exec 7<"$HOME"
 say folder_by_handle "$(rv room --bind-fd 7 "$HOME" -- /usr/bin/echo ok)"
@@ -1333,6 +1340,8 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
             ("trap_link", "refused"),
             ("trap_link_later", "refused"),
             ("trap_link_name", "refused"),
+            ("app_link_dir", "refused"),
+            ("app_link_beside", "ok"),
         ];
         if abstract_scoped {
             want.push(("abstract_room", "blocked"));
@@ -1405,6 +1414,18 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
                     "{name}: {trap}: a link of the room's own as a trap was not refused by Room service's rule ({words:?})"
                 ));
             }
+        }
+        // Nothing of the room's own through a link of the app's it has too:
+        // refused by Room service's rule, not left to Bubblewrap (which
+        // fails here only because the link leads into a read-only place).
+        if !log.lines().any(|l| {
+            l.contains("sam-room: refused")
+                && l.contains("sam-room-through-link")
+                && l.contains("a link of the app's that the room has too")
+        }) {
+            failures.push(format!(
+                "{name}: app_link_dir: a new folder behind a link of the app's in the room was not refused by Room service's rule"
+            ));
         }
         // The room whose own filter refuses every write was built and
         // confirmed: SAM's helper reports before loading that filter.
