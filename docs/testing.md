@@ -124,7 +124,8 @@ unfiltered session bus, and packages that may not be installed. They
 complement `cargo test --workspace` (unit tests plus the end-to-end sandbox
 test).
 
-To keep your real configuration untouched while testing, run:
+To keep your real configuration untouched while testing a developer build
+(`cargo build` without `--release`), run:
 
 ```sh
 export SAM_CONFIG_DIR=/tmp/sam-test/config \
@@ -136,9 +137,12 @@ Leave `SAM_APPLICATIONS_DIR` unset if you want launchers to show up in your menu
 `SAM_RUNTIME_DIR` moves the per-launch runtime folders (default
 `$XDG_RUNTIME_DIR/sam`); SAM's tests set it, so they never use the real one.
 These four folder variables (`SAM_CONFIG_DIR`, `SAM_DATA_DIR`,
-`SAM_APPLICATIONS_DIR`, `SAM_RUNTIME_DIR`) are still read in release builds
-too: they move SAM's own folders, and with them which settings, app
-records and permissions SAM uses.
+`SAM_APPLICATIONS_DIR`, `SAM_RUNTIME_DIR`) work only in developer builds: they
+move SAM's own folders, and with them which settings, app records and
+permissions SAM uses, so a release build ignores them and keeps its files in
+the standard folders. `XDG_CONFIG_HOME` and `XDG_DATA_HOME` move those
+folders in every build; to test a release build apart from your real
+configuration, point those two (or `HOME`) at a test folder.
 
 Five more variables work only in developer builds (`cargo build` without
 `--release`); a release build ignores them, so a forgotten setting in

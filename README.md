@@ -283,8 +283,10 @@ is removed.
 **SAM and Flatpak are separate.** SAM never touches Flatpak's files or
 folders. Only its window looks like Flatseal, so it feels familiar.
 
-For testing, `SAM_CONFIG_DIR`, `SAM_DATA_DIR`, `SAM_APPLICATIONS_DIR` and
-`SAM_RUNTIME_DIR` move these folders elsewhere.
+`XDG_CONFIG_HOME` and `XDG_DATA_HOME` move these folders in every build. For
+testing, `SAM_CONFIG_DIR`, `SAM_DATA_DIR`, `SAM_APPLICATIONS_DIR` and
+`SAM_RUNTIME_DIR` move them elsewhere too, but only in developer builds; an
+installed SAM ignores them.
 
 ### Updates
 
