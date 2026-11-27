@@ -125,19 +125,29 @@ pub fn plan(p: &PermissionSet, cfg: &Config, paths: &Paths, host: &HostInfo) -> 
         }
         // A user folder set inside SAM's own folders is not shown: the
         // sandbox refuses it and hides SAM's folders with the home
-        // (independent re-review of decision 9).
+        // (independent re-review of decision 9). A granted one the sandbox
+        // shows is shown at its own access, also with the whole home,
+        // inside the home or outside it: read-only in a writable home
+        // (finding R63). Only one not granted, or one the sandbox refuses
+        // for showing more than a user folder, is seen through the home
+        // alone, at the home's access.
         let want =
             if sam_core::places::inside_sams_folders(&sam_core::places::resolve(path), &sam_dirs) {
                 Access::Hidden
+            } else if a.is_granted()
+                && sam_core::places::user_folder_place(path, &host.home).is_some()
+            {
+                level(a)
             } else if rank(home_level) > rank(level(a)) {
                 home_level
             } else {
                 level(a)
             };
-        // With the whole home writable the sandbox binds no user folder of
-        // its own: one in the home is shown through it, so read-only at
-        // most where the home is locked read-only (independent review of
-        // decision 9).
+        // With the whole home writable, a user folder the home already
+        // shows at its own access gets no mount of its own: one in the home
+        // is then shown through it, so read-only at most where the home is
+        // locked read-only (independent review of decision 9). One mounted
+        // of its own inside the home is covered by that lock as well.
         let want =
             if home_locked && path.starts_with(&host.home) && rank(want) > rank(Access::ReadOnly) {
                 Access::ReadOnly
@@ -1047,11 +1057,12 @@ mod tests {
             .test
     }
 
-    /// What the check expects of each folder: the folder's own setting, but
-    /// never less than the home shows it (a read-only home shows Documents
-    /// read-only even when Documents has no setting; a writable folder in a
-    /// read-only home stays writable); keys only with full home and their
-    /// own switch; extra folders like the home inside it.
+    /// What the check expects of each folder: a granted user folder at its
+    /// own setting, one without a setting as the home shows it (a
+    /// read-only home shows Documents read-only even when Documents has no
+    /// setting; a writable folder in a read-only home stays writable); keys
+    /// only with full home and their own switch; extra folders like the
+    /// home inside it.
     #[test]
     fn the_check_expects_each_folder_as_its_settings_show_it() {
         let t = tempfile::tempdir().unwrap();
@@ -1148,6 +1159,52 @@ mod tests {
                 sam_core::util::tildify(Path::new(&conf_d))
             );
             assert_eq!(folder(&pl, &title), Access::ReadOnly, "home {home}");
+        }
+    }
+
+    /// With the whole home granted, the check expects a granted user folder
+    /// at its own access, as the sandbox mounts it, not at the higher of
+    /// the home's and its own: read-only in a writable home (finding R63),
+    /// and outside the home read-only or writable as set
+    /// (`XDG_DOCUMENTS_DIR=/data/Documents`). A user folder not granted is
+    /// seen through the home.
+    #[test]
+    fn the_check_expects_a_user_folder_at_its_own_access_with_the_whole_home() {
+        let t = tempfile::tempdir().unwrap();
+        let h = host_in(t.path());
+        let cfg = Config::default();
+        let plan_with = |h: &HostInfo, home: Perm, docs: Perm| {
+            let mut p = PermissionSet::strict_gui();
+            p.filesystem.home = true;
+            p.filesystem.home_access = home;
+            p.filesystem.documents = docs;
+            plan(&p, &cfg, &sam_paths(), h)
+        };
+        let pl = plan_with(&h, Perm::Rw, Perm::Ro);
+        assert_eq!(folder(&pl, "Your home folder"), Access::ReadWrite);
+        assert_eq!(folder(&pl, "Documents"), Access::ReadOnly);
+        assert_eq!(
+            folder(&pl, "Pictures"),
+            Access::ReadWrite,
+            "not granted: through the home"
+        );
+        assert_eq!(
+            folder(&plan_with(&h, Perm::Ro, Perm::Rw), "Documents"),
+            Access::ReadWrite
+        );
+        // Outside the home.
+        let mut out = h.clone();
+        let docs = t.path().join("data/Documents");
+        fs::create_dir_all(&docs).unwrap();
+        out.xdg_dirs.insert("documents".into(), docs);
+        for home in [Perm::Rw, Perm::Ro] {
+            for (docs, want) in [(Perm::Ro, Access::ReadOnly), (Perm::Rw, Access::ReadWrite)] {
+                assert_eq!(
+                    folder(&plan_with(&out, home, docs), "Documents"),
+                    want,
+                    "{home:?} home, {docs:?} Documents"
+                );
+            }
         }
     }
 

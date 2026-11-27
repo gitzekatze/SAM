@@ -1603,17 +1603,13 @@ fn terminal_banner(app: &AppEntry, ctx: &LaunchContext) -> String {
     if fs.home {
         sees.push(sam_core::i18n::tr("your home folder"));
     }
-    // SAM's own folders in this start, as the sandbox counts them.
-    let sams = sam_sandbox::sams_folders(ctx);
-    for key in sam_core::permissions::XDG_DIR_KEYS {
-        if !fs.home && fs.xdg_access(key).is_granted() {
-            // Never a user folder set inside SAM's own folders, which the
-            // sandbox refuses (independent re-review of decision 9).
-            if let Some(d) = ctx.host.xdg_dir(key).filter(|d| {
-                !sam_core::places::inside_sams_folders(&sam_core::places::resolve(d), &sams)
-            }) {
-                sees.push(sam_core::util::tildify(d));
-            }
+    // The user folders the sandbox shows, as it decides them: never one it
+    // refuses, such as one set inside SAM's own folders (independent
+    // re-review of decision 9). With the whole home, the home names those
+    // inside it; one outside it is shown too and named.
+    for d in sam_sandbox::shown_user_folders(ctx) {
+        if !fs.home || !d.starts_with(&ctx.host.home) {
+            sees.push(sam_core::util::tildify(&d));
         }
     }
     // Only what the sandbox shows: never a grant inside SAM's own folders
@@ -2911,7 +2907,8 @@ mod tests {
     /// shows, never one inside SAM's own folders, which the sandbox leaves
     /// out wherever SAM keeps them (SAM's data in `~/Games/sam`): read-only
     /// or writable, it was listed as seen (independent review of
-    /// decision 9).
+    /// decision 9). With the whole home, a user folder outside the home,
+    /// which the sandbox shows on its own, is named too.
     #[test]
     fn a_terminal_apps_start_line_names_only_the_folders_it_sees() {
         let tmp = tempfile::tempdir().unwrap();
@@ -2950,6 +2947,20 @@ mod tests {
         let line = terminal_banner(&app, &ctx);
         assert!(line.contains(&at("Pictures")), "{line}");
         assert!(!line.contains(&at("Games/sam")), "{line}");
+        // With the whole home, a user folder outside it is shown on its own
+        // and named; one inside it is part of the home.
+        let outside = home.parent().unwrap().join("data/Documents");
+        std::fs::create_dir_all(&outside).unwrap();
+        ctx.host
+            .xdg_dirs
+            .insert("documents".into(), outside.clone());
+        ctx.permissions.filesystem.home = true;
+        let line = terminal_banner(&app, &ctx);
+        assert!(
+            line.contains(&outside.to_string_lossy().into_owned()),
+            "{line}"
+        );
+        assert!(!line.contains(&at("Pictures")), "{line}");
     }
 
     /// Bubblewrap setup errors are told apart from errors of the app itself.
