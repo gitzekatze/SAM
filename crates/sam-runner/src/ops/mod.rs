@@ -264,47 +264,86 @@ pub fn app_needs_network(a: &AppEntry) -> bool {
     by_category || game_online || sam_profile::needs_network_by_purpose(&a.metadata, &file_name)
 }
 
+/// The needs an update's note (`pending_changes`) can name, each with how
+/// much of it the settings `p` give (0: none). One list, so the note and
+/// the check whether a need was granted never name a need differently.
+fn need_levels(p: &PermissionSet) -> Vec<(String, u8)> {
+    let mut v = vec![
+        ("GPU".to_string(), u8::from(p.devices.gpu)),
+        ("audio".to_string(), u8::from(p.audio.enabled)),
+        (
+            "network".to_string(),
+            u8::from(p.network.mode == NetworkMode::Full),
+        ),
+        ("X11".to_string(), u8::from(p.display.x11)),
+    ];
+    for key in XDG_DIR_KEYS {
+        v.push((format!("{key} folder"), p.filesystem.xdg_access(key) as u8));
+    }
+    v
+}
+
+fn need_level(p: &PermissionSet, need: &str) -> Option<u8> {
+    need_levels(p)
+        .into_iter()
+        .find(|(n, _)| n == need)
+        .map(|(_, l)| l)
+}
+
 /// Permissions the new recommendation wants that the user's profile lacks.
 pub fn new_requirements(
     old_rec: &PermissionSet,
     new_rec: &PermissionSet,
     cur: &PermissionSet,
 ) -> Vec<String> {
-    let mut v = Vec::new();
-    let mut chk = |newly: bool, have: bool, what: &str| {
-        if newly && !have {
-            v.push(what.to_string());
+    let old = need_levels(old_rec);
+    let have = need_levels(cur);
+    need_levels(new_rec)
+        .into_iter()
+        .zip(old.iter().zip(&have))
+        .filter(|((_, want), ((_, before), (_, has)))| want > before && has < want)
+        .map(|((need, _), _)| need)
+        .collect()
+}
+
+/// What happened to an app that may change the note of its update's needs.
+pub enum NoteEvent {
+    /// The person saw the note: its "Got It", or the app's review.
+    Seen,
+    /// The app's settings changed, by whatever way.
+    SettingsChanged,
+    /// SAM read the app again (an update, Unpack Again): these needs are new.
+    Asked(Vec<String>),
+}
+
+/// The one place that decides what the note of an update's needs
+/// (`pending_changes`) still names (review L5). Only the person seeing it
+/// clears it. Otherwise it keeps every need the app's settings do not
+/// grant yet, at least at the level its recommendation asks for: a change
+/// of other switches, a change for a group of apps on the permissions
+/// page, or one while the page hides the note under "changed outside SAM"
+/// no longer takes the note away unseen. A need SAM does not know (written
+/// by another version) stays until it is seen.
+pub fn settle_update_note(entry: &mut AppEntry, event: NoteEvent) {
+    match event {
+        NoteEvent::Seen => {
+            entry.pending_changes.clear();
+            return;
         }
-    };
-    chk(
-        new_rec.devices.gpu && !old_rec.devices.gpu,
-        cur.devices.gpu,
-        "GPU",
-    );
-    chk(
-        new_rec.audio.enabled && !old_rec.audio.enabled,
-        cur.audio.enabled,
-        "audio",
-    );
-    chk(
-        new_rec.network.mode == NetworkMode::Full && old_rec.network.mode != NetworkMode::Full,
-        cur.network.mode == NetworkMode::Full,
-        "network",
-    );
-    chk(
-        new_rec.display.x11 && !old_rec.display.x11,
-        cur.display.x11,
-        "X11",
-    );
-    for key in XDG_DIR_KEYS {
-        let n = new_rec.filesystem.xdg_access(key);
-        chk(
-            n > old_rec.filesystem.xdg_access(key),
-            cur.filesystem.xdg_access(key) >= n,
-            &format!("{key} folder"),
-        );
+        NoteEvent::SettingsChanged => {}
+        NoteEvent::Asked(needs) => {
+            for need in needs {
+                if !entry.pending_changes.contains(&need) {
+                    entry.pending_changes.push(need);
+                }
+            }
+        }
     }
-    v
+    let (rec, cur) = (&entry.recommended, &entry.profile.permissions);
+    entry.pending_changes.retain(|need| {
+        let asked = need_level(rec, need).unwrap_or(0).max(1);
+        need_level(cur, need).is_none_or(|has| has < asked)
+    });
 }
 
 /// Result of `Sam::self_update`.

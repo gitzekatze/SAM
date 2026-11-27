@@ -8,15 +8,33 @@
   installed SAM use other settings and permissions.
 - `XDG_CONFIG_HOME` and `XDG_DATA_HOME` still move SAM's folders in every
   build, as they do for other programs.
+- Every build of a program SAM ships or signs now checks that the built
+  `sam-jail` ignores these variables, and stops if it follows them: the
+  AppImage build (`scripts/make-appimage.sh`, which the release workflow
+  runs through `make appimage`), `scripts/release.sh`,
+  `scripts/sign-release.sh` before the release key is used, and the build
+  steps of the Arch and Fedora recipes (`build()` and `%build`, not their
+  test steps, which builders often skip). Cargo settings in the builder's
+  environment or in a Cargo configuration file outside the source could
+  otherwise turn SAM's developer variables on in a release build. The
+  check starts the program with an empty environment and every folder in
+  a temporary folder, which it removes afterwards. The Makefile's `cli`
+  target does not run it: a developer builds with it for local use, and
+  the check would start SAM's program on that computer.
 - With such a variable set, an installed window now behaves as without it:
   starting SAM again brings the open window forward instead of opening a
   second window on the same settings.
-- If you set `SAM_CONFIG_DIR` or `SAM_DATA_DIR` for an installed SAM, its
-  old folders are no longer SAM's own folders, so the sandbox no longer
-  hides them: an app that may see the folder above one of them can read the
-  other apps' private homes there and change their app records. Before you
-  start any app with this version, close SAM's window and every app started
-  from SAM, then move the old folders as described below, or delete them.
+- If you set `SAM_CONFIG_DIR` or `SAM_DATA_DIR` for an installed SAM, it
+  keeps nothing in the folders they name any more, but still hides those
+  folders from every app, as it hides its own folders: an app that may see
+  the folder above one of them (`~/Games` for `SAM_DATA_DIR=~/Games/sam`)
+  cannot read the other apps' private homes there or change their app
+  records, nor rename the folders above it to carry the old folder out of
+  SAM's sight. SAM hides such a folder only while the variable is still set,
+  and not where hiding it would cover too much: where the folder is your
+  home folder or a folder above it, or where it is a link and the app is
+  shown only folders inside the place it leads to. So move the old folders
+  as described below, or delete them, before you remove the variable.
 - If you set one of these variables for an installed SAM, it now uses the
   standard folders (`~/.config/sam`, `~/.local/share/sam` and
   `~/.local/share/applications`) instead, without a message: its window
@@ -37,8 +55,9 @@
 - Adding an app's AppImage again instead, without moving the old folders,
   suits only apps whose own files you do not need: the new record starts
   with an empty private home and sets up its settings and permissions
-  anew. The old home stays in the old folder, which SAM no longer hides:
-  delete it, or move it out of every folder an app may see. If it is the same
+  anew. The old home stays in the old folder, which SAM hides only while
+  the variable is still set: delete it, or move it out of every folder an
+  app may see, before you remove the variable. If it is the same
   AppImage file, the app gets the same id again, so its new menu entry
   replaces the old one in `~/.local/share/applications` instead of adding a
   second one. An AppImage that changed since (for example a newer version)

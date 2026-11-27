@@ -1163,7 +1163,10 @@ impl Views {
         v
     }
 
-    /// The home, the user folders and the extra read-only folders.
+    /// The home, the user folders and the extra read-only folders. Each
+    /// user folder at the access the start shows it at
+    /// ([`sam_core::places::user_folder_access`]): two set to one place at
+    /// different access are both read-only, as mounted.
     fn without_writes(ctx: &LaunchContext) -> Views {
         let fsp = &ctx.permissions.filesystem;
         let mut grants = Vec::new();
@@ -1171,7 +1174,7 @@ impl Views {
             grants.push((ctx.host.home.clone(), fsp.home_access == Access::Rw));
         }
         for key in XDG_DIR_KEYS {
-            let acc = fsp.xdg_access(key);
+            let acc = sam_core::places::user_folder_access(&ctx.permissions, &ctx.host, key);
             if acc.is_granted() {
                 if let Ok(d) = user_dir(ctx, key) {
                     grants.push((d, acc == Access::Rw));
@@ -1310,6 +1313,11 @@ enum NotShown {
     /// It is the home, a folder above it, a system folder, a credential
     /// store, a start place or one of SAM's folders.
     Refused(PathBuf),
+    /// It is a folder in `/tmp` where programs outside the sandbox listen.
+    Sockets(PathBuf),
+    /// The way to it (the first path) holds a link (the second) in a
+    /// folder the app can change, which the app could have put there.
+    Link(PathBuf, PathBuf),
 }
 
 /// A granted user folder as it is bound: where `user-dirs.dirs` says it is,
@@ -1320,12 +1328,62 @@ enum NotShown {
 /// protections inside (audit S-F11). The same place the list of what a
 /// start shows takes ([`sam_core::places::user_folder_place`]), which
 /// decides about SAM's folders by name, and never in SAM's folders.
+///
+/// Nor one reached through a link the app could have put there, in a
+/// folder this start lets it change
+/// ([`sam_core::places::user_folder_link_the_app_can_change`]): with the
+/// whole home writable, `ln -s /tmp ~/Downloads` in one start showed the
+/// host's `/tmp` in the next. Nor a folder in `/tmp` where programs outside
+/// the sandbox listen, which also the person may have set.
 fn user_dir(ctx: &LaunchContext, key: &str) -> std::result::Result<PathBuf, NotShown> {
     let dir = ctx.host.xdg_dir(key).ok_or(NotShown::Missing)?;
+    if let Some(link) =
+        sam_core::places::user_folder_link_the_app_can_change(&ctx.permissions, &ctx.host, dir)
+    {
+        return Err(NotShown::Link(dir.to_path_buf(), link));
+    }
+    if sam_core::risk::shows_host_sockets(&resolve(dir).to_string_lossy()) {
+        return Err(NotShown::Sockets(dir.to_path_buf()));
+    }
     match sam_core::places::user_folder_place(dir, &ctx.host.home) {
         Some(real) if !inside_sam(ctx, &real) => Ok(real),
         _ => Err(NotShown::Refused(dir.to_path_buf())),
     }
+}
+
+/// What the start says about the user folder `key` that it does not show.
+fn user_folder_note(key: &str, why: &NotShown) -> String {
+    match why {
+        NotShown::Missing => sam_core::i18n::trf(
+            "{key} folder does not exist on the host; not bound",
+            &[("key", &key)],
+        ),
+        NotShown::Refused(dir) => sam_core::i18n::trf(
+            "{key} folder is set to {path}, which shows more than a user folder (the home, a folder above it, a system or SAM folder, or a protected place); not bound",
+            &[("key", &key), ("path", &dir.display())],
+        ),
+        NotShown::Sockets(dir) => sam_core::places::user_folder_sockets_note(key, dir),
+        NotShown::Link(dir, link) => sam_core::places::user_folder_link_note(key, dir, link),
+    }
+}
+
+/// Whether the whole home, mounted at `home`, already shows the user folder
+/// that really is at `real` exactly at its own access (`rw`): the deepest
+/// grant above it is the home (as named, or as reached when the home is
+/// kept behind a link), at that same access. Then the folder needs no
+/// mount of its own; otherwise it gets one (read-only in a writable home,
+/// writable in a read-only one, below another grant, or outside the home),
+/// so the mounts give the answer the views give ([`Views::without_writes`]
+/// records every granted user folder at its own access).
+fn home_shows_exactly(views: &Views, home: &Path, real: &Path, rw: bool) -> bool {
+    let real_home = resolve(home);
+    let above = |g: &Path| real.starts_with(g) || (g == home && real.starts_with(&real_home));
+    views
+        .grants
+        .iter()
+        .filter(|(g, _)| g != real && above(g))
+        .max_by_key(|(g, _)| g.components().count())
+        .is_some_and(|(g, g_rw)| g == home && *g_rw == rw)
 }
 
 /// A host path SAM never shows on its own (a system folder, the home, a
@@ -1458,7 +1516,19 @@ fn write_grants(ctx: &LaunchContext) -> Vec<WriteGrant> {
                 WriteBind::InsideSam
             } else if let Some(place) = place {
                 WriteBind::ReadOnly(place)
-            } else if let Some(folder) = bound.ancestors().skip(1).find(|a| app_can_change(a)) {
+            } else if let Some(folder) = bound.parent().filter(|a| app_can_change(a)) {
+                // Judged on the folder right above it, as the deepest
+                // grant there shows it: below a read-only grant inside a
+                // writable one (`~/Documents/proj` with Documents
+                // read-only under the writable home), the app cannot
+                // change the way: the read-only grant is a mount of its
+                // own it cannot rename, and the folders above it that the
+                // app can change are pinned (`Section::home`), so the
+                // folder is bound writable after it. Judged on any folder
+                // above, it was left out,
+                // read-only under that grant, while the start said the
+                // app could already change it and the sandbox check
+                // expected it writable.
                 WriteBind::Below(folder.to_path_buf())
             } else {
                 WriteBind::Writable
@@ -1478,8 +1548,19 @@ fn grant_path(c: &str) -> PathBuf {
     resolve(&expand_home(c))
 }
 
+/// The places bound read-only that the views do not record (the fonts, the
+/// font settings, the theme files), and every place bound writable below
+/// the home, mounted after them where deeper: together they say where a
+/// read-only bind is still the topmost mount ([`pins`]).
+struct ReadOnlyBinds<'a> {
+    places: &'a [PathBuf],
+    writable_mounts: &'a [PathBuf],
+}
+
 /// Step 1 of the protections inside the shown parts of the real home: the
-/// folders above protected places, above SAM's own folders and above SAM's
+/// folders above protected places, above SAM's own folders (`sam_dirs`:
+/// [`sams_folders`], with the folders that `SAM_CONFIG_DIR` and
+/// `SAM_DATA_DIR` name) and above SAM's
 /// own programs that the sandbox shows writable. Each becomes a mount point
 /// of its own (bound onto itself, in the depth order of the other mounts),
 /// so it cannot be renamed away together with the protection (`mv
@@ -1496,18 +1577,51 @@ fn grant_path(c: &str) -> PathBuf {
 /// guard moved along, and a new `~/dotfiles/bashrc` ran outside the sandbox
 /// at the next shell while the link `~/.bashrc` stayed as it was (review
 /// B2 S3, R50). A grant's own place is a mount point already.
+///
+/// Never where a place bound read-only that the views do not record
+/// (`read_only.places`: the fonts, the font settings and the theme files,
+/// each only where no writable place is bound after it at its own place)
+/// is still the topmost mount: on it, or inside it with no place bound
+/// writable (`read_only.writable_mounts`) between it and the folder. The
+/// app cannot rename anything there, and a pin, bound after the read-only
+/// bind at equal depth or deeper, made it writable (`~/.fonts` above an
+/// extra read-only folder `~/.fonts/licensed` with the whole home
+/// writable). Judged from what is mounted, not from the views: a writable
+/// user folder inside `~/.fonts` that the writable home already shows
+/// has no mount of its own, so the read-only bind still covers it. Inside
+/// a place bound writable within such a place (`~/.fonts/work`) the app
+/// can rename, so the folders there are pinned as everywhere: skipped on
+/// or inside the whole place, a start file kept as a link into
+/// `~/.fonts/work/dots` lost the pin of `dots`.
 fn pins(
     home: &Path,
     views: &Views,
     guarded: &[PathBuf],
     sam_dirs: &[PathBuf],
     programs: &[PathBuf],
+    read_only: &ReadOnlyBinds,
 ) -> Vec<PathBuf> {
+    // The read-only bind is the topmost mount at `c`: it shows `c`, and no
+    // place bound writable deeper than it does (mounted after it, by
+    // depth). Judged from the mounts, never from the views: a writable
+    // user folder inside `~/.fonts` that the writable whole home already
+    // shows gets no mount of its own, so the read-only bind still covers
+    // it, and a pin there made the font folder writable.
+    let read_only_on_top = |c: &Path| {
+        read_only.places.iter().any(|r| {
+            c.starts_with(r)
+                && !read_only
+                    .writable_mounts
+                    .iter()
+                    .any(|g| g != r && g.starts_with(r) && c.starts_with(g))
+        })
+    };
     let mut pins: Vec<PathBuf> = Vec::new();
     let mut pin = |p: &Path| {
         for c in views.mount_points(p) {
             // Never `/` or one folder below it: those are not renamed.
             if views.writable(&c)
+                && !read_only_on_top(&c)
                 && c.components().count() > 2
                 && fs::metadata(&c).is_ok_and(|m| m.is_dir())
                 && !pins.contains(&c)
@@ -1519,9 +1633,13 @@ fn pins(
     for d in protected_ancestors(home) {
         pin(&home.join(d));
     }
+    // A grant's own place (the whole home above `~/.config/sam`) is a
+    // mount point already, and not bound a second time.
     for d in sam_dirs {
         for anc in d.ancestors().skip(1) {
-            pin(anc);
+            if !views.grants.iter().any(|(g, _)| g == anc) {
+                pin(anc);
+            }
         }
     }
     // Also under the home's name when the home is kept behind a link
@@ -1715,6 +1833,21 @@ pub fn shown_extra_folders(ctx: &LaunchContext) -> Vec<String> {
         .filter(|g| !matches!(g.how, WriteBind::InsideSam))
         .map(|g| g.written);
     reads.chain(writes).collect()
+}
+
+/// The user folders (Documents, Downloads, …) that this start shows the
+/// app, where the app looks for them (`user-dirs.dirs`), for what SAM tells
+/// the person: every granted one the sandbox does not refuse
+/// ([`user_dir`]: the home, a folder above it, a system or key folder, a
+/// start place or one inside SAM's folders), with or without the whole
+/// home, inside the home or outside it.
+pub fn shown_user_folders(ctx: &LaunchContext) -> Vec<PathBuf> {
+    XDG_DIR_KEYS
+        .iter()
+        .filter(|key| ctx.permissions.filesystem.xdg_access(key).is_granted())
+        .filter(|key| user_dir(ctx, key).is_ok())
+        .filter_map(|key| ctx.host.xdg_dir(key).map(Path::to_path_buf))
+        .collect()
 }
 
 /// [`opened_paths`] against the grants `views` ([`Views::base`]) worked out
@@ -2165,6 +2298,22 @@ impl Section<'_> {
         let home = h.home.clone();
         let notes = &mut self.notes;
         let fsp = &p.filesystem;
+        // The user folders bound at a place of their own, for the pins.
+        let mut own_mounts: Vec<PathBuf> = Vec::new();
+        // Every place bound writable below the home, for the pins: what is
+        // mounted, never what the views record (a writable user folder the
+        // whole home already shows gets no mount of its own).
+        let mut writable_mounts: Vec<PathBuf> = Vec::new();
+        // User folders set to one place at different access are all shown
+        // read-only there ([`sam_core::places::user_folder_access`]); the
+        // start says which and why, as the app page does.
+        for (place, keys) in sam_core::places::user_folders_at_one_place(p, h) {
+            if !inside_sam(ctx, &place) {
+                notes.push(sam_core::places::user_folders_at_one_place_note(
+                    &keys, &place,
+                ));
+            }
+        }
         let mut mounts: Vec<(usize, Args)> = Vec::new();
         let mut mount = |at: &Path, f: &dyn Fn(&mut Args)| {
             let mut m = Args::default();
@@ -2181,16 +2330,65 @@ impl Section<'_> {
                 "--ro-bind"
             };
             mount(&home, &|m| m.op2(op, &home, &home));
-            // With the home read-only, a folder set to read/write must still
-            // be writable (the switch says so; regression: it stayed
-            // read-only).
-            if fsp.home_access != Access::Rw {
-                for key in XDG_DIR_KEYS {
-                    if fsp.xdg_access(key) == Access::Rw {
-                        if let Ok(dir) = user_dir(ctx, key) {
-                            mount(&dir, &|m| m.op2("--bind-try", &dir, &dir));
-                        }
+            // Each granted user folder at its own access, as the switch
+            // says and as the views record it, wherever the home does not
+            // already show it at exactly that access: writable in a
+            // read-only home (regression: it stayed read-only), read-only
+            // in a writable home (finding R63: a start file kept as a link
+            // into a "read-only" Documents stayed writable through the
+            // home, and no lock reached it), and outside the home at all
+            // (`XDG_DOCUMENTS_DIR=/data/Documents` was not shown). The
+            // protections inside come after it (`guard_home`).
+            for key in XDG_DIR_KEYS {
+                let acc = sam_core::places::user_folder_access(p, h, key);
+                if !acc.is_granted() {
+                    continue;
+                }
+                let real = match user_dir(ctx, key) {
+                    Ok(real) => real,
+                    // Seen through the home where it lies in it, at the
+                    // home's access, as before.
+                    Err(NotShown::Missing | NotShown::Refused(_)) => continue,
+                    Err(why) => {
+                        notes.push(user_folder_note(key, &why));
+                        continue;
                     }
+                };
+                // Two user folders at one place (Music read and write,
+                // Pictures read-only, both `~/Media`) take the stricter
+                // access, as the views record it and the sandbox check
+                // expects it ([`sam_core::places::user_folder_access`]),
+                // and are mounted once, for the last of them. Judged one by
+                // one against the home, the read-only one was mounted and
+                // the writable one left to the home, so the folder was
+                // read-only while the views said writable.
+                let later_at_same_place = XDG_DIR_KEYS
+                    .iter()
+                    .skip_while(|k| **k != key)
+                    .skip(1)
+                    .any(|k| {
+                        fsp.xdg_access(k).is_granted() && user_dir(ctx, k).as_ref() == Ok(&real)
+                    });
+                if later_at_same_place {
+                    continue;
+                }
+                let rw = acc == Access::Rw;
+                if home_shows_exactly(&self.views, &home, &real, rw) {
+                    continue;
+                }
+                let op = if rw { "--bind-try" } else { "--ro-bind-try" };
+                mount(&real, &|m| m.op2(op, &real, &real));
+                own_mounts.push(real.clone());
+                if rw {
+                    writable_mounts.push(real.clone());
+                }
+                // A link where the app looks for it when that is a link
+                // outside the home; one in the home is shown with it.
+                if let Some(dir) = h
+                    .xdg_dir(key)
+                    .filter(|d| *d != real && !d.starts_with(&home) && real.exists())
+                {
+                    mount(dir, &|m| m.op2("--symlink", &real, dir));
                 }
             }
         } else {
@@ -2212,7 +2410,8 @@ impl Section<'_> {
                 });
             }
             for key in XDG_DIR_KEYS {
-                let acc = fsp.xdg_access(key);
+                // Two at one place both at the stricter access, as above.
+                let acc = sam_core::places::user_folder_access(p, h, key);
                 if !acc.is_granted() {
                     continue;
                 }
@@ -2232,30 +2431,48 @@ impl Section<'_> {
                         // At its real place, and a link where the app
                         // looks for it when that is a link on the host.
                         mount(&real, &|m| m.op2(op, &real, &real));
+                        own_mounts.push(real.clone());
+                        if acc == Access::Rw {
+                            writable_mounts.push(real.clone());
+                        }
                         if let Some(dir) = h.xdg_dir(key).filter(|d| *d != real) {
                             mount(dir, &|m| m.op2("--symlink", &real, dir));
                         }
                     }
-                    Err(NotShown::Missing) => notes.push(sam_core::i18n::trf(
-                        "{key} folder does not exist on the host; not bound",
-                        &[("key", &key)],
-                    )),
-                    Err(NotShown::Refused(dir)) => notes.push(sam_core::i18n::trf(
-                        "{key} folder is set to {path}, which shows more than a user folder (the home, a folder above it, a system or SAM folder, or a protected place); not bound",
-                        &[("key", &key), ("path", &dir.display())],
-                    )),
+                    Err(why) => notes.push(user_folder_note(key, &why)),
                 }
             }
         }
+        // The places bound read-only below, for the pins: the views do not
+        // record them, so a pin on or inside one (`~/.fonts` above an extra
+        // read-only folder `~/.fonts/licensed`) counted writable, landed
+        // after the read-only bind and made the place writable. Not one
+        // where a writable place is bound after it at its own place (an
+        // extra writable folder, an opened folder, a bind of SAM's): that
+        // bind covers it, and the place is writable.
+        let mut read_only: Vec<PathBuf> = Vec::new();
+        let bound_writable_after = |at: &Path| {
+            self.writes
+                .iter()
+                .any(|g| g.how == WriteBind::Writable && g.bound == at)
+                || self.opened.iter().any(|(o, rw)| *rw && o == at)
+                || ctx.extra_binds.iter().any(|(_, sb, rw)| *rw && sb == at)
+        };
         // Safe read-only user resources.
         for r in [".local/share/fonts", ".fonts", ".config/fontconfig"] {
             let at = bind_place(&self.views, &home.join(r));
             mount(&at, &|m| m.ro(&at));
+            if !bound_writable_after(&at) {
+                read_only.push(at);
+            }
         }
         if p.advanced.host_themes && !fsp.home {
             for t in THEME_FILES {
                 let at = bind_place(&self.views, &home.join(t));
                 mount(&at, &|m| m.ro(&at));
+                if !bound_writable_after(&at) {
+                    read_only.push(at);
+                }
             }
             // Deeper than its folder, so mounted after it. Only a plain
             // file: a link inside leads where the sandbox shows nothing,
@@ -2340,14 +2557,72 @@ impl Section<'_> {
                 .filter(|g| matches!(g.how, WriteBind::ReadOnly(_)))
                 .map(|g| g.bound.clone()),
         );
-        // The folders above where this SAM keeps its own. Those above the
-        // folders named like them are pinned as above every protected
-        // place, which they are (`protected_ancestors`, and where a link
-        // among them leads through `guarded`).
-        for p in pins(&home, views, &guarded, &ctx.sam_dirs, &ctx.sam_programs) {
+        // So is every other folder bound at an access of its own inside a
+        // folder the app can change: a user folder bound at its own access
+        // (Documents read-only in `~/Sync` under the writable home), a
+        // read-only extra folder, and an extra writable folder bound
+        // inside a read-only one ([`write_grants`]). A second start of this
+        // app with these permissions (starts take the app lock shared)
+        // could otherwise rename a folder above it (`mv ~/Sync ~/S2`),
+        // which carries the mount along, and put a link in its place
+        // between SAM's look and Bubblewrap's mount: the next start bound
+        // where the link led, a key folder read-only or a start place
+        // writable (review of finding R63). That start has the same pins,
+        // so the rename fails.
+        guarded.extend(own_mounts);
+        guarded.extend(fsp.custom_read.iter().map(|c| grant_path(c)));
+        guarded.extend(
+            self.writes
+                .iter()
+                .filter(|g| g.how == WriteBind::Writable)
+                .map(|g| g.bound.clone()),
+        );
+        // Bound writable after the places bound read-only below, by depth:
+        // the extra writable folders, the opened ones and SAM's own binds,
+        // besides the user folders above.
+        writable_mounts.extend(
+            self.writes
+                .iter()
+                .filter(|g| g.how == WriteBind::Writable)
+                .map(|g| g.bound.clone()),
+        );
+        writable_mounts.extend(
+            self.opened
+                .iter()
+                .filter(|(_, rw)| *rw)
+                .map(|(o, _)| o.clone()),
+        );
+        writable_mounts.extend(
+            ctx.extra_binds
+                .iter()
+                .filter(|(_, _, rw)| *rw)
+                .map(|(_, sb, _)| sb.clone()),
+        );
+        // The folders above SAM's own folders in this start
+        // ([`sams_folders`]): where this SAM keeps its own, and the folders
+        // that `SAM_CONFIG_DIR` and `SAM_DATA_DIR` name, which an installed
+        // SAM hides but never uses. Renamed (`mv ~/Games ~/G` with
+        // `SAM_DATA_DIR=~/Games/sam`), the empty folder moved along, and
+        // the next start no longer found the old folder to hide (batch
+        // review of the change that made release builds ignore these
+        // switches). Those above the folders named like them are pinned as
+        // above every protected place, which they are
+        // (`protected_ancestors`, and where a link among them leads through
+        // `guarded`).
+        let sams = &self.sams;
+        for p in pins(
+            &home,
+            views,
+            &guarded,
+            sams,
+            &ctx.sam_programs,
+            &ReadOnlyBinds {
+                places: &read_only,
+                writable_mounts: &writable_mounts,
+            },
+        ) {
             mount(&p, &|m| m.op2("--bind", &p, &p));
         }
-        let sams = &self.sams;
         // With the whole home writable, a protected place this start does
         // not hide that really is the home (`~/.config/sam` planted as a
         // link to it) is locked read-only where the app reaches it, which
@@ -5879,6 +6154,10 @@ mod guard_tests {
         );
         assert!(!binds(&cmd.args, &proj), "{:?}", cmd.args);
         assert!(skipped(&cmd.notes, &proj), "{:?}", cmd.notes);
+        // Left out, it adds no mount at all, not even a pin of the folder
+        // above it.
+        let wa = s(home.join("work/a"));
+        assert!(!has_seq(&cmd.args, &["--bind", &wa, &wa]), "{:?}", cmd.args);
         // Shown all the same, writable, through the folder above it.
         assert!(Views::base(&ctx).writable(Path::new(&proj)));
         // Below a folder opened writable on the command line: the same.
@@ -5901,6 +6180,7 @@ mod guard_tests {
         p.filesystem.custom_write = vec![proj.clone()];
         let cmd = Bubblewrap.build(&ctx_for(&p, &home)).unwrap();
         assert!(!binds(&cmd.args, &proj), "{:?}", cmd.args);
+        assert!(!has_seq(&cmd.args, &["--bind", &wa, &wa]), "{:?}", cmd.args);
         // Below a read-only whole home it is bound as usual.
         p.filesystem.home_access = Access::Ro;
         let cmd = Bubblewrap.build(&ctx_for(&p, &home)).unwrap();
@@ -6522,6 +6802,1012 @@ mod guard_tests {
             empty.path().join(".config/user-dirs.dirs").is_file(),
             "created empty when missing, so an app cannot create it"
         );
+    }
+
+    /// With the whole home granted, a user folder is mounted at its own
+    /// access wherever the home does not already show it at exactly that
+    /// access: read-only in a writable home (finding R63), writable in a
+    /// read-only one, and outside the home at all
+    /// (`XDG_DOCUMENTS_DIR=/data/Documents`), read-only or writable. A link
+    /// outside the home is put where the app looks; one in the home comes
+    /// with it. The views give the same answer as the mounts.
+    #[test]
+    fn a_user_folder_is_mounted_at_its_own_access_with_the_whole_home() {
+        let t = tempfile::tempdir().unwrap();
+        let base = fs::canonicalize(t.path()).unwrap();
+        let home = base.join("home");
+        let outside = base.join("data/Documents");
+        for d in [
+            home.join("Documents"),
+            home.join("Pictures"),
+            outside.clone(),
+        ] {
+            fs::create_dir_all(d).unwrap();
+        }
+        let st = |p: &Path| p.to_string_lossy().into_owned();
+        let start = |home_access: Access, docs: Access, docs_at: &Path| {
+            let mut p = PermissionSet::strict_gui();
+            p.filesystem.home = true;
+            p.filesystem.home_access = home_access;
+            p.filesystem.documents = docs;
+            p.filesystem.pictures = home_access;
+            let mut ctx = ctx_for(&p, &home);
+            ctx.host
+                .xdg_dirs
+                .insert("documents".into(), docs_at.to_path_buf());
+            ctx.host
+                .xdg_dirs
+                .insert("pictures".into(), home.join("Pictures"));
+            ctx
+        };
+        let op = |acc: Access| {
+            if acc == Access::Rw {
+                "--bind-try"
+            } else {
+                "--ro-bind-try"
+            }
+        };
+        let home_bind = |a: &[String], acc: Access| {
+            let op = if acc == Access::Rw {
+                "--bind"
+            } else {
+                "--ro-bind"
+            };
+            at_seq(a, &[op, &st(&home), &st(&home)])[0]
+        };
+        let docs = home.join("Documents");
+        let pics = st(&home.join("Pictures"));
+        for (home_access, acc) in [(Access::Rw, Access::Ro), (Access::Ro, Access::Rw)] {
+            let ctx = start(home_access, acc, &docs);
+            let a = args_of(&ctx);
+            let at = at_seq(&a, &[op(acc), &st(&docs), &st(&docs)]);
+            assert!(
+                at.iter().any(|i| *i > home_bind(&a, home_access)),
+                "{home_access:?} home, {acc:?} Documents: its own mount after the home: {a:?}"
+            );
+            assert!(
+                !a.contains(&pics),
+                "Pictures at the home's access needs no mount: {a:?}"
+            );
+            assert_eq!(
+                Views::base(&ctx).writable(&docs.join("x")),
+                acc == Access::Rw,
+                "the views agree"
+            );
+        }
+        // At the home's own access: shown through the home alone.
+        for acc in [Access::Rw, Access::Ro] {
+            let a = args_of(&start(acc, acc, &docs));
+            assert!(!a.iter().any(|x| *x == st(&docs)), "{acc:?}: {a:?}");
+        }
+        // Outside the home: bound at its own access, whatever the home's.
+        for home_access in [Access::Rw, Access::Ro] {
+            for acc in [Access::Rw, Access::Ro] {
+                let ctx = start(home_access, acc, &outside);
+                let a = args_of(&ctx);
+                assert!(
+                    has_seq(&a, &[op(acc), &st(&outside), &st(&outside)]),
+                    "{home_access:?} home, {acc:?} {outside:?}: {a:?}"
+                );
+                assert_eq!(
+                    Views::base(&ctx).writable(&outside.join("x")),
+                    acc == Access::Rw
+                );
+            }
+        }
+        // A link outside the home: shown where it leads, with the link
+        // where the app looks for it.
+        let link = base.join("data/Docs");
+        std::os::unix::fs::symlink(&outside, &link).unwrap();
+        let a = args_of(&start(Access::Rw, Access::Ro, &link));
+        assert!(
+            has_seq(&a, &["--ro-bind-try", &st(&outside), &st(&outside)]),
+            "{a:?}"
+        );
+        assert!(
+            has_seq(&a, &["--symlink", &st(&outside), &st(&link)]),
+            "{a:?}"
+        );
+        // A link in a read-only home: the home shows the link itself.
+        let in_home = home.join("Docs");
+        std::os::unix::fs::symlink(&outside, &in_home).unwrap();
+        let a = args_of(&start(Access::Ro, Access::Rw, &in_home));
+        assert!(
+            has_seq(&a, &["--bind-try", &st(&outside), &st(&outside)]),
+            "{a:?}"
+        );
+        assert!(!a.iter().any(|x| *x == st(&in_home)), "{a:?}");
+        // In a writable home the app could have put that link there: where
+        // it leads is not shown, and the start names the link.
+        let ctx = start(Access::Rw, Access::Ro, &in_home);
+        let cmd = Bubblewrap.build(&ctx).unwrap();
+        assert!(
+            !cmd.args.iter().any(|x| *x == st(&outside)),
+            "{:?}",
+            cmd.args
+        );
+        assert!(
+            cmd.notes
+                .iter()
+                .any(|n| n.contains(&st(&in_home)) && n.contains("the app may have put it there")),
+            "{:?}",
+            cmd.notes
+        );
+        assert!(!Views::base(&ctx).visible(&outside.join("x")));
+        // A user folder that shows more than one is still not shown.
+        fs::create_dir_all(home.join(".ssh")).unwrap();
+        let a = args_of(&start(Access::Rw, Access::Ro, &home.join(".ssh")));
+        let ssh = st(&home.join(".ssh"));
+        assert!(
+            !has_seq(&a, &["--ro-bind-try", &ssh, &ssh]),
+            "refused: {a:?}"
+        );
+    }
+
+    /// A start file kept as a link into a read-only user folder
+    /// (`~/.bashrc` to `~/Documents/dotfiles/bashrc`) with the whole home
+    /// writable is read-only: the folder's own read-only mount comes after
+    /// the home (finding R63). A writable user folder inside it that holds
+    /// the file (Desktop set to `~/Documents/dotfiles`) is mounted writable
+    /// after the read-only one, though the home has that access too, and
+    /// the start file is locked after both.
+    #[test]
+    fn a_start_file_linked_into_a_read_only_user_folder_is_never_writable() {
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap().join("home");
+        let dots = home.join("Documents/dotfiles");
+        fs::create_dir_all(&dots).unwrap();
+        fs::write(dots.join("bashrc"), "# rc\n").unwrap();
+        std::os::unix::fs::symlink(dots.join("bashrc"), home.join(".bashrc")).unwrap();
+        let mut p = full_rw();
+        p.filesystem.documents = Access::Ro;
+        let mut ctx = ctx_for(&p, &home);
+        ctx.host
+            .xdg_dirs
+            .insert("documents".into(), home.join("Documents"));
+        let st = |p: &Path| p.to_string_lossy().into_owned();
+        let docs = st(&home.join("Documents"));
+        let a = args_of(&ctx);
+        let h = at_seq(&a, &["--bind", &st(&home), &st(&home)])[0];
+        let ro = at_seq(&a, &["--ro-bind-try", &docs, &docs]);
+        assert!(ro.iter().any(|i| *i > h), "{a:?}");
+        assert!(!Views::base(&ctx).writable(&dots.join("bashrc")));
+        // A writable user folder inside the read-only one: mounted after
+        // it, and the start file locked after both.
+        ctx.permissions.filesystem.desktop = Access::Rw;
+        ctx.host.xdg_dirs.insert("desktop".into(), dots.clone());
+        let a = args_of(&ctx);
+        let rw = at_seq(&a, &["--bind-try", &st(&dots), &st(&dots)]);
+        assert!(
+            rw.iter()
+                .any(|i| *i > at_seq(&a, &["--ro-bind-try", &docs, &docs])[0]),
+            "{a:?}"
+        );
+        assert!(Views::base(&ctx).writable(&dots.join("bashrc")));
+        assert!(
+            locked_after(&a, &st(&dots.join("bashrc")), &st(&dots)),
+            "{a:?}"
+        );
+    }
+
+    /// A user folder reached through a link the app could have put there
+    /// is not shown where the link leads: with the whole home writable,
+    /// `mv ~/Downloads ~/D; ln -s /data/elsewhere ~/Downloads` in one start
+    /// showed `/data/elsewhere` writable in the next, any place on the
+    /// computer the app chose. Also a link in a writable user folder
+    /// (Downloads set to `~/Documents/dl`, Documents writable) without the
+    /// whole home, and a link inside a link's target. A link in a folder
+    /// the app cannot change is followed as before. The start names the
+    /// link, and the views agree with the mounts.
+    #[test]
+    fn a_user_folder_behind_a_link_the_app_could_plant_is_not_shown() {
+        let t = tempfile::tempdir().unwrap();
+        let base = fs::canonicalize(t.path()).unwrap();
+        let home = base.join("home");
+        let elsewhere = base.join("data/elsewhere");
+        for d in [home.join("Documents"), home.join("D"), elsewhere.clone()] {
+            fs::create_dir_all(d).unwrap();
+        }
+        let st = |p: &Path| p.to_string_lossy().into_owned();
+        let planted = home.join("Downloads");
+        std::os::unix::fs::symlink(&elsewhere, &planted).unwrap();
+        let start = |p: &PermissionSet, downloads: &Path| {
+            let mut ctx = ctx_for(p, &home);
+            ctx.permissions.filesystem.downloads = Access::Rw;
+            ctx.host
+                .xdg_dirs
+                .insert("downloads".into(), downloads.to_path_buf());
+            ctx.host
+                .xdg_dirs
+                .insert("documents".into(), home.join("Documents"));
+            ctx
+        };
+        let refused = |ctx: &LaunchContext, link: &Path| {
+            let cmd = Bubblewrap.build(ctx).unwrap();
+            assert!(
+                !cmd.args.iter().any(|x| *x == st(&elsewhere)),
+                "{:?}",
+                cmd.args
+            );
+            assert!(
+                cmd.notes
+                    .iter()
+                    .any(|n| n.contains(&st(link)) && n.contains("the app may have put it there")),
+                "{:?}",
+                cmd.notes
+            );
+            assert!(!Views::base(ctx).visible(&elsewhere.join("x")));
+            assert!(matches!(
+                user_dir(ctx, "downloads"),
+                Err(NotShown::Link(_, l)) if l == link
+            ));
+        };
+        // The writable whole home holds the link.
+        refused(&start(&full_rw(), &planted), &planted);
+        // A writable user folder holds it, without the whole home.
+        let dl = home.join("Documents/dl");
+        std::os::unix::fs::symlink(&elsewhere, &dl).unwrap();
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.documents = Access::Rw;
+        refused(&start(&p, &dl), &dl);
+        // A link inside a link's target: `~/D/dl` reached through `/data/d`,
+        // a link the app cannot change, into the writable home.
+        let into_home = base.join("data/d");
+        std::os::unix::fs::symlink(home.join("D"), &into_home).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, home.join("D/dl")).unwrap();
+        refused(
+            &start(&full_rw(), &into_home.join("dl")),
+            &home.join("D/dl"),
+        );
+        // A link in a folder the app cannot change is followed: the home
+        // read-only, or Documents read-only.
+        let mut p = full_rw();
+        p.filesystem.home_access = Access::Ro;
+        let a = args_of(&start(&p, &planted));
+        assert!(
+            has_seq(&a, &["--bind-try", &st(&elsewhere), &st(&elsewhere)]),
+            "{a:?}"
+        );
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.documents = Access::Ro;
+        let a = args_of(&start(&p, &dl));
+        assert!(
+            has_seq(&a, &["--bind-try", &st(&elsewhere), &st(&elsewhere)]),
+            "{a:?}"
+        );
+    }
+
+    /// A user folder set to `/tmp` or to a folder in it where programs
+    /// outside the sandbox listen (`/tmp/tmux-1000`) is not shown, with or
+    /// without the whole home: bound over the sandbox's own `/tmp`, it
+    /// handed the app the host's terminal multiplexers and SSH agents,
+    /// read-only too (`tmux -S /tmp/tmux-1000/default new-window …` runs
+    /// outside the sandbox). The start says why. An ordinary folder in
+    /// `/tmp` is shown.
+    #[test]
+    fn a_user_folder_where_outside_programs_listen_is_not_shown() {
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap().join("home");
+        fs::create_dir_all(&home).unwrap();
+        for p in [full_rw(), PermissionSet::strict_gui()] {
+            for (at, acc) in [("/tmp", Access::Ro), ("/tmp/tmux-1000", Access::Rw)] {
+                let mut ctx = ctx_for(&p, &home);
+                ctx.permissions.filesystem.downloads = acc;
+                ctx.host.xdg_dirs.insert("downloads".into(), at.into());
+                let cmd = Bubblewrap.build(&ctx).unwrap();
+                assert!(
+                    !cmd.args
+                        .windows(2)
+                        .any(|w| w[0].ends_with("bind-try") && w[1] == at),
+                    "{at}: {:?}",
+                    cmd.args
+                );
+                assert!(
+                    cmd.notes.iter().any(
+                        |n| n.contains(at) && n.contains("programs outside the sandbox listen")
+                    ),
+                    "{at}: {:?}",
+                    cmd.notes
+                );
+                assert!(matches!(
+                    user_dir(&ctx, "downloads"),
+                    Err(NotShown::Sockets(_))
+                ));
+            }
+        }
+        assert!(sam_core::places::user_folder_place(Path::new("/tmp/exchange"), &home).is_some());
+    }
+
+    /// An extra folder granted read and write inside a read-only user
+    /// folder under the writable whole home (`~/Documents/proj`, Documents
+    /// read-only) is bound writable after the read-only folder, as the
+    /// switch says and the sandbox check expects: the app cannot change
+    /// its way, since the read-only folder is a mount of its own. Before,
+    /// it was taken as lying below the writable home, left out, and so
+    /// read-only, while the start said the app could already change it.
+    /// The same inside a read-only extra folder. One right below the
+    /// writable home is still not bound a second time.
+    #[test]
+    fn a_write_grant_inside_a_read_only_user_folder_stays_writable() {
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap().join("home");
+        for d in ["Documents/proj", "ref/proj", "work"] {
+            fs::create_dir_all(home.join(d)).unwrap();
+        }
+        let st = |p: &Path| p.to_string_lossy().into_owned();
+        let docs = st(&home.join("Documents"));
+        let reference = st(&home.join("ref"));
+        let below = |notes: &[String], p: &str| {
+            notes
+                .iter()
+                .any(|n| n.contains(p) && n.contains("does not bind it a second time"))
+        };
+        for (inside, ro) in [("Documents/proj", &docs), ("ref/proj", &reference)] {
+            let proj = st(&home.join(inside));
+            let mut p = full_rw();
+            p.filesystem.documents = Access::Ro;
+            p.filesystem.custom_read = vec![reference.clone()];
+            p.filesystem.custom_write = vec![proj.clone(), st(&home.join("work"))];
+            let mut ctx = ctx_for(&p, &home);
+            ctx.host
+                .xdg_dirs
+                .insert("documents".into(), home.join("Documents"));
+            let cmd = Bubblewrap.build(&ctx).unwrap();
+            let ro_at = at_seq(&cmd.args, &["--ro-bind-try", ro, ro]);
+            let rw_at = at_seq(&cmd.args, &["--bind-try", &proj, &proj]);
+            assert!(
+                rw_at.iter().any(|w| ro_at.iter().any(|r| w > r)),
+                "{inside}: writable after the read-only folder: {:?}",
+                cmd.args
+            );
+            assert!(!below(&cmd.notes, &proj), "{inside}: {:?}", cmd.notes);
+            assert!(Views::base(&ctx).writable(&home.join(inside).join("x")));
+            // Right below the writable home: shown by it, not bound again.
+            let work = st(&home.join("work"));
+            assert!(
+                !has_seq(&cmd.args, &["--bind-try", &work, &work]),
+                "{:?}",
+                cmd.args
+            );
+            assert!(below(&cmd.notes, &work), "{:?}", cmd.notes);
+        }
+    }
+
+    /// A link inside a read-only folder under the writable whole home
+    /// counts as one the app could have put there: such a folder is not
+    /// mounted at all when the sandbox refuses it (Documents itself a link
+    /// to `~/Dropbox/Documents` in the writable home), so the home shows
+    /// it writable; and where it is mounted, the app may have written
+    /// there in an earlier start, before it was set read-only. Taken as
+    /// read-only, `mv ~/Dropbox/Documents/Downloads ~/x; ln -s /srv/data
+    /// ~/Dropbox/Documents/Downloads` in one start bound `/srv/data`
+    /// writable as Downloads in the next (review of finding R63). The same
+    /// inside a read-only extra folder.
+    #[test]
+    fn a_link_inside_a_read_only_folder_in_the_writable_home_is_not_followed() {
+        let t = tempfile::tempdir().unwrap();
+        let base = fs::canonicalize(t.path()).unwrap();
+        let home = base.join("home");
+        let elsewhere = base.join("srv/data");
+        let dropbox_docs = home.join("Dropbox/Documents");
+        for d in [
+            dropbox_docs.clone(),
+            home.join("Docs"),
+            home.join("ref"),
+            elsewhere.clone(),
+        ] {
+            fs::create_dir_all(d).unwrap();
+        }
+        std::os::unix::fs::symlink(&dropbox_docs, home.join("Documents")).unwrap();
+        let st = |p: &Path| p.to_string_lossy().into_owned();
+        let start = |docs: &Path, downloads: &Path, custom_read: Vec<String>| {
+            let mut p = full_rw();
+            p.filesystem.documents = Access::Ro;
+            p.filesystem.downloads = Access::Rw;
+            p.filesystem.custom_read = custom_read;
+            let mut ctx = ctx_for(&p, &home);
+            ctx.host
+                .xdg_dirs
+                .insert("documents".into(), docs.to_path_buf());
+            ctx.host
+                .xdg_dirs
+                .insert("downloads".into(), downloads.to_path_buf());
+            ctx
+        };
+        let refused = |ctx: &LaunchContext, link: &Path| {
+            let cmd = Bubblewrap.build(ctx).unwrap();
+            assert!(
+                !cmd.args.iter().any(|x| *x == st(&elsewhere)),
+                "{link:?}: {:?}",
+                cmd.args
+            );
+            assert!(
+                cmd.notes
+                    .iter()
+                    .any(|n| n.contains(&st(link)) && n.contains("the app may have put it there")),
+                "{:?}",
+                cmd.notes
+            );
+            assert!(!Views::base(ctx).visible(&elsewhere.join("x")));
+            assert!(matches!(
+                user_dir(ctx, "downloads"),
+                Err(NotShown::Link(_, l)) if l == link
+            ));
+        };
+        // The review's case: Documents is refused and not mounted.
+        let planted = dropbox_docs.join("Downloads");
+        std::os::unix::fs::symlink(&elsewhere, &planted).unwrap();
+        let ctx = start(&home.join("Documents"), &planted, Vec::new());
+        assert!(matches!(
+            user_dir(&ctx, "documents"),
+            Err(NotShown::Link(..))
+        ));
+        refused(&ctx, &planted);
+        // A read-only Documents the sandbox mounts.
+        let dl = home.join("Docs/dl");
+        std::os::unix::fs::symlink(&elsewhere, &dl).unwrap();
+        let ctx = start(&home.join("Docs"), &dl, Vec::new());
+        assert!(user_dir(&ctx, "documents").is_ok());
+        refused(&ctx, &dl);
+        // A read-only extra folder.
+        let in_ref = home.join("ref/dl");
+        std::os::unix::fs::symlink(&elsewhere, &in_ref).unwrap();
+        refused(
+            &start(&home.join("Docs"), &in_ref, vec![st(&home.join("ref"))]),
+            &in_ref,
+        );
+    }
+
+    /// The folders above a folder bound at an access of its own inside a
+    /// folder the app can change are pinned: above a read-only user folder
+    /// (`~/Sync/Documents` read-only under the writable home), above a
+    /// read-only extra folder (`~/work/ref`), and so above a writable
+    /// extra folder inside a read-only one (`~/Sync/Documents/proj`), with
+    /// or without the whole home. A second start of the app with these
+    /// permissions could otherwise rename a folder above (`mv ~/Sync
+    /// ~/S2`), which carries the mount along, and put a link in its place
+    /// between SAM's look and the mount, so the next start bound where the
+    /// link led (review of finding R63). A folder that is a grant of its
+    /// own, such as the home, is a mount already.
+    #[test]
+    fn the_folders_above_a_folder_bound_at_its_own_access_are_pinned() {
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap().join("home");
+        for d in ["Sync/Documents/proj", "work/ref", "Sync/a/Documents"] {
+            fs::create_dir_all(home.join(d)).unwrap();
+        }
+        let st = |p: &Path| p.to_string_lossy().into_owned();
+        let pinned_before = |a: &[String], pin: &Path, op: &str, inside: &Path| {
+            let (pin, inside) = (st(pin), st(inside));
+            let pins = at_seq(a, &["--bind", &pin, &pin]);
+            let mounts = at_seq(a, &[op, &inside, &inside]);
+            assert!(
+                !mounts.is_empty() && pins.iter().any(|p| mounts.iter().any(|m| p < m)),
+                "{pin} pinned before {op} {inside}: {a:?}"
+            );
+        };
+        let mut p = full_rw();
+        p.filesystem.documents = Access::Ro;
+        p.filesystem.custom_read = vec![st(&home.join("work/ref"))];
+        p.filesystem.custom_write = vec![st(&home.join("Sync/Documents/proj"))];
+        let mut ctx = ctx_for(&p, &home);
+        ctx.host
+            .xdg_dirs
+            .insert("documents".into(), home.join("Sync/Documents"));
+        let a = args_of(&ctx);
+        pinned_before(
+            &a,
+            &home.join("Sync"),
+            "--ro-bind-try",
+            &home.join("Sync/Documents"),
+        );
+        pinned_before(
+            &a,
+            &home.join("work"),
+            "--ro-bind-try",
+            &home.join("work/ref"),
+        );
+        pinned_before(
+            &a,
+            &home.join("Sync"),
+            "--bind-try",
+            &home.join("Sync/Documents/proj"),
+        );
+        assert_eq!(
+            at_seq(&a, &["--bind", &st(&home), &st(&home)]).len(),
+            1,
+            "the home is bound once: {a:?}"
+        );
+        // Without the whole home: below a writable extra folder.
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.documents = Access::Ro;
+        p.filesystem.custom_write = vec![st(&home.join("Sync"))];
+        let mut ctx = ctx_for(&p, &home);
+        ctx.host
+            .xdg_dirs
+            .insert("documents".into(), home.join("Sync/a/Documents"));
+        let a = args_of(&ctx);
+        pinned_before(
+            &a,
+            &home.join("Sync/a"),
+            "--ro-bind-try",
+            &home.join("Sync/a/Documents"),
+        );
+        // Below a folder opened read-only inside a writable extra folder:
+        // the start shows the opened `~/work/sub` through `~/work`, so it
+        // binds nothing for it, but the write grant `~/work/sub/proj` lies
+        // below a read-only grant and is bound writable on its own. Its
+        // own place is the only guarded one below `~/work`, so only that
+        // pins `~/work/sub`.
+        fs::create_dir_all(home.join("work/sub/proj")).unwrap();
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.opened_files = Access::Ro;
+        p.filesystem.custom_write = vec![st(&home.join("work")), st(&home.join("work/sub/proj"))];
+        let mut ctx = ctx_for(&p, &home);
+        ctx.owd = home.clone();
+        ctx.args = vec!["work/sub".into()];
+        let a = args_of(&ctx);
+        let proj = st(&home.join("work/sub/proj"));
+        assert!(
+            has_seq(&a, &["--bind-try", &proj, &proj]),
+            "{proj} bound writable: {a:?}"
+        );
+        pinned_before(
+            &a,
+            &home.join("work/sub"),
+            "--bind-try",
+            &home.join("work/sub/proj"),
+        );
+    }
+
+    /// Two user folders set to one place with different access (Music
+    /// read and write, Pictures read-only, both `~/Media`) take the
+    /// stricter one, whatever their order in `XDG_DIR_KEYS`: `~/Media` is
+    /// read-only, in the mounts as in the views, with the whole home
+    /// writable, read-only or not granted, and the start names the folders
+    /// and the rule (owner decision of 2026-11-27). The folder listed last
+    /// decided before, so Pictures read-only and Videos read and write at
+    /// one place showed it writable. All at one access, nothing changes.
+    #[test]
+    fn user_folders_at_one_place_take_the_stricter_access() {
+        fn user_folder_switch<'a>(f: &'a mut FilesystemPerms, key: &str) -> &'a mut Access {
+            match key {
+                "documents" => &mut f.documents,
+                "downloads" => &mut f.downloads,
+                "music" => &mut f.music,
+                "pictures" => &mut f.pictures,
+                "videos" => &mut f.videos,
+                "desktop" => &mut f.desktop,
+                _ => unreachable!("{key}"),
+            }
+        }
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap().join("home");
+        let media = home.join("Media");
+        fs::create_dir_all(&media).unwrap();
+        let m = media.to_string_lossy().into_owned();
+        // What the mounts show at `~/Media`: the last bind of it, or the
+        // home's access.
+        let mounted_rw = |a: &[String], home_rw: bool| {
+            let rw = at_seq(a, &["--bind-try", &m, &m]).last().copied();
+            let ro = at_seq(a, &["--ro-bind-try", &m, &m]).last().copied();
+            match (rw, ro) {
+                (None, None) => home_rw,
+                (Some(_), None) => true,
+                (None, Some(_)) => false,
+                (Some(w), Some(r)) => w > r,
+            }
+        };
+        let (rw, ro) = (Access::Rw, Access::Ro);
+        // Every ordered pair of user folders, one read and write and one
+        // read-only, and two at one access for the control.
+        let mut cases: Vec<(Vec<(&str, Access)>, bool)> = Vec::new();
+        for a in XDG_DIR_KEYS {
+            for b in XDG_DIR_KEYS.iter().filter(|b| **b != a) {
+                cases.push((vec![(a, rw), (b, ro)], false));
+            }
+        }
+        cases.push((vec![("music", rw), ("videos", rw)], true));
+        cases.push((vec![("music", ro), ("videos", ro)], false));
+        // Every case checked, so each order and each part shows when it
+        // goes wrong.
+        let mut wrong = Vec::new();
+        for home_access in [Some(rw), Some(ro), None] {
+            for (set, want) in &cases {
+                let mut p = PermissionSet::strict_gui();
+                if let Some(acc) = home_access {
+                    p.filesystem.home = true;
+                    p.filesystem.home_access = acc;
+                }
+                let mut ctx = ctx_for(&p, &home);
+                for (key, acc) in set {
+                    *user_folder_switch(&mut ctx.permissions.filesystem, key) = *acc;
+                    ctx.host.xdg_dirs.insert((*key).into(), media.clone());
+                }
+                let cmd = Bubblewrap.build(&ctx).unwrap();
+                let a = cmd.args.clone();
+                let case = format!("{home_access:?} home, {set:?}");
+                if mounted_rw(&a, home_access == Some(rw)) != *want {
+                    wrong.push(format!("{case}: mounted writable is not {want}"));
+                }
+                if Views::base(&ctx).writable(&media.join("x")) != *want {
+                    wrong.push(format!("{case}: the views say writable is not {want}"));
+                }
+                let named = cmd
+                    .notes
+                    .iter()
+                    .any(|n| n.contains("/Media") && n.contains("stricter setting wins"));
+                let mixed = set.iter().any(|(_, a)| *a == rw) && set.iter().any(|(_, a)| *a == ro);
+                if named != mixed {
+                    wrong.push(format!("{case}: named {named}: {:?}", cmd.notes));
+                }
+            }
+        }
+        assert!(wrong.is_empty(), "{wrong:#?}");
+    }
+
+    /// The folders SAM always binds read-only (the fonts and the font
+    /// settings) are never pinned where their read-only bind is still the
+    /// topmost mount, on them or inside them: with the whole home writable
+    /// and an extra read-only folder inside a font folder
+    /// (`~/.fonts/licensed`), a pin of `~/.fonts` was bound after its
+    /// read-only bind (equal depth, stable order) and made the font folder
+    /// writable, which the start never allowed before the pins of finding
+    /// R63. The folders above it the app can change are still pinned.
+    #[test]
+    fn a_folder_bound_read_only_for_the_fonts_is_never_pinned() {
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap().join("home");
+        for d in [
+            ".fonts/licensed",
+            ".local/share/fonts/a/licensed",
+            ".config/fontconfig/conf.d",
+        ] {
+            fs::create_dir_all(home.join(d)).unwrap();
+        }
+        let st = |p: &Path| p.to_string_lossy().into_owned();
+        let mut p = full_rw();
+        p.filesystem.custom_read = vec![
+            st(&home.join(".fonts/licensed")),
+            st(&home.join(".local/share/fonts/a/licensed")),
+            st(&home.join(".config/fontconfig/conf.d")),
+        ];
+        let ctx = ctx_for(&p, &home);
+        let a = args_of(&ctx);
+        for (ro, inside) in [
+            (".fonts", ".fonts"),
+            (".local/share/fonts", ".local/share/fonts/a"),
+            (".config/fontconfig", ".config/fontconfig"),
+        ] {
+            let (ro, inside) = (st(&home.join(ro)), st(&home.join(inside)));
+            assert!(
+                !at_seq(&a, &["--ro-bind-try", &ro, &ro]).is_empty(),
+                "{ro} bound read-only: {a:?}"
+            );
+            for pin in [&ro, &inside] {
+                assert!(
+                    at_seq(&a, &["--bind", pin, pin]).is_empty(),
+                    "{pin} never pinned: {a:?}"
+                );
+            }
+        }
+        let share = st(&home.join(".local/share"));
+        assert!(
+            !at_seq(&a, &["--bind", &share, &share]).is_empty(),
+            "the folder above is pinned: {a:?}"
+        );
+    }
+
+    /// A place bound writable somewhere else (an extra writable folder, a
+    /// file opened writable, a writable bind of SAM's, each outside the
+    /// home) does not cover the fonts and the font settings: their
+    /// read-only bind is still the topmost mount, so they are never pinned
+    /// writable, as in a start without it. Counted as bound writable after
+    /// a font place, or as a writable mount between it and the folder,
+    /// any writable bind anywhere had the pin of `~/.fonts` made the font
+    /// folder writable. Each way is checked on its own, so each one shows
+    /// when it counts.
+    #[test]
+    fn a_place_bound_writable_elsewhere_leaves_the_font_folders_unpinned() {
+        let st = |p: &Path| p.to_string_lossy().into_owned();
+        let mut lost = Vec::new();
+        for way in [
+            "extra writable folder",
+            "opened file",
+            "SAM's writable bind",
+        ] {
+            let t = tempfile::tempdir().unwrap();
+            let home = fs::canonicalize(t.path()).unwrap().join("home");
+            for d in [
+                ".fonts/licensed",
+                ".local/share/fonts/a/licensed",
+                ".config/fontconfig/conf.d",
+            ] {
+                fs::create_dir_all(home.join(d)).unwrap();
+            }
+            let shared = home.parent().unwrap().join("shared");
+            fs::create_dir_all(&shared).unwrap();
+            let doc = home.parent().unwrap().join("doc.txt");
+            fs::write(&doc, "").unwrap();
+            let mut p = full_rw();
+            p.filesystem.custom_read = vec![
+                st(&home.join(".fonts/licensed")),
+                st(&home.join(".local/share/fonts/a/licensed")),
+                st(&home.join(".config/fontconfig/conf.d")),
+            ];
+            if way == "extra writable folder" {
+                p.filesystem.custom_write = vec![st(&shared)];
+            }
+            let mut ctx = ctx_for(&p, &home);
+            if way == "opened file" {
+                ctx.permissions.filesystem.opened_files = Access::Rw;
+                ctx.args = vec![st(&doc)];
+                assert_eq!(opened_paths(&ctx), vec![(doc.clone(), true)]);
+            } else if way == "SAM's writable bind" {
+                ctx.extra_binds = vec![(shared.clone(), "/run/x".into(), true)];
+            }
+            let a = args_of(&ctx);
+            let shared = st(&shared);
+            let doc = st(&doc);
+            let bound = match way {
+                "extra writable folder" => has_seq(&a, &["--bind-try", &shared, &shared]),
+                "opened file" => has_seq(&a, &["--bind-try", &doc, &doc]),
+                _ => has_seq(&a, &["--bind", &shared, "/run/x"]),
+            };
+            assert!(bound, "{way}: bound writable: {a:?}");
+            for (ro, inside) in [
+                (".fonts", ".fonts"),
+                (".local/share/fonts", ".local/share/fonts/a"),
+                (".config/fontconfig", ".config/fontconfig"),
+            ] {
+                let (ro, inside) = (st(&home.join(ro)), st(&home.join(inside)));
+                assert!(
+                    !at_seq(&a, &["--ro-bind-try", &ro, &ro]).is_empty(),
+                    "{way}: {ro} bound read-only: {a:?}"
+                );
+                for pin in [&ro, &inside] {
+                    if !at_seq(&a, &["--bind", pin, pin]).is_empty() {
+                        lost.push(format!("{way}: {pin} pinned writable"));
+                    }
+                }
+            }
+        }
+        assert!(lost.is_empty(), "{lost:#?}");
+    }
+
+    /// A writable extra folder inside a place SAM binds read-only for the
+    /// fonts or the themes, or at one, is bound after it and writable: a
+    /// start file kept as a link into it (`~/.bashrc` to
+    /// `~/.fonts/work/dots/bashrc`) keeps the pins of the folders above
+    /// where its guard lands (review B2 S3, R50), so the app cannot rename
+    /// `dots` away with the guard. Skipped on or inside the whole read-only
+    /// place, those pins were lost. The read-only place itself, where it
+    /// is still the topmost mount, stays unpinned.
+    #[test]
+    fn a_writable_folder_inside_a_read_only_font_or_theme_place_keeps_its_pins() {
+        let st = |p: &Path| p.to_string_lossy().into_owned();
+        // The read-only place, the writable extra folder, the permissions:
+        // the whole home writable with the font folder an extra read-only
+        // folder (so the writable one inside is bound on its own), no home
+        // with the writable folder at the font folder, and no home with the
+        // host themes shown.
+        let mut fonts = full_rw();
+        fonts.filesystem.custom_read = vec![".fonts".into()];
+        let mut themes = PermissionSet::strict_gui();
+        themes.advanced.host_themes = true;
+        let cases = [
+            (".fonts", ".fonts/work", fonts),
+            (".fonts", ".fonts", PermissionSet::strict_gui()),
+            (".config/gtk-3.0", ".config/gtk-3.0", themes.clone()),
+            (".config/gtk-3.0", ".config/gtk-3.0/work", themes),
+        ];
+        let mut lost = Vec::new();
+        for (ro, work, mut p) in cases {
+            let t = tempfile::tempdir().unwrap();
+            let home = fs::canonicalize(t.path()).unwrap().join("home");
+            let dots = home.join(work).join("dots");
+            fs::create_dir_all(&dots).unwrap();
+            fs::write(dots.join("bashrc"), "").unwrap();
+            std::os::unix::fs::symlink(dots.join("bashrc"), home.join(".bashrc")).unwrap();
+            let in_home = |v: &[String]| v.iter().map(|c| st(&home.join(c))).collect();
+            p.filesystem.custom_read = in_home(&p.filesystem.custom_read);
+            p.filesystem.custom_write = in_home(&[work.to_string()]);
+            let a = args_of(&ctx_for(&p, &home));
+            let (ro, work, dots) = (st(&home.join(ro)), st(&home.join(work)), st(&dots));
+            let bashrc = format!("{dots}/bashrc");
+            let first = |seq: &[&str]| at_seq(&a, seq).first().copied();
+            let ro_bind = first(&["--ro-bind-try", &ro, &ro]).expect("bound read-only");
+            let write = first(&["--bind-try", &work, &work]).expect("bound writable");
+            assert!(ro_bind < write, "{work} after {ro}: {a:?}");
+            let pin = first(&["--bind", &dots, &dots]);
+            let guard = first(&["--ro-bind-try", &bashrc, &bashrc]).expect("bashrc guarded");
+            // Every case checked, so each one shows when its pin is lost.
+            if !pin.is_some_and(|pin| write < pin && pin < guard) {
+                lost.push(format!(
+                    "{dots} pinned after {work} ({write}) and before the guard ({guard}): {pin:?}"
+                ));
+            }
+            if ro != work {
+                assert!(
+                    first(&["--bind", &ro, &ro]).is_none(),
+                    "{ro} never pinned: {a:?}"
+                );
+            }
+        }
+        assert!(lost.is_empty(), "{lost:#?}");
+    }
+
+    /// A writable user folder inside a font folder under the writable
+    /// whole home (`XDG_MUSIC_DIR=~/.fonts/work`) gets no mount of its own,
+    /// since the home already shows it writable, so the read-only bind of
+    /// `~/.fonts` stays the topmost mount there. The folders above a start
+    /// file kept as a link into it (`~/.bashrc` to
+    /// `~/.fonts/work/dots/bashrc`) are then not pinned: judged from the
+    /// views, which record the user folder writable, `dots` was pinned
+    /// after the read-only bind and made writable inside the read-only font
+    /// folder. The font folder stays read-only, and nothing in it is bound
+    /// writable.
+    #[test]
+    fn a_writable_user_folder_the_home_shows_inside_a_font_folder_adds_no_pin() {
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap().join("home");
+        let work = home.join(".fonts/work");
+        let dots = work.join("dots");
+        fs::create_dir_all(&dots).unwrap();
+        fs::write(dots.join("bashrc"), "").unwrap();
+        std::os::unix::fs::symlink(dots.join("bashrc"), home.join(".bashrc")).unwrap();
+        let mut p = full_rw();
+        p.filesystem.music = Access::Rw;
+        let mut ctx = ctx_for(&p, &home);
+        ctx.host.xdg_dirs.insert("music".into(), work.clone());
+        let a = args_of(&ctx);
+        let st = |p: &Path| p.to_string_lossy().into_owned();
+        let fonts = st(&home.join(".fonts"));
+        assert!(
+            !at_seq(&a, &["--ro-bind-try", &fonts, &fonts]).is_empty(),
+            "{fonts} bound read-only: {a:?}"
+        );
+        let writable_inside: Vec<&[String]> = a
+            .windows(3)
+            .filter(|w| {
+                (w[0] == "--bind" || w[0] == "--bind-try")
+                    && w[1] == w[2]
+                    && Path::new(&w[1]).starts_with(&fonts)
+            })
+            .collect();
+        assert!(
+            writable_inside.is_empty(),
+            "nothing inside {fonts} bound writable: {writable_inside:?}"
+        );
+    }
+
+    /// A writable user folder set to a font folder itself
+    /// (`XDG_MUSIC_DIR=~/.fonts`), without the whole home or with the home
+    /// read-only, gets its own writable mount at the same place as the
+    /// font folder's read-only bind. That one comes after it (equal depth,
+    /// stable order), so the read-only bind stays the topmost mount and
+    /// the folder above an extra read-only folder inside
+    /// (`~/.fonts/dots/licensed`) is not pinned: a pin there was bound
+    /// after the read-only bind and made `dots` writable inside the
+    /// read-only font folder. Only a writable mount strictly inside the
+    /// font folder lets the app rename something there.
+    #[test]
+    fn a_writable_user_folder_at_a_font_folder_adds_no_pin_inside() {
+        let st = |p: &Path| p.to_string_lossy().into_owned();
+        let mut read_only_home = PermissionSet::strict_gui();
+        read_only_home.filesystem.home = true;
+        read_only_home.filesystem.home_access = Access::Ro;
+        let mut lost = Vec::new();
+        for (case, mut p) in [
+            ("no home", PermissionSet::strict_gui()),
+            ("read-only home", read_only_home),
+        ] {
+            let t = tempfile::tempdir().unwrap();
+            let home = fs::canonicalize(t.path()).unwrap().join("home");
+            let fonts = home.join(".fonts");
+            let dots = fonts.join("dots");
+            fs::create_dir_all(dots.join("licensed")).unwrap();
+            p.filesystem.music = Access::Rw;
+            p.filesystem.custom_read = vec![st(&dots.join("licensed"))];
+            let mut ctx = ctx_for(&p, &home);
+            ctx.host.xdg_dirs.insert("music".into(), fonts.clone());
+            let a = args_of(&ctx);
+            let (fonts, dots) = (st(&fonts), st(&dots));
+            let first = |seq: &[&str]| at_seq(&a, seq).first().copied();
+            let write = first(&["--bind-try", &fonts, &fonts]).expect("Music bound writable");
+            let ro_bind = first(&["--ro-bind-try", &fonts, &fonts]).expect("bound read-only");
+            assert!(write < ro_bind, "{case}: read-only on top: {a:?}");
+            if first(&["--bind", &dots, &dots]).is_some() {
+                lost.push(format!("{case}: {dots} pinned writable: {a:?}"));
+            }
+        }
+        assert!(lost.is_empty(), "{lost:#?}");
+    }
+
+    /// A writable user folder inside a font folder in a start without the
+    /// whole home (`XDG_MUSIC_DIR=~/.fonts/work`) gets its own writable
+    /// mount, after the read-only bind of `~/.fonts`, so the app can
+    /// rename what lies inside it. A start file kept as a link into it
+    /// (`~/.bashrc` to `~/.fonts/work/dots/bashrc`) keeps the pin of
+    /// `dots`, between that mount and the guard (review B2 S3, R50): left
+    /// out of the writable mounts, the user folder counted as covered by
+    /// the read-only bind, `dots` lost its pin, and the app could rename
+    /// it away with the guard. `~/.fonts` itself stays unpinned.
+    #[test]
+    fn a_writable_user_folder_inside_a_font_folder_in_a_private_home_keeps_its_pins() {
+        let st = |p: &Path| p.to_string_lossy().into_owned();
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap().join("home");
+        let work = home.join(".fonts/work");
+        let dots = work.join("dots");
+        fs::create_dir_all(&dots).unwrap();
+        fs::write(dots.join("bashrc"), "").unwrap();
+        std::os::unix::fs::symlink(dots.join("bashrc"), home.join(".bashrc")).unwrap();
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.music = Access::Rw;
+        let mut ctx = ctx_for(&p, &home);
+        ctx.host.xdg_dirs.insert("music".into(), work.clone());
+        let a = args_of(&ctx);
+        let (fonts, work, dots) = (st(&home.join(".fonts")), st(&work), st(&dots));
+        let bashrc = format!("{dots}/bashrc");
+        let first = |seq: &[&str]| at_seq(&a, seq).first().copied();
+        let ro_bind = first(&["--ro-bind-try", &fonts, &fonts]).expect("bound read-only");
+        let write = first(&["--bind-try", &work, &work]).expect("Music bound writable");
+        assert!(ro_bind < write, "{work} after {fonts}: {a:?}");
+        let guard = first(&["--ro-bind-try", &bashrc, &bashrc]).expect("bashrc guarded");
+        let pin = first(&["--bind", &dots, &dots]);
+        assert!(
+            pin.is_some_and(|pin| write < pin && pin < guard),
+            "{dots} pinned after {work} ({write}) and before the guard ({guard}): {pin:?}: {a:?}"
+        );
+        assert!(
+            first(&["--bind", &fonts, &fonts]).is_none(),
+            "{fonts} never pinned: {a:?}"
+        );
+    }
+
+    /// A font folder opened with the app, or bound writable by SAM itself,
+    /// is bound writable after its read-only bind at its own place, so it
+    /// is writable and the folders inside it are pinned as everywhere: the
+    /// folder above an extra read-only folder inside it
+    /// (`~/.fonts/dots/licensed`) cannot be renamed away with that mount.
+    /// Counted as read-only on top, `~/.fonts/dots` lost its pin. Each
+    /// way of binding it writable is checked on its own, so each one shows
+    /// when it is no longer counted.
+    #[test]
+    fn a_font_folder_opened_or_bound_writable_keeps_the_pins_inside() {
+        let st = |p: &Path| p.to_string_lossy().into_owned();
+        let mut lost = Vec::new();
+        for way in ["opened", "SAM's bind"] {
+            let t = tempfile::tempdir().unwrap();
+            let home = fs::canonicalize(t.path()).unwrap().join("home");
+            let fonts = home.join(".fonts");
+            let dots = fonts.join("dots");
+            fs::create_dir_all(dots.join("licensed")).unwrap();
+            let shared = home.parent().unwrap().join("shared");
+            fs::create_dir_all(&shared).unwrap();
+            let mut p = PermissionSet::strict_gui();
+            p.filesystem.custom_read = vec![st(&dots.join("licensed"))];
+            let mut ctx = ctx_for(&p, &home);
+            if way == "opened" {
+                ctx.permissions.filesystem.opened_files = Access::Rw;
+                ctx.args = vec![st(&fonts)];
+                assert_eq!(opened_paths(&ctx), vec![(fonts.clone(), true)]);
+            } else {
+                ctx.extra_binds = vec![(shared.clone(), fonts.clone(), true)];
+            }
+            let a = args_of(&ctx);
+            let (fonts, dots) = (st(&fonts), st(&dots));
+            let first = |seq: &[&str]| at_seq(&a, seq).first().copied();
+            first(&["--ro-bind-try", &fonts, &fonts]).expect("bound read-only");
+            if way == "opened" {
+                first(&["--bind-try", &fonts, &fonts]).expect("opened writable");
+            }
+            if first(&["--bind", &dots, &dots]).is_none() {
+                lost.push(format!("{way}: {dots} not pinned: {a:?}"));
+            }
+        }
+        assert!(lost.is_empty(), "{lost:#?}");
     }
 
     /// With the whole home granted, credential files are replaced by an

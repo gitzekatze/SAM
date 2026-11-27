@@ -9,7 +9,9 @@
 //! `XDG_CONFIG_HOME` and `XDG_DATA_HOME` move these folders in every
 //! build. `SAM_CONFIG_DIR`, `SAM_DATA_DIR`, `SAM_APPLICATIONS_DIR` and
 //! `SAM_RUNTIME_DIR` move them only in a developer build (tests and work
-//! on SAM itself, [`DeveloperVars`]); a release build ignores them.
+//! on SAM itself, [`DeveloperVars`]); a release build ignores them, yet
+//! keeps the folders `SAM_CONFIG_DIR` and `SAM_DATA_DIR` name hidden from
+//! every app ([`folders_named_by_switches`]).
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -58,6 +60,30 @@ fn folders_moved_in(dev: &DeveloperVars) -> bool {
     ["SAM_CONFIG_DIR", "SAM_DATA_DIR"]
         .iter()
         .any(|name| switched_folder(dev, name).is_some())
+}
+
+/// The folders that SAM's folder switches `SAM_CONFIG_DIR` and
+/// `SAM_DATA_DIR` name (absolute paths only, [`folder_from`]), in every
+/// build: a developer build keeps its settings or data there, and a release
+/// build, which never uses them, still counts them among SAM's folders that
+/// every sandbox hides ([`crate::places::sams_folders`]), by the rules for
+/// the folders named like SAM's, so hiding one never covers the home or a
+/// grant it only holds. An installed SAM that once kept its data through
+/// `SAM_DATA_DIR=~/Games/sam` left its app records and the other apps'
+/// private homes there, which an app with `~/Games` granted could read once
+/// the release build stopped counting that folder as SAM's (batch review of
+/// the change that made release builds ignore these switches). Only ever
+/// hidden, never used or shown.
+pub fn folders_named_by_switches() -> Vec<PathBuf> {
+    folders_named_by_switches_in(&DeveloperVars::of_this_build())
+}
+
+/// [`folders_named_by_switches`] with the developer variables `dev`.
+fn folders_named_by_switches_in(dev: &DeveloperVars) -> Vec<PathBuf> {
+    ["SAM_CONFIG_DIR", "SAM_DATA_DIR"]
+        .iter()
+        .filter_map(|name| folder_from(dev.set_in_any_build(name)))
+        .collect()
 }
 
 impl Paths {
@@ -183,8 +209,9 @@ impl Paths {
     /// wherever they lead: its settings, its data and its unpack folder
     /// (`cfg_location`, config `extraction.location`). Each start adds the
     /// folders named like them (`~/.config/sam`, `~/.local/share/sam`, also
-    /// under `XDG_CONFIG_HOME` and `XDG_DATA_HOME`) that count as SAM's for
-    /// what it shows ([`crate::places::sams_folders`]): the sandbox hides
+    /// under `XDG_CONFIG_HOME` and `XDG_DATA_HOME`), and the folders SAM's
+    /// folder switches name ([`folders_named_by_switches`]), that count as
+    /// SAM's for what it shows ([`crate::places::sams_folders`]): the sandbox hides
     /// that list, its check expects it hidden and a terminal app's start
     /// line leaves it out (independent reviews of decision 9).
     pub fn sam_dirs(&self, cfg_location: &str) -> Vec<PathBuf> {
@@ -482,7 +509,7 @@ mod tests {
             ]
         );
         let places = crate::places::protected_places_with(&home, None, None);
-        let dirs = crate::places::sams_folders_in(&home, &own, &[], &places);
+        let dirs = crate::places::sams_folders_in(&home, &own, &[], &places, &[]);
         for d in [
             ".config/sam",
             "Games/sam",
@@ -493,5 +520,71 @@ mod tests {
             assert_eq!(n, 1, "{d}: {dirs:?}");
         }
         assert_eq!(dirs.len(), 4, "{dirs:?}");
+    }
+
+    /// A folder that `SAM_DATA_DIR` or `SAM_CONFIG_DIR` names stays one of
+    /// SAM's folders that every sandbox hides, also in a release build,
+    /// which keeps its settings and data in the standard folders and never
+    /// uses that folder: an installed SAM that once kept its data in
+    /// `~/Games/sam` left its app records and the other apps' private homes
+    /// there, and with `~/Games` granted an app read them (batch review of
+    /// the change that made release builds ignore these switches). A
+    /// developer build, which keeps its own there, lists each once. Empty
+    /// or relative values name no folder. The variables are a stand-in's.
+    #[test]
+    fn a_folder_a_switch_names_is_hidden_but_never_used_in_a_release_build() {
+        let t = tempfile::tempdir().unwrap();
+        let home = std::fs::canonicalize(t.path()).unwrap().join("u");
+        let games = home.join("Games/sam");
+        let configs = home.join("Configs/sam");
+        for d in [games.join("homes/x"), configs.clone()] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        let (g, c) = (games.clone(), configs.clone());
+        let env = move |name: &str| match name {
+            "SAM_DATA_DIR" => Some(g.clone().into_os_string()),
+            "SAM_CONFIG_DIR" => Some(c.clone().into_os_string()),
+            _ => None,
+        };
+        let places = crate::places::protected_places_with(&home, None, None);
+        let shown = [home.join("Games"), home.join("Configs")];
+        for developer in [false, true] {
+            let dev = DeveloperVars::new(developer, &env);
+            let p = Paths::from_vars(&home, &dev, &env);
+            if developer {
+                assert_eq!((&p.config_dir, &p.data_dir), (&configs, &games));
+            } else {
+                assert_eq!(p.config_dir, home.join(".config/sam"));
+                assert_eq!(p.data_dir, home.join(".local/share/sam"));
+            }
+            let switched = folders_named_by_switches_in(&dev);
+            assert_eq!(
+                switched,
+                vec![configs.clone(), games.clone()],
+                "{developer}"
+            );
+            let sams =
+                crate::places::sams_folders_in(&home, &p.sam_dirs(""), &shown, &places, &switched);
+            for d in [&games, &configs] {
+                let n = sams.iter().filter(|x| *x == d).count();
+                assert_eq!(n, 1, "{developer}, {}: {sams:?}", d.display());
+            }
+            assert!(
+                crate::places::inside_sams_folders(&games.join("homes/x"), &sams),
+                "{developer}: {sams:?}"
+            );
+            assert!(
+                !crate::places::inside_sams_folders(&home.join("Games"), &sams),
+                "the folder above stays shown, {developer}: {sams:?}"
+            );
+        }
+        let odd = |name: &str| match name {
+            "SAM_DATA_DIR" => Some(OsString::from("Games/sam")),
+            "SAM_CONFIG_DIR" => Some(OsString::new()),
+            _ => None,
+        };
+        for developer in [false, true] {
+            assert!(folders_named_by_switches_in(&DeveloperVars::new(developer, &odd)).is_empty());
+        }
     }
 }

@@ -609,6 +609,23 @@ itself (the whole home, or exactly that folder), SAM cannot tell a planted
 link from another SAM's folder kept there, and the place stays hidden, as
 it always was.
 
+The folders that `SAM_CONFIG_DIR` and `SAM_DATA_DIR` name are hidden in the
+same way, also by an installed SAM, which ignores these developer variables
+and never keeps anything there. An installed SAM that once kept its data
+through `SAM_DATA_DIR=~/Games/sam` left its app records and the other apps'
+private homes there; with `~/Games` or the whole home granted, the app does
+not see them. Such a folder counts by the rules for the names above,
+whatever its own name: it is not hidden where it really is the home or a
+folder above it (`/` too), nor where it leads elsewhere through a link and
+the app is shown only folders inside the place it leads to, so a variable
+naming the home never covers the home with an empty folder. As for SAM's
+own folders, the folders above such a folder cannot be renamed, so the next
+start still finds it where the variable names it. SAM reads these two
+variables only to hide more, never to keep its files there or to show
+anything (`a_folder_a_switch_names_is_hidden_but_never_used_in_a_release_build`,
+`a_folder_a_switch_names_is_hidden_unless_that_would_cover_too_much`,
+`an_old_switch_folder_stays_hidden_from_a_real_sandbox`).
+
 A link to the home by one of those names is kept read-only where the app
 reaches it, and that is the whole home. So with `~/.config/sam` leading to
 the home and the whole home granted read and write, the app sees the whole
@@ -660,7 +677,11 @@ How these stay protected with the home writable:
   move `.config` away and fill a new one. The same holds for the folders
   above SAM's own folders, whatever grant shows them: with write access to
   `~/.local` alone, `~/.local/share` cannot be moved away to plant records
-  where SAM keeps its own.
+  where SAM keeps its own. It holds as well for the folders above the
+  folders that `SAM_CONFIG_DIR` and `SAM_DATA_DIR` name: with
+  `SAM_DATA_DIR=~/Games/sam`, `~/Games` cannot be renamed, which would
+  carry the empty folder away and leave the old folder unhidden at the
+  next start.
 - **Parts of the home count too.** A writable folder that holds any of
   these places (`~/.config`, `~/.local`, a dotfiles folder that `~/.bashrc`
   links into, a user folder) gets the same protections as the whole home:
@@ -690,8 +711,23 @@ How these stay protected with the home writable:
   link, so a start place could be bound writable. This is a known gap,
   older than this rule (SAM had the same race before); such a program can
   also write there when a start place holds a link into a folder it can
-  write, which SAM does not lock yet. Binding each grant through an open
-  handle, which closes the race, is planned.
+  write, which SAM does not lock yet. Every other folder SAM binds by its
+  path at an access of its own inside a folder the app can change (a
+  read-only extra folder, a user folder bound at its own access such as
+  Documents read-only in `~/Sync` under a writable home, and an extra
+  writable folder inside a read-only one) has the folders above it pinned
+  as well: a second start of the same app with the same settings (starts
+  of one app may run side by side) cannot rename `~/Sync` away and put a
+  link in its place while SAM starts the app again
+  (`the_folders_above_a_folder_bound_at_its_own_access_are_pinned`,
+  `the_folders_above_a_read_only_user_folder_cannot_be_renamed`). The
+  same race stays open for a second program with other settings, as
+  above, and for a folder that did not exist yet when the running copy
+  started (it holds no mount there): swapped for a link between SAM's look
+  and the mount, such a folder is bound where that link leads, and nothing
+  checks it before the app runs. Checking each bound place inside the
+  finished sandbox before the app starts, and binding through an open
+  handle, which close the race, are planned.
   An extra folder inside SAM's own folders is not shown at all, also inside
   the folders named like them (`~/.config/sam`, `~/.local/share/sam`) while
   SAM keeps its own elsewhere, wherever they lead; inside one that SAM only
@@ -701,12 +737,83 @@ How these stay protected with the home writable:
   as the sandbox.
 - **User folders are only what they are.** `user-dirs.dirs` says where
   Documents, Downloads and the others are. A folder set there to the home,
-  a folder above it, a system folder, a key folder, a start place or a
-  place inside SAM's folders is not shown, and the launch log says why (a
+  a folder above it, a system folder, a key folder, a start place, a
+  place inside SAM's folders, or `/tmp` and the folders in it where
+  programs outside the sandbox listen (`/tmp/tmux-1000`, `/tmp/ssh-…`,
+  `/tmp/.X11-unix`: connecting to a socket needs no write access, so even
+  a read-only Downloads there handed them over) is not shown, and the
+  launch log says why (a
   user folder that holds one of SAM's folders is shown, with SAM's folder
-  hidden inside it). A user folder
+  hidden inside it). With the whole home shared, the launch log names such
+  a folder only when it is refused for listening programs or for a link
+  (below); a folder refused for another reason gets no note, no place of
+  its own, and the app sees that place only where the home shows it, with
+  the home's protections (key folders, SAM's own folders) as they are for
+  the home. The app page and `sam-jail info` name a granted
+  user folder that is not shown for listening programs or for a link
+  (below) before the start, with the way out: a Downloads set to `/tmp`
+  so that downloads clear themselves is not shown, the app saves into its
+  own empty `/tmp` and what it saved is gone when it quits; set it to a
+  folder of its own such as `/tmp/downloads`
+  (`a_user_folder_the_sandbox_does_not_show_is_named_before_the_start`).
+  A user folder
   that is a link is shown where it leads, with the link where the app looks
-  for it.
+  for it, unless a link on its way lies in a folder the app may change in
+  this start (the writable whole home, a writable user or extra folder),
+  also inside a read-only folder there (Documents read-only under the
+  writable home): the app could have put it there itself (`mv ~/Downloads
+  ~/D; ln -s /tmp ~/Downloads`), also before that folder was set read-only,
+  and a read-only Documents that is itself such a link is not mounted at
+  all, so the home shows it writable
+  (`a_link_inside_a_read_only_folder_in_the_writable_home_is_not_followed`,
+  `a_link_planted_inside_a_refused_read_only_folder_is_never_followed`).
+  `user-dirs.dirs` stays locked, but the folder it names
+  did not. Such a folder is not shown where the link leads, the start names
+  the link, and the sandbox check expects it not shown; SAM cannot tell
+  such a link from one the person made, so a Documents kept as a link out
+  of a writable home is not shown either: set `XDG_DOCUMENTS_DIR` to the
+  real place instead
+  (`a_user_folder_behind_a_link_the_app_could_plant_is_not_shown`,
+  `a_user_folder_link_the_app_planted_never_shows_where_it_leads`,
+  `a_user_folder_where_outside_programs_listen_is_not_shown`). A user folder is shown at its own access also with the whole home
+  granted, inside the home or outside it, unless SAM refuses it as above
+  (set to the home, a folder above it, a system folder, a protected place
+  such as `~/.local/share/Documents`, or inside SAM's own folders): such a
+  folder gets no place of its own, so a read-only Documents at
+  `~/.local/share/Documents` is writable through a writable home, and no
+  note names it. Otherwise Documents set to read-only is
+  read-only under a writable home, so a start file kept as a link into it
+  (`~/.bashrc` to `~/Documents/dotfiles/bashrc`) cannot be changed either,
+  and one outside the home (`XDG_DOCUMENTS_DIR=/data/Documents`) is shown
+  read-only or writable as set, where before it was not shown at all. The
+  protections inside still come after it, so a start file in a writable
+  user folder inside a read-only Documents stays locked
+  (`a_read_only_user_folder_under_a_writable_home_is_read_only`,
+  `a_start_file_linked_into_a_read_only_user_folder_stays_locked_with_a_writable_home`,
+  `a_read_only_user_folder_outside_the_home_is_shown_with_the_whole_home`).
+  Two user folders set to one place at different access (Music read and
+  write, Pictures read-only, both `~/Media`) are shown at one access, the
+  stricter one, whatever their order: `~/Media` is read-only, as
+  "read-only means read-only" (owner decision of 2026-11-27). The mounts,
+  the views, Landlock, the sandbox check and the start take this one
+  answer, and the start, the app page and `sam-jail info` name the
+  folders and the rule, with the way out: set each to read and write, or
+  give them places of their own
+  (`user_folders_at_one_place_take_the_stricter_access`,
+  `the_check_expects_user_folders_at_one_place_at_one_access`,
+  `user_folders_at_one_place_with_different_access_are_named`).
+  An extra folder granted read and write inside a read-only user folder
+  (`~/Documents/proj` with Documents read-only) is bound writable after
+  it, as inside a read-only extra folder: SAM judges whether the app can
+  already change it on the folder right above it, the read-only folder
+  around it is a mount of its own the app cannot rename, and the folders
+  above that are pinned (`a_write_grant_inside_a_read_only_user_folder_stays_writable`,
+  `a_writable_extra_folder_inside_a_read_only_user_folder_stays_writable`).
+  Not covered: a home
+  kept behind a link (`/home/ann` a link to `/data/home/ann`). There SAM
+  binds a user folder with an access of its own at its real place, as it
+  binds extra folders, while the app still reaches it through the home at
+  the home's access, and the sandbox check reports this.
 - **Files named on the command line** are checked where they really lead:
   never a key or credential store, a start place (also through a link: a
   dotfiles folder holding the real `.bashrc` is not shared), or anything

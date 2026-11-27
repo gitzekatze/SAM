@@ -5,7 +5,7 @@
 use std::path::{Component, Path, PathBuf};
 
 use crate::host::HostInfo;
-use crate::permissions::{PermissionSet, XDG_DIR_KEYS};
+use crate::permissions::{Access, PermissionSet, XDG_DIR_KEYS};
 
 /// Sensitive dotfiles hidden when full home access is granted with
 /// `hidden_files = false`.
@@ -373,18 +373,242 @@ pub fn is_sams_name(place: &str) -> bool {
 /// Where a user folder (Documents, Downloads, …) set to `dir` is shown:
 /// where it really is (links resolved), unless that would show more than a
 /// user folder: the home, a folder above it, a system folder, a key or
-/// credential store or a start place (`user-dirs.dirs` is a plain text
-/// file, audit S-F11). The sandbox also refuses one inside SAM's own
-/// folders; that is left to the caller, since which folders count as
-/// SAM's depends on what the start shows ([`shown_folders`]).
+/// credential store, a start place (`user-dirs.dirs` is a plain text
+/// file, audit S-F11), or a folder in `/tmp` where programs outside the
+/// sandbox listen (`/tmp` itself, `/tmp/tmux-1000`): bound over the
+/// sandbox's own `/tmp`, it handed the app the host's terminal
+/// multiplexers, SSH agents and X server, read-only too, since connecting
+/// to a socket needs no write access. The sandbox also refuses one inside
+/// SAM's own folders; that is left to the caller, since which folders
+/// count as SAM's depends on what the start shows ([`shown_folders`]).
+/// Whether the way there holds a link the app could have put there is
+/// [`user_folder_shown`].
 pub fn user_folder_place(dir: &Path, home: &Path) -> Option<PathBuf> {
     let real = resolve(dir);
     let text = real.to_string_lossy();
     let real_home = resolve(home);
     let refused = real_home.starts_with(&real)
         || crate::risk::is_sensitive_path_in(&text, home)
-        || crate::risk::is_sensitive_path_in(&text, &real_home);
+        || crate::risk::is_sensitive_path_in(&text, &real_home)
+        || crate::risk::shows_host_sockets(&text);
     (!refused).then_some(real)
+}
+
+/// Where the user folder set to `dir` is shown in a start with the
+/// permissions `p` ([`user_folder_place`]), unless the way there holds a
+/// link the app could have put there ([`user_folder_link_the_app_can_change`]).
+/// The answer the sandbox, its check and the list of what a start shows
+/// take.
+pub fn user_folder_shown(p: &PermissionSet, host: &HostInfo, dir: &Path) -> Option<PathBuf> {
+    if user_folder_link_the_app_can_change(p, host, dir).is_some() {
+        return None;
+    }
+    user_folder_place(dir, &host.home)
+}
+
+/// The first link on the way to the user folder set to `dir` that lies in
+/// a folder the permissions `p` let the app change (the writable whole
+/// home, a writable extra folder, a writable user folder), if any. The app
+/// could have put that link there in an earlier start (`mv ~/Downloads
+/// ~/D; ln -s /tmp ~/Downloads`), so where it leads is not where the
+/// person put the folder: shown there, a writable home let the app pick
+/// any place on the computer as its Downloads (`user-dirs.dirs` stays
+/// locked, but the folder it names did not). A link SAM cannot tell from
+/// one the person made is refused as well; the start says so.
+///
+/// A folder counts as one the app can change when any writable grant
+/// shows it, also where a read-only grant lies in between (Documents
+/// read-only under the writable home): the app may have written there in
+/// an earlier start, before the folder was set read-only or existed, and a
+/// read-only user folder the sandbox refuses (one that is itself a link in
+/// the writable home) is not mounted at all, so the home shows it
+/// writable. Taken as read-only there, a link the app planted inside it
+/// was followed and its target bound writable (review of finding R63).
+/// Judged from the permissions alone, so the sandbox, its check and the
+/// app page take one answer: a writable grant counts also where the
+/// sandbox shows it read-only (inside a start place) or not at all, which
+/// refuses more, never less.
+pub fn user_folder_link_the_app_can_change(
+    p: &PermissionSet,
+    host: &HostInfo,
+    dir: &Path,
+) -> Option<PathBuf> {
+    let fs = &p.filesystem;
+    let mut writable: Vec<PathBuf> = Vec::new();
+    if fs.home && fs.home_access == Access::Rw {
+        writable.push(host.home.clone());
+        writable.push(resolve(&host.home));
+    }
+    for key in XDG_DIR_KEYS {
+        if fs.xdg_access(key) == Access::Rw {
+            if let Some(real) = host
+                .xdg_dir(key)
+                .and_then(|d| user_folder_place(d, &host.home))
+            {
+                writable.push(real);
+            }
+        }
+    }
+    for c in &fs.custom_write {
+        writable.push(resolve(&crate::util::expand_home(c)));
+    }
+    let can_change = |d: &Path| writable.iter().any(|g| d.starts_with(g));
+    links_on_the_way(dir)
+        .into_iter()
+        .find(|l| l.parent().is_some_and(can_change))
+}
+
+/// The access at which a start shows the user folder `key`: its own,
+/// unless another granted user folder is shown at the same place
+/// ([`user_folder_shown`]; Music read and write, Pictures read-only, both
+/// set to `~/Media`) at a stricter one. Then the stricter one decides for
+/// all of them, whatever their order: read-only wins (owner decision of
+/// 2026-11-27, as "read-only means read-only"). The sandbox's mounts and
+/// views, its check, a terminal app's start line and the app page take
+/// this one answer, so none expects one folder at two accesses.
+pub fn user_folder_access(p: &PermissionSet, host: &HostInfo, key: &str) -> Access {
+    let own = p.filesystem.xdg_access(key);
+    let Some(real) = shown_user_folder(p, host, key) else {
+        return own;
+    };
+    let stricter_at_same_place = XDG_DIR_KEYS.iter().any(|k| {
+        p.filesystem.xdg_access(k) == Access::Ro
+            && shown_user_folder(p, host, k).as_ref() == Some(&real)
+    });
+    if stricter_at_same_place {
+        Access::Ro
+    } else {
+        own
+    }
+}
+
+/// Where the granted user folder `key` is shown ([`user_folder_shown`]),
+/// if it is granted and shown.
+fn shown_user_folder(p: &PermissionSet, host: &HostInfo, key: &str) -> Option<PathBuf> {
+    host.xdg_dir(key)
+        .filter(|_| p.filesystem.xdg_access(key).is_granted())
+        .and_then(|d| user_folder_shown(p, host, d))
+}
+
+/// Every place where granted user folders set to it differ in access
+/// (Music read and write, Pictures read-only, both `~/Media`), with those
+/// folders in the order of [`XDG_DIR_KEYS`]: all of them are shown
+/// read-only there ([`user_folder_access`]), and the start, the app page
+/// and `sam-jail info` say so ([`user_folders_at_one_place_note`]).
+pub fn user_folders_at_one_place(
+    p: &PermissionSet,
+    host: &HostInfo,
+) -> Vec<(PathBuf, Vec<&'static str>)> {
+    let mut out: Vec<(PathBuf, Vec<&'static str>)> = Vec::new();
+    for key in XDG_DIR_KEYS {
+        let Some(real) = shown_user_folder(p, host, key) else {
+            continue;
+        };
+        match out.iter_mut().find(|(r, _)| *r == real) {
+            Some((_, keys)) => keys.push(key),
+            None => out.push((real, vec![key])),
+        }
+    }
+    out.retain(|(_, keys)| {
+        let acc = |k: &&str| p.filesystem.xdg_access(k);
+        keys.iter().map(acc).any(|a| a == Access::Rw)
+            && keys.iter().map(acc).any(|a| a == Access::Ro)
+    });
+    out
+}
+
+/// What a start, the app page and `sam-jail info` say about the user
+/// folders `keys` set to the one place `place` with different access
+/// ([`user_folders_at_one_place`]): the folders, the rule and the way out.
+pub fn user_folders_at_one_place_note(keys: &[&str], place: &Path) -> String {
+    crate::i18n::trf(
+        "The {keys} folders are all set to {path}, some read and write, some read-only. The stricter setting wins: the app sees {path} read-only. To let it write there, set each of these folders to read and write, or give them places of their own.",
+        &[
+            ("keys", &keys.join(", ")),
+            ("path", &crate::util::tildify(place)),
+        ],
+    )
+}
+
+/// What a start says about the user folder `key` set to `dir`, a folder in
+/// `/tmp` where programs outside the sandbox listen, which it does not
+/// show; also the app page and `sam-jail info`, before the start. The app
+/// then sees its own empty `/tmp` there, so what it saves there is gone
+/// when it quits (`XDG_DOWNLOAD_DIR=/tmp`, set so downloads clear
+/// themselves).
+pub fn user_folder_sockets_note(key: &str, dir: &Path) -> String {
+    crate::i18n::trf(
+        "{key} folder is set to {path}, where programs outside the sandbox listen; not bound. The app sees its own empty /tmp there instead, and what it saves there is gone when it quits. Set the folder to one of its own, such as /tmp/{key}, to keep what the app saves.",
+        &[("key", &key), ("path", &dir.display())],
+    )
+}
+
+/// What a start says about the user folder `key` set to `dir` whose way
+/// holds the link `link` in a folder the app can change, which it does not
+/// show ([`user_folder_link_the_app_can_change`]); also the app page and
+/// `sam-jail info`, before the start.
+pub fn user_folder_link_note(key: &str, dir: &Path, link: &Path) -> String {
+    crate::i18n::trf(
+        "{key} folder is set to {path}, whose way leads through the link {link} in a folder the app can change, so the app may have put it there; not bound",
+        &[
+            ("key", &key),
+            ("path", &dir.display()),
+            ("link", &link.display()),
+        ],
+    )
+}
+
+/// Every link on the way to the absolute path `p`, in the order the system
+/// follows them, each named in the folder that really holds it (the links
+/// before it resolved), also the links inside a link's target. A part
+/// that does not exist ends the walk. At most 40 links, as the kernel
+/// follows.
+pub fn links_on_the_way(p: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    if !p.is_absolute() {
+        return out;
+    }
+    let mut todo: std::collections::VecDeque<std::ffi::OsString> = p
+        .components()
+        .filter_map(|c| match c {
+            Component::Normal(n) => Some(n.to_os_string()),
+            Component::ParentDir => Some("..".into()),
+            _ => None,
+        })
+        .collect();
+    let mut at = PathBuf::from("/");
+    while let Some(c) = todo.pop_front() {
+        if c == ".." {
+            at.pop();
+            continue;
+        }
+        let next = at.join(&c);
+        let Ok(m) = std::fs::symlink_metadata(&next) else {
+            break;
+        };
+        if !m.file_type().is_symlink() {
+            at = next;
+            continue;
+        }
+        if out.len() == 40 {
+            break;
+        }
+        let Ok(target) = std::fs::read_link(&next) else {
+            break;
+        };
+        out.push(next);
+        if target.is_absolute() {
+            at = PathBuf::from("/");
+        }
+        for t in target.components().rev() {
+            match t {
+                Component::Normal(n) => todo.push_front(n.to_os_string()),
+                Component::ParentDir => todo.push_front("..".into()),
+                _ => {}
+            }
+        }
+    }
+    out
 }
 
 /// Every folder the permissions `p` show in a start, where it really is
@@ -403,7 +627,7 @@ pub fn shown_folders(p: &PermissionSet, host: &HostInfo) -> Vec<PathBuf> {
         if fs.xdg_access(key).is_granted() {
             if let Some(real) = host
                 .xdg_dir(key)
-                .and_then(|d| user_folder_place(d, &host.home))
+                .and_then(|d| user_folder_shown(p, host, d))
             {
                 out.push(real);
             }
@@ -444,19 +668,36 @@ pub fn shown_folders(p: &PermissionSet, host: &HostInfo) -> Vec<PathBuf> {
 /// SAM's folder kept elsewhere, and the place stays hidden as before:
 /// nothing that was hidden becomes visible.
 pub fn sams_folder_by_name(home: &Path, rel: &str, own: &[PathBuf], shown: &[PathBuf]) -> bool {
-    if !is_sams_name(rel) {
-        return false;
-    }
-    let at = home.join(rel);
-    let real = resolve(&at);
-    if own.iter().any(|d| *d == at || real.starts_with(resolve(d))) {
+    is_sams_name(rel) && counts_as_sams(home, &home.join(rel), own, shown)
+}
+
+/// Whether the folder `at`, named like SAM's folders or named by one of
+/// SAM's folder switches, counts as one of SAM's own folders in a start
+/// that shows the folders `shown`: the rules of [`sams_folder_by_name`],
+/// whatever the folder's name. Where this SAM keeps its own (`own`) always
+/// counts; the home or a folder above it never does; a folder reached
+/// through a link does not where the start shows only folders inside the
+/// place it leads to. A link on the way to the home itself (`/home` a
+/// link to `/var/home`) is no such link.
+fn counts_as_sams(home: &Path, at: &Path, own: &[PathBuf], shown: &[PathBuf]) -> bool {
+    let real = resolve(at);
+    if own
+        .iter()
+        .any(|d| d.as_path() == at || real.starts_with(resolve(d)))
+    {
         return true;
     }
     let real_home = resolve(home);
     if is_home_or_above(home, &real_home, &real) {
         return false;
     }
-    let through_link = real != real_home.join(rel);
+    // Where it would be without a link on the way: below the home's real
+    // place when it lies in the home, else as written with `..` taken
+    // back.
+    let unlinked = at
+        .strip_prefix(home)
+        .map_or_else(|_| lexical(at), |rel| real_home.join(rel));
+    let through_link = real != unlinked;
     let shown_whole = shown.iter().any(|s| real.starts_with(s));
     let shown_inside = shown.iter().any(|s| s.starts_with(&real));
     !(through_link && shown_inside && !shown_whole)
@@ -464,26 +705,43 @@ pub fn sams_folder_by_name(home: &Path, rel: &str, own: &[PathBuf], shown: &[Pat
 
 /// SAM's own folders in a start that shows the folders `shown`
 /// ([`shown_folders`]): where this SAM keeps its own (`own`:
-/// [`crate::Paths::sam_dirs`]) and the protected places named like them
-/// that count as SAM's ([`sams_folder_by_name`]). The sandbox hides them,
-/// its check expects them hidden, and the start line and the app page
-/// leave them out, all from this one list.
+/// [`crate::Paths::sam_dirs`]), the protected places named like them that
+/// count as SAM's ([`sams_folder_by_name`]), and the folders SAM's folder
+/// switches `SAM_CONFIG_DIR` and `SAM_DATA_DIR` name
+/// ([`crate::paths::folders_named_by_switches`]) that count by the same
+/// rules: a release build never keeps anything there, yet an installed SAM
+/// may once have kept its app records and the other apps' private homes
+/// there. The sandbox hides them, its check expects them hidden, and the
+/// start line and the app page leave them out, all from this one list.
 pub fn sams_folders(home: &Path, own: &[PathBuf], shown: &[PathBuf]) -> Vec<PathBuf> {
-    sams_folders_in(home, own, shown, &protected_places(home))
+    sams_folders_in(
+        home,
+        own,
+        shown,
+        &protected_places(home),
+        &crate::paths::folders_named_by_switches(),
+    )
 }
 
-/// [`sams_folders`] among the protected places `places`.
+/// [`sams_folders`] among the protected places `places`, with the folders
+/// that SAM's folder switches name `switched`.
 pub fn sams_folders_in(
     home: &Path,
     own: &[PathBuf],
     shown: &[PathBuf],
     places: &[String],
+    switched: &[PathBuf],
 ) -> Vec<PathBuf> {
     let mut out = own.to_vec();
     for rel in places {
         let at = home.join(rel);
         if !out.contains(&at) && sams_folder_by_name(home, rel, own, shown) {
             out.push(at);
+        }
+    }
+    for at in switched {
+        if !out.contains(at) && counts_as_sams(home, at, own, shown) {
+            out.push(at.clone());
         }
     }
     out
@@ -731,7 +989,7 @@ mod tests {
         let t = tempfile::tempdir().unwrap();
         let home = std::fs::canonicalize(t.path()).unwrap().join("u");
         let places = protected_places_with(&home, Some(home.join("cfg")), Some(home.join("dat")));
-        let mut found = sams_folders_in(&home, &[], &[], &places);
+        let mut found = sams_folders_in(&home, &[], &[], &places, &[]);
         found.sort();
         let mut want: Vec<PathBuf> = [".config/sam", ".local/share/sam", "cfg/sam", "dat/sam"]
             .iter()
@@ -851,7 +1109,8 @@ mod tests {
                 &home,
                 std::slice::from_ref(&elsewhere),
                 &[at("work/proj")],
-                &places
+                &places,
+                &[]
             ),
             vec![elsewhere, at(".local/share/sam"), at("dat/sam")]
         );
@@ -869,7 +1128,7 @@ mod tests {
                 home_or_above: true,
             })
         );
-        let sams = sams_folders_in(&home, &[], std::slice::from_ref(&work), &places);
+        let sams = sams_folders_in(&home, &[], std::slice::from_ref(&work), &places, &[]);
         assert!(!write_grant_in_sams_folders(
             &work,
             found.as_ref(),
@@ -919,11 +1178,11 @@ mod tests {
         link(".config/sam", &home);
         let whole = std::slice::from_ref(&home);
         let own = [base.join("elsewhere")];
-        let sams = sams_folders_in(&home, &own, whole, &places);
+        let sams = sams_folders_in(&home, &own, whole, &places, &[]);
         assert_eq!(named(&sams), Some(".config/sam".to_string()));
         // Hidden as SAM's (where this SAM keeps its own): not named.
         let own_there = [at(".config/sam")];
-        let sams = sams_folders_in(&home, &own_there, whole, &places);
+        let sams = sams_folders_in(&home, &own_there, whole, &places, &[]);
         assert_eq!(named(&sams), None);
         // A link to a folder in the home or above it: not named.
         link(".config/sam", &at("work"));
@@ -950,6 +1209,149 @@ mod tests {
                 && note.contains("delete the shortcut ~/.config/fish")
                 && note.contains("read-only"),
             "{note}"
+        );
+    }
+
+    /// A user folder is refused by each of the rules on its own, also when
+    /// the home is kept behind a link (`~` at `home/ann`, a link to
+    /// `data/ann`), where the home as named and the home where it really
+    /// is answer differently:
+    /// - the folder that holds the home's link (`home`) lies above the home
+    ///   as named, not above the real home: shown, it handed the app the
+    ///   link and every other home there;
+    /// - the key folder by the home's linked name (`~/.ssh`) is a key store
+    ///   of the real home only;
+    /// - a folder in `/tmp` where programs outside the sandbox listen
+    ///   (`/tmp`, `/tmp/tmux-1000`) is neither above the home nor a
+    ///   sensitive place, yet hands over the host's terminal multiplexers.
+    ///
+    /// A folder in the real home and a plain folder in `/tmp` are shown.
+    #[test]
+    fn a_user_folder_above_a_linked_home_is_not_shown() {
+        let t = tempfile::tempdir().unwrap();
+        let base = std::fs::canonicalize(t.path()).unwrap();
+        for d in ["data/ann/.ssh", "data/ann/Docs", "home"] {
+            std::fs::create_dir_all(base.join(d)).unwrap();
+        }
+        std::os::unix::fs::symlink(base.join("data/ann"), base.join("home/ann")).unwrap();
+        let home = base.join("home/ann");
+        assert_eq!(
+            user_folder_place(&base.join("home"), &home),
+            None,
+            "the folder holding the home's link"
+        );
+        assert_eq!(
+            user_folder_place(&home.join(".ssh"), &home),
+            None,
+            "the key folder by the home's linked name"
+        );
+        assert_eq!(
+            user_folder_place(&home.join("Docs"), &home),
+            Some(base.join("data/ann/Docs")),
+            "a folder in the home, where it really is"
+        );
+        let ann = Path::new("/home/ann");
+        assert_eq!(user_folder_place(Path::new("/tmp/tmux-1000"), ann), None);
+        assert_eq!(user_folder_place(Path::new("/tmp"), ann), None);
+        assert_eq!(
+            user_folder_place(Path::new("/tmp/exchange"), ann),
+            Some(PathBuf::from("/tmp/exchange"))
+        );
+    }
+
+    /// A folder that one of SAM's folder switches names (`SAM_DATA_DIR`,
+    /// `SAM_CONFIG_DIR`) counts as SAM's by the rules for the folders named
+    /// like SAM's, whatever its own name, so hiding it never covers too
+    /// much (batch review of the change that made release builds ignore
+    /// these switches):
+    /// - a real folder counts, inside or outside the home, also with a
+    ///   grant inside it or of the folder above it;
+    /// - the home, a folder above it (`/` too) and a way there (`~/work/..`)
+    ///   never count, nor does a link to the home: nothing then covers the
+    ///   home, and SAM's folders by name stay as they are;
+    /// - a link counts neither where the start shows only folders inside
+    ///   the place it leads to (`~/work/proj` granted), but does where the
+    ///   start shows that place whole;
+    /// - one that is where this SAM keeps its own is listed once, its own
+    ///   first, the folders by name next and the switches' folders last.
+    #[test]
+    fn a_folder_a_switch_names_is_hidden_unless_that_would_cover_too_much() {
+        let t = tempfile::tempdir().unwrap();
+        let base = std::fs::canonicalize(t.path()).unwrap();
+        let home = base.join("u");
+        for d in ["Games/sam/homes/x", "mydata", "work/proj", ".config"] {
+            std::fs::create_dir_all(home.join(d)).unwrap();
+        }
+        std::fs::create_dir_all(base.join("outside/sam")).unwrap();
+        let at = |rel: &str| home.join(rel);
+        std::os::unix::fs::symlink(at("work"), at("Games/linked")).unwrap();
+        std::os::unix::fs::symlink(&home, at("Games/home-link")).unwrap();
+        let places = protected_places_with(&home, None, None);
+        let own = [base.join("elsewhere")];
+        let counts = |dir: &Path, shown: &[PathBuf]| {
+            let switched = [dir.to_path_buf()];
+            sams_folders_in(&home, &own, shown, &places, &switched).contains(&dir.to_path_buf())
+        };
+        let none: Vec<PathBuf> = vec![];
+        let whole = vec![home.clone()];
+
+        for dir in [at("Games/sam"), at("mydata"), base.join("outside/sam")] {
+            for shown in [
+                &none,
+                &whole,
+                &vec![at("Games")],
+                &vec![at("Games/sam/homes/x")],
+            ] {
+                assert!(counts(&dir, shown), "{}: {shown:?}", dir.display());
+            }
+        }
+        for dir in [
+            home.clone(),
+            at("work/.."),
+            base.clone(),
+            PathBuf::from("/"),
+            at("Games/home-link"),
+        ] {
+            for shown in [&none, &whole, &vec![at("work")]] {
+                let sams = sams_folders_in(&home, &own, shown, &places, std::slice::from_ref(&dir));
+                assert!(
+                    !sams.iter().any(|d| home.starts_with(resolve(d))),
+                    "{}: {shown:?}: {sams:?}",
+                    dir.display()
+                );
+                assert_eq!(
+                    sams,
+                    sams_folders_in(&home, &own, shown, &places, &[]),
+                    "{}: {shown:?}",
+                    dir.display()
+                );
+            }
+        }
+        let linked = at("Games/linked");
+        assert!(!counts(&linked, &[at("work/proj")]));
+        for shown in [
+            &none,
+            &vec![at("work")],
+            &vec![at("work/proj"), home.clone()],
+        ] {
+            assert!(counts(&linked, shown), "linked: {shown:?}");
+        }
+        let games = at("Games/sam");
+        let sams = sams_folders_in(
+            &home,
+            std::slice::from_ref(&games),
+            &whole,
+            &places,
+            &[at("mydata"), games.clone()],
+        );
+        assert_eq!(
+            sams,
+            vec![
+                games.clone(),
+                at(".config/sam"),
+                at(".local/share/sam"),
+                at("mydata")
+            ]
         );
     }
 

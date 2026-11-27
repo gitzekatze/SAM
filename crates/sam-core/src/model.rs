@@ -411,6 +411,8 @@ pub struct AppEntry {
     /// The user has looked at (or accepted) the current profile.
     pub reviewed: bool,
     /// Permissions newly requested after an update that need confirmation.
+    /// Only sam-runner's `settle_update_note` changes it: it stays until the
+    /// person has seen it or the settings grant a need (review L5).
     pub pending_changes: Vec<String>,
     /// Result of the last sandbox check (`sam-jail verify`).
     #[serde(skip_serializing_if = "Option::is_none")]
