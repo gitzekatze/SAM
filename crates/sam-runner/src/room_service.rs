@@ -2618,10 +2618,13 @@ mod process_tests {
     /// SAM's room helper ends the room before anything else when a place
     /// is not the file, folder or device SAM checked (device and inode):
     /// the defence against a Bubblewrap that mounts places by name, which
-    /// the app could swap while the room is built. The right place passes
-    /// the check (the helper then stops at SAM's syscall filter, here an
-    /// empty one on standard input, still before the program). Review B2
-    /// S2c: without the check no test failed.
+    /// the app could swap while the room is built. So does a place reached
+    /// through a link, and the very object SAM checked where it is not the
+    /// root of a mount (every place of a room is one: a mount moved away
+    /// with the object put back at its name is not). The right place, the
+    /// root of a mount, passes the check (the helper then stops at SAM's
+    /// syscall filter, here an empty one on standard input, still before
+    /// the program). Review B2 S2c: without the check no test failed.
     #[test]
     fn the_room_helper_refuses_a_place_that_is_not_the_one_sam_checked() {
         use std::os::unix::ffi::OsStrExt;
@@ -2668,27 +2671,47 @@ mod process_tests {
                 String::from_utf8_lossy(&out.stderr).into_owned(),
             )
         };
-        let folder = tmp.path().join("place");
-        std::fs::create_dir(&folder).unwrap();
-        for place in [folder.as_path(), Path::new("/dev/null")] {
-            let m = std::fs::symlink_metadata(place).unwrap();
-            let refused = format!(
+        let refused = |place: &Path| {
+            format!(
                 "{} is not the place SAM checked for this room",
                 place.display()
-            );
+            )
+        };
+        let folder = tmp.path().join("place");
+        std::fs::create_dir(&folder).unwrap();
+        let root = Path::new("/");
+        for place in [folder.as_path(), Path::new("/dev/null"), root] {
+            let m = std::fs::symlink_metadata(place).unwrap();
             for (dev, ino) in [(m.dev(), m.ino() + 1), (m.dev() + 1, m.ino())] {
                 let (code, err) = run(place, dev, ino);
                 assert_eq!(code, Some(127), "{err}");
-                assert!(err.contains(&refused), "{err}");
+                assert!(err.contains(&refused(place)), "{err}");
             }
-            let (code, err) = run(place, m.dev(), m.ino());
-            assert_eq!(code, Some(127), "{err}");
-            assert!(!err.contains(&refused), "the right place refused: {err}");
-            assert!(
-                err.contains("a passed syscall filter is not valid"),
-                "{err}"
-            );
         }
+        // The object SAM checked, but inside a mount instead of its root.
+        let m = std::fs::symlink_metadata(&folder).unwrap();
+        let (code, err) = run(&folder, m.dev(), m.ino());
+        assert_eq!(code, Some(127), "{err}");
+        assert!(err.contains(&refused(&folder)), "{err}");
+        assert!(err.contains("moved away"), "{err}");
+        // The root of a mount, reached through a link.
+        let link = tmp.path().join("link");
+        std::os::unix::fs::symlink(root, &link).unwrap();
+        let m = std::fs::symlink_metadata(root).unwrap();
+        let (code, err) = run(&link, m.dev(), m.ino());
+        assert_eq!(code, Some(127), "{err}");
+        assert!(err.contains(&refused(&link)), "{err}");
+        // The right place.
+        let (code, err) = run(root, m.dev(), m.ino());
+        assert_eq!(code, Some(127), "{err}");
+        assert!(
+            !err.contains(&refused(root)),
+            "the right place refused: {err}"
+        );
+        assert!(
+            err.contains("a passed syscall filter is not valid"),
+            "{err}"
+        );
         assert!(!ran.exists(), "the program ran");
     }
 

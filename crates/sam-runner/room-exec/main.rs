@@ -7,7 +7,9 @@
 //! SAM's layers are in place. It reads the room's rules from SAM's own
 //! place (`/.sam-room/room.spec`), then, in this order:
 //! 0. checks that every place of the app the room shows is exactly what
-//!    SAM opened or checked (device and inode), whatever Bubblewrap did;
+//!    SAM opened or checked (device and inode), reached without links and
+//!    still the root of the mount Bubblewrap made there, whatever
+//!    Bubblewrap did;
 //! 1. Landlock: read everywhere, write only where the rules say; abstract
 //!    sockets outside the room blocked (kernels with Landlock 6 and newer);
 //! 2. SAM's syscall filter (compiled by SAM, passed as a connection);
@@ -25,6 +27,10 @@
 //! SPEC holds `key=value` entries separated by NUL bytes: `status=N`,
 //! `seccomp=N`, `filter=N` (any number), `read=PATH`, `write=PATH`,
 //! `env=NAME=VALUE`, `place=DEV:INO:PATH` (any number of each).
+//!
+//! The place check and the opener without links are SAM's one copy in
+//! sam-core (`place_check.rs`), included here as a file of this program:
+//! it uses the standard library only, as this program must.
 
 // No Rust start-up code: it would read /proc/self/maps (to find the main
 // thread's stack), a file of the room's layout, before SAM's layers. The
@@ -39,6 +45,13 @@ use std::io::{Read, Write};
 use std::os::fd::{AsRawFd, FromRawFd};
 use std::os::raw::{c_int, c_long, c_ulong};
 use std::os::unix::ffi::OsStrExt;
+use std::path::Path;
+
+// The helper uses the check and the opener without links; the rest of
+// the file serves SAM's other parts.
+#[allow(dead_code)]
+#[path = "../../sam-core/src/place_check.rs"]
+mod place_check;
 
 extern "C" {
     fn syscall(number: c_long, ...) -> c_long;
@@ -61,8 +74,6 @@ const SYS_LANDLOCK_RESTRICT_SELF: c_long = 446;
 const PR_SET_NO_NEW_PRIVS: c_int = 38;
 const PR_SET_SECCOMP: c_int = 22;
 const SECCOMP_MODE_FILTER: c_ulong = 2;
-const O_PATH: c_int = 0o10000000;
-const O_CLOEXEC: c_int = 0o2000000;
 
 // Landlock's file rights, as SAM's app sandbox uses them (version 3).
 const EXECUTE: u64 = 1 << 0;
@@ -170,7 +181,7 @@ fn landlock(read_paths: &[&[u8]], write_paths: &[&[u8]]) -> String {
         for p in paths {
             // Never through a link: the request lays out the room, and a
             // link would turn a rule onto another place.
-            let Some(f) = open_no_links(p) else {
+            let Ok(f) = place_check::open_no_link(Path::new(OsStr::from_bytes(p))).map(File::from) else {
                 continue; // not in this room, or behind a link
             };
             let fd = f.as_raw_fd();
@@ -203,28 +214,6 @@ fn landlock(read_paths: &[&[u8]], write_paths: &[&[u8]]) -> String {
         drop(File::from_raw_fd(ruleset));
     }
     format!("landlock {abi}")
-}
-
-const SYS_OPENAT2: c_long = 437;
-const AT_FDCWD: c_int = -100;
-const RESOLVE_NO_SYMLINKS: u64 = 0x04;
-
-/// A path opened (O_PATH) without following any link in it.
-fn open_no_links(path: &[u8]) -> Option<File> {
-    let c = std::ffi::CString::new(path).ok()?;
-    #[repr(C)]
-    struct How {
-        flags: u64,
-        mode: u64,
-        resolve: u64,
-    }
-    let how = How { flags: (O_PATH | O_CLOEXEC) as u64, mode: 0, resolve: RESOLVE_NO_SYMLINKS };
-    // SAFETY: openat2 with a valid C string and a struct of the size given.
-    let fd = unsafe {
-        syscall(SYS_OPENAT2, AT_FDCWD, c.as_ptr(), &how as *const How, std::mem::size_of::<How>())
-    } as c_int;
-    // SAFETY: a new descriptor of our own.
-    (fd >= 0).then(|| unsafe { File::from_raw_fd(fd) })
 }
 
 fn number(v: &[u8]) -> c_int {
@@ -263,10 +252,9 @@ fn candidates(name: &OsStr, env: &[(&OsStr, &OsStr)]) -> Vec<Vec<u8>> {
         .collect()
 }
 
-/// A place `DEV:INO:PATH` of the room is the file, folder or device SAM
-/// opened or checked (same device, same inode), or the room ends here.
-fn check_place(entry: &[u8]) {
-    use std::os::unix::fs::MetadataExt;
+/// A place `DEV:INO:PATH` of the room: where it is, and the device and
+/// inode of the file, folder or device SAM opened or checked for it.
+fn parse_place(entry: &[u8]) -> (&Path, place_check::Expect) {
     let mut parts = entry.splitn(3, |b| *b == b':');
     let (Some(dev), Some(ino), Some(path)) = (parts.next(), parts.next(), parts.next()) else {
         fail("the room's rules are not valid");
@@ -278,14 +266,7 @@ fn check_place(entry: &[u8]) {
             .unwrap_or_else(|| fail("the room's rules are not valid"))
     };
     let (dev, ino) = (num(dev), num(ino));
-    let path = OsStr::from_bytes(path);
-    match std::fs::symlink_metadata(path) {
-        Ok(m) if m.dev() == dev && m.ino() == ino => {}
-        _ => fail(&format!(
-            "{} is not the place SAM checked for this room (Bubblewrap showed something else)",
-            path.to_string_lossy()
-        )),
-    }
+    (Path::new(OsStr::from_bytes(path)), place_check::Expect::MountOf { dev, ino })
 }
 
 /// Errors after which execvp tries the next PATH entry.
@@ -329,11 +310,20 @@ pub extern "C" fn main(_argc: c_int, _argv: *const *const std::os::raw::c_char) 
     }
     let status = status.unwrap_or_else(|| fail("the room's rules name no status connection"));
     let seccomp = seccomp.unwrap_or_else(|| fail("the room's rules carry no syscall filter"));
-    // Every place SAM showed by handle is exactly what SAM opened: an
-    // older Bubblewrap mounts a handle's path by name, which the app could
-    // swap while the room was built. Checked before anything else.
+    // Every place SAM showed is exactly what SAM opened, reached without
+    // links, and the root of the mount Bubblewrap made there: an older
+    // Bubblewrap mounts a handle's path by name, which the app could swap
+    // while the room was built, and a program outside the room that can
+    // write a place's folder could move the mount away and put the same
+    // file back at its name. Checked before anything else.
     for place in &places {
-        check_place(place);
+        let (at, expect) = parse_place(place);
+        if let Err(why) = place_check::check(at, &expect) {
+            fail(&format!(
+                "{} is not the place SAM checked for this room ({why})",
+                at.to_string_lossy()
+            ));
+        }
     }
     // SAM's layers first.
     let mut report = landlock(&reads, &writes);
