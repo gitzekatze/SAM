@@ -482,6 +482,34 @@ pub fn user_folder_access(p: &PermissionSet, host: &HostInfo, key: &str) -> Acce
         .map_or(own, |k| fs.xdg_access(k))
 }
 
+/// What a start says about the user folder `key` set to `dir`, a folder in
+/// `/tmp` where programs outside the sandbox listen, which it does not
+/// show; also the app page and `sam-jail info`, before the start. The app
+/// then sees its own empty `/tmp` there, so what it saves there is gone
+/// when it quits (`XDG_DOWNLOAD_DIR=/tmp`, set so downloads clear
+/// themselves).
+pub fn user_folder_sockets_note(key: &str, dir: &Path) -> String {
+    crate::i18n::trf(
+        "{key} folder is set to {path}, where programs outside the sandbox listen; not bound. The app sees its own empty /tmp there instead, and what it saves there is gone when it quits. Set the folder to one of its own, such as /tmp/{key}, to keep what the app saves.",
+        &[("key", &key), ("path", &dir.display())],
+    )
+}
+
+/// What a start says about the user folder `key` set to `dir` whose way
+/// holds the link `link` in a folder the app can change, which it does not
+/// show ([`user_folder_link_the_app_can_change`]); also the app page and
+/// `sam-jail info`, before the start.
+pub fn user_folder_link_note(key: &str, dir: &Path, link: &Path) -> String {
+    crate::i18n::trf(
+        "{key} folder is set to {path}, whose way leads through the link {link} in a folder the app can change, so the app may have put it there; not bound",
+        &[
+            ("key", &key),
+            ("path", &dir.display()),
+            ("link", &link.display()),
+        ],
+    )
+}
+
 /// Every link on the way to the absolute path `p`, in the order the system
 /// follows them, each named in the folder that really holds it (the links
 /// before it resolved), also the links inside a link's target. A part

@@ -166,6 +166,42 @@ fn read_only_grants(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
     out
 }
 
+/// Granted user folders (Documents, Downloads, …) that the sandbox does
+/// not show although the person set them: one set to `/tmp` or a folder in
+/// it where programs outside the sandbox listen, and one reached through a
+/// link in a folder the app can change. The window and `sam-jail info` say
+/// so before the start, with the words of the launch note, in the order
+/// the sandbox decides them. Told only in the launch log, a Downloads set
+/// to `/tmp` (so downloads clear themselves) looked as before, while what
+/// the app saved there was gone when it quit (review of finding R63).
+fn refused_user_folders(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
+    let Some(host) = ctx.host else {
+        return Vec::new();
+    };
+    XDG_DIR_KEYS
+        .iter()
+        .filter(|key| p.filesystem.xdg_access(key).is_granted())
+        .filter_map(|key| {
+            let dir = host.xdg_dir(key)?;
+            let note = if let Some(link) =
+                crate::places::user_folder_link_the_app_can_change(p, host, dir)
+            {
+                crate::places::user_folder_link_note(key, dir, &link)
+            } else if crate::risk::shows_host_sockets(
+                &crate::places::resolve(dir).to_string_lossy(),
+            ) {
+                crate::places::user_folder_sockets_note(key, dir)
+            } else {
+                return None;
+            };
+            Some(
+                Warning::warn("user-folder-not-shown", "Not shown", note)
+                    .with_key(&format!("filesystem.{key}")),
+            )
+        })
+        .collect()
+}
+
 pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
     let mut w = Vec::new();
     let ignored = crate::permissions::blocked_wildcards(&p.dbus.session);
@@ -226,6 +262,7 @@ pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
         ));
     }
     w.extend(read_only_grants(p, ctx));
+    w.extend(refused_user_folders(p, ctx));
     for path in p
         .filesystem
         .custom_write
@@ -1171,6 +1208,66 @@ mod tests {
     }
 
     /// The X11 warning disappears when the user turns it off in the preferences.
+    /// A granted user folder the sandbox does not show is named on the app
+    /// page and in `sam-jail info` before the start, with the launch note's
+    /// words and the way out: Downloads set to `/tmp` (so downloads clear
+    /// themselves), where programs outside the sandbox listen, and one
+    /// reached through a link in the writable home. Said only in the launch
+    /// log, what the app saved to such a Downloads was gone when it quit.
+    /// An ordinary folder, or one not granted, gives no such warning.
+    #[test]
+    fn a_user_folder_the_sandbox_does_not_show_is_named_before_the_start() {
+        let t = tempfile::tempdir().unwrap();
+        let home = std::fs::canonicalize(t.path()).unwrap().join("home");
+        let elsewhere = home.parent().unwrap().join("elsewhere");
+        std::fs::create_dir_all(home.join("Music")).unwrap();
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, home.join("Downloads")).unwrap();
+        let warned = |p: &PermissionSet, downloads: &std::path::Path| {
+            let mut host = HostInfo {
+                home: home.clone(),
+                ..Default::default()
+            };
+            host.xdg_dirs
+                .insert("downloads".into(), downloads.to_path_buf());
+            let ctx = WarningContext {
+                host: Some(&host),
+                ..Default::default()
+            };
+            evaluate(p, &ctx)
+                .into_iter()
+                .find(|w| w.code == "user-folder-not-shown")
+        };
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.downloads = Access::Rw;
+        let hit = warned(&p, std::path::Path::new("/tmp")).expect("Downloads at /tmp is named");
+        assert_eq!(hit.key.as_deref(), Some("filesystem.downloads"));
+        assert!(
+            hit.message.contains("programs outside the sandbox listen")
+                && hit.message.contains("/tmp/downloads"),
+            "{}",
+            hit.message
+        );
+        assert!(warned(&p, &home.join("Music")).is_none());
+        let mut none = p.clone();
+        none.filesystem.downloads = Access::None;
+        assert!(warned(&none, std::path::Path::new("/tmp")).is_none());
+        // A link in the writable whole home.
+        let mut full = p.clone();
+        full.filesystem.home = true;
+        full.filesystem.home_access = Access::Rw;
+        let hit = warned(&full, &home.join("Downloads")).expect("a planted link is named");
+        assert!(
+            hit.message.contains("the app may have put it there"),
+            "{}",
+            hit.message
+        );
+        assert!(
+            warned(&p, &home.join("Downloads")).is_none(),
+            "without the home"
+        );
+    }
+
     #[test]
     fn x11_warning_can_be_disabled() {
         let mut p = PermissionSet::strict_gui();

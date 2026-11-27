@@ -1359,18 +1359,8 @@ fn user_folder_note(key: &str, why: &NotShown) -> String {
             "{key} folder is set to {path}, which shows more than a user folder (the home, a folder above it, a system or SAM folder, or a protected place); not bound",
             &[("key", &key), ("path", &dir.display())],
         ),
-        NotShown::Sockets(dir) => sam_core::i18n::trf(
-            "{key} folder is set to {path}, where programs outside the sandbox listen; not bound",
-            &[("key", &key), ("path", &dir.display())],
-        ),
-        NotShown::Link(dir, link) => sam_core::i18n::trf(
-            "{key} folder is set to {path}, whose way leads through the link {link} in a folder the app can change, so the app may have put it there; not bound",
-            &[
-                ("key", &key),
-                ("path", &dir.display()),
-                ("link", &link.display()),
-            ],
-        ),
+        NotShown::Sockets(dir) => sam_core::places::user_folder_sockets_note(key, dir),
+        NotShown::Link(dir, link) => sam_core::places::user_folder_link_note(key, dir, link),
     }
 }
 
