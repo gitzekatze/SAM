@@ -124,7 +124,8 @@ unfiltered session bus, and packages that may not be installed. They
 complement `cargo test --workspace` (unit tests plus the end-to-end sandbox
 test).
 
-To keep your real configuration untouched while testing, run:
+To keep your real configuration untouched while testing a developer build
+(`cargo build` without `--release`), run:
 
 ```sh
 export SAM_CONFIG_DIR=/tmp/sam-test/config \
@@ -136,9 +137,16 @@ Leave `SAM_APPLICATIONS_DIR` unset if you want launchers to show up in your menu
 `SAM_RUNTIME_DIR` moves the per-launch runtime folders (default
 `$XDG_RUNTIME_DIR/sam`); SAM's tests set it, so they never use the real one.
 These four folder variables (`SAM_CONFIG_DIR`, `SAM_DATA_DIR`,
-`SAM_APPLICATIONS_DIR`, `SAM_RUNTIME_DIR`) are still read in release builds
-too: they move SAM's own folders, and with them which settings, app
-records and permissions SAM uses.
+`SAM_APPLICATIONS_DIR`, `SAM_RUNTIME_DIR`) work only in developer builds: they
+move SAM's own folders, and with them which settings, app records and
+permissions SAM uses, so a release build ignores them and keeps its files in
+the standard folders. `XDG_CONFIG_HOME` and `XDG_DATA_HOME` move SAM's
+configuration and data folders in every build, but they do not keep a
+release build apart from an installed SAM: the window is still the one SAM
+window of your desktop session (started with an AppImage while SAM's window
+is open, it hands the AppImage to that window, which adds it to your real
+app list), and the runtime folders stay in `$XDG_RUNTIME_DIR/sam`. Test a
+release build in a separate user account, a container or a virtual machine.
 
 Five more variables work only in developer builds (`cargo build` without
 `--release`); a release build ignores them, so a forgotten setting in
@@ -151,6 +159,19 @@ or records:
 names a folder of stand-in tools that SAM's tests may run although the user
 owns them. SAM's scripts and tests that set them (`tests/real-apps/`,
 `tests/gui/desktop-sandbox.sh`, the integration tests) use developer builds.
+SAM's tests keep SAM away from your folders and tools with SAM's developer
+variables (the four folder variables and these five tool variables), which
+a release build ignores, so a test built in release mode would use your
+real SAM folders and real tools. SAM's tests therefore refuse to compile in
+a build without debug assertions: a test run with `--release`, or with an
+optimisation level above 0 in `RUSTFLAGS`, where rustc turns debug
+assertions off unless they are set explicitly. Every crate lists one
+test-only crate, `crates/sam-test-guard`, under `[dev-dependencies]`, and
+that crate stops every build without debug assertions. Cargo compiles
+dev-dependencies only for tests, so `cargo build --release` of SAM's
+programs never compiles it. `release_test_builds_stop_at_the_test_guard`
+in `crates/sam-jail-cli/tests/automation.rs` checks that the guard stays
+in place and that every crate lists it.
 
 The test and release tools are in developer builds only, too: `sam-jail dev
 make-fixture` (test AppImages), `dev bench`, `dev set-update-info`, `dev

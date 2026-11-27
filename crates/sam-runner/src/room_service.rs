@@ -33,6 +33,7 @@ use anyhow::{bail, Context, Result};
 
 use crate::kernel::{LandlockSpec, SeccompSpec};
 use crate::room_rules::{self, AppFacts, DeviceAccess, Entry, FloorPlan, RoomPlan, Source, Step};
+use sam_core::place_check::{identity, open_beneath, open_no_link, open_path};
 
 /// Where the service listens inside the app's sandbox.
 pub const SOCKET_INSIDE: &str = "/run/sam/rooms";
@@ -733,17 +734,12 @@ fn plan_at_start(plan: FloorPlan) -> Result<(FloorPlan, Vec<Option<SourceHandle>
 /// Whether Bubblewrap at `bwrap` can build rooms: it must show places by
 /// handle (`--bind-fd`, `--ro-bind-fd`, Bubblewrap 0.10 or a backport).
 /// Without them no room could be built, and programs keep the computer's
-/// own Bubblewrap as before Room service. Asked once per start.
+/// own Bubblewrap as before Room service. Asked once per start, with
+/// SAM's one test for Bubblewrap's options
+/// ([`sam_core::host::bwrap_lists_option`]).
 pub fn bwrap_builds_rooms(bwrap: &Path) -> bool {
-    std::process::Command::new(bwrap)
-        .arg("--help")
-        .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output()
-        .is_ok_and(|o| {
-            let help = String::from_utf8_lossy(&o.stdout);
-            help.contains("--ro-bind-fd") && help.contains("--bind-fd")
-        })
+    use sam_core::host::bwrap_lists_option;
+    bwrap_lists_option(bwrap, "--ro-bind-fd") && bwrap_lists_option(bwrap, "--bind-fd")
 }
 
 /// Drives a person may want to unmount while the app runs: anything not
@@ -1760,7 +1756,7 @@ fn open_source(source: &Source, sources: &[Option<SourceHandle>]) -> std::io::Re
             ino,
             drive,
         } => {
-            let fd = open_following_no_link(path)?;
+            let fd = open_no_link(path)?;
             if identity(&fd)? != (*dev, *ino) || drive_id(&fd, *dev) != *drive {
                 return Err(std::io::Error::other(
                     "it is no longer what the app was shown when it started",
@@ -1777,7 +1773,7 @@ fn open_source(source: &Source, sources: &[Option<SourceHandle>]) -> std::io::Re
     if source.rel.as_os_str().is_empty() {
         return Ok(top);
     }
-    openat2_beneath(&top, &source.rel)
+    open_beneath(&top, &source.rel)
 }
 
 /// Device and inode of what `p` names, through links (as Bubblewrap shows
@@ -1877,90 +1873,6 @@ fn disk_id_where(
         let m = std::fs::metadata(e.path()).ok()?;
         (kind(&m.file_type()) && m.rdev() == dev).then(|| e.file_name())
     })
-}
-
-/// Device and inode of an open file or folder.
-fn identity(fd: &OwnedFd) -> std::io::Result<(u64, u64)> {
-    // SAFETY: fstat writes the struct given.
-    let mut st: libc::stat = unsafe { std::mem::zeroed() };
-    // SAFETY: fstat on our own descriptor writes the struct given.
-    if unsafe { libc::fstat(fd.as_raw_fd(), &mut st) } != 0 {
-        return Err(std::io::Error::last_os_error());
-    }
-    Ok((st.st_dev, st.st_ino))
-}
-
-fn open_path(p: &Path) -> std::io::Result<OwnedFd> {
-    use std::os::unix::ffi::OsStrExt;
-    let c = std::ffi::CString::new(p.as_os_str().as_bytes())
-        .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidInput))?;
-    // SAFETY: a valid C string; the result is checked.
-    let fd = unsafe { libc::open(c.as_ptr(), libc::O_PATH | libc::O_CLOEXEC) };
-    if fd < 0 {
-        return Err(std::io::Error::last_os_error());
-    }
-    // SAFETY: a new descriptor of our own.
-    Ok(unsafe { OwnedFd::from_raw_fd(fd) })
-}
-
-const RESOLVE_NO_MAGICLINKS: u64 = 0x02;
-const RESOLVE_NO_SYMLINKS: u64 = 0x04;
-const RESOLVE_BENEATH: u64 = 0x08;
-
-#[repr(C)]
-struct OpenHow {
-    flags: u64,
-    mode: u64,
-    resolve: u64,
-}
-
-fn openat2_beneath(dir: &OwnedFd, rel: &Path) -> std::io::Result<OwnedFd> {
-    openat2_path(
-        dir.as_raw_fd(),
-        rel,
-        RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS | RESOLVE_NO_MAGICLINKS,
-    )
-}
-
-/// Opens the absolute path `p` (O_PATH) without following any link in it,
-/// also not in its last part: a link anywhere refuses (ELOOP).
-fn open_following_no_link(p: &Path) -> std::io::Result<OwnedFd> {
-    if !p.is_absolute() {
-        return Err(std::io::Error::from(std::io::ErrorKind::InvalidInput));
-    }
-    openat2_path(
-        libc::AT_FDCWD,
-        p,
-        RESOLVE_NO_SYMLINKS | RESOLVE_NO_MAGICLINKS,
-    )
-}
-
-/// `openat2` of `path` from `dir` (O_PATH, close-on-exec) with `resolve`.
-fn openat2_path(dir: RawFd, path: &Path, resolve: u64) -> std::io::Result<OwnedFd> {
-    use std::os::unix::ffi::OsStrExt;
-    let c = std::ffi::CString::new(path.as_os_str().as_bytes())
-        .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidInput))?;
-    let how = OpenHow {
-        flags: (libc::O_PATH | libc::O_CLOEXEC) as u64,
-        mode: 0,
-        resolve,
-    };
-    // SAFETY: openat2 with a valid descriptor (or AT_FDCWD), C string and
-    // struct size.
-    let fd = unsafe {
-        libc::syscall(
-            libc::SYS_openat2,
-            dir,
-            c.as_ptr(),
-            &how as *const OpenHow,
-            std::mem::size_of::<OpenHow>(),
-        )
-    };
-    if fd < 0 {
-        return Err(std::io::Error::last_os_error());
-    }
-    // SAFETY: a new descriptor of our own.
-    Ok(unsafe { OwnedFd::from_raw_fd(fd as RawFd) })
 }
 
 fn read_only_filesystem(fd: &OwnedFd) -> bool {
@@ -2701,10 +2613,13 @@ mod process_tests {
     /// SAM's room helper ends the room before anything else when a place
     /// is not the file, folder or device SAM checked (device and inode):
     /// the defence against a Bubblewrap that mounts places by name, which
-    /// the app could swap while the room is built. The right place passes
-    /// the check (the helper then stops at SAM's syscall filter, here an
-    /// empty one on standard input, still before the program). Review B2
-    /// S2c: without the check no test failed.
+    /// the app could swap while the room is built. So does a place reached
+    /// through a link, and the very object SAM checked where it is not the
+    /// root of a mount (every place of a room is one: a mount moved away
+    /// with the object put back at its name is not). The right place, the
+    /// root of a mount, passes the check (the helper then stops at SAM's
+    /// syscall filter, here an empty one on standard input, still before
+    /// the program). Review B2 S2c: without the check no test failed.
     #[test]
     fn the_room_helper_refuses_a_place_that_is_not_the_one_sam_checked() {
         use std::os::unix::ffi::OsStrExt;
@@ -2751,27 +2666,47 @@ mod process_tests {
                 String::from_utf8_lossy(&out.stderr).into_owned(),
             )
         };
-        let folder = tmp.path().join("place");
-        std::fs::create_dir(&folder).unwrap();
-        for place in [folder.as_path(), Path::new("/dev/null")] {
-            let m = std::fs::symlink_metadata(place).unwrap();
-            let refused = format!(
+        let refused = |place: &Path| {
+            format!(
                 "{} is not the place SAM checked for this room",
                 place.display()
-            );
+            )
+        };
+        let folder = tmp.path().join("place");
+        std::fs::create_dir(&folder).unwrap();
+        let root = Path::new("/");
+        for place in [folder.as_path(), Path::new("/dev/null"), root] {
+            let m = std::fs::symlink_metadata(place).unwrap();
             for (dev, ino) in [(m.dev(), m.ino() + 1), (m.dev() + 1, m.ino())] {
                 let (code, err) = run(place, dev, ino);
                 assert_eq!(code, Some(127), "{err}");
-                assert!(err.contains(&refused), "{err}");
+                assert!(err.contains(&refused(place)), "{err}");
             }
-            let (code, err) = run(place, m.dev(), m.ino());
-            assert_eq!(code, Some(127), "{err}");
-            assert!(!err.contains(&refused), "the right place refused: {err}");
-            assert!(
-                err.contains("a passed syscall filter is not valid"),
-                "{err}"
-            );
         }
+        // The object SAM checked, but inside a mount instead of its root.
+        let m = std::fs::symlink_metadata(&folder).unwrap();
+        let (code, err) = run(&folder, m.dev(), m.ino());
+        assert_eq!(code, Some(127), "{err}");
+        assert!(err.contains(&refused(&folder)), "{err}");
+        assert!(err.contains("moved away"), "{err}");
+        // The root of a mount, reached through a link.
+        let link = tmp.path().join("link");
+        std::os::unix::fs::symlink(root, &link).unwrap();
+        let m = std::fs::symlink_metadata(root).unwrap();
+        let (code, err) = run(&link, m.dev(), m.ino());
+        assert_eq!(code, Some(127), "{err}");
+        assert!(err.contains(&refused(&link)), "{err}");
+        // The right place.
+        let (code, err) = run(root, m.dev(), m.ino());
+        assert_eq!(code, Some(127), "{err}");
+        assert!(
+            !err.contains(&refused(root)),
+            "the right place refused: {err}"
+        );
+        assert!(
+            err.contains("a passed syscall filter is not valid"),
+            "{err}"
+        );
         assert!(!ran.exists(), "the program ran");
     }
 
@@ -3202,7 +3137,7 @@ mod process_tests {
         };
         let top = open_path(tmp.path()).unwrap();
         handle_only(&top);
-        let fd = openat2_beneath(&top, Path::new("sub/secret"))
+        let fd = open_beneath(&top, Path::new("sub/secret"))
             .expect("a file nobody may read is still shown by handle");
         handle_only(&fd);
         assert_eq!(identity(&fd).unwrap(), {
@@ -3216,7 +3151,7 @@ mod process_tests {
             ("/etc", libc::EXDEV),
             ("missing", libc::ENOENT),
         ] {
-            let e = openat2_beneath(&top, Path::new(rel)).expect_err(rel);
+            let e = open_beneath(&top, Path::new(rel)).expect_err(rel);
             assert_eq!(e.raw_os_error(), Some(errno), "{rel}: {e}");
         }
         let e = open_path(&tmp.path().join("missing")).expect_err("missing");
@@ -3241,7 +3176,7 @@ mod process_tests {
         let fd = open_path(tmp.path()).expect("a handle at number 0");
         assert_eq!(fd.as_raw_fd(), 0);
         drop(fd);
-        let fd = openat2_beneath(&top, Path::new("sub")).expect("a place at number 0");
+        let fd = open_beneath(&top, Path::new("sub")).expect("a place at number 0");
         assert_eq!(fd.as_raw_fd(), 0);
         drop(fd);
         let fd = memfd_with(b"the room's rules").expect("data at number 0");
@@ -3259,7 +3194,7 @@ mod process_tests {
         assert_eq!(unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &mut lim) }, 0);
         set_nofile(0, lim.rlim_max);
         let handle = open_path(tmp.path()).map(|_| ());
-        let place = openat2_beneath(&top, Path::new("sub")).map(|_| ());
+        let place = open_beneath(&top, Path::new("sub")).map(|_| ());
         let data = memfd_with(b"x").map(|_| ());
         set_nofile(lim.rlim_cur, lim.rlim_max);
         for (what, r) in [
@@ -3679,6 +3614,15 @@ mod tests {
         assert!(!bwrap_builds_rooms(&old));
         assert!(bwrap_builds_rooms(&new));
         assert!(!bwrap_builds_rooms(&tmp.path().join("missing")));
+        // A help that ends in failure is no answer, whatever it printed.
+        let failing = tmp.path().join("failing");
+        std::fs::write(
+            &failing,
+            "#!/bin/sh\nprintf 'usage: bwrap\\n    --bind-fd FD DEST\\n    --ro-bind-fd FD DEST\\n'\nexit 1\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&failing, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(!bwrap_builds_rooms(&failing));
     }
 
     /// A source on a drive that may be unmounted is not held open (the
@@ -4847,6 +4791,12 @@ exec "$@"
                 "both",
                 "usage: bwrap\n    --bind-fd FD DEST\n    --ro-bind-fd FD DEST",
                 true,
+            ),
+            // Look-alikes that merely contain the two names are not them.
+            (
+                "look-alikes",
+                "usage: bwrap\n    --bind-fds FD DEST\n    --ro-bind-fd-all FD DEST",
+                false,
             ),
         ] {
             let p = tmp.path().join(name);

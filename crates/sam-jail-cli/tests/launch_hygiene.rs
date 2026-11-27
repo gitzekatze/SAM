@@ -389,7 +389,7 @@ fn private_folders_and_logs_are_for_the_user_only() {
         }
     } else {
         assert_eq!(mode(&root.join("data/overlays")), 0o700, "tightened");
-        sam_runner::contracts::not_here("no writable app folder here (Bubblewrap before 0.10)");
+        sam_runner::contracts::not_here("no writable app folder here (Bubblewrap before 0.11)");
     }
     let info = json(&sam(root, &["--json", "info", &id]));
     let log = info["data"]["entry"]["last_launch"]["log_file"]

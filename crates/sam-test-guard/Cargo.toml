@@ -1,0 +1,14 @@
+[package]
+name = "sam-test-guard"
+description = "Test-only guard of SAM - Sandboxed AppImage Manager: SAM's tests refuse to compile in a release build"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# No dependencies. Every other crate of SAM lists this one under
+# [dev-dependencies] only, so Cargo compiles it for test builds and never
+# for the shipped programs.
+
+[lints]
+workspace = true

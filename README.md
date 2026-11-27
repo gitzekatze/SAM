@@ -84,7 +84,7 @@ repository.
   the reason for each), and <!-- fact:apps_refused -->1<!-- /fact --> built for another processor
   is turned away with a clear message
   ([report of <!-- fact:apps_date -->2026-11-20<!-- /fact -->](docs/reports/real-apps-2026-11-20.md)).
-- **<!-- fact:tests -->1,067<!-- /fact --> automated tests guard <!-- fact:functions -->42<!-- /fact --> functions.**
+- **<!-- fact:tests -->1,087<!-- /fact --> automated tests guard <!-- fact:functions -->42<!-- /fact --> functions.**
   [Functions and their proofs](docs/functions.md) shows which tests prove
   which function. A fixed bug gets a test that fails without the fix.
 - **Every security promise is attacked by a test, most from inside a real sandbox.**
@@ -283,8 +283,11 @@ is removed.
 **SAM and Flatpak are separate.** SAM never touches Flatpak's files or
 folders. Only its window looks like Flatseal, so it feels familiar.
 
-For testing, `SAM_CONFIG_DIR`, `SAM_DATA_DIR`, `SAM_APPLICATIONS_DIR` and
-`SAM_RUNTIME_DIR` move these folders elsewhere.
+`XDG_CONFIG_HOME` and `XDG_DATA_HOME` move these folders in every build. For
+testing, `SAM_CONFIG_DIR`, `SAM_DATA_DIR`, `SAM_APPLICATIONS_DIR` and
+`SAM_RUNTIME_DIR` move them elsewhere too, but only in developer builds; an
+installed SAM ignores them, and no longer hides a folder it once kept there
+(move or delete such a folder before an app starts).
 
 ### Updates
 

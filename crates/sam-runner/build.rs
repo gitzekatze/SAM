@@ -1,6 +1,7 @@
 //! Builds SAM's room helper (room-exec/main.rs) as a static program, which
 //! `room_service` embeds: it starts inside a room's file layout, so it must
-//! need no loader and no library from it. Uses only Rust's standard library;
+//! need no loader and no library from it. Uses only Rust's standard library
+//! (and sam-core's place_check.rs, a file of the helper written that way);
 //! needs the static C library (Debian/Ubuntu: libc6-dev, Fedora:
 //! glibc-static, Arch: glibc). Without it the build goes on, warns, and
 //! Room service is off in that build (every start says so).
@@ -15,6 +16,8 @@ fn cargo(line: &str) {
 
 fn main() {
     cargo("rerun-if-changed=room-exec/main.rs");
+    // Part of the helper: SAM's one place check (included with #[path]).
+    cargo("rerun-if-changed=../sam-core/src/place_check.rs");
     let out = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR")).join("sam-room-exec");
     let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".into());
     let target = std::env::var("TARGET").expect("TARGET");

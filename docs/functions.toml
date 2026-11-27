@@ -473,13 +473,13 @@ id = 18
 area = "C"
 promise = "Optional: a writable app folder (changes go to a separate layer); where that's impossible, a read-only start with an explanation."
 code = ["sam-sandbox/src/lib.rs", "sam-runner/src/launch.rs", "sam-core/src/host.rs"]
-tests = ["the_overlay_check_believes_bubblewraps_answer", "the_overlay_checks_match_the_real_bubblewrap", "writable_appdir_uses_overlay", "an_app_starts_read_only_when_its_writable_app_folder_cannot_work", "a_writable_app_folder_is_offered_only_where_it_can_work", "the_app_folder_stays_read_only_unless_writable_is_granted"]
+tests = ["the_overlay_check_believes_bubblewraps_answer", "the_overlay_checks_match_the_real_bubblewrap", "writable_appdir_uses_overlay", "an_app_starts_read_only_when_its_writable_app_folder_cannot_work", "a_writable_app_folder_is_offered_only_where_it_can_work", "the_app_folder_stays_read_only_unless_writable_is_granted", "overlays_count_where_bubblewrap_lists_the_option", "an_option_counts_only_as_a_word_of_its_own", "empty_help_or_an_empty_option_lists_nothing", "bubblewrap_options_come_from_a_successful_help_on_standard_output"]
 
 [[function]]
 id = 41
 area = "C"
 promise = "A program in an app that builds a sandbox of its own (such as GTK's image loader) gets it from SAM, built outside the app's sandbox (Room service): never with more than the app, never with less than it asked, always with SAM's protection layers, and never outliving the app."
-code = ["sam-runner/src/room_rules.rs", "sam-runner/src/room_service.rs", "sam-runner/room-exec/main.rs", "sam-runner/build.rs", "sam-runner/src/launch.rs", "sam-jail-cli/src/bin/sam-jail-run.rs"]
+code = ["sam-runner/src/room_rules.rs", "sam-runner/src/room_service.rs", "sam-runner/room-exec/main.rs", "sam-core/src/place_check.rs", "sam-runner/build.rs", "sam-runner/src/launch.rs", "sam-jail-cli/src/bin/sam-jail-run.rs"]
 tests = [
   "room_service_builds_working_rooms_that_never_get_more_than_their_app",
   "every_room_is_a_subset_of_its_app",
@@ -585,6 +585,15 @@ tests = [
   "rooms_need_a_bubblewrap_that_shows_places_by_handle",
   "a_single_device_file_is_shown_by_its_exact_name",
   "a_room_shows_only_what_sam_opened_whatever_bubblewrap_does",
+  "a_room_place_whose_mount_was_moved_away_and_the_original_put_back_is_refused",
+  "the_same_object_at_the_root_of_a_mount_passes",
+  "a_link_at_the_place_is_refused",
+  "a_different_object_is_refused",
+  "a_place_that_is_not_the_root_of_a_mount_is_refused_where_a_mount_is_expected",
+  "the_mount_root_answer_reads_only_the_mount_root_bit",
+  "only_a_link_is_reported_as_a_link",
+  "only_absolute_paths_are_opened_without_links",
+  "the_statx_struct_is_the_kernels",
   "a_left_out_setting_can_be_turned_back_on",
   "changed_room_requests_never_crash_the_readers",
   "a_room_dies_with_sams_launcher",
@@ -655,6 +664,9 @@ tests = [
   "an_installed_window_runs_only_the_tool_next_to_it",
   "an_installed_window_ignores_a_program_named_in_its_environment",
   "a_release_build_ignores_developer_variables",
+  "a_release_build_ignores_sams_folder_switches",
+  "a_developer_build_follows_sams_folder_switches",
+  "only_a_developer_build_counts_its_folders_as_moved_by_a_switch",
   "a_release_build_trusts_no_folder_of_test_tools",
   "a_file_name_that_is_not_text_is_refused_by_name",
   "a_folder_name_that_is_not_text_stops_the_start", "a_protected_place_whose_name_is_not_text_stops_the_start",
@@ -963,7 +975,7 @@ id = 33
 area = "G"
 promise = "The doctor check finds problems with the system or an app."
 code = ["sam-runner/src/doctor.rs", "sam-runner/src/bwrap.rs", "sam-runner/src/dbus_check.rs", "sam-core/src/host.rs"]
-tests = ["a_setuid_bubblewrap_is_told_from_a_normal_one", "the_user_namespace_knobs_are_read_as_meant", "the_landlock_version_is_the_kernels", "the_kernel_release_gives_the_least_landlock_version", "a_landlock_answer_of_zero_is_no_landlock", "missing_bubblewrap_names_the_package_to_install", "disabled_user_namespaces_are_explained_not_called_missing", "setuid_bubblewrap_works_without_user_namespaces", "reaches_the_session_bus", "the_bus_check_message_has_the_correct_wire_format", "bubblewrap_versions_are_compared_correctly", "the_built_in_contract_map_parses", "every_contract_probe_is_known", "the_login_files_check_looks_for_shadow", "a_missing_portal_interface_breaks_the_portal_contract", "the_quick_checks_notice_a_broken_or_missing_tool", "a_broken_contract_fails_a_test_with_its_name_and_playbook",
+tests = ["a_setuid_bubblewrap_is_told_from_a_normal_one", "the_bubblewrap_option_check_counts_only_the_option_itself", "the_user_namespace_knobs_are_read_as_meant", "the_landlock_version_is_the_kernels", "the_kernel_release_gives_the_least_landlock_version", "a_landlock_answer_of_zero_is_no_landlock", "missing_bubblewrap_names_the_package_to_install", "disabled_user_namespaces_are_explained_not_called_missing", "setuid_bubblewrap_works_without_user_namespaces", "reaches_the_session_bus", "the_bus_check_message_has_the_correct_wire_format", "the_built_in_contract_map_parses", "every_contract_probe_is_known", "the_login_files_check_looks_for_shadow", "a_missing_portal_interface_breaks_the_portal_contract", "the_quick_checks_notice_a_broken_or_missing_tool", "a_broken_contract_fails_a_test_with_its_name_and_playbook",
   "a_broken_contract_ends_with_not_passed",
   "doctor_ends_with_what_it_reports",
   "the_install_hint_fits_the_distribution",
@@ -1095,6 +1107,8 @@ tests = ["times_are_shown_without_a_date_library", "the_permission_model_depends
   "tests_find_the_helper_of_their_own_build",
   "a_build_never_takes_a_helper_from_path",
   "rooted_paths_have_a_runtime_folder_of_their_own", "a_test_inside_a_test_keeps_its_runtime_folder_out_of_tmp",
+  "every_build_follows_the_standard_config_and_data_folders",
+  "empty_or_relative_folders_are_ignored_in_every_build",
   "an_error_names_its_sam_function_and_keeps_its_message",
   "json_run_keeps_its_reply_alone_on_standard_output",
   "preset_names_are_never_read_as_options",
@@ -1112,7 +1126,7 @@ id = 42
 area = "I"
 internal = true
 promise = "SAM is checked and released as it says: the release key signs only files the release build of that very tag made, source files that match the package recipe and checksum lists the signing script writes itself; a failed release build leaves no tag; the owner's approval counts only for the version the owner saw and is judged by the base branch's checker; the CI scripts fail when the tests could not run; the programs SAM ships contain none of its test and release tools; and every workflow keeps pinned actions, least rights and checked downloads."
-code = ["scripts/sign-release.sh", "scripts/release.sh", "scripts/workflow-check.py", ".github/workflows/approval.yml", ".github/workflows/release.yml", ".github/workflows/pages.yml", "tests/gui/desktop-sandbox.sh", "Cargo.toml", "scripts/make-appimage.sh", "tests/shipped/in-container.sh"]
+code = ["scripts/sign-release.sh", "scripts/release.sh", "scripts/workflow-check.py", ".github/workflows/approval.yml", ".github/workflows/release.yml", ".github/workflows/pages.yml", "tests/gui/desktop-sandbox.sh", "Cargo.toml", "sam-test-guard/src/lib.rs", "scripts/make-appimage.sh", "tests/shipped/in-container.sh", "packaging/arch/PKGBUILD", "packaging/fedora/sam-jail.spec"]
 tests = [
   "the_release_key_signs_no_appimage_the_release_build_did_not_make",
   "an_appimage_built_for_an_older_release_is_not_signed",
@@ -1123,6 +1137,8 @@ tests = [
   "a_release_that_fails_to_build_leaves_no_tag",
   "release_builds_use_one_fixed_rust_and_stop_on_overflow",
   "release_builds_never_turn_on_debug_assertions",
+  "release_test_builds_stop_at_the_test_guard",
+  "package_test_steps_build_at_optimisation_level_zero",
   "the_owners_label_counts_only_right_after_it_is_set",
   "the_approval_check_runs_the_base_branchs_checker",
   "a_desktop_test_run_that_does_not_build_fails",
