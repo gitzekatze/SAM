@@ -1479,7 +1479,9 @@ fn grant_path(c: &str) -> PathBuf {
 }
 
 /// Step 1 of the protections inside the shown parts of the real home: the
-/// folders above protected places, above SAM's own folders and above SAM's
+/// folders above protected places, above SAM's own folders (`sam_dirs`:
+/// [`sams_folders`], with the folders that `SAM_CONFIG_DIR` and
+/// `SAM_DATA_DIR` name) and above SAM's
 /// own programs that the sandbox shows writable. Each becomes a mount point
 /// of its own (bound onto itself, in the depth order of the other mounts),
 /// so it cannot be renamed away together with the protection (`mv
@@ -1519,9 +1521,13 @@ fn pins(
     for d in protected_ancestors(home) {
         pin(&home.join(d));
     }
+    // A grant's own place (the whole home above `~/.config/sam`) is a
+    // mount point already, and not bound a second time.
     for d in sam_dirs {
         for anc in d.ancestors().skip(1) {
-            pin(anc);
+            if !views.grants.iter().any(|(g, _)| g == anc) {
+                pin(anc);
+            }
         }
     }
     // Also under the home's name when the home is kept behind a link
@@ -2340,14 +2346,21 @@ impl Section<'_> {
                 .filter(|g| matches!(g.how, WriteBind::ReadOnly(_)))
                 .map(|g| g.bound.clone()),
         );
-        // The folders above where this SAM keeps its own. Those above the
-        // folders named like them are pinned as above every protected
-        // place, which they are (`protected_ancestors`, and where a link
-        // among them leads through `guarded`).
-        for p in pins(&home, views, &guarded, &ctx.sam_dirs, &ctx.sam_programs) {
+        // The folders above SAM's own folders in this start
+        // ([`sams_folders`]): where this SAM keeps its own, and the folders
+        // that `SAM_CONFIG_DIR` and `SAM_DATA_DIR` name, which an installed
+        // SAM hides but never uses. Renamed (`mv ~/Games ~/G` with
+        // `SAM_DATA_DIR=~/Games/sam`), the empty folder moved along, and
+        // the next start no longer found the old folder to hide (batch
+        // review of the change that made release builds ignore these
+        // switches). Those above the folders named like them are pinned as
+        // above every protected place, which they are
+        // (`protected_ancestors`, and where a link among them leads through
+        // `guarded`).
+        let sams = &self.sams;
+        for p in pins(&home, views, &guarded, sams, &ctx.sam_programs) {
             mount(&p, &|m| m.op2("--bind", &p, &p));
         }
-        let sams = &self.sams;
         // With the whole home writable, a protected place this start does
         // not hide that really is the home (`~/.config/sam` planted as a
         // link to it) is locked read-only where the app reaches it, which

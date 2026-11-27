@@ -609,6 +609,23 @@ itself (the whole home, or exactly that folder), SAM cannot tell a planted
 link from another SAM's folder kept there, and the place stays hidden, as
 it always was.
 
+The folders that `SAM_CONFIG_DIR` and `SAM_DATA_DIR` name are hidden in the
+same way, also by an installed SAM, which ignores these developer variables
+and never keeps anything there. An installed SAM that once kept its data
+through `SAM_DATA_DIR=~/Games/sam` left its app records and the other apps'
+private homes there; with `~/Games` or the whole home granted, the app does
+not see them. Such a folder counts by the rules for the names above,
+whatever its own name: it is not hidden where it really is the home or a
+folder above it (`/` too), nor where it leads elsewhere through a link and
+the app is shown only folders inside the place it leads to, so a variable
+naming the home never covers the home with an empty folder. As for SAM's
+own folders, the folders above such a folder cannot be renamed, so the next
+start still finds it where the variable names it. SAM reads these two
+variables only to hide more, never to keep its files there or to show
+anything (`a_folder_a_switch_names_is_hidden_but_never_used_in_a_release_build`,
+`a_folder_a_switch_names_is_hidden_unless_that_would_cover_too_much`,
+`an_old_switch_folder_stays_hidden_from_a_real_sandbox`).
+
 A link to the home by one of those names is kept read-only where the app
 reaches it, and that is the whole home. So with `~/.config/sam` leading to
 the home and the whole home granted read and write, the app sees the whole
@@ -660,7 +677,11 @@ How these stay protected with the home writable:
   move `.config` away and fill a new one. The same holds for the folders
   above SAM's own folders, whatever grant shows them: with write access to
   `~/.local` alone, `~/.local/share` cannot be moved away to plant records
-  where SAM keeps its own.
+  where SAM keeps its own. It holds as well for the folders above the
+  folders that `SAM_CONFIG_DIR` and `SAM_DATA_DIR` name: with
+  `SAM_DATA_DIR=~/Games/sam`, `~/Games` cannot be renamed, which would
+  carry the empty folder away and leave the old folder unhidden at the
+  next start.
 - **Parts of the home count too.** A writable folder that holds any of
   these places (`~/.config`, `~/.local`, a dotfiles folder that `~/.bashrc`
   links into, a user folder) gets the same protections as the whole home:
