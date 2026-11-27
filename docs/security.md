@@ -743,12 +743,17 @@ How these stay protected with the home writable:
   (`a_read_only_user_folder_under_a_writable_home_is_read_only`,
   `a_start_file_linked_into_a_read_only_user_folder_stays_locked_with_a_writable_home`,
   `a_read_only_user_folder_outside_the_home_is_shown_with_the_whole_home`).
-  Two user folders set to one place (Music read and write, Pictures
-  read-only, both `~/Media`) are shown at one access, the one of the folder
-  listed last (Documents, Downloads, Music, Pictures, Videos, Desktop):
-  the mounts, the sandbox check and the views take this one answer
-  (`user_folders_at_one_place_take_one_access`,
-  `the_check_expects_user_folders_at_one_place_at_one_access`).
+  Two user folders set to one place at different access (Music read and
+  write, Pictures read-only, both `~/Media`) are shown at one access, the
+  stricter one, whatever their order: `~/Media` is read-only, as
+  "read-only means read-only" (owner decision of 2026-11-27). The mounts,
+  the views, Landlock, the sandbox check and the start take this one
+  answer, and the start, the app page and `sam-jail info` name the
+  folders and the rule, with the way out: set each to read and write, or
+  give them places of their own
+  (`user_folders_at_one_place_take_the_stricter_access`,
+  `the_check_expects_user_folders_at_one_place_at_one_access`,
+  `user_folders_at_one_place_with_different_access_are_named`).
   An extra folder granted read and write inside a read-only user folder
   (`~/Documents/proj` with Documents read-only) is bound writable after
   it, as inside a read-only extra folder: SAM judges whether the app can
