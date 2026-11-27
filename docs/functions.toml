@@ -306,6 +306,7 @@ tests = ["a_grant_inside_sams_folder_does_not_show_it", "opened_files_are_judged
   "credential_stores_follow_other_config_and_data_folders",
   "a_font_folder_link_never_leads_out_of_what_the_app_is_shown",
   "an_own_place_never_leads_to_the_home_keys_or_sams_folders",
+  "sams_folders_are_guarded_where_they_really_lead",
   "with_the_whole_home_writable_the_font_places_stay_bound_read_only",
   "a_guarded_link_to_the_home_keeps_the_font_places_read_only",
   "a_font_place_another_grant_shows_writable_stays_bound_read_only",

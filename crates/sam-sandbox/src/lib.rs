@@ -8241,6 +8241,70 @@ mod guard_tests {
                 cmd.notes
             );
         }
+        // SAM's own folder at a name no protected place has
+        // (`SAM_DATA_DIR=~/Games/sam`): guarded only as named, so
+        // `/data/u/Games/sam` was bound beside the home. And in a private
+        // home, the unpack folder set to `~/Apps/sam` with `~/Apps` a link
+        // to another disk: `~/.fonts` made a link to the real place of that
+        // folder in an earlier start with the whole home writable was
+        // bound and showed every unpacked app.
+        for private in [false, true] {
+            let t = scratch();
+            let base = fs::canonicalize(t.path()).unwrap();
+            let (named, target, sams, p) = if private {
+                let named = base.join("home/u");
+                let disk = base.join("mnt/disk/Apps");
+                fs::create_dir_all(&named).unwrap();
+                fs::create_dir_all(disk.join("sam")).unwrap();
+                std::os::unix::fs::symlink(&disk, named.join("Apps")).unwrap();
+                (
+                    named.clone(),
+                    disk.join("sam"),
+                    named.join("Apps/sam"),
+                    PermissionSet::strict_gui(),
+                )
+            } else {
+                let real = base.join("data/u");
+                let named = base.join("home/u");
+                fs::create_dir_all(real.join("Games/sam")).unwrap();
+                fs::create_dir_all(base.join("home")).unwrap();
+                std::os::unix::fs::symlink(&real, &named).unwrap();
+                (
+                    named.clone(),
+                    real.join("Games/sam"),
+                    named.join("Games/sam"),
+                    full_rw(),
+                )
+            };
+            fs::write(target.join("id_ed25519"), "secret").unwrap();
+            std::os::unix::fs::symlink(&target, named.join(".fonts")).unwrap();
+            let mut ctx = ctx_for(&p, &named);
+            ctx.sam_dirs = vec![sams];
+            let cmd = Bubblewrap.build(&ctx).unwrap();
+            let target = st(&target);
+            let fonts = st(&named.join(".fonts"));
+            let bound: Vec<&[String]> = cmd
+                .args
+                .windows(3)
+                .filter(|w| {
+                    w[0].contains("bind")
+                        && [&target, &fonts]
+                            .iter()
+                            .any(|at| w[1] == **at || w[2] == **at)
+                })
+                .collect();
+            assert!(
+                bound.is_empty(),
+                "private home {private}: ~/.fonts a link to {target}: never bound: {bound:?}"
+            );
+            assert!(
+                cmd.notes.iter().any(|n| n
+                    .contains("SAM does not bind ~/.fonts for this app on its own")
+                    && n.contains("a place SAM protects")),
+                "private home {private}: {:?}",
+                cmd.notes
+            );
+        }
         // The control: real font folders in a home behind a link, also
         // with `~/.aws` a link to the home's real place, stay bound
         // read-only where the app reaches them.

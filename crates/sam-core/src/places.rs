@@ -1428,7 +1428,8 @@ pub fn user_folder_refused_note(
 /// ([`own_place_left_out`]): the protected places, the key folders and the
 /// credential stores of the home `home`, each under the home as named,
 /// under its real place and where it really leads, and SAM's own folders
-/// (`sams`). The protected places and the credential stores follow
+/// (`sams`), as named and where they lead. The protected places and the
+/// credential stores follow
 /// `XDG_CONFIG_HOME` and `XDG_DATA_HOME` ([`protected_places`],
 /// [`sensitive_places`]): with `XDG_CONFIG_HOME=~/cfg`, `~/.fonts` made a
 /// link to `~/cfg/gh` (where the GitHub tool keeps its token) in an
@@ -1482,7 +1483,20 @@ pub fn guarded_places_everywhere_with(
             }
         }
     }
-    out.extend(sams.iter().cloned());
+    // SAM's own folders, like the places above: as named and where they
+    // lead (through a link in the way, also the home kept behind a link:
+    // the part that exists is resolved, the rest appended). As named only,
+    // a folder named through a link was not guarded where it really is:
+    // with the unpack folder set to `~/Apps/sam` and `~/Apps` a link to
+    // `/mnt/disk/Apps`, `~/.fonts` made a link to `/mnt/disk/Apps/sam` in
+    // an earlier start with the whole home writable showed every unpacked
+    // app in a private home; and with the home kept behind a link
+    // (`/home/u` a link to `/data/u`) and `SAM_DATA_DIR=~/Games/sam`, one
+    // made a link to `/data/u/Games/sam` was bound beside the home, where
+    // SAM hides nothing, and showed the other apps' private homes.
+    for s in sams {
+        add(s.clone());
+    }
     out
 }
 
@@ -3062,6 +3076,95 @@ mod tests {
             );
         }
         assert_eq!(to_outside(&elsewhere.join("cfg/myfonts"), &outside), None);
+    }
+
+    /// SAM's own folders are guarded also where they really lead, not only
+    /// as configured: with the unpack folder set to `~/Apps/sam` and
+    /// `~/Apps` a link to another disk, `~/.fonts` made a link to the real
+    /// place of that folder (in an earlier start with the whole home
+    /// writable) was bound in a private home and showed every unpacked
+    /// app; and with the home kept behind a link (`/home/u` a link to
+    /// `/data/u`) and SAM's data folder set to `~/Games/sam`, `~/.fonts`
+    /// made a link to `/data/u/Games/sam` showed the other apps' private
+    /// homes. Only SAM's folders named like a protected place
+    /// (`~/.local/share/sam`) were guarded there. A fonts folder of your
+    /// own beside them is still shown.
+    #[test]
+    fn sams_folders_are_guarded_where_they_really_lead() {
+        // A SAM folder named through a link in the home, private home.
+        let t = scratch();
+        let base = std::fs::canonicalize(t.path()).unwrap();
+        let home = base.join("home/u");
+        let disk = base.join("mnt/disk/Apps");
+        for d in [disk.join("sam/app-1"), disk.join("myfonts")] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        std::fs::create_dir_all(&home).unwrap();
+        std::os::unix::fs::symlink(&disk, home.join("Apps")).unwrap();
+        let host = HostInfo {
+            home: home.clone(),
+            ..Default::default()
+        };
+        let sams = [home.join("Apps/sam")];
+        let guarded = guarded_places_everywhere_with(&home, &sams, None, None);
+        let fonts = home.join(".fonts");
+        let to = |target: &Path, p: &PermissionSet, guarded: &[PathBuf]| {
+            let _ = std::fs::remove_file(&fonts);
+            std::os::unix::fs::symlink(target, &fonts).unwrap();
+            own_place_left_out(p, &host, &fonts, guarded, &none())
+        };
+        let private = PermissionSet::strict_gui();
+        for target in [
+            disk.join("sam"),
+            disk.join("sam/app-1"),
+            home.join("Apps/sam"),
+        ] {
+            assert!(
+                matches!(to(&target, &private, &guarded), Some(LeftOut::Guarded(_))),
+                "{}",
+                target.display()
+            );
+        }
+        assert_eq!(to(&disk.join("myfonts"), &private, &guarded), None);
+
+        // The home kept behind a link, SAM's data folder at a name no
+        // protected place has, in a private home and with the whole home
+        // writable.
+        let t = scratch();
+        let base = std::fs::canonicalize(t.path()).unwrap();
+        let real = base.join("data/u");
+        let named = base.join("home/u");
+        for d in ["Games/sam/homes/other", "myfonts"] {
+            std::fs::create_dir_all(real.join(d)).unwrap();
+        }
+        std::fs::create_dir_all(base.join("home")).unwrap();
+        std::os::unix::fs::symlink(&real, &named).unwrap();
+        let host = HostInfo {
+            home: named.clone(),
+            ..Default::default()
+        };
+        let sams = [named.join("Games/sam")];
+        let guarded = guarded_places_everywhere_with(&named, &sams, None, None);
+        let fonts = real.join(".fonts");
+        let to = |target: &Path, p: &PermissionSet| {
+            let _ = std::fs::remove_file(&fonts);
+            std::os::unix::fs::symlink(target, &fonts).unwrap();
+            own_place_left_out(p, &host, &named.join(".fonts"), &guarded, &none())
+        };
+        let mut home_rw = PermissionSet::strict_gui();
+        home_rw.filesystem.home = true;
+        home_rw.filesystem.home_access = Access::Rw;
+        for p in [&private, &home_rw] {
+            for target in [real.join("Games/sam"), real.join("Games/sam/homes/other")] {
+                assert!(
+                    matches!(to(&target, p), Some(LeftOut::Guarded(_))),
+                    "home {}: {}",
+                    p.filesystem.home,
+                    target.display()
+                );
+            }
+            assert_eq!(to(&real.join("myfonts"), p), None, "{}", p.filesystem.home);
+        }
     }
 
     /// With the whole home writable, the font places stay bound read-only

@@ -892,7 +892,9 @@ fn a_font_folder_link_through_a_link_in_tmp_never_reaches_sockets() {
 /// In the next start it reads the key neither at that real place nor
 /// through the fonts folder, and the start says why: before, SAM counted
 /// the real place as one the home shows and bound it read-only at that
-/// name, beside the home, where the keys were not hidden.
+/// name, beside the home, where the keys were not hidden. In a private
+/// home, with SAM's own folders named through a link, `~/.fonts` made a
+/// link to their real place shows nothing of them either.
 #[test]
 fn a_font_link_to_the_real_place_of_a_home_behind_a_link_shows_no_keys() {
     let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
@@ -929,4 +931,41 @@ fn a_font_link_to_the_real_place_of_a_home_behind_a_link_shows_no_keys() {
             "{guarded}: the start says why: {text}"
         );
     }
+    // SAM's own folders named through a link (here SAM's whole folder is a
+    // link to `~/Apps/sam` at the home's real place, as with the unpack
+    // folder set to `~/Apps/sam` and `~/Apps` a link to another disk):
+    // `~/.fonts` made a link to their real place in an earlier start with
+    // the whole home writable was bound in the next start with a private
+    // home, since SAM's folders were guarded only as named, and the app
+    // read SAM's app records through it. In the home, since the test's
+    // folders lie in `/tmp`, where a link out of the home is refused for
+    // that reason alone.
+    let root = rig.home.parent().unwrap().parent().unwrap().to_path_buf();
+    let sam_real = real.join("Apps/sam");
+    fs::create_dir_all(real.join("Apps")).unwrap();
+    fs::rename(root.join("sam"), &sam_real).unwrap();
+    symlink(&sam_real, root.join("sam")).unwrap();
+    let target = sam_real.join("data");
+    fs::write(target.join("id_ed25519"), "PRIVATE KEY").unwrap();
+    let _ = fs::remove_file(real.join(".fonts"));
+    symlink(&target, real.join(".fonts")).unwrap();
+    let files = format!(
+        "{}|{}",
+        s(&target.join("id_ed25519")),
+        s(&fonts.join("id_ed25519"))
+    );
+    let (r, text) = rig.start(&PermissionSet::strict_gui(), &[("SAM_TEST_FILES", files)]);
+    assert_ne!(
+        r["READ0"], "PRIVATE KEY",
+        "SAM's folder at its real place: {text}"
+    );
+    assert_ne!(
+        r["READ1"], "PRIVATE KEY",
+        "SAM's folder through ~/.fonts: {text}"
+    );
+    assert!(
+        text.contains("SAM does not bind ~/.fonts for this app on its own")
+            && text.contains("a place SAM protects"),
+        "SAM's folder: the start says why: {text}"
+    );
 }

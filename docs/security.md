@@ -975,7 +975,12 @@ How these stay protected with the home writable:
     `/data/cfg`, `~/.fonts` a link to `~/cfg/gh` or `/data/cfg/gh` is not
     bound in a private home:
     `an_own_place_never_leads_to_the_home_keys_or_sams_folders`,
-    `git_credentials_under_config_git_stay_hidden`). With the whole home
+    `git_credentials_under_config_git_stay_hidden`). SAM's own folders
+    count as named and where they lead too: with the unpack folder set to
+    `~/Apps/sam` and `~/Apps` a link to another disk, or with the home
+    kept behind a link and SAM's data folder at `~/Games/sam`, `~/.fonts`
+    a link to the real place of that folder is not bound
+    (`sams_folders_are_guarded_where_they_really_lead`). With the whole home
     writable, which shows such a place in the home anyway, the fonts stay
     bound read-only wherever they lead in the home, except the home or a
     folder above it, but only where the app reaches them through what the
@@ -1020,7 +1025,15 @@ How these stay protected with the home writable:
     writable at the place the link leads to, where SAM binds no font or
     theme place read-only, so the app can change
     `~/dots/config/fontconfig` there, whatever SAM binds at
-    `~/.config/fontconfig`. SAM binds no theme file read-only with any
+    `~/.config/fontconfig`. A font or theme place that is itself a link
+    in a folder the app can change (`~/.fonts` your own link to
+    `~/.local/share/fonts` with the whole home writable,
+    `~/.config/fontconfig` one to `~/dots/fontconfig` inside an extra
+    writable `~/.config`) is bound read-only only where the link leads,
+    never at the link itself, which stays an ordinary entry of that
+    folder: the app can replace the link with a folder of its own, as it
+    can create a missing place, and programs outside the sandbox then
+    load what it puts there. SAM binds no theme file read-only with any
     home grant (read-only or read and write) or with host theme settings
     off, so an extra writable `~/.config` shows the theme files in it
     (`~/.config/gtk-3.0`, `~/.config/kdeglobals`, `~/.config/qt5ct`, …)
@@ -1050,7 +1063,9 @@ How these stay protected with the home writable:
   `/sys`, and the fonts and theme files of a private home), the check
   expects nothing there and makes no probe for that folder. A link that
   stays inside what the app is shown (`~/.fonts` a
-  link to `~/.local/share/fonts`) works as before, and an extra folder you
+  link to `~/.local/share/fonts`) works as before (the place it leads to
+  is bound read-only; the link itself stays as changeable as the folder
+  that holds it), and an extra folder you
   name by its real place is shown as written and rated by its name: `/tmp`
   itself, the known socket folders in it (`/tmp/tmux-1000` named so) and
   anything in `/var/tmp` (as part of `/var`) are rated *Dangerous* and
