@@ -102,6 +102,14 @@ workflow built them from this tag. The SBOM is made in a job of its own that
 can change nothing, and gets its provenance from another job that runs no
 third-party action; only the job that makes the draft may write.
 
+The AppImages' programs contain no test or release tools
+([Testing](testing.md)): the AppImage build writes the update information
+and the `.zsync` file with a `sam-jail` of its own that has the `dev-tools`
+feature, and the test on fresh containers makes its test app before the
+containers start, then checks that the shipped `sam-jail` refuses those
+tools and `sam-jail-gui` the screenshot options. `scripts/sign-release.sh`
+signs with a developer build (`cargo build`), which has them.
+
 1. **Sign the AppImages** on this computer, so the key never goes to GitHub:
 
    ```sh

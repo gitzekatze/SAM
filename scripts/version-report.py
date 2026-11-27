@@ -161,13 +161,16 @@ def coverage(bins, profdir, env):
 
 
 def bench():
-    r = sh(["cargo", "build", "--release", "-q", "-p", "sam-jail-cli"])
+    # The benchmark is one of the test tools release builds leave out: a
+    # release build with the dev-tools feature, in a folder of its own so
+    # target/release keeps the programs SAM ships.
+    r = sh(["cargo", "build", "--release", "-q", "-p", "sam-jail-cli", "--features", "dev-tools", "--target-dir", "target/bench"])
     if r.returncode != 0:
         print("release build failed; no benchmarks", file=sys.stderr)
         return []
     tmp = WORK / "tmp"
     tmp.mkdir(parents=True, exist_ok=True)
-    r = sh(["target/release/sam-jail", "--json", "dev", "bench"], env={**os.environ, "TMPDIR": str(tmp)})
+    r = sh(["target/bench/release/sam-jail", "--json", "dev", "bench"], env={**os.environ, "TMPDIR": str(tmp)})
     try:
         v = json.loads(r.stdout)
         return v.get("data", v)

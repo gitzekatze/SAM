@@ -6,7 +6,8 @@
 //! * [`desktop`]: launcher integration
 //! * [`fingerprint`]: staleness detection
 //! * [`id`]: human-readable, collision-free app ids
-//! * [`testkit`]: builds synthetic AppImages for tests and demos
+//! * `testkit`: builds synthetic AppImages for tests and demos (development
+//!   builds and the `dev-tools` feature only, never release builds)
 
 pub mod desktop;
 pub mod extract;
@@ -16,4 +17,5 @@ pub mod menu;
 pub mod metadata;
 pub mod normalize;
 pub mod peek;
+#[cfg(any(debug_assertions, feature = "dev-tools"))]
 pub mod testkit;

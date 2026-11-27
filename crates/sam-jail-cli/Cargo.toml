@@ -14,6 +14,13 @@ path = "src/main.rs"
 name = "sam-jail-run"
 path = "src/bin/sam-jail-run.rs"
 
+# The test and release tools (`sam-jail dev make-fixture`, `bench`,
+# `set-update-info`, `make-zsync`, `sign-appimage`) are in development
+# builds; a release build has them only with this feature. Release builds
+# and packages never turn it on (docs/testing.md).
+[features]
+dev-tools = ["sam-intake/dev-tools"]
+
 [dependencies]
 sam-core.workspace = true
 sam-storage.workspace = true

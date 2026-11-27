@@ -488,47 +488,6 @@ pub(crate) enum ConfigCmd {
 
 #[derive(Subcommand)]
 pub(crate) enum DevCmd {
-    /// Build a synthetic test AppImage.
-    MakeFixture {
-        path: PathBuf,
-        #[arg(long, default_value = "Hello")]
-        name: String,
-        #[arg(long, default_value = "Utility;")]
-        categories: String,
-        /// Use this file as the AppRun script.
-        #[arg(long)]
-        apprun: Option<PathBuf>,
-        /// A terminal program (`Terminal=true` in its menu entry).
-        #[arg(long)]
-        terminal: bool,
-    },
-    /// Time the parts of SAM on a realistic test AppImage (for the version
-    /// report). Uses a fresh folder under $TMPDIR and removes it.
-    Bench {
-        /// How many apps to create for the Permissions-page measurement.
-        #[arg(long, default_value_t = 120)]
-        apps: usize,
-    },
-    /// Write update information into an AppImage runtime (release builds).
-    SetUpdateInfo { runtime: PathBuf, info: String },
-    /// Write the .zsync update description of a file (release builds).
-    MakeZsync {
-        file: PathBuf,
-        /// Address of the file, relative to the .zsync (usually its name).
-        #[arg(long)]
-        url: Option<String>,
-        /// Output (default: FILE.zsync).
-        #[arg(long)]
-        out: Option<PathBuf>,
-    },
-    /// Sign an AppImage with a GnuPG key (release builds): the signature
-    /// goes into the AppImage, and is checked afterwards.
-    SignAppimage {
-        file: PathBuf,
-        /// The key's full fingerprint.
-        #[arg(long)]
-        key: String,
-    },
     /// Reads an AppImage's name and icon into OUT; run by SAM inside a
     /// sandbox for the overview.
     Peek { file: PathBuf, out: PathBuf },
@@ -544,4 +503,10 @@ pub(crate) enum DevCmd {
         #[arg(long)]
         max_seconds: u64,
     },
+    /// The test and release tools (make-fixture, bench, set-update-info,
+    /// make-zsync, sign-appimage): development builds and the dev-tools
+    /// feature only, never release builds or packages (dev_tools.rs).
+    #[cfg(any(debug_assertions, feature = "dev-tools"))]
+    #[command(flatten)]
+    Tools(crate::dev_tools::ToolCmd),
 }

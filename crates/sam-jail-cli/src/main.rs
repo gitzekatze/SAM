@@ -21,9 +21,14 @@ use sam_storage::{
 use serde::Serialize;
 use serde_json::{json, Value};
 
+// The test and release tools (dev_tools.rs): in development builds and
+// with the dev-tools feature only, never in release builds or packages.
+#[cfg(any(debug_assertions, feature = "dev-tools"))]
 mod bench;
 mod cli;
 mod config_cmd;
+#[cfg(any(debug_assertions, feature = "dev-tools"))]
+mod dev_tools;
 mod man;
 mod output;
 mod presets;
@@ -1607,127 +1612,12 @@ fn real_main(cli: Cli) -> Result<()> {
                 return Err(e);
             }
         }
+        // Test and release tools: development builds and the dev-tools
+        // feature only (dev_tools.rs).
+        #[cfg(any(debug_assertions, feature = "dev-tools"))]
         Cmd::Dev {
-            cmd: DevCmd::Bench { apps },
-        } => {
-            let r = bench::bench(apps)?;
-            out.emit(&r, || {
-                for m in &r {
-                    let ms = serde_json::to_value(m)
-                        .ok()
-                        .and_then(|v| v["best_ms"].as_f64());
-                    let v = serde_json::to_value(m).unwrap_or_default();
-                    match ms {
-                        Some(ms) => outln!(
-                            "{:<16} {:>10.3} ms  {}",
-                            v["key"].as_str().unwrap_or(""),
-                            ms,
-                            v["what"].as_str().unwrap_or("")
-                        ),
-                        None => outln!(
-                            "{:<16} {:>13}  {}",
-                            v["key"].as_str().unwrap_or(""),
-                            "not here",
-                            v["what"].as_str().unwrap_or("")
-                        ),
-                    }
-                }
-            });
-        }
-        Cmd::Dev {
-            cmd: DevCmd::SetUpdateInfo { runtime, info },
-        } => {
-            sam_detect::update_info::write(&runtime, &info)?;
-            out.emit(&json!({"runtime": runtime, "info": info}), || {
-                outln!(
-                    "{}",
-                    trf(
-                        "Update information written to {file}.",
-                        &[("file", &runtime.display())]
-                    )
-                )
-            });
-        }
-        Cmd::Dev {
-            cmd:
-                DevCmd::MakeZsync {
-                    file,
-                    url,
-                    out: dest,
-                },
-        } => {
-            let name = file
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .context(sam_core::i18n::tr("no file name"))?;
-            let modified = std::fs::metadata(&file)?
-                .modified()?
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs() as i64)
-                .unwrap_or(0);
-            let mtime = sam_core::util::format_utc_date(modified);
-            let data =
-                sam_runner::zsync::make(&file, &name, url.as_deref().unwrap_or(&name), &mtime)?;
-            let dest = dest.unwrap_or_else(|| file.with_file_name(format!("{name}.zsync")));
-            std::fs::write(&dest, data)?;
-            out.emit(&json!({"zsync": dest}), || {
-                outln!(
-                    "{}",
-                    sam_core::i18n::trf("Wrote {path}", &[("path", &dest.display())])
-                )
-            });
-        }
-        Cmd::Dev {
-            cmd: DevCmd::SignAppimage { file, key },
-        } => {
-            sam_detect::signature::sign_embedded(&file, None, &key)?;
-            // SAM's own file, just signed here: GnuPG reads only our key.
-            let sig = sam_detect::signature::check(&file, &sam_detect::signature::GnuPg::Direct);
-            let fp = sig.fingerprint.clone().unwrap_or_default();
-            if sig.state != sam_core::model::SignatureState::Valid || !fp.eq_ignore_ascii_case(&key)
-            {
-                bail!(
-                    "{}",
-                    sam_core::i18n::trf(
-                        "the signature in {file} does not check out: {detail}",
-                        &[("file", &file.display()), ("detail", &sig.detail)]
-                    )
-                );
-            }
-            out.emit(&json!({"path": file, "fingerprint": fp}), || {
-                outln!(
-                    "{}",
-                    sam_core::i18n::trf(
-                        "Signed {path} with {key}",
-                        &[("path", &file.display()), ("key", &fp)]
-                    )
-                )
-            });
-        }
-        Cmd::Dev {
-            cmd:
-                DevCmd::MakeFixture {
-                    path,
-                    name,
-                    categories,
-                    apprun,
-                    terminal,
-                },
-        } => {
-            let mut spec = sam_intake::testkit::FixtureSpec::hello(&name);
-            spec.categories = categories;
-            spec.terminal = terminal;
-            if let Some(a) = apprun {
-                spec.apprun = std::fs::read_to_string(a)?;
-            }
-            sam_intake::testkit::build(&path, &spec)?;
-            out.emit(&json!({"path": path}), || {
-                outln!(
-                    "{}",
-                    sam_core::i18n::trf("Wrote {path}", &[("path", &path.display())])
-                )
-            });
-        }
+            cmd: DevCmd::Tools(cmd),
+        } => dev_tools::run(cmd, &out)?,
     }
     Ok(())
 }

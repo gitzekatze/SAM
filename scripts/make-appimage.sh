@@ -32,6 +32,13 @@ esac
 command -v mksquashfs >/dev/null || { echo "mksquashfs not found (install squashfs-tools)" >&2; exit 1; }
 echo "$RUNTIME_SHA256  $RUNTIME" | sha256sum -c --quiet - || { echo "runtime checksum mismatch" >&2; exit 1; }
 
+# The release steps below (update information, signature, .zsync) use
+# SAM's release tools, which the shipped programs do not contain: a build of
+# sam-jail with the dev-tools feature, in a folder of its own. It never goes
+# into the AppImage.
+tools="$root/target/appimage-tools/debug/sam-jail"
+cargo build --locked --target-dir "$root/target/appimage-tools" -p sam-jail-cli --features dev-tools
+
 # Keep this computer's folder names out of the binaries (panic messages
 # carry source paths), in a build folder of its own.
 # The crate cache may live anywhere (CARGO_HOME), so everything under the
@@ -123,12 +130,12 @@ target="$out/SAM-$version-$arch.AppImage"
 # Where updates of SAM itself are published: GitHub releases of SAM, with a
 # .zsync file next to each AppImage (sam-jail self-update uses both).
 cp "$RUNTIME" "$work/runtime"
-"$bin/sam-jail" dev set-update-info "$work/runtime" "gh-releases-zsync|gitzekatze|SAM|latest|SAM-*-$arch.AppImage.zsync" >/dev/null
+"$tools" dev set-update-info "$work/runtime" "gh-releases-zsync|gitzekatze|SAM|latest|SAM-*-$arch.AppImage.zsync" >/dev/null
 cat "$work/runtime" "$work/fs.squashfs" > "$target"
 chmod 755 "$target"
 if [ -n "${SIGN_KEY:-}" ]; then
-    "$bin/sam-jail" dev sign-appimage "$target" --key "$SIGN_KEY" >/dev/null
+    "$tools" dev sign-appimage "$target" --key "$SIGN_KEY" >/dev/null
 fi
-"$bin/sam-jail" dev make-zsync "$target" >/dev/null
+"$tools" dev make-zsync "$target" >/dev/null
 (cd "$out" && sha256sum "$(basename "$target")" > "$(basename "$target").sha256")
 echo "Wrote $target"
