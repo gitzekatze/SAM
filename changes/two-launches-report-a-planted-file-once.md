@@ -1,4 +1,4 @@
-### A file one app plants is reported once when two apps watch the same place
+### A file one app plants is normally reported once when two apps watch the same place
 
 - When two apps that may write the home ran at once and one of them put a
   start file in a place both watch, both of SAM's watches acted on it. One
