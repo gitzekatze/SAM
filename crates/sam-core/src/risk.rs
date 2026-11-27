@@ -150,9 +150,11 @@ pub fn new_risks(before: &PermissionSet, after: &PermissionSet) -> Vec<RiskItem>
 /// (`level`: the highest of its label and what it adds, as
 /// [`new_risks`] finds it), one that turns on compatibility mode, whose
 /// whole session bus is a way out (audit D-H5), or one suggested by what
-/// the app printed, which the app controls (audit U-M2). The one rule
-/// behind every refusal of SAM's gate (`sam_runner::gate`) and every
-/// question the window asks before such a change.
+/// the app printed, which the app controls (audit U-M2). The rule behind
+/// the gate's refusals of settings, compatibility mode, hints and repair
+/// steps (`sam_runner::gate`) and the window's questions before them;
+/// turning a protection off for every app is judged by
+/// `Config::protections_turned_off` instead.
 pub fn waits_for_yes(level: RiskLevel, turns_on_compat: bool, from_app_output: bool) -> bool {
     level >= RiskLevel::High || turns_on_compat || from_app_output
 }

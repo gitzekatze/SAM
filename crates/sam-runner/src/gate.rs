@@ -3,7 +3,9 @@
 //! by what the app printed, and one that turns off a protection for every
 //! app is made only after the person said yes; every front end hands its
 //! change in here, and the window confirms for the command line exactly
-//! when it asked (by the same rule, [`sam_core::risk::waits_for_yes`]).
+//! when it asked: by [`sam_core::risk::waits_for_yes`] for settings,
+//! compatibility mode, hints and repair steps, and by
+//! `Config::protections_turned_off` for the protections of every app.
 //!
 //! The refusals keep their own codes, part of the JSON interface:
 //! `change-needs-yes`, `compat-needs-yes`, `config-needs-yes`,

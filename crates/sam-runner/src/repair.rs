@@ -1674,7 +1674,7 @@ mod tests {
     /// A repair step rated Think twice or Dangerous, or one that turns on
     /// compatibility mode, needs a yes like a risky hint, and the refusal
     /// names the step, what it changes and the two ways to say yes; a step
-    /// rated Some access or Harmless does not. Judged by the highest of
+    /// rated Some access does not. Judged by the highest of
     /// its own label, its label in the ladder and what it adds, so a lower
     /// label handed in skips nothing; a first-run hint is left to
     /// `confirm_hint` (owner decision A of 2026-11-25: `repair --apply
@@ -1699,7 +1699,7 @@ mod tests {
             assert_eq!(sam_core::error::code_of(&err), Some("step-needs-yes"));
             format!("{err:#}")
         };
-        // The syscall filter: labelled Some access, raised by what it adds.
+        // The syscall filter: labelled Think twice, as what it adds.
         let seccomp = step("seccomp-baseline");
         let text = refused(&seccomp);
         assert!(text.contains(&format!("\"{}\"", seccomp.title)), "{text}");
@@ -1724,7 +1724,7 @@ mod tests {
             from_app_output: false,
         };
         refused(&unlisted);
-        // Some access and Harmless apply at once.
+        // Some access applies at once.
         for id in ["full-usr", "userns"] {
             assert!(
                 confirm_step(&game, &cfg, &paths, &step(id), false).is_ok(),
