@@ -402,6 +402,8 @@ tests = [
   "a_user_folder_never_follows_a_planted_link",
   "a_user_folder_in_a_writable_home_counts_as_one_the_app_can_change",
   "a_writable_bind_follows_a_planted_link_only_into_what_is_shown_writable",
+  "a_writable_bind_never_follows_a_planted_link_into_a_read_only_folder",
+  "a_planted_link_never_makes_a_read_only_user_folder_writable",
   "a_user_folder_behind_a_planted_link_is_left_out",
   "a_linked_place_is_left_out_where_a_planted_link_leads_out_or_to_host_services",
   "a_left_out_note_never_says_the_place_is_hidden",

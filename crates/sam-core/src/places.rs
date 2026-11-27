@@ -1078,10 +1078,15 @@ pub enum LeftOut {
 /// permissions alone, so the sandbox, its check and the app page take one
 /// answer: a writable extra folder counts writable also where the sandbox
 /// shows it read-only (inside a start place), which leaves out more,
-/// never less. A user folder in a writable home counts writable whatever
-/// its own switch says: the sandbox shows it through the home, writable
-/// (with the home writable and Downloads read-only, a link the app made
-/// in `~/Downloads` was followed out of what it is shown).
+/// never less. A user folder in a writable home counts as one the app can
+/// change whatever its own switch says: the app may have changed it
+/// through the home in an earlier start, before it was set read-only, and
+/// one the sandbox refuses is shown through the home, writable (with the
+/// home writable and Downloads read-only, a link the app made in
+/// `~/Downloads` was followed out of what it is shown). Whether a place
+/// is shown writable is another question, which [`shows_writable`]
+/// answers as the sandbox mounts it: there a read-only user folder is
+/// read-only, also under a writable home.
 ///
 /// A read-only grant never makes a folder one the app cannot change: it
 /// may lead there through a link the app planted itself. With the whole
@@ -1129,13 +1134,85 @@ fn in_home(host: &HostInfo, real: &Path) -> bool {
     real.starts_with(&host.home) || real.starts_with(resolve(&host.home))
 }
 
-/// Whether the whole home shows `leads` as a bind there needs it: at all
-/// for a read-only bind, writable for a writable one (`write`). With the
-/// home read-only, a writable extra folder planted as a link to the home
-/// bound the whole home writable.
-fn home_shows(p: &PermissionSet, host: &HostInfo, leads: &Path, write: bool) -> bool {
+/// Whether the whole home shows `leads` at all, as a read-only bind there
+/// needs it.
+fn home_shows(p: &PermissionSet, host: &HostInfo, leads: &Path) -> bool {
+    p.filesystem.home && in_home(host, leads)
+}
+
+/// Whether a start with the permissions `p` shows `leads` writable, as a
+/// writable bind there needs it: the deepest of the places the sandbox
+/// shows that holds `leads` decides, read-only winning a tie, each at the
+/// access the sandbox shows it at. Those places are the whole home (as
+/// named and as reached), each granted user folder where it really is, at
+/// [`user_folder_access`] (Documents set to read-only is read-only under a
+/// writable home; Music read and write and Pictures read-only, both set to
+/// `~/Media`, are both read-only there), and the extra read-only folders.
+/// With the home writable and Documents read-only, a writable extra folder
+/// `~/x` the app made a link to `~/Documents/Taxes` was followed because
+/// the home counted as showing everything in it writable, and the next
+/// start bound `~/Documents/Taxes` writable inside the read-only Documents.
+///
+/// Asked for an extra folder (`without` is `None`), a user folder counts
+/// only where the sandbox shows it ([`user_folder_refused`]), and an extra
+/// read-only folder only where it is not left out itself
+/// ([`linked_place_left_out`]): one it does not mount is shown by the
+/// folders around it. Asked for the user folder `without`
+/// ([`user_folder_left_out`]), whose rule the sandbox asks for every user
+/// folder, no other user folder makes a place writable (as before, the
+/// home alone does), and every other granted user folder and extra
+/// read-only folder makes a place read-only wherever it is set: judging
+/// whether the sandbox shows them would ask this rule again. Both leave
+/// out more, never less. A user folder inside SAM's own folders, which
+/// the sandbox refuses, may count as showing a place writable there; an
+/// extra writable folder that leads there is not bound anyway
+/// ([`write_grant_in_sams_folders`]).
+fn shows_writable(
+    p: &PermissionSet,
+    host: &HostInfo,
+    leads: &Path,
+    without: Option<&str>,
+    this: &ThisStart,
+) -> bool {
+    use crate::permissions::Access;
     let fs = &p.filesystem;
-    fs.home && (!write || fs.home_access == crate::permissions::Access::Rw) && in_home(host, leads)
+    let mut shows: Vec<(PathBuf, bool)> = Vec::new();
+    if fs.home {
+        let rw = fs.home_access == Access::Rw;
+        shows.push((host.home.clone(), rw));
+        shows.push((resolve(&host.home), rw));
+    }
+    for key in XDG_DIR_KEYS.iter().filter(|k| Some(**k) != without) {
+        if !fs.xdg_access(key).is_granted() {
+            continue;
+        }
+        let Some(real) = host
+            .xdg_dir(key)
+            .and_then(|d| user_folder_place(d, &host.home))
+        else {
+            continue;
+        };
+        let rw = user_folder_access(p, host, key) == Access::Rw;
+        let counts = match without {
+            None => user_folder_refused(p, host, key, this).is_none(),
+            Some(_) => !rw,
+        };
+        if counts {
+            shows.push((real, rw));
+        }
+    }
+    for c in &fs.custom_read {
+        let named = crate::util::expand_home(c);
+        if without.is_some() || linked_place_left_out(p, host, &named, false, this).is_none() {
+            shows.push((resolve(&named), false));
+        }
+    }
+    shows
+        .iter()
+        .filter(|(g, _)| leads.starts_with(g))
+        .map(|(g, rw)| (g.components().count(), !rw))
+        .max()
+        .is_some_and(|(_, read_only)| !read_only)
 }
 
 /// The rule for a bind where the links of `way` lead ([`linked_place_left_out`],
@@ -1183,7 +1260,10 @@ fn left_out_by_rule(
 ///   ([`writable_grants`]: any writable grant shows it, also below a
 ///   read-only one, or `this` start shows it writable) is not followed
 ///   out of what the whole home and the user folders show, and
-///   for a writable bind out of what they show writable (with the whole
+///   for a writable bind out of what they and the extra read-only folders
+///   show writable, each at the access the sandbox shows it at
+///   ([`shows_writable`]: Documents set to read-only is read-only under a
+///   writable home) (with the whole
 ///   home writable, `~/.fonts` missing and an extra folder not made yet,
 ///   the app made them links to `/tmp/tmux-1000` or any folder on the
 ///   computer, and the next start bound what they named; with the home
@@ -1206,24 +1286,19 @@ pub fn linked_place_left_out(
     write: bool,
     this: &ThisStart,
 ) -> Option<LeftOut> {
-    use crate::permissions::Access;
     let fs = &p.filesystem;
-    let home_rw = fs.home && fs.home_access == Access::Rw;
     let shown = |leads: &Path| {
-        home_shows(p, host, leads, write)
+        if write {
+            return shows_writable(p, host, leads, None, this);
+        }
+        home_shows(p, host, leads)
             || XDG_DIR_KEYS.iter().any(|key| {
-                let acc = fs.xdg_access(key);
-                acc.is_granted()
+                fs.xdg_access(key).is_granted()
                     && user_folder_left_out(p, host, key, this).is_none()
                     && host
                         .xdg_dir(key)
                         .and_then(|d| user_folder_place(d, &host.home))
-                        .is_some_and(|real| {
-                            leads.starts_with(&real)
-                                && (!write
-                                    || acc == Access::Rw
-                                    || (home_rw && in_home(host, &real)))
-                        })
+                        .is_some_and(|real| leads.starts_with(&real))
             })
     };
     let writable = writable_grants(p, host, None, this);
@@ -1235,7 +1310,9 @@ pub fn linked_place_left_out(
 /// (in a private home, or writable in a read-only home), by the same rule
 /// as [`linked_place_left_out`]: a link on the way that lies in a folder
 /// the app can change (not counting this folder's own grant) is followed
-/// only into a home shown as the folder needs it, and a link to where
+/// only into a home shown as the folder needs it (for a writable folder,
+/// not into another user folder or an extra folder set read-only there,
+/// [`shows_writable`]), and a link to where
 /// programs outside the sandbox listen never. `~/Sync/Documents`, missing
 /// while `~/Sync` was granted writable, was made a link to
 /// `/tmp/tmux-1000`, and the next start bound the host's tmux sockets.
@@ -1247,7 +1324,10 @@ pub fn user_folder_left_out(
 ) -> Option<LeftOut> {
     let dir = host.xdg_dir(key)?;
     let write = p.filesystem.xdg_access(key) == crate::permissions::Access::Rw;
-    let shown = |leads: &Path| home_shows(p, host, leads, write);
+    let shown = |leads: &Path| match write {
+        true => shows_writable(p, host, leads, Some(key), this),
+        false => home_shows(p, host, leads),
+    };
     let writable = writable_grants(p, host, Some(key), this);
     left_out_by_rule(follow(dir), &writable, &shown, host, this)
 }
@@ -1272,9 +1352,12 @@ pub enum UserFolderRefused {
 
 /// Whether SAM refuses the user folder `key` for a link or for programs
 /// listening there, and why, in the order the sandbox asks: first
-/// [`user_folder_left_out`], whose note names the danger or the link and
-/// the way out, then [`user_folder_link_the_app_can_change`], then the
-/// socket folders by name. One answer for the sandbox, which leaves the
+/// [`user_folder_left_out`], whose note names the danger (a link to where
+/// programs outside the sandbox listen, with no way out) or the link the
+/// app could have planted and how to show the folder if the person made
+/// it, then [`user_folder_link_the_app_can_change`], whose note names
+/// only the link, then the socket folders by name, whose note says to set
+/// the folder to one of its own. One answer for the sandbox, which leaves the
 /// folder out, and the app page and `sam-jail info`, which name it before
 /// the start with the same words ([`user_folder_refused_note`]). Told only
 /// in the launch log, a Downloads set to a link to `/tmp/dl` (so
@@ -1333,7 +1416,8 @@ pub fn user_folder_refused_note(
 /// [`sensitive_places`]): with `XDG_CONFIG_HOME=~/cfg`, `~/.fonts` made a
 /// link to `~/cfg/gh` (where the GitHub tool keeps its token) in an
 /// earlier start with the whole home writable was bound in a private home,
-/// since only `~/.config/gh` was guarded.
+/// since only `~/.config/gh` was guarded. They are guarded where those
+/// folders lie also outside the home (`XDG_CONFIG_HOME=/data/cfg`).
 pub fn guarded_places_everywhere(home: &Path, sams: &[PathBuf]) -> Vec<PathBuf> {
     let var = |v: &str| std::env::var_os(v).map(PathBuf::from);
     guarded_places_everywhere_with(home, sams, var("XDG_CONFIG_HOME"), var("XDG_DATA_HOME"))
@@ -1350,16 +1434,34 @@ pub fn guarded_places_everywhere_with(
     let homes = [home.to_path_buf(), resolve(home)];
     let rels = protected_places_with(home, config.clone(), data.clone())
         .into_iter()
-        .chain(sensitive_places_with(home, config, data))
+        .chain(sensitive_places_with(home, config.clone(), data.clone()))
         .chain([".ssh".to_string(), ".gnupg".to_string()]);
     let mut out: Vec<PathBuf> = Vec::new();
+    let mut add = |at: PathBuf| {
+        for g in [resolve(&at), at] {
+            if !out.contains(&g) {
+                out.push(g);
+            }
+        }
+    };
     for rel in rels {
         for h in &homes {
-            let at = h.join(&rel);
-            for g in [resolve(&at), at] {
-                if !out.contains(&g) {
-                    out.push(g);
-                }
+            add(h.join(&rel));
+        }
+    }
+    // Where those folders lie, also outside the home, which the lists
+    // above, relative to the home, do not reach: with
+    // `XDG_CONFIG_HOME=/data/cfg`, `~/.fonts` made a link to `/data/cfg/gh`
+    // in an earlier start with the whole home writable was bound in a
+    // private home. As named and where they lead.
+    for (dir, default) in [(config, ".config/"), (data, ".local/share/")] {
+        let Some(dir) = dir.filter(|d| d.is_absolute()) else {
+            continue;
+        };
+        for p in PROTECTED_RO.iter().chain(SENSITIVE_DOTFILES) {
+            if let Some(rest) = p.strip_prefix(default) {
+                add(dir.join(rest));
+                add(resolve(&dir).join(rest));
             }
         }
     }
@@ -1415,7 +1517,8 @@ pub enum LeftOutPlace {
 /// place directly: an extra folder kept alongside the link stays left out
 /// (and the sandbox check expects there what the place shows). `write`
 /// says the bind was a writable one: for it a link is followed only into
-/// what the home and the user folders show writable, so the place it
+/// what the home, the user folders and the extra read-only folders show
+/// writable ([`shows_writable`]), so the place it
 /// leads to may still be shown read-only (a read-only home), and the note
 /// must not say it is hidden. No note, for a link the app may have planted
 /// ([`LeftOut::Link`]), one to where programs outside the sandbox listen
@@ -1427,7 +1530,9 @@ pub enum LeftOutPlace {
 /// places the place it leads to (a read-only home shows `~/.fonts`, a link
 /// to `/tmp/myfonts`, and `/tmp/myfonts` listed by its real place is shown
 /// as written). For a planted link the rule weighs only what the home and
-/// the user folders show (for a user folder the home alone). A place of
+/// the user folders show, for a writable bind also the extra read-only
+/// folders (for a user folder the home alone, and for a writable one the
+/// other user folders and extra folders set read-only). A place of
 /// the home SAM shows on its own (`kind` [`LeftOutPlace::Own`]) stays left
 /// out even once its target is listed as an extra folder; the app then
 /// reaches that place through the link wherever its other folders show
@@ -1439,11 +1544,11 @@ pub fn left_out_note(shown: &str, why: &LeftOut, kind: LeftOutPlace, write: bool
             let args: &[(&str, &dyn std::fmt::Display)] = &[("path", &shown), ("link", &t(link))];
             match kind {
                 LeftOutPlace::Extra if write => crate::i18n::trf(
-                    "SAM leaves out the writable folder {path} for this app because the way there leads through the link {link}, which lies in a folder the app can change, to a place the home and the user folders let the app read at most: the app may have made that link. The app still sees what its other folders show there. If you made the link yourself, list the place it leads to as an extra folder instead of this one.",
+                    "SAM leaves out the writable folder {path} for this app because the way there leads through the link {link}, which lies in a folder the app can change, to a place the home, the user folders and the extra read-only folders let the app read at most: the app may have made that link. The app still sees what its other folders show there. If you made the link yourself, list the place it leads to as an extra folder instead of this one.",
                     args,
                 ),
                 LeftOutPlace::UserFolder if write => crate::i18n::trf(
-                    "SAM leaves out the writable user folder {path} for this app because the way there leads through the link {link}, which lies in a folder the app can change, to a place the home lets the app read at most: the app may have made that link. The app still sees what its other folders show there. If you made the link yourself, set this user folder to the place it leads to in ~/.config/user-dirs.dirs.",
+                    "SAM leaves out the writable user folder {path} for this app because the way there leads through the link {link}, which lies in a folder the app can change, to a place the home does not show writable or one inside another user folder or an extra folder set read-only: the app may have made that link. The app still sees what its other folders show there. If you made the link yourself, set this user folder to the place it leads to in ~/.config/user-dirs.dirs.",
                     args,
                 ),
                 LeftOutPlace::Own => crate::i18n::trf(
@@ -2796,6 +2901,44 @@ mod tests {
             );
         }
         assert_eq!(to_moved(&home.join("cfg/myfonts")), None);
+        // Also where those folders lie outside the home, as named and
+        // where they lead: with `XDG_CONFIG_HOME=/data/cfg`, `~/.fonts`
+        // made a link to `/data/cfg/gh` was bound in a private home, since
+        // only places in the home were guarded.
+        let elsewhere = base.join("elsewhere");
+        for d in ["cfg/gh", "cfg/git", "dat/keyrings", "cfg/myfonts", "real"] {
+            std::fs::create_dir_all(elsewhere.join(d)).unwrap();
+        }
+        std::os::unix::fs::symlink(elsewhere.join("real"), elsewhere.join("named")).unwrap();
+        std::fs::create_dir_all(elsewhere.join("real/gh")).unwrap();
+        let outside = guarded_places_everywhere_with(
+            &home,
+            &sams,
+            Some(elsewhere.join("cfg")),
+            Some(elsewhere.join("dat")),
+        );
+        let named =
+            guarded_places_everywhere_with(&home, &sams, Some(elsewhere.join("named")), None);
+        let to_outside = |target: &Path, guarded: &[PathBuf]| {
+            let _ = std::fs::remove_file(&fonts);
+            std::os::unix::fs::symlink(target, &fonts).unwrap();
+            own_place_left_out(&p, &host, &fonts, guarded, &none())
+        };
+        for (target, guarded) in [
+            (elsewhere.join("cfg/gh"), &outside),
+            (elsewhere.join("dat/keyrings"), &outside),
+            (elsewhere.join("cfg/git"), &outside),
+            (elsewhere.join("cfg"), &outside),
+            (elsewhere.join("named/gh"), &named),
+            (elsewhere.join("real/gh"), &named),
+        ] {
+            assert!(
+                matches!(to_outside(&target, guarded), Some(LeftOut::Guarded(_))),
+                "{}",
+                target.display()
+            );
+        }
+        assert_eq!(to_outside(&elsewhere.join("cfg/myfonts"), &outside), None);
     }
     /// With the whole home writable, a user folder set read-only is shown
     /// through the home, writable: a link the app made in it is not
@@ -2911,6 +3054,114 @@ mod tests {
         to(&home);
         p.filesystem.home_access = Access::Rw;
         assert_eq!(linked_place_left_out(&p, &host, &out, true, &none()), None);
+    }
+
+    /// A writable bind follows a link the app could have planted only into
+    /// what the sandbox really shows writable, each folder at the access it
+    /// is mounted at. With the whole home writable and Documents set
+    /// read-only, the sandbox mounts Documents read-only over the home: a
+    /// writable extra folder `~/x` the app made a link to `~/Documents/sub`
+    /// is left out (bound there, it made a folder inside the read-only
+    /// Documents writable), while a read-only one is followed and a link
+    /// into a place the home shows writable still is. Music read and write
+    /// and Pictures read-only, both set to `~/Media`, are both read-only
+    /// there, so a writable extra folder made a link into `~/Media` is left
+    /// out too; an extra read-only folder makes its place read-only the
+    /// same way. A writable user folder set to a link in a folder only this
+    /// start shows writable is left out when the link leads into the
+    /// read-only Documents.
+    #[test]
+    fn a_writable_bind_never_follows_a_planted_link_into_a_read_only_folder() {
+        use crate::permissions::Access;
+        let t = scratch();
+        let base = std::fs::canonicalize(t.path()).unwrap();
+        let home = base.join("home/u");
+        for d in ["Documents/sub", "Media/sub", "ref/sub", "free", "Sync"] {
+            std::fs::create_dir_all(home.join(d)).unwrap();
+        }
+        std::fs::create_dir_all(base.join("usb")).unwrap();
+        let mut host = HostInfo {
+            home: home.clone(),
+            ..Default::default()
+        };
+        host.xdg_dirs
+            .insert("documents".into(), home.join("Documents"));
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.home = true;
+        p.filesystem.home_access = Access::Rw;
+        p.filesystem.documents = Access::Ro;
+        let x = home.join("x");
+        let to = |link: &Path, target: &Path| {
+            let _ = std::fs::remove_file(link);
+            std::os::unix::fs::symlink(target, link).unwrap();
+        };
+        // The writable home, Documents read-only.
+        to(&x, &home.join("Documents/sub"));
+        assert_eq!(
+            linked_place_left_out(&p, &host, &x, true, &none()),
+            Some(LeftOut::Link(x.clone()))
+        );
+        assert_eq!(linked_place_left_out(&p, &host, &x, false, &none()), None);
+        to(&x, &home.join("free"));
+        assert_eq!(linked_place_left_out(&p, &host, &x, true, &none()), None);
+        p.filesystem.documents = Access::Rw;
+        to(&x, &home.join("Documents/sub"));
+        assert_eq!(linked_place_left_out(&p, &host, &x, true, &none()), None);
+        p.filesystem.documents = Access::Ro;
+
+        // An extra read-only folder in the writable home.
+        p.filesystem.custom_read = vec![home.join("ref").to_string_lossy().into_owned()];
+        to(&x, &home.join("ref/sub"));
+        assert_eq!(
+            linked_place_left_out(&p, &host, &x, true, &none()),
+            Some(LeftOut::Link(x.clone()))
+        );
+        p.filesystem.custom_read.clear();
+        assert_eq!(linked_place_left_out(&p, &host, &x, true, &none()), None);
+
+        // A writable user folder whose link lies in a folder only this
+        // start shows writable (`app /mnt/usb` with opened files writable).
+        let dl = base.join("usb/dl");
+        to(&dl, &home.join("Documents/sub"));
+        host.xdg_dirs.insert("downloads".into(), dl.clone());
+        p.filesystem.downloads = Access::Rw;
+        let usb = ThisStart {
+            writable: vec![base.join("usb")],
+            ..Default::default()
+        };
+        assert_eq!(
+            user_folder_left_out(&p, &host, "downloads", &usb),
+            Some(LeftOut::Link(dl.clone()))
+        );
+        p.filesystem.documents = Access::Rw;
+        assert_eq!(user_folder_left_out(&p, &host, "downloads", &usb), None);
+        host.xdg_dirs.remove("downloads");
+        p.filesystem.downloads = Access::None;
+
+        // Music read and write and Pictures read-only, both set to
+        // `~/Media`, in a private home; `~/Sync` and `~/Sync/x` writable
+        // extra folders, the app made `~/Sync/x` a link to `~/Media/sub`.
+        let mut p = PermissionSet::strict_gui();
+        for key in ["music", "pictures"] {
+            host.xdg_dirs.insert(key.into(), home.join("Media"));
+        }
+        p.filesystem.music = Access::Rw;
+        p.filesystem.pictures = Access::Ro;
+        let sync_x = home.join("Sync/x");
+        p.filesystem.custom_write = [home.join("Sync"), sync_x.clone()]
+            .iter()
+            .map(|d| d.to_string_lossy().into_owned())
+            .collect();
+        to(&sync_x, &home.join("Media/sub"));
+        assert_eq!(
+            linked_place_left_out(&p, &host, &sync_x, true, &none()),
+            Some(LeftOut::Link(sync_x.clone()))
+        );
+        p.filesystem.pictures = Access::None;
+        assert_eq!(
+            linked_place_left_out(&p, &host, &sync_x, true, &none()),
+            None
+        );
     }
 
     /// A user folder SAM binds on its own is left out where a link on its

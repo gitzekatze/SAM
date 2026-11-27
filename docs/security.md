@@ -767,13 +767,16 @@ How these stay protected with the home writable:
   the home's protections (key folders, SAM's own folders) as they are for
   the home. The app page and `sam-jail info` name a granted
   user folder that is not shown for listening programs or for a link
-  (below) before the start, with the words of the launch note, in the
-  order the sandbox decides, and with the way out: a Downloads set to
+  (below) before the start, with the words of the launch note and in the
+  order the sandbox decides: a Downloads set to
   `/tmp` so that downloads clear themselves is not shown, the app saves
-  into its own empty `/tmp` and what it saved is gone when it quits; set
-  it to a folder of its own such as `/tmp/downloads`. The same holds for
-  a Downloads that is a link to a folder in `/tmp` (`/tmp/dl`) or to a
-  runtime folder, which the sandbox leaves out whoever made the link
+  into its own empty `/tmp` and what it saved is gone when it quits, and
+  the note says to set it to a folder of its own such as
+  `/tmp/downloads`. A Downloads that is a link to a folder in `/tmp`
+  (`/tmp/dl`) or to a runtime folder, which the sandbox leaves out
+  whoever made the link, is named the same way; its note names the place
+  and the danger, not a way out (a folder in `/tmp` set by its real
+  place, such as `/tmp/dl`, is shown as set, above)
   (`a_user_folder_the_sandbox_does_not_show_is_named_before_the_start`).
   Not covered: the app page cannot know the folders a start opens with
   the app or SAM's own writable binds, which count as folders the app can
@@ -790,9 +793,12 @@ How these stay protected with the home writable:
   all, so the home shows it writable
   (`a_link_inside_a_read_only_folder_in_the_writable_home_is_not_followed`,
   `a_link_planted_inside_a_refused_read_only_folder_is_never_followed`,
-  and with the place it leads to outside `/tmp`, where only this rule
-  keeps it out and the start gives its reason,
-  `a_link_planted_inside_a_refused_read_only_folder_outside_tmp_is_never_followed`).
+  and with the place it leads to outside `/tmp`, where the rule for links
+  the app could have planted below keeps it out as well, not the one for
+  listening programs, and the start gives that rule's note,
+  `a_link_planted_inside_a_refused_read_only_folder_outside_tmp_is_never_followed`;
+  this rule alone, for a link that leads to a place the home shows anyway,
+  `a_user_folder_behind_a_link_the_app_could_plant_is_not_shown`).
   `user-dirs.dirs` stays locked, but the folder it names
   did not. Such a folder is not shown where the link leads, the start names
   the link, and the sandbox check expects it not shown; SAM cannot tell
@@ -808,9 +814,10 @@ How these stay protected with the home writable:
   the sandbox listen (see *Links never take a bind where it must not
   lead*). Each of the two rules refuses on its own, so a user folder is
   shown only where both allow it. Where both refuse it, the launch log
-  gives the note of the second rule, which names the danger or says the
-  link leads out of what the home shows, and how to show the folder if
-  you made the link yourself; the shorter note that names only the link
+  gives the note of the second rule, which names the danger (a link to
+  where programs outside the sandbox listen) or says the link leads out
+  of what the home shows and how to show the folder if you made the link
+  yourself; the shorter note that names only the link
   is left for a link only the first rule refuses (one in a folder the
   app can change that leads to a place the home shows anyway)
   (`a_user_folder_never_follows_a_planted_link`). A user folder is shown at its own access also with the whole home
@@ -820,7 +827,10 @@ How these stay protected with the home writable:
   folder gets no place of its own, so a read-only Documents at
   `~/.local/share/Documents` is writable through a writable home, and no
   note names it. Otherwise Documents set to read-only is
-  read-only under a writable home, so a start file kept as a link into it
+  read-only under a writable home, also where the app made an extra
+  writable folder a link into it
+  (`a_planted_link_never_makes_a_read_only_user_folder_writable`, below),
+  so a start file kept as a link into it
   (`~/.bashrc` to `~/Documents/dotfiles/bashrc`) cannot be changed either,
   and one outside the home (`XDG_DOCUMENTS_DIR=/data/Documents`) is shown
   read-only or writable as set, where before it was not shown at all. The
@@ -896,16 +906,24 @@ How these stay protected with the home writable:
     writable besides them: one opened with the app while opened files are
     writable, a writable bind of SAM's) is not followed out of what the
     home and the user folders show, and for a writable extra folder out of
-    what they show writable: the app may have made it (with the home
+    what they and the extra read-only folders show writable, each at the
+    access the sandbox shows it at: the app may have made it (with the home
     read-only, a writable extra folder made a link to the home would
-    otherwise make the whole home writable). Any writable grant that
+    otherwise make the whole home writable; with the home writable and
+    Documents read-only, `~/x` made a link to `~/Documents/Taxes` made
+    that folder writable inside the read-only Documents, and Music read
+    and write and Pictures read-only, both set to `~/Media` and both shown
+    read-only there, did the same for `~/Media`:
+    `a_writable_bind_never_follows_a_planted_link_into_a_read_only_folder`,
+    `a_planted_link_never_makes_a_read_only_user_folder_writable`). Any writable grant that
     shows the folder counts, also where a read-only grant lies deeper:
     the app may have made that grant lead there itself (with the whole
     home writable and `~/x` an extra read-only folder, the app made `~/x`
     a link to `~/.local/share` and `~/.local/share/fonts` a link to a
     folder it is not shown, and the next start showed that folder as the
     fonts). For a user folder, its own grant does not count, and only the
-    home counts as showing;
+    home counts as showing, for a writable one only where no other user
+    folder or extra folder set read-only holds the place;
   - a link that leads to where programs outside the sandbox listen is
     never followed, whoever made it: the whole computer; anything in
     `/tmp` and `/var/tmp`, a socket directly there (`/tmp/.s.PGSQL.5432`)
@@ -926,8 +944,10 @@ How these stay protected with the home writable:
   - a place SAM shows on its own never leads to the home or a folder above
     it, a key or credential store, a protected place or SAM's own folders,
     also the credential stores and protected places under a moved
-    `XDG_CONFIG_HOME` or `XDG_DATA_HOME` (with `XDG_CONFIG_HOME=~/cfg`,
-    `~/.fonts` a link to `~/cfg/gh` is not bound in a private home:
+    `XDG_CONFIG_HOME` or `XDG_DATA_HOME`, inside the home or outside it,
+    as named and where they lead (with `XDG_CONFIG_HOME=~/cfg` or
+    `/data/cfg`, `~/.fonts` a link to `~/cfg/gh` or `/data/cfg/gh` is not
+    bound in a private home:
     `an_own_place_never_leads_to_the_home_keys_or_sams_folders`,
     `git_credentials_under_config_git_stay_hidden`).
 

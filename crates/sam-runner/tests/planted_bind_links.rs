@@ -25,7 +25,8 @@
 //! - a link that leads from a fonts place to your keys is not followed;
 //! - a user folder reached through a link the app planted is not bound;
 //! - a writable extra folder the app made a link to a read-only home does
-//!   not make the home writable.
+//!   not make the home writable, nor one made a link into a user folder
+//!   set read-only under a writable home.
 //!
 //! Controls: ordinary fonts folders and links that stay inside what the
 //! app is shown still work, and an extra folder you list by its real
@@ -618,6 +619,65 @@ fn a_link_planted_in_a_user_folder_of_a_writable_home_is_not_followed() {
     assert_ne!(r["READ1"], "SECRET", "{text}");
     assert!(
         text.contains("may have made that link"),
+        "the start says why: {text}"
+    );
+}
+
+/// With the whole home writable and Documents set read-only, SAM mounts
+/// Documents read-only over the home. With an extra writable folder `~/x`
+/// that does not exist yet, the app makes `~/x` a link to
+/// `~/Documents/Taxes` in one start. In the next start with the same
+/// permissions it can write neither in `~/Documents/Taxes` nor through the
+/// link, and the start says why: SAM counted the writable home as showing
+/// the whole home writable, followed the link and bound
+/// `~/Documents/Taxes` writable inside the read-only Documents. A write
+/// elsewhere in the writable home still works, so a refused write would
+/// have been seen.
+#[test]
+fn a_planted_link_never_makes_a_read_only_user_folder_writable() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(mut rig) = Rig::new("ReadOnlyDocuments") else {
+        return;
+    };
+    let taxes = rig.home.join("Documents/Taxes");
+    fs::create_dir_all(&taxes).unwrap();
+    rig.host
+        .xdg_dirs
+        .insert("documents".into(), rig.home.join("Documents"));
+    let x = rig.home.join("x");
+    let mut p = whole_home_writable();
+    p.filesystem.documents = Access::Ro;
+    p.filesystem.custom_write = vec![s(&x)];
+    let (r, text) = rig.start(
+        &p,
+        &[
+            ("SAM_TEST_STEP", "plant".into()),
+            ("SAM_TEST_LINK", s(&x)),
+            ("SAM_TEST_TARGET", s(&taxes)),
+        ],
+    );
+    assert_eq!(r["PLANTED"], "yes", "the writable home lets it: {text}");
+    let (in_taxes, through_link, control) = (
+        taxes.join("new.txt"),
+        x.join("new2.txt"),
+        rig.home.join("control.txt"),
+    );
+    let (r, text) = rig.start(
+        &p,
+        &[(
+            "SAM_TEST_WRITES",
+            format!("{}|{}|{}", s(&in_taxes), s(&through_link), s(&control)),
+        )],
+    );
+    assert_eq!(r["WRITE2"], "ok", "control, the writable home: {text}");
+    assert_ne!(
+        r["WRITE0"], "ok",
+        "the app wrote inside the read-only Documents: {text}"
+    );
+    assert_ne!(r["WRITE1"], "ok", "the app wrote through its link: {text}");
+    assert!(!in_taxes.exists() && !taxes.join("new2.txt").exists());
+    assert!(
+        text.contains("leaves out the writable folder") && text.contains("may have made that link"),
         "the start says why: {text}"
     );
 }

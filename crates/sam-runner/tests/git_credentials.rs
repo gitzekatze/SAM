@@ -18,7 +18,8 @@
 //!   `~/cfg/gh` (an app with the whole home writable can make it in an
 //!   earlier start: a link needs no access to where it leads): SAM's own
 //!   read-only bind of the fonts does not show the GitHub tool's token
-//!   there (only `~/.config/gh` was guarded).
+//!   there (only `~/.config/gh` was guarded); nor with `XDG_CONFIG_HOME`
+//!   outside the home (only the stores in the home were guarded).
 //!
 //! The controls show the attack would have been seen: Git's settings file
 //! in the same folder stays readable, and an ordinary file named on the
@@ -242,4 +243,46 @@ fn git_credentials_under_config_git_stay_hidden() {
         "a private home, ~/.fonts a link to ~/cfg/myfonts",
     );
     assert_eq!(r["FONTS_MINE"], "read", "control, ~/cfg/myfonts: {r:?}");
+
+    // The same with `XDG_CONFIG_HOME` outside the home (and outside `/tmp`,
+    // where any link counts as one to programs listening outside the
+    // sandbox anyway): only the stores in the home were guarded, so
+    // `~/.fonts` a link to `/data/cfg/gh` showed the token.
+    let scratch = tempfile::tempdir_in(env!("CARGO_TARGET_TMPDIR")).unwrap();
+    let data = fs::canonicalize(scratch.path()).unwrap();
+    assert!(
+        !data.starts_with("/tmp") && !data.starts_with("/var/tmp"),
+        "the build's scratch folder lies in a temp folder: {}",
+        data.display()
+    );
+    let far = data.join("cfg");
+    fs::create_dir_all(far.join("gh")).unwrap();
+    fs::create_dir_all(far.join("myfonts")).unwrap();
+    fs::write(far.join("gh/hosts.yml"), "oauth_token: SECRET\n").unwrap();
+    fs::write(far.join("myfonts/mine.txt"), "mine\n").unwrap();
+    std::env::set_var("XDG_CONFIG_HOME", &far);
+    fs::remove_file(&fonts).unwrap();
+    std::os::unix::fs::symlink(far.join("gh"), &fonts).unwrap();
+    let r = start(
+        PermissionSet::strict_gui(),
+        "a private home, ~/.fonts a link to the GitHub folder outside the home",
+    );
+    assert_eq!(
+        r["FONTS_GH"],
+        "hidden",
+        "~/.fonts a link to {}/gh: {r:?}",
+        far.display()
+    );
+    fs::remove_file(&fonts).unwrap();
+    std::os::unix::fs::symlink(far.join("myfonts"), &fonts).unwrap();
+    let r = start(
+        PermissionSet::strict_gui(),
+        "a private home, ~/.fonts a link to a fonts folder outside the home",
+    );
+    assert_eq!(
+        r["FONTS_MINE"],
+        "read",
+        "control, {}/myfonts: {r:?}",
+        far.display()
+    );
 }
