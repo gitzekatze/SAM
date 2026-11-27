@@ -13,7 +13,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-core: Permission model, risk, warnings, configuration and file formats
 
-165 tests.
+164 tests.
 
 | Promise | Test |
 |---|---|
@@ -29,11 +29,10 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | The code of an error survives being wrapped in context, so the window recognizes it whatever language the message is in. | [`an_error_names_its_sam_function_and_keeps_its_message`](../crates/sam-core/src/error.rs#L120) |
 | An error code survives added context. | [`an_error_code_survives_added_context`](../crates/sam-core/src/error.rs#L144) |
 | SAM refuses to overwrite a file written by a newer SAM and reads files without a format number as format 0. | [`files_from_a_newer_sam_are_never_overwritten`](../crates/sam-core/src/format.rs#L102) |
-| The overlay check leaves nothing behind, even the work folder the overlay locks (a leftover folder per check piled up in SAM's data). | [`the_overlay_check_leaves_no_folder_behind`](../crates/sam-core/src/host.rs#L199) |
-| Folders left by earlier checks whose process is gone are removed; one of a check still running stays. | [`leftovers_of_earlier_overlay_checks_are_removed`](../crates/sam-core/src/host.rs#L217) |
-| The overlay check believes Bubblewrap's answer: a Bubblewrap that fails means no overlay, even though the check's folders could be made (NFS, eCryptfs, another overlay), and one that succeeds means a working overlay. | [`the_overlay_check_believes_bubblewraps_answer`](../crates/sam-core/src/host.rs#L247) |
-| Bubblewrap versions are compared correctly, including missing or malformed version text. | [`bubblewrap_versions_are_compared_correctly`](../crates/sam-core/src/host.rs#L265) |
-| Overlays count from Bubblewrap 0.11.0, the release that added `--overlay-src`; a 0.10 Bubblewrap does not have them. | [`overlays_count_from_bubblewrap_0_11`](../crates/sam-core/src/host.rs#L275) |
+| The overlay check leaves nothing behind, even the work folder the overlay locks (a leftover folder per check piled up in SAM's data). | [`the_overlay_check_leaves_no_folder_behind`](../crates/sam-core/src/host.rs#L201) |
+| Folders left by earlier checks whose process is gone are removed; one of a check still running stays. | [`leftovers_of_earlier_overlay_checks_are_removed`](../crates/sam-core/src/host.rs#L219) |
+| The overlay check believes Bubblewrap's answer: a Bubblewrap that fails means no overlay, even though the check's folders could be made (NFS, eCryptfs, another overlay), and one that succeeds means a working overlay. | [`the_overlay_check_believes_bubblewraps_answer`](../crates/sam-core/src/host.rs#L249) |
+| Overlays count where Bubblewrap lists `--overlay-src`, whatever its version says: a backport to 0.10 counts, a 0.11 without the option does not, and `--tmp-overlay` or `--ro-overlay` alone are not it. | [`overlays_count_where_bubblewrap_lists_the_option`](../crates/sam-core/src/host.rs#L269) |
 | The sockets given to a sandbox follow the user's session: a set variable names the socket (WAYLAND_DISPLAY=wayland-7 is not wayland-0, which may be another compositor's), and an empty one counts as unset, so the usual places are used. | [`the_sockets_follow_the_sessions_variables`](../crates/sam-core/src/host.rs#L904) |
 | `$XDG_CONFIG_HOME` decides where user-dirs.dirs is read, so which real folder a Documents or Downloads permission shows; an empty one counts as unset, never as the current folder. | [`the_user_folders_are_read_from_the_users_config_folder`](../crates/sam-core/src/host.rs#L963) |
 | Services that start on demand are recognized from their folders, including the user's own (contract dbus-activatable). | [`services_that_start_on_demand_are_recognized`](../crates/sam-core/src/host.rs#L974) |
@@ -1155,4 +1154,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 1068 automated Rust tests plus 8 scripted checks.
+Total: 1067 automated Rust tests plus 8 scripted checks.

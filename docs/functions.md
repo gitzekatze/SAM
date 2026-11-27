@@ -9,7 +9,7 @@
 >
 > Test results are from the newest version report (2026-11-21 05:11:03).
 
-**42 functions:** 3 proven by passing tests, 38 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 1068 tests in all.
+**42 functions:** 3 proven by passing tests, 38 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 1067 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
@@ -46,7 +46,7 @@
 | 30 | [Removing an app deletes only SAM's own folders, never your files.](#30) | sam-runner, sam-storage, sam-core | 9 | ✅ 🆕 3 new tests since the report |
 | 31 | [Disk space per app, and freeing space.](#31) | sam-runner | 2 | ✅ 🆕 1 new test since the report |
 | 32 | [Uninstalling SAM removes everything it created and brings back menu entries it hid.](#32) | sam-runner, sam-intake | 3 | ✅ 🆕 1 new test since the report |
-| 33 | [The doctor check finds problems with the system or an app.](#33) | sam-runner, sam-core | 25 | ✅ 🆕 9 new tests since the report |
+| 33 | [The doctor check finds problems with the system or an app.](#33) | sam-runner, sam-core | 24 | ✅ 🆕 9 new tests since the report |
 | 34 | [Privacy: SAM sends nothing on its own, and a bug report never contains your name, home path, addresses or secrets.](#34) | sam-runner | 9 | ✅ |
 | 35 | [The overview of all apps, with clear status badges.](#35) | sam-gtk, sam-jail-cli, sam-storage, sam-core | 14 | ✅ 🆕 9 new tests since the report |
 | 36 | [The Permission Manager, for one app or several, with tags in the same colors everywhere.](#36) | sam-gtk, sam-profile | 12 | ✅ |
@@ -720,13 +720,13 @@ The components are those of the [architecture](architecture.md#level-3-component
 
 | Test | Promise | Result |
 |---|---|---|
-| [`the_overlay_check_believes_bubblewraps_answer`](../crates/sam-core/src/host.rs#L247) | The overlay check believes Bubblewrap's answer: a Bubblewrap that fails means no overlay, even though the check's folders could be made (NFS, eCryptfs, another overlay), and one that succeeds means a working overlay. | 🆕 new |
+| [`the_overlay_check_believes_bubblewraps_answer`](../crates/sam-core/src/host.rs#L249) | The overlay check believes Bubblewrap's answer: a Bubblewrap that fails means no overlay, even though the check's folders could be made (NFS, eCryptfs, another overlay), and one that succeeds means a working overlay. | 🆕 new |
 | [`the_overlay_checks_match_the_real_bubblewrap`](../crates/sam-runner/tests/host_probe.rs#L157) | SAM offers the writable app folder exactly where the real Bubblewrap can give it: overlays only from a Bubblewrap that has them (it lists `--overlay-src`), and only on a folder where a real overlay works. | 🆕 new |
 | [`writable_appdir_uses_overlay`](../crates/sam-sandbox/src/lib.rs#L4200) | A writable app folder uses an overlay; the unpacked app itself stays unchanged. | ✅ |
 | [`an_app_starts_read_only_when_its_writable_app_folder_cannot_work`](../crates/sam-runner/tests/overlay_fallback.rs#L37) | When the folder for the writable app folder's changes cannot hold an overlay, the app still starts, with a read-only app folder and a warning that says why (regression: on Fedora in a container, SAM's data folder was on an overlay, and the app failed with a raw Bubblewrap error). | ✅ |
 | [`a_writable_app_folder_is_offered_only_where_it_can_work`](../crates/sam-runner/src/repair.rs#L1842) | The repair steps offer a writable app folder only where an overlay can work: not where SAM's overlay folder cannot hold one (regression: the step was offered by Bubblewrap's version alone, and on such disks the app then started read-only anyway). | ✅ |
 | [`the_app_folder_stays_read_only_unless_writable_is_granted`](../crates/sam-sandbox/src/lib.rs#L4756) | The app's own folder stays read-only unless "writable app folder" is granted, even when SAM has an overlay for it prepared. | ✅ |
-| [`overlays_count_from_bubblewrap_0_11`](../crates/sam-core/src/host.rs#L275) | Overlays count from Bubblewrap 0.11.0, the release that added `--overlay-src`; a 0.10 Bubblewrap does not have them. | 🆕 new |
+| [`overlays_count_where_bubblewrap_lists_the_option`](../crates/sam-core/src/host.rs#L269) | Overlays count where Bubblewrap lists `--overlay-src`, whatever its version says: a backport to 0.10 counts, a 0.11 without the option does not, and `--tmp-overlay` or `--ro-overlay` alone are not it. | 🆕 new |
 
 **Code:** [`sam-sandbox/src/lib.rs`](../crates/sam-sandbox/src/lib.rs), [`sam-runner/src/launch.rs`](../crates/sam-runner/src/launch.rs), [`sam-core/src/host.rs`](../crates/sam-core/src/host.rs)
 
@@ -998,8 +998,8 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`sams_own_program_and_its_parent_are_never_signalled`](../crates/sam-runner/src/ops/mod.rs#L1344) | A runner that is SAM's own program (a launch run inside it, as in SAM's tests) is never signalled: its launch is asked to end instead. | 🆕 new |
 | [`a_lock_reached_through_a_link_is_never_taken`](../crates/sam-runner/src/ops/mod.rs#L1382) | A launch's lock reached through a link is never taken as held, nor as held open by a runner: a planted link must not make another process's file count as a running launch (review B2 S6, R85). | 🆕 new |
 | [`removing_a_sandbox_while_its_app_runs_is_refused`](../crates/sam-runner/tests/settings.rs#L220) | A running app keeps its sandbox: removing it is refused until the app is closed (a launch holds a lock in the app's runtime folder). | ✅ |
-| [`the_overlay_check_leaves_no_folder_behind`](../crates/sam-core/src/host.rs#L199) | The overlay check leaves nothing behind, even the work folder the overlay locks (a leftover folder per check piled up in SAM's data). | ✅ |
-| [`leftovers_of_earlier_overlay_checks_are_removed`](../crates/sam-core/src/host.rs#L217) | Folders left by earlier checks whose process is gone are removed; one of a check still running stays. | ✅ |
+| [`the_overlay_check_leaves_no_folder_behind`](../crates/sam-core/src/host.rs#L201) | The overlay check leaves nothing behind, even the work folder the overlay locks (a leftover folder per check piled up in SAM's data). | ✅ |
+| [`leftovers_of_earlier_overlay_checks_are_removed`](../crates/sam-core/src/host.rs#L219) | Folders left by earlier checks whose process is gone are removed; one of a check still running stays. | ✅ |
 | [`without_network_the_sandbox_dies_with_its_launcher`](../crates/sam-jail-cli/tests/teardown.rs#L164) | Without network the sandbox dies with its launcher. | ✅ |
 | [`with_this_computer_only_the_sandbox_dies_with_its_launcher`](../crates/sam-jail-cli/tests/teardown.rs#L173) | With this computer only the sandbox dies with its launcher. | ✅ |
 | [`logging_out_closes_a_menu_started_app_properly`](../crates/sam-jail-cli/tests/teardown.rs#L197) | Logging out sends SIGTERM to the launcher of an app started from the menu (audit L-F9). | ✅ |
@@ -1344,7 +1344,6 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`setuid_bubblewrap_works_without_user_namespaces`](../crates/sam-runner/src/bwrap.rs#L96) | A setuid Bubblewrap works without unprivileged user namespaces, so SAM does not refuse it. | ✅ |
 | [`reaches_the_session_bus`](../crates/sam-runner/src/dbus_check.rs#L275) | SAM's own bus check reaches a session bus. | ✅ |
 | [`the_bus_check_message_has_the_correct_wire_format`](../crates/sam-runner/src/dbus_check.rs#L325) | SAM's own D-Bus message for the bus check has the correct wire format. | ✅ |
-| [`bubblewrap_versions_are_compared_correctly`](../crates/sam-core/src/host.rs#L265) | Bubblewrap versions are compared correctly, including missing or malformed version text. | ✅ |
 | [`the_built_in_contract_map_parses`](../crates/sam-runner/src/contracts.rs#L732) | The built in contract map parses. | ✅ |
 | [`every_contract_probe_is_known`](../crates/sam-runner/src/contracts.rs#L780) | Every contract probe is known. | ✅ |
 | [`the_login_files_check_looks_for_shadow`](../crates/sam-runner/src/contracts.rs#L698) | The quick check for login and admin files holds where /etc/shadow is, names what it found, and breaks where it is not (then the sandbox tests would look for the secrets in the wrong place). | ✅ |

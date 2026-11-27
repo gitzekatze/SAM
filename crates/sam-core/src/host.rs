@@ -62,34 +62,46 @@ impl UsernsStatus {
     }
 }
 
-/// The first Bubblewrap with overlays (`--overlay-src`, `--overlay`): its
-/// NEWS lists them under 0.11.0.
-const OVERLAY_SINCE: (u32, u32) = (0, 11);
-
-/// Whether a Bubblewrap whose `--version` printed `text` has overlays.
-fn version_has_overlays(text: &str) -> bool {
-    version_at_least(text, OVERLAY_SINCE)
+/// Whether a Bubblewrap whose `--help` printed `help` has overlays: it
+/// must list `--overlay-src`. The option itself decides, not the version
+/// number, so a distribution's backport counts and an odd version string
+/// does no harm (Bubblewrap added overlays in 0.11.0, which SAM's messages
+/// name). The same test as Room service's `bwrap_builds_rooms` and the
+/// contract probe `bwrap-option:--overlay-src`.
+fn help_lists_overlays(help: &str) -> bool {
+    help.split_whitespace()
+        .any(|w| w.trim_end_matches([',', '=']) == "--overlay-src")
 }
 
-/// Whether the installed Bubblewrap supports overlays (`--overlay-src`,
-/// Bubblewrap 0.11+), which the writable app folder needs. Ubuntu 24.04 and
-/// Debian 12 ship older ones. Asked once per process.
+/// Whether the installed Bubblewrap supports overlays (it lists
+/// `--overlay-src`; upstream since 0.11), which the writable app folder
+/// needs. Ubuntu 24.04 and Debian 12 ship older ones. Asked once per
+/// process.
 pub fn bwrap_supports_overlay() -> bool {
     static CHECKED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *CHECKED.get_or_init(|| {
         let Some(path) = crate::util::which("bwrap") else {
             return false;
         };
-        let out = std::process::Command::new(path).arg("--version").output();
+        let out = std::process::Command::new(path)
+            .arg("--help")
+            .stdin(std::process::Stdio::null())
+            .output();
         let text = out
-            .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+            .map(|o| {
+                format!(
+                    "{}{}",
+                    String::from_utf8_lossy(&o.stdout),
+                    String::from_utf8_lossy(&o.stderr)
+                )
+            })
             .unwrap_or_default();
-        version_has_overlays(&text)
+        help_lists_overlays(&text)
     })
 }
 
 /// Whether an overlay with its changes kept in `dir` really works: the
-/// Bubblewrap version is not enough, because some filesystems cannot hold
+/// option is not enough, because some filesystems cannot hold
 /// an overlay's changes (NFS, eCryptfs, some FUSE filesystems, another
 /// overlay such as a container's). Tried once per folder with a real
 /// overlay in a throwaway sandbox; `dir` is created if needed.
@@ -182,16 +194,6 @@ fn remove_probe(probe: &std::path::Path) {
     let _ = std::fs::remove_dir_all(probe);
 }
 
-/// "bubblewrap 0.13.1" -> true for (0, 11).
-fn version_at_least(text: &str, want: (u32, u32)) -> bool {
-    let v = text
-        .split_whitespace()
-        .find(|w| w.chars().next().is_some_and(|c| c.is_ascii_digit()))
-        .unwrap_or("");
-    let mut it = v.split('.').map(|p| p.parse::<u32>().unwrap_or(0));
-    (it.next().unwrap_or(0), it.next().unwrap_or(0)) >= want
-}
-
 #[cfg(test)]
 mod probe_tests {
     /// The overlay check leaves nothing behind, even the work folder the
@@ -260,26 +262,24 @@ mod probe_tests {
 }
 
 #[cfg(test)]
-mod version_tests {
-    /// Bubblewrap versions are compared correctly, including missing or malformed version text.
+mod overlay_option_tests {
+    /// Overlays count where Bubblewrap lists `--overlay-src`, whatever its
+    /// version says: a backport to 0.10 counts, a 0.11 without the option
+    /// does not, and `--tmp-overlay` or `--ro-overlay` alone are not it.
     #[test]
-    fn bubblewrap_versions_are_compared_correctly() {
-        assert!(super::version_at_least("bubblewrap 0.13.1", (0, 10)));
-        assert!(super::version_at_least("bubblewrap 0.10.0\n", (0, 10)));
-        assert!(!super::version_at_least("bubblewrap 0.9.0", (0, 10)));
-        assert!(!super::version_at_least("", (0, 10)));
-    }
-
-    /// Overlays count from Bubblewrap 0.11.0, the release that added
-    /// `--overlay-src`; a 0.10 Bubblewrap does not have them.
-    #[test]
-    fn overlays_count_from_bubblewrap_0_11() {
-        assert!(!super::version_has_overlays("bubblewrap 0.9.0"));
-        assert!(!super::version_has_overlays("bubblewrap 0.10.0\n"));
-        assert!(!super::version_has_overlays("bubblewrap 0.10.9"));
-        assert!(super::version_has_overlays("bubblewrap 0.11.0\n"));
-        assert!(super::version_has_overlays("bubblewrap 0.13.1"));
-        assert!(!super::version_has_overlays(""));
+    fn overlays_count_where_bubblewrap_lists_the_option() {
+        let upstream = "usage: bwrap [OPTIONS...] [--] COMMAND [ARGS...]\n\
+            --overlay-src SRC            Read files from SRC in the following overlay\n\
+            --overlay RWSRC WORKDIR DEST Mount overlayfs on DEST\n";
+        assert!(super::help_lists_overlays(upstream));
+        let backport = "bubblewrap 0.10.0\n  --overlay-src SRC  Read files from SRC\n";
+        assert!(super::help_lists_overlays(backport));
+        let older = "usage: bwrap\n  --tmpfs DEST  Mount new tmpfs on DEST\n  --bind-fd FD DEST\n";
+        assert!(!super::help_lists_overlays(older));
+        let only_tmp = "  --tmp-overlay DEST\n  --ro-overlay DEST\n  --overlay-srcs\n";
+        assert!(!super::help_lists_overlays(only_tmp));
+        assert!(!super::help_lists_overlays("bubblewrap 0.11.0\n"));
+        assert!(!super::help_lists_overlays(""));
     }
 }
 
