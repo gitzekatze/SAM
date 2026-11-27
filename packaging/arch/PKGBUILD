@@ -48,9 +48,12 @@ build() {
 check() {
   cd "sam-$pkgver"
   export RUSTUP_TOOLCHAIN=stable CARGO_TARGET_DIR=target
-  # SAM's tests need a developer build, and rustc makes one only at
-  # optimisation level 0. makepkg's RUSTFLAGS often set -C opt-level=3, and
-  # the tests would then stop at SAM's test guard. The last level wins.
+  # SAM's tests need a developer build, which rustc makes only at
+  # optimisation level 0 unless debug assertions are set explicitly. If
+  # makepkg's RUSTFLAGS reached this step with a higher level, the tests
+  # would stop at SAM's test guard. build() unsets RUSTFLAGS, which hides
+  # them here today, so this is a safety net. The last level wins. Only this
+  # test step may build at level 0, and never with --release.
   _rustflags -C opt-level=0
   # The end-to-end sandbox tests skip themselves where Bubblewrap cannot run
   # (for example in a clean chroot without user namespaces).
