@@ -956,7 +956,9 @@ How these stay protected with the home writable:
     `git_credentials_under_config_git_stay_hidden`). With the whole home
     writable, which shows such a place in the home anyway, the fonts stay
     bound read-only wherever they lead in the home, except the home or a
-    folder above it: the read-only bind only narrows what the home shows,
+    folder above it, but only where the app reaches them through what the
+    home shows, which is where the bind lands: the read-only bind only
+    narrows what the home shows,
     and the home's protections apply after it as they do for the home
     (key and credential stores hidden unless granted, protected places
     locked, SAM's own folders hidden). Left out, the fonts were shown
@@ -965,11 +967,21 @@ How these stay protected with the home writable:
     into a guarded place, so the app could plant fonts and fontconfig
     rules that programs outside the sandbox load
     (`with_the_whole_home_writable_the_font_places_stay_bound_read_only`,
-    `a_guarded_link_to_the_home_keeps_the_font_places_read_only`). The
-    same wherever another grant already shows the place writable where
+    `a_guarded_link_to_the_home_keeps_the_font_places_read_only`). A
+    font place whose way leads out of what the home shows gets no such
+    exception: with the home kept behind a link (`/home/u` a link to
+    `/data/u`), the sandbox shows the home only as `/home/u`, so `~/.fonts`
+    made a link to the home's real place (`/data/u/.ssh`) would be bound
+    at `/data/u/.ssh`, beside the home, where the keys are not hidden; SAM
+    leaves it out
+    (`a_font_link_to_the_real_place_of_a_home_behind_a_link_binds_no_guarded_place`,
+    `a_font_link_to_the_real_place_of_a_home_behind_a_link_shows_no_keys`).
+    The same wherever another grant already shows the place writable where
     the app reaches it (an extra writable folder `~/.config` or
     `~/.local/share`, also in a private or read-only home): the fonts and
-    theme files inside stay bound read-only after it. Left out, the app
+    the fonts settings inside stay bound read-only after it, and the theme
+    files too in a private home with host theme settings on (the only
+    start in which SAM binds them). Left out, the app
     made `~/.config/vivaldi` a link to `~/.config/fontconfig` with hidden
     files on, and in the next start the extra folder showed the fonts
     settings writable. A place the sandbox does not show at its own name
@@ -986,7 +998,11 @@ How these stay protected with the home writable:
     writable at the place the link leads to, where SAM binds no font or
     theme place read-only, so the app can change
     `~/dots/config/fontconfig` there, whatever SAM binds at
-    `~/.config/fontconfig`. After giving an app such a folder writable,
+    `~/.config/fontconfig`. SAM binds no theme file read-only with any
+    home grant (read-only or read and write) or with host theme settings
+    off, so an extra writable `~/.config` shows the theme files in it
+    (`~/.config/gtk-3.0`, `~/.config/kdeglobals`, `~/.config/qt5ct`, …)
+    writable. After giving an app such a folder writable,
     check that the fonts and theme files in it are yours.
 
   SAM does not bind such a place itself, and the launch log says so: that

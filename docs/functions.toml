@@ -309,6 +309,8 @@ tests = ["a_grant_inside_sams_folder_does_not_show_it", "opened_files_are_judged
   "a_guarded_link_to_the_home_keeps_the_font_places_read_only",
   "a_font_place_another_grant_shows_writable_stays_bound_read_only",
   "a_writable_extra_folder_keeps_the_font_and_theme_places_in_it_read_only",
+  "a_font_link_to_the_real_place_of_a_home_behind_a_link_binds_no_guarded_place",
+  "a_font_link_to_the_real_place_of_a_home_behind_a_link_shows_no_keys",
 ]
 
 [[function]]

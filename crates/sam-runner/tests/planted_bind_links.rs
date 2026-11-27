@@ -884,3 +884,49 @@ fn a_font_folder_link_through_a_link_in_tmp_never_reaches_sockets() {
         "the start says why: {text}"
     );
 }
+
+/// With the home kept behind a link (`~` a link to its real folder, as
+/// `/home` to `/var/home` on some systems) and the whole home writable,
+/// the app makes a missing `~/.fonts` a link to the real place of
+/// `~/.ssh` (or of SAM's own folder `~/.local/share/sam`) in one start.
+/// In the next start it reads the key neither at that real place nor
+/// through the fonts folder, and the start says why: before, SAM counted
+/// the real place as one the home shows and bound it read-only at that
+/// name, beside the home, where the keys were not hidden.
+#[test]
+fn a_font_link_to_the_real_place_of_a_home_behind_a_link_shows_no_keys() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(rig) = Rig::new("HomeBehindLink") else {
+        return;
+    };
+    let real = rig.home.parent().unwrap().join("tester-real");
+    fs::rename(&rig.home, &real).unwrap();
+    symlink(&real, &rig.home).unwrap();
+    let fonts = rig.home.join(".fonts");
+    for guarded in [".ssh", ".local/share/sam"] {
+        let target = real.join(guarded);
+        fs::create_dir_all(&target).unwrap();
+        fs::write(target.join("id_ed25519"), "PRIVATE KEY").unwrap();
+        let _ = fs::remove_file(real.join(".fonts"));
+        symlink(&target, real.join(".fonts")).unwrap();
+        let files = format!(
+            "{}|{}",
+            s(&target.join("id_ed25519")),
+            s(&fonts.join("id_ed25519"))
+        );
+        let (r, text) = rig.start(&whole_home_writable(), &[("SAM_TEST_FILES", files)]);
+        assert_ne!(
+            r["READ0"], "PRIVATE KEY",
+            "{guarded} at its real place: {text}"
+        );
+        assert_ne!(
+            r["READ1"], "PRIVATE KEY",
+            "{guarded} through ~/.fonts: {text}"
+        );
+        assert!(
+            text.contains("SAM does not bind ~/.fonts for this app on its own")
+                && text.contains("a place SAM protects"),
+            "{guarded}: the start says why: {text}"
+        );
+    }
+}

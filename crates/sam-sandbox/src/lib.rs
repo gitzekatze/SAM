@@ -1679,10 +1679,16 @@ fn this_start(ctx: &LaunchContext) -> sam_core::places::ThisStart {
 /// SAM's folders come after it. Left out there, the fonts were writable
 /// through the home, and in a private home through an extra writable
 /// `~/.config` once the app had made `~/.config/vivaldi` a link to
-/// `~/.config/fontconfig`. Only where the views show the place itself: a
-/// place they do not show is bound at its own name, where no protection
-/// of a grant reaches (`~/.fonts` a link to `~/.config/gh` would show the
-/// token as fonts, whatever `~/.config` shows).
+/// `~/.config/fontconfig`. Only where the app reaches the place through
+/// the views ([`Views::reached_at`]), which is where [`bind_place`] binds
+/// it: a place they do not show is bound at its own name, and one whose
+/// way leads out of them where it really is, where no protection of a
+/// grant reaches. `~/.fonts` a link to `~/.config/gh` would show the
+/// token as fonts, whatever `~/.config` shows; and with the home kept
+/// behind a link (`/home/u` a link to `/data/u`) and writable, `~/.fonts`
+/// made a link to `/data/u/.ssh` lies in the home where it really is, yet
+/// was bound at `/data/u/.ssh`, beside the home, where the keys were not
+/// hidden.
 /// With the whole home writable and `~/.fonts` missing, the app made it a
 /// link to `/tmp/tmux-1000`, and the next start bound the host's tmux
 /// sockets over the sandbox's own `/tmp`.
@@ -1693,8 +1699,16 @@ fn own_bind(
     at: &Path,
 ) -> std::result::Result<PathBuf, sam_core::places::LeftOut> {
     // Where the app reaches `at` ([`Views::reached_at`], none for a place
-    // the views do not show), as [`bind_place`] binds it.
-    let shown_writable = views.reached_at(at).is_some_and(|r| views.writable(&r));
+    // the views do not show or whose way leads out of them), as
+    // [`bind_place`] binds it. Shown writable there by a grant, or by the
+    // whole home writable also below an extra read-only folder (which the
+    // app may have made lead there): never by the home's real place alone,
+    // where the bind would not land.
+    let fsp = &ctx.permissions.filesystem;
+    let home_rw = fsp.home && fsp.home_access == Access::Rw;
+    let shown_writable = views
+        .reached_at(at)
+        .is_some_and(|r| views.writable(&r) || (home_rw && r.starts_with(&ctx.host.home)));
     match sam_core::places::own_place_left_out_where(
         &ctx.permissions,
         &ctx.host,
@@ -8147,6 +8161,93 @@ mod guard_tests {
                 "{:?}",
                 cmd.notes
             );
+        }
+    }
+
+    /// With the home kept behind a link (`/home/u` a link to `/data/u`) and
+    /// writable, the app made a missing `~/.fonts` a link to the real place
+    /// of `~/.ssh` (`/data/u/.ssh`, which it can read in
+    /// `/proc/self/mountinfo`): that place lies in the home where it really
+    /// is, so the whole home counted as showing it writable, and the next
+    /// start bound `/data/u/.ssh` read-only at that name. The sandbox shows
+    /// the home only as `/home/u`, so the keys were hidden there and stayed
+    /// readable at `/data/u/.ssh`. The same with SAM's own folder
+    /// (`/data/u/.local/share/sam`, which holds other apps' private homes).
+    /// SAM binds a guarded place only where the app reaches it through
+    /// what the home shows ([`own_bind`]); here it leaves `~/.fonts` out
+    /// and says why. Where the fonts are real folders, they stay bound
+    /// read-only under the home's name, also with `~/.aws` made a link to
+    /// the home's real place (hidden files on).
+    #[test]
+    fn a_font_link_to_the_real_place_of_a_home_behind_a_link_binds_no_guarded_place() {
+        let st = |p: &Path| p.to_string_lossy().into_owned();
+        for guarded_rel in [".ssh", ".local/share/sam"] {
+            let t = scratch();
+            let base = fs::canonicalize(t.path()).unwrap();
+            let real = base.join("data/u");
+            let named = base.join("home/u");
+            fs::create_dir_all(real.join(guarded_rel)).unwrap();
+            fs::write(real.join(guarded_rel).join("id_ed25519"), "secret").unwrap();
+            fs::create_dir_all(base.join("home")).unwrap();
+            std::os::unix::fs::symlink(&real, &named).unwrap();
+            let target = real.join(guarded_rel);
+            std::os::unix::fs::symlink(&target, real.join(".fonts")).unwrap();
+            let mut ctx = ctx_for(&full_rw(), &named);
+            ctx.sam_dirs = vec![named.join(".local/share/sam")];
+            let cmd = Bubblewrap.build(&ctx).unwrap();
+            let target = st(&target);
+            let bound: Vec<&[String]> = cmd
+                .args
+                .windows(3)
+                .filter(|w| w[0].contains("bind") && (w[1] == target || w[2] == target))
+                .collect();
+            assert!(
+                bound.is_empty(),
+                "~/.fonts a link to {target}: never bound there: {bound:?}"
+            );
+            assert!(
+                cmd.notes.iter().any(|n| n
+                    .contains("SAM does not bind ~/.fonts for this app on its own")
+                    && n.contains("a place SAM protects")),
+                "{guarded_rel}: {:?}",
+                cmd.notes
+            );
+        }
+        // The control: real font folders in a home behind a link, also
+        // with `~/.aws` a link to the home's real place, stay bound
+        // read-only where the app reaches them.
+        let places = [".fonts", ".local/share/fonts", ".config/fontconfig"];
+        for aws in [false, true] {
+            let t = scratch();
+            let base = fs::canonicalize(t.path()).unwrap();
+            let real = base.join("data/u");
+            let named = base.join("home/u");
+            for d in places {
+                fs::create_dir_all(real.join(d)).unwrap();
+            }
+            fs::create_dir_all(base.join("home")).unwrap();
+            std::os::unix::fs::symlink(&real, &named).unwrap();
+            if aws {
+                std::os::unix::fs::symlink(&real, real.join(".aws")).unwrap();
+            }
+            let mut p = full_rw();
+            p.filesystem.hidden_files = true;
+            let cmd = Bubblewrap.build(&ctx_for(&p, &named)).unwrap();
+            for rel in places {
+                let at = st(&named.join(rel));
+                assert!(
+                    has_seq(&cmd.args, &["--ro-bind-try", &at, &at]),
+                    "~/.aws a link {aws}: ~/{rel} bound read-only: {:?}",
+                    cmd.args
+                );
+                assert!(
+                    !cmd.notes.iter().any(|n| n.contains(&format!(
+                        "SAM does not bind ~/{rel} for this app on its own"
+                    ))),
+                    "~/.aws a link {aws}: {:?}",
+                    cmd.notes
+                );
+            }
         }
     }
 

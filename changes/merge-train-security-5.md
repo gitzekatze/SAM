@@ -40,10 +40,18 @@
   app could change the fonts and font settings your other programs load.
   The home's own protections still apply after the fonts are bound; a
   font place that leads to the home itself stays left out.
+- SAM binds a font place there only where the app reaches it through
+  what the home shows, which is where the bind lands. With your home kept
+  behind a link (`/home/u` a link to `/data/u`), the sandbox shows the
+  home only as `/home/u`. An app could make `~/.fonts` a link to the
+  real place of your keys (`/data/u/.ssh`), and the next start would
+  have bound that place beside the home, where the keys are not hidden.
+  SAM now leaves such a font place out and says why in the launch log.
 - The same holds wherever another folder you granted already shows the
   place writable, also in a private or read-only home: with `~/.config`
-  or `~/.local/share` an extra writable folder, SAM keeps the fonts, the
-  font settings and the theme files inside it read-only. Before, an app
+  or `~/.local/share` an extra writable folder, SAM keeps the fonts and
+  the font settings inside it read-only, and the theme files too in a
+  private home with host theme settings on. Before, an app
   could make a hidden-files place such as `~/.config/vivaldi` a link to
   `~/.config/fontconfig`, and in the next start the extra folder showed
   the font settings writable. A font place that the sandbox does not show
@@ -54,8 +62,12 @@
   folder that holds it lets the app create it. An extra writable folder
   named through a link (`~/.config` a link to `~/dots/config`) shows the
   font settings and theme files writable at the place the link leads to
-  (`~/dots/config/fontconfig`). After giving an app such a folder
-  writable, check that the fonts and theme files in it are yours.
+  (`~/dots/config/fontconfig`). SAM binds no theme file read-only with
+  any home grant (read-only or read and write) or with host theme
+  settings off, so an extra writable `~/.config` shows the theme files in
+  it (`~/.config/gtk-3.0`, `~/.config/kdeglobals` and the others)
+  writable. After giving an app such a folder writable, check that the
+  fonts and theme files in it are yours.
 
 ### The app page names every user folder SAM leaves out for a link
 

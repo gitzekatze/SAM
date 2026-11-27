@@ -1494,19 +1494,12 @@ pub fn guarded_places_everywhere_with(
 /// else guards what such a bind shows: `~/.fonts` made a link to `~/.ssh`
 /// showed the keys as fonts.
 ///
-/// With the whole home writable, a place in the home is no reason on its
-/// own to leave the bind out: the home shows that place already,
-/// writable, the read-only bind lands where the app reaches it there and
-/// only narrows it, and the home's protections (hidden key and credential
-/// stores, locked protected places, SAM's hidden folders) apply after it.
-/// Left out, the fonts were shown writable through the home: with
-/// `~/.aws` made a link to the home in an earlier start (hidden files
-/// on), every font place led into a guarded place, and the app could
-/// plant fonts and fontconfig rules that programs outside the sandbox
-/// load. The home or a folder above it stays left out there too: bound
-/// read-only, it would lock the whole home. In a private or read-only
-/// home, a guarded place stays left out, unless another grant of this
-/// start shows it writable ([`own_place_left_out_where`]).
+/// A guarded place leaves the bind out here, also with the whole home
+/// writable: only the sandbox can tell whether the read-only bind lands
+/// where the app reaches the place through what the home and the other
+/// grants show, and so whether a guarded place is no reason to leave it
+/// out ([`own_place_left_out_where`]). The home or a folder above it
+/// always stays left out: bound read-only, it would lock the whole home.
 pub fn own_place_left_out(
     p: &PermissionSet,
     host: &HostInfo,
@@ -1517,24 +1510,32 @@ pub fn own_place_left_out(
     own_place_left_out_where(p, host, named, guarded, this, false)
 }
 
-/// [`own_place_left_out`] for a start that may show `named` writable
-/// through another grant than the whole home: `shown_writable` says that
-/// the sandbox already shows `named`, where the app reaches it, writable
-/// (an extra writable folder `~/.config`, a writable user folder holding
-/// the place, the whole home), so the read-only bind lands there. As with
-/// the whole home writable, a guarded place is then no reason to leave the
-/// bind out: it only narrows what the grant shows anyway, and the
-/// protections at the places the sandbox shows (hidden key and credential
-/// stores, locked protected places, SAM's hidden folders) apply after it.
-/// Left out, the grant showed the place writable: in a private home with
-/// hidden files on and `~/.config` an extra writable folder, the app made
-/// `~/.config/vivaldi` a link to `~/.config/fontconfig` in one start; in
-/// the next, the fonts settings led into a guarded place, their read-only
-/// bind was left out, and the app could write fontconfig rules that
-/// programs outside the sandbox load. Only the sandbox can tell where a
-/// bind lands, so it says. The home or a folder above it, a planted link
-/// and a place where programs outside the sandbox listen stay left out
-/// whatever it says.
+/// [`own_place_left_out`] for a start that may show `named` writable:
+/// `shown_writable` says that the sandbox already shows `named`, where the
+/// app reaches it through the grants of this start, writable (the whole
+/// home, an extra writable folder `~/.config`, a writable user folder
+/// holding the place), and that the read-only bind lands exactly there. A
+/// guarded place is then no reason to leave the bind out: it only narrows
+/// what the grant shows anyway, and the protections at the places the
+/// sandbox shows (hidden key and credential stores, locked protected
+/// places, SAM's hidden folders) apply after it. Left out, the grant
+/// showed the place writable: with the whole home writable and hidden
+/// files on, the app made `~/.aws` a link to the home in one start, and in
+/// the next every font place led into a guarded place; in a private home
+/// with `~/.config` an extra writable folder, the app made
+/// `~/.config/vivaldi` a link to `~/.config/fontconfig`. Either way the
+/// app could plant fonts and fontconfig rules that programs outside the
+/// sandbox load.
+///
+/// Only the sandbox can tell where a bind lands, so it says; the home
+/// alone does not. With the home kept behind a link (`/home/u` a link to
+/// `/data/u`) and writable, the app made `~/.fonts` a link to
+/// `/data/u/.ssh`: that place lies in the home where it really is, yet the
+/// app reaches nothing there through the home, which is shown only as
+/// `/home/u`. The bind landed at `/data/u/.ssh`, outside the home and its
+/// protections, and showed the keys as fonts. The home or a folder above
+/// it, a planted link and a place where programs outside the sandbox
+/// listen stay left out whatever the sandbox says.
 pub fn own_place_left_out_where(
     p: &PermissionSet,
     host: &HostInfo,
@@ -1543,20 +1544,16 @@ pub fn own_place_left_out_where(
     this: &ThisStart,
     shown_writable: bool,
 ) -> Option<LeftOut> {
-    use crate::permissions::Access;
     if let Some(why) = linked_place_left_out(p, host, named, false, this) {
         return Some(why);
     }
     let leads = follow(named).leads;
     let home_or_above = is_home_or_above(&host.home, &resolve(&host.home), &leads);
-    let fs = &p.filesystem;
-    let home_shows_it_writable = fs.home && fs.home_access == Access::Rw && in_home(host, &leads);
     let guarded_place = || {
         guarded
             .iter()
             .any(|g| leads.starts_with(g) || g.starts_with(&leads))
     };
-    let shown_writable = shown_writable || home_shows_it_writable;
     if home_or_above || (!shown_writable && guarded_place()) {
         return Some(LeftOut::Guarded(leads));
     }
@@ -3021,6 +3018,13 @@ mod tests {
     /// place that leads to the home itself stays left out (bound
     /// read-only, it would lock the whole home), and with the home
     /// read-only or private the guarded place still leaves them out.
+    ///
+    /// Only where the sandbox says that the bind lands where the home
+    /// shows the place writable: the home alone is no reason, since with
+    /// the home kept behind a link a place in its real folder is reached
+    /// through no grant, and a bind there lands beside the home and its
+    /// protections. Without that answer the guarded place leaves the bind
+    /// out, also with the whole home writable.
     #[test]
     fn with_the_whole_home_writable_the_font_places_stay_bound_read_only() {
         use crate::permissions::Access;
@@ -3045,10 +3049,17 @@ mod tests {
             let guarded = guarded_places_everywhere(&home, &[]);
             assert!(guarded.contains(&home), "{planted}: {guarded:?}");
             for rel in places {
+                let at = home.join(rel);
                 assert_eq!(
-                    own_place_left_out(&p, &host, &home.join(rel), &guarded, &none()),
+                    own_place_left_out_where(&p, &host, &at, &guarded, &none(), true),
                     None,
                     "{planted} a link to the home: ~/{rel} is bound read-only"
+                );
+                assert_eq!(
+                    own_place_left_out(&p, &host, &at, &guarded, &none()),
+                    Some(LeftOut::Guarded(at.clone())),
+                    "{planted} a link to the home, the bind not landing where the home \
+                     shows ~/{rel}: left out"
                 );
             }
             let mut ro = p.clone();
@@ -3077,12 +3088,14 @@ mod tests {
         ] {
             let _ = std::fs::remove_file(&fonts);
             std::os::unix::fs::symlink(&target, &fonts).unwrap();
-            assert_eq!(
-                own_place_left_out(&p, &host, &fonts, &guarded, &none()),
-                Some(why),
-                "{}",
-                target.display()
-            );
+            for shown_writable in [false, true] {
+                assert_eq!(
+                    own_place_left_out_where(&p, &host, &fonts, &guarded, &none(), shown_writable),
+                    Some(why.clone()),
+                    "{}, shown writable {shown_writable}",
+                    target.display()
+                );
+            }
         }
     }
     /// Where another grant of this start shows a font place writable (an
