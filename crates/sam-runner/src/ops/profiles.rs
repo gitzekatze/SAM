@@ -322,12 +322,27 @@ impl Sam {
     }
 
     /// Find a suggestion by id among the app's hints, findings and repair steps.
+    ///
+    /// A step that the app's own output raised at its last start counts as
+    /// the app's request, whichever copy is found: a first-run hint or a
+    /// ladder step with the same id (`network`, `keyring`, `x11`, `gpu`)
+    /// was found first and carried no mark, so `repair --next` applied a
+    /// step the app's printed text had put first with no yes, or asked for
+    /// it as SAM's own hint (independent review of 2026-11-27; audit U-M2:
+    /// what the app prints never grants access unasked).
     pub fn find_suggestion(&self, e: &AppEntry, id: &str) -> Option<Suggestion> {
-        crate::repair::first_run_hints(e)
+        let raised_by_app = e
+            .last_launch
+            .iter()
+            .flat_map(|l| &l.findings)
+            .any(|f| f.id == id && f.from_app_output);
+        let mut found = crate::repair::first_run_hints(e)
             .into_iter()
             .chain(crate::repair::ladder(e, &self.config, &self.paths))
             .chain(e.last_launch.iter().flat_map(|l| l.findings.clone()))
-            .find(|s| s.id == id)
+            .find(|s| s.id == id)?;
+        found.from_app_output |= raised_by_app;
+        Some(found)
     }
 
     /// Switches off one applied repair step: puts back exactly what that
