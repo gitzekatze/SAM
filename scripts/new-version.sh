@@ -13,7 +13,8 @@
 #    without use; a tiny signature every 5 minutes keeps it).
 # 3. scripts/release.sh, on a branch release-X.Y.Z (main is protected and
 #    takes changes only through pull requests): version everywhere, all
-#    tests, signed tag.
+#    tests through the program SAM_RELEASE_TEST_COMMAND names (release.sh
+#    runs none on this computer), signed tag.
 # 4. Pushes the branch and the tag and opens the pull request "Release
 #    X.Y.Z". GitHub builds and tests the AppImages from the tag and makes a
 #    draft release (about 45 minutes); waits for it and shows a spinner with
@@ -129,7 +130,7 @@ gpg --yes -u "$key" --detach-sign -o "$work/unlock.sig" "$work/unlock" || die "t
 ( while sleep 300; do gpg --batch --yes -u "$key" --detach-sign -o "$work/alive.sig" "$work/unlock" 2>/dev/null || true; done ) &
 keepalive=$!
 
-step "Tagging $tag on the branch $branch (all tests run first; this takes a few minutes)"
+step "Tagging $tag on the branch $branch (the tests run first, through SAM_RELEASE_TEST_COMMAND; this takes a while)"
 git switch -q -c "$branch"
 SIGN_KEY="$key" scripts/release.sh "$new"
 

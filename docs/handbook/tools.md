@@ -28,7 +28,7 @@ it exists. Run them in your clone of the repository.
 | `scripts/new-version.sh X.Y.Z --dry-run` | checks that a release is possible, changes nothing |
 | `scripts/new-version.sh X.Y.Z` | the whole release up to the draft: checks, upgrade test, tag, push, GitHub's build, sealing with the release key |
 | `scripts/sign-release.sh vX.Y.Z` | seals a draft's AppImages (part of the above; for repeating it alone) |
-| `scripts/release.sh X.Y.Z` | version everywhere, all tests, signed tag (part of the above) |
+| `scripts/release.sh X.Y.Z` | version everywhere, all tests through the program `SAM_RELEASE_TEST_COMMAND` names (never on this computer), signed tag (part of the above) |
 | `make report` | the version report: tests, coverage, speed, compared with the last one |
 
 The release key itself is described in [Keeping SAM healthy](care.md#the-release-key).

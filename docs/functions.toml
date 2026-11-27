@@ -1224,6 +1224,7 @@ tests = [
   "source_files_that_differ_from_the_package_recipe_are_not_signed",
   "a_checked_draft_is_signed_with_its_checksum_lists_written_again",
   "a_release_that_fails_to_build_leaves_no_tag",
+  "the_release_script_runs_no_tests_on_its_own_computer",
   "release_builds_use_one_fixed_rust_and_stop_on_overflow",
   "release_builds_never_turn_on_debug_assertions",
   "cargo_config_only_replaces_sources",

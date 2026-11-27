@@ -1071,7 +1071,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-jail-cli: The command line and its JSON interface
 
-151 tests.
+152 tests.
 
 | Promise | Test |
 |---|---|
@@ -1124,9 +1124,10 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | A draft whose files all check out is signed, and the checksum lists the release key signs are written here from the checked files: a swapped SHA256SUMS or .sha256 in the draft never gets SAM's signature (audit P1). | [`a_checked_draft_is_signed_with_its_checksum_lists_written_again`](../crates/sam-jail-cli/tests/automation.rs#L1455) |
 | The owner's label counts only on the event of setting or removing a label, i.e. | [`the_owners_label_counts_only_right_after_it_is_set`](../crates/sam-jail-cli/tests/automation.rs#L1594) |
 | The approval check runs the checker, with its settings (keeper.toml), as the base branch has them, never the pull request's own copies: a change cannot rewrite the check that judges it (audit P2, the part a pull request's workflow run can keep). | [`the_approval_check_runs_the_base_branchs_checker`](../crates/sam-jail-cli/tests/automation.rs#L1641) |
-| A release whose build fails after the release commit leaves no tag behind: the tag starts the release workflow, so it is set only after everything was built (audit P14). | [`a_release_that_fails_to_build_leaves_no_tag`](../crates/sam-jail-cli/tests/automation.rs#L1657) |
-| The sandbox tests in the desktop session are judged by cargo's exit status: a run that does not even build prints no "FAILED" and must still fail (audit D-M11). | [`a_desktop_test_run_that_does_not_build_fails`](../crates/sam-jail-cli/tests/automation.rs#L1745) |
-| The website serves its diagram script only when it is exactly the one checked: a changed download stops the build before the site is made (audit P8). | [`the_website_is_not_built_with_a_changed_diagram_script`](../crates/sam-jail-cli/tests/automation.rs#L1785) |
+| A release whose build fails after the release commit leaves no tag behind: the tag starts the release workflow, so it is set only after everything was built (audit P14). | [`a_release_that_fails_to_build_leaves_no_tag`](../crates/sam-jail-cli/tests/automation.rs#L1749) |
+| The release script never starts the test suite on the computer it runs on (the tests start real sandboxes and SAM's programs): it runs the program SAM_RELEASE_TEST_COMMAND names, with the checkout's path and SAM_REQUIRE_SANDBOX=1, and stops before the release commit when that program fails; with neither that nor SKIP_TESTS=1 it stops before it changes anything and names both. | [`the_release_script_runs_no_tests_on_its_own_computer`](../crates/sam-jail-cli/tests/automation.rs#L1775) |
+| The sandbox tests in the desktop session are judged by cargo's exit status: a run that does not even build prints no "FAILED" and must still fail (audit D-M11). | [`a_desktop_test_run_that_does_not_build_fails`](../crates/sam-jail-cli/tests/automation.rs#L1858) |
+| The website serves its diagram script only when it is exactly the one checked: a changed download stops the build before the site is made (audit P8). | [`the_website_is_not_built_with_a_changed_diagram_script`](../crates/sam-jail-cli/tests/automation.rs#L1898) |
 | `scan` and `discover` on the terminal say of each AppImage whether it has a sandbox (and which), is a moved copy of a sandboxed one, or has none: a sandboxed app is never shown as new or unprotected, a new one never as sandboxed. | [`scan_and_discover_say_which_appimages_have_a_sandbox`](../crates/sam-jail-cli/tests/commands.rs#L171) |
 | `hints APP --apply ID` applies exactly the hint asked for: "files" grants Downloads and leaves the network off, although the game is also offered the network; an id that is not offered changes nothing. | [`a_hint_applies_only_what_was_asked_for`](../crates/sam-jail-cli/tests/commands.rs#L215) |
 | `hints APP --apply ID` applies a hint rated Think twice or Dangerous only with --yes, as `set` does: without it the network hint is refused with `hint-needs-yes`, names the hint and changes nothing; with it the network is on. | [`a_risky_hint_is_applied_only_with_yes`](../crates/sam-jail-cli/tests/commands.rs#L249) |
@@ -1279,4 +1280,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 1192 automated Rust tests plus 8 scripted checks.
+Total: 1193 automated Rust tests plus 8 scripted checks.
