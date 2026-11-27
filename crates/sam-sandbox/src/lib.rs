@@ -5223,6 +5223,9 @@ mod guard_tests {
 
     use super::*;
     use sam_core::sandbox::sample_context;
+    // Notes name a place as SAM shows it to people: below the real home
+    // as `~/…`, which happens wherever the test folders lie in it (CI).
+    use sam_core::util::tildify;
 
     /// An app started from SAM's window keeps the system's language, even
     /// when the window itself shows another one.
@@ -7233,7 +7236,7 @@ mod guard_tests {
         assert!(
             cmd.notes
                 .iter()
-                .any(|n| n.contains(&st(&in_home)) && n.contains("may have made that link")),
+                .any(|n| n.contains(&tildify(&in_home)) && n.contains("may have made that link")),
             "{:?}",
             cmd.notes
         );
@@ -7374,7 +7377,7 @@ mod guard_tests {
             assert!(
                 cmd.notes
                     .iter()
-                    .any(|n| n.contains(&st(link)) && n.contains("may have made that link")),
+                    .any(|n| n.contains(&tildify(link)) && n.contains("may have made that link")),
                 "{:?}",
                 cmd.notes
             );
@@ -7604,7 +7607,7 @@ mod guard_tests {
             assert!(
                 cmd.notes
                     .iter()
-                    .any(|n| n.contains(&st(link)) && n.contains("may have made that link")),
+                    .any(|n| n.contains(&tildify(link)) && n.contains("may have made that link")),
                 "{:?}",
                 cmd.notes
             );
@@ -9771,8 +9774,8 @@ mod guard_tests {
             // The note names the danger and gives no way out: the one for
             // a planted link says to set the folder to where it leads.
             assert!(
-                cmd.notes.iter().any(|n| n.contains(&st(&docs))
-                    && n.contains(&st(&sock))
+                cmd.notes.iter().any(|n| n.contains(&tildify(&docs))
+                    && n.contains(&tildify(&sock))
                     && n.contains("where programs outside the sandbox listen")),
                 "{:?}",
                 cmd.notes
