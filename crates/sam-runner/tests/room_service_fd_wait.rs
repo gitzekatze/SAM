@@ -12,10 +12,6 @@
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
 #![allow(clippy::disallowed_macros)] // a test's own notes, not SAM's output
 
-// Isolated by variables only a developer build reads (developer_build_tests.rs).
-#[cfg(not(debug_assertions))]
-compile_error!("This test keeps SAM away from your real folders with variables only a developer build reads: run it without --release.");
-
 mod rooms_common;
 
 use rooms_common::{cases, World};
