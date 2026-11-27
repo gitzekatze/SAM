@@ -5471,8 +5471,24 @@ mod guard_tests {
             writes_start_places(&ctx),
             "the key folders shown writable through ~/Sync are watched"
         );
+        // Each key folder on its own: the check above holds while either
+        // one is watched, so it alone would miss one switch read raw.
+        let watched = watched_places(&p, &home);
+        for k in [".ssh", ".gnupg"] {
+            assert!(
+                watched.iter().any(|w| w == k),
+                "the key folder ~/{k} is watched while its switch is on without the whole home: {watched:?}"
+            );
+        }
         // With the whole home, the switches show them.
         p.filesystem.home = true;
+        let watched = watched_places(&p, &home);
+        for k in [".ssh", ".gnupg"] {
+            assert!(
+                !watched.iter().any(|w| w == k),
+                "the key folder ~/{k} given with the whole home is not watched: {watched:?}"
+            );
+        }
         let a = args_of(&ctx_for(&p, &home));
         for (r, what) in [("Sync/ssh", "SSH keys"), ("Sync/gnupg", "GnuPG keys")] {
             assert!(!has_seq(&a, &["--tmpfs", &s(r)]), "{what}: {a:?}");
