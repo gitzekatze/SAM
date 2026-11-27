@@ -39,10 +39,23 @@ Cargo configuration files outside the source, which no test of the source
 can see. So the test steps of both recipes first run
 `scripts/check-release-build.sh target/release/sam-jail`: it starts the
 built `sam-jail` with SAM's folder variables pointing at a temporary folder
-and fails the package build if the program follows them. The Makefile's
-`cli` target, `scripts/make-appimage.sh`, `scripts/release.sh` and
-`scripts/sign-release.sh` run the same check on the programs they build or
-use.
+and fails the package build if the program follows them. The program
+starts with an empty environment inside that folder, with `HOME`, every XDG
+folder and `TMPDIR` in it too, so even a wrong program cannot reach the real
+home folder or SAM's real folders; the folder is removed afterwards. The
+check fails when the program is missing, fails, or answers with a folder
+outside the temporary folder or a line it does not expect.
+
+The same check runs in every other path that builds or uses a program SAM
+ships or signs: `scripts/make-appimage.sh` (on its release tools and on the
+`sam-jail` that goes into the AppImage; CI's release workflow runs it
+through `make appimage`), `scripts/release.sh` and `scripts/sign-release.sh`
+(on the signing tool, before the release key is used). The Makefile's `cli`
+target does not run it: a developer runs `make cli` to build for local use,
+and the check would start SAM's program on that computer. Packages build
+with their own recipes, never with `make cli`.
+`release_build_paths_check_the_programs_they_build` in
+`crates/sam-jail-cli/tests/automation.rs` requires exactly these paths.
 
 ## Arch / CachyOS (AUR)
 

@@ -117,8 +117,13 @@ the shipped program, with developer variables off. Before the release key
 is used, the script runs `scripts/check-release-build.sh` on that tool,
 which fails if the tool follows SAM's developer variables (debug
 assertions turned on by Cargo settings from outside the repository);
-`scripts/make-appimage.sh` runs the same check on its release tools and on
-the `sam-jail` that goes into the AppImage.
+`scripts/make-appimage.sh` (which the release workflow runs through
+`make appimage`) runs the same check on its release tools and on the
+`sam-jail` that goes into the AppImage, `scripts/release.sh` on the
+`sam-jail` it builds for the man pages, and the package recipes' test steps
+on the programs they build. The Makefile's `cli` target does not run it,
+because a developer builds with it for local use and the check starts the
+built program ([Packaging](packaging.md)).
 
 1. **Sign the AppImages** on this computer, so the key never goes to GitHub:
 

@@ -1116,7 +1116,7 @@ tests = ["times_are_shown_without_a_date_library", "the_permission_model_depends
 id = 42
 area = "I"
 internal = true
-promise = "SAM is checked and released as it says: the release key signs only files the release build of that very tag made, source files that match the package recipe and checksum lists the signing script writes itself; a failed release build leaves no tag; the owner's approval counts only for the version the owner saw and is judged by the base branch's checker; the CI scripts fail when the tests could not run; the programs SAM ships contain none of its test and release tools, and every release build path refuses a built program that follows SAM's developer variables; and every workflow keeps pinned actions, least rights and checked downloads."
+promise = "SAM is checked and released as it says: the release key signs only files the release build of that very tag made, source files that match the package recipe and checksum lists the signing script writes itself; a failed release build leaves no tag; the owner's approval counts only for the version the owner saw and is judged by the base branch's checker; the CI scripts fail when the tests could not run; the programs SAM ships contain none of its test and release tools, and every path that builds or uses a program SAM ships or signs (the AppImage build, which the release workflow runs through make appimage, the release and signing scripts and the package recipes' test steps, but not the Makefile's cli target, which a developer runs for local use) refuses a built program that follows SAM's developer variables, checked with an empty environment and every folder in a temporary folder; and every workflow keeps pinned actions, least rights and checked downloads."
 code = ["scripts/sign-release.sh", "scripts/release.sh", "scripts/workflow-check.py", ".github/workflows/approval.yml", ".github/workflows/release.yml", ".github/workflows/pages.yml", "tests/gui/desktop-sandbox.sh", "Cargo.toml", "sam-test-guard/src/lib.rs", "scripts/make-appimage.sh", "tests/shipped/in-container.sh", "packaging/arch/PKGBUILD", "packaging/fedora/sam-jail.spec", "scripts/check-release-build.sh", "Makefile"]
 tests = [
   "the_release_key_signs_no_appimage_the_release_build_did_not_make",
@@ -1131,6 +1131,7 @@ tests = [
   "release_builds_never_turn_on_debug_assertions",
   "the_release_build_check_refuses_a_program_that_follows_developer_variables",
   "the_release_stand_in_answers_like_the_real_program",
+  "the_release_build_check_keeps_the_program_inside_a_temporary_folder",
   "release_build_paths_check_the_programs_they_build",
   "release_test_builds_stop_at_the_test_guard",
   "package_test_steps_build_at_optimisation_level_zero",
