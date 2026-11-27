@@ -965,7 +965,18 @@ How these stay protected with the home writable:
     into a guarded place, so the app could plant fonts and fontconfig
     rules that programs outside the sandbox load
     (`with_the_whole_home_writable_the_font_places_stay_bound_read_only`,
-    `a_guarded_link_to_the_home_keeps_the_font_places_read_only`).
+    `a_guarded_link_to_the_home_keeps_the_font_places_read_only`). The
+    same wherever another grant already shows the place writable where
+    the app reaches it (an extra writable folder `~/.config` or
+    `~/.local/share`, also in a private or read-only home): the fonts and
+    theme files inside stay bound read-only after it. Left out, the app
+    made `~/.config/vivaldi` a link to `~/.config/fontconfig` with hidden
+    files on, and in the next start the extra folder showed the fonts
+    settings writable. A place the sandbox does not show at its own name
+    (`~/.fonts` in a private home) still never leads to a guarded place,
+    whatever another grant shows there
+    (`a_font_place_another_grant_shows_writable_stays_bound_read_only`,
+    `a_writable_extra_folder_keeps_the_font_and_theme_places_in_it_read_only`).
 
   SAM does not bind such a place itself, and the launch log says so: that
   SAM leaves out the extra or user folder, or does not bind the place on

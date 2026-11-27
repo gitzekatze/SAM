@@ -1505,13 +1505,43 @@ pub fn guarded_places_everywhere_with(
 /// plant fonts and fontconfig rules that programs outside the sandbox
 /// load. The home or a folder above it stays left out there too: bound
 /// read-only, it would lock the whole home. In a private or read-only
-/// home, a guarded place stays left out.
+/// home, a guarded place stays left out, unless another grant of this
+/// start shows it writable ([`own_place_left_out_where`]).
 pub fn own_place_left_out(
     p: &PermissionSet,
     host: &HostInfo,
     named: &Path,
     guarded: &[PathBuf],
     this: &ThisStart,
+) -> Option<LeftOut> {
+    own_place_left_out_where(p, host, named, guarded, this, false)
+}
+
+/// [`own_place_left_out`] for a start that may show `named` writable
+/// through another grant than the whole home: `shown_writable` says that
+/// the sandbox already shows `named`, where the app reaches it, writable
+/// (an extra writable folder `~/.config`, a writable user folder holding
+/// the place, the whole home), so the read-only bind lands there. As with
+/// the whole home writable, a guarded place is then no reason to leave the
+/// bind out: it only narrows what the grant shows anyway, and the
+/// protections at the places the sandbox shows (hidden key and credential
+/// stores, locked protected places, SAM's hidden folders) apply after it.
+/// Left out, the grant showed the place writable: in a private home with
+/// hidden files on and `~/.config` an extra writable folder, the app made
+/// `~/.config/vivaldi` a link to `~/.config/fontconfig` in one start; in
+/// the next, the fonts settings led into a guarded place, their read-only
+/// bind was left out, and the app could write fontconfig rules that
+/// programs outside the sandbox load. Only the sandbox can tell where a
+/// bind lands, so it says. The home or a folder above it, a planted link
+/// and a place where programs outside the sandbox listen stay left out
+/// whatever it says.
+pub fn own_place_left_out_where(
+    p: &PermissionSet,
+    host: &HostInfo,
+    named: &Path,
+    guarded: &[PathBuf],
+    this: &ThisStart,
+    shown_writable: bool,
 ) -> Option<LeftOut> {
     use crate::permissions::Access;
     if let Some(why) = linked_place_left_out(p, host, named, false, this) {
@@ -1526,7 +1556,8 @@ pub fn own_place_left_out(
             .iter()
             .any(|g| leads.starts_with(g) || g.starts_with(&leads))
     };
-    if home_or_above || (!home_shows_it_writable && guarded_place()) {
+    let shown_writable = shown_writable || home_shows_it_writable;
+    if home_or_above || (!shown_writable && guarded_place()) {
         return Some(LeftOut::Guarded(leads));
     }
     None
@@ -3054,6 +3085,49 @@ mod tests {
             );
         }
     }
+    /// Where another grant of this start shows a font place writable (an
+    /// extra writable folder `~/.config` in a private home), the place
+    /// stays bound read-only although it leads into a guarded place: with
+    /// hidden files on, the app made `~/.config/vivaldi` a link to
+    /// `~/.config/fontconfig` in one start, so in the next the fonts
+    /// settings were left out and the extra folder showed them writable.
+    /// Without such a grant the guarded place still leaves the bind out,
+    /// and the home or a folder above it always does.
+    #[test]
+    fn a_font_place_another_grant_shows_writable_stays_bound_read_only() {
+        let t = scratch();
+        let base = std::fs::canonicalize(t.path()).unwrap();
+        let home = base.join("home/u");
+        let fontconfig = home.join(".config/fontconfig");
+        std::fs::create_dir_all(&fontconfig).unwrap();
+        std::os::unix::fs::symlink(&fontconfig, home.join(".config/vivaldi")).unwrap();
+        let host = HostInfo {
+            home: home.clone(),
+            ..Default::default()
+        };
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.hidden_files = true;
+        p.filesystem.custom_write = vec![home.join(".config").display().to_string()];
+        let guarded = guarded_places_everywhere(&home, &[]);
+        assert!(guarded.contains(&fontconfig), "{guarded:?}");
+        let why = |named: &Path, shown_writable: bool| {
+            own_place_left_out_where(&p, &host, named, &guarded, &none(), shown_writable)
+        };
+        assert_eq!(why(&fontconfig, true), None);
+        assert_eq!(
+            why(&fontconfig, false),
+            Some(LeftOut::Guarded(fontconfig.clone()))
+        );
+        assert_eq!(
+            own_place_left_out(&p, &host, &fontconfig, &guarded, &none()),
+            Some(LeftOut::Guarded(fontconfig.clone()))
+        );
+        // The home itself stays left out, shown writable or not.
+        let fonts = home.join(".fonts");
+        std::os::unix::fs::symlink(&home, &fonts).unwrap();
+        assert_eq!(why(&fonts, true), Some(LeftOut::Guarded(home.clone())));
+    }
+
     /// With the whole home writable, a user folder set read-only is shown
     /// through the home, writable: a link the app made in it is not
     /// followed out of what the home and the user folders show, for a

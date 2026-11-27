@@ -39,6 +39,15 @@
   app could change the fonts and font settings your other programs load.
   The home's own protections still apply after the fonts are bound; a
   font place that leads to the home itself stays left out.
+- The same holds wherever another folder you granted already shows the
+  place writable, also in a private or read-only home: with `~/.config`
+  or `~/.local/share` an extra writable folder, SAM keeps the fonts, the
+  font settings and the theme files inside it read-only. Before, an app
+  could make a hidden-files place such as `~/.config/vivaldi` a link to
+  `~/.config/fontconfig`, and in the next start the extra folder showed
+  the font settings writable. A font place that the sandbox does not show
+  itself, such as `~/.fonts` in a private home, still never leads to your
+  keys or credential stores.
 
 ### The app page names every user folder SAM leaves out for a link
 
