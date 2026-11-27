@@ -20,6 +20,10 @@ pub const SENSITIVE_DOTFILES: &[&str] = &[
     ".azure",
     ".netrc",
     ".git-credentials",
+    // git-credential-store's other default file, passwords in plain text,
+    // used when `~/.git-credentials` does not exist. `~/.config/git` is a
+    // start place kept only read-only, so the app could still read it.
+    ".config/git/credentials",
     ".config/keepassxc",
     ".mozilla",
     ".config/chromium",
