@@ -45,10 +45,11 @@ broken=$(add Broken failing)
 "$bin/sam-jail" run "$broken" >/dev/null 2>&1 || true
 repaired=$(add Repaired failing)
 "$bin/sam-jail" run "$repaired" >/dev/null 2>&1 || true
-# A step rated Think twice or Dangerous waits for a yes; only that one
-# is given here, as in the window.
+# A repair step or first-run hint rated Think twice or Dangerous waits
+# for a yes; only those, SAM's own suggestions, get it here, as in the
+# window. A step from the app's own output never does.
 r=$("$bin/sam-jail" --json repair "$repaired" --next 2>&1) || case $r in
-  *'"step-needs-yes"'*) "$bin/sam-jail" repair "$repaired" --next --yes >/dev/null 2>&1 || true ;;
+  *'"step-needs-yes"'* | *'"hint-needs-yes"'*) "$bin/sam-jail" repair "$repaired" --next --yes >/dev/null 2>&1 || true ;;
 esac
 tampered=$(add Tampered)
 # Something other than SAM changes the record: SAM shows "Changed outside SAM".
