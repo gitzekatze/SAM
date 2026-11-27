@@ -20,7 +20,7 @@ use std::path::{Component, Path, PathBuf};
 use anyhow::{Context, Result};
 use sam_core::permissions::*;
 use sam_core::places::{
-    protected_places, resolve, start_place_of_bound_write_grant, SENSITIVE_DOTFILES,
+    protected_places, resolve, sensitive_places, start_place_of_bound_write_grant,
 };
 use sam_core::util::expand_home;
 use sam_core::{BubblewrapStatus, HostInfo, LaunchContext, SandboxCommand};
@@ -330,12 +330,8 @@ pub fn prepare_home_protection_alongside(ctx: &LaunchContext, running: &[HomeWat
 /// under them can be renamed away.
 fn protected_ancestors(home: &Path) -> Vec<String> {
     let places = protected_places(home);
-    ancestors_of(
-        places
-            .iter()
-            .map(String::as_str)
-            .chain(SENSITIVE_DOTFILES.iter().copied()),
-    )
+    let stores = sensitive_places(home);
+    ancestors_of(places.iter().chain(&stores).map(String::as_str))
 }
 
 /// The folders above each of `places` (relative to the home), parents first.
@@ -1662,17 +1658,20 @@ fn pins(
 }
 
 /// The credential stores in the home that this start hides: the key
-/// folders not given, and the other stores unless hidden files are.
-fn masked_places(fsp: &FilesystemPerms) -> Vec<&'static str> {
-    let mut masks: Vec<&'static str> = Vec::new();
+/// folders not given, and the other stores unless hidden files are, also
+/// under `XDG_CONFIG_HOME` and `XDG_DATA_HOME` inside the home
+/// ([`sensitive_places`]: with `XDG_CONFIG_HOME=~/cfg`, Git's passwords in
+/// `~/cfg/git/credentials` stayed readable with the whole home).
+fn masked_places(home: &Path, fsp: &FilesystemPerms) -> Vec<String> {
+    let mut masks: Vec<String> = Vec::new();
     if !fsp.ssh {
-        masks.push(".ssh");
+        masks.push(".ssh".into());
     }
     if !fsp.gnupg {
-        masks.push(".gnupg");
+        masks.push(".gnupg".into());
     }
     if !fsp.hidden_files {
-        masks.extend(SENSITIVE_DOTFILES);
+        masks.extend(sensitive_places(home));
     }
     masks
 }
@@ -1683,7 +1682,7 @@ fn guarded_places(home: &Path, fsp: &FilesystemPerms) -> Vec<PathBuf> {
     protected_places(home)
         .iter()
         .map(|p| home.join(p))
-        .chain(masked_places(fsp).iter().map(|m| home.join(m)))
+        .chain(masked_places(home, fsp).iter().map(|m| home.join(m)))
         .collect()
 }
 
@@ -1762,7 +1761,7 @@ fn guard_home(a: &mut Args, home: &Path, fsp: &FilesystemPerms, views: &Views, s
     // covers the hiding. With `~/.git-credentials` a link into
     // `~/.config/git`, the protected place bound read-only after it showed
     // the real file again (mutation run 2026-11-23).
-    for m in masked_places(fsp) {
+    for m in masked_places(home, fsp) {
         let path = home.join(m);
         let Ok(md) = fs::symlink_metadata(&path) else {
             continue;
@@ -1869,8 +1868,8 @@ fn opened_paths_in(ctx: &LaunchContext, views: &Views) -> Vec<(PathBuf, bool)> {
     };
     let keep_out: Vec<PathBuf> = protected_places(home)
         .iter()
+        .chain(&sensitive_places(home))
         .map(String::as_str)
-        .chain(SENSITIVE_DOTFILES.iter().copied())
         .chain([".ssh", ".gnupg"])
         .flat_map(|p| both(home.join(p)))
         .collect();

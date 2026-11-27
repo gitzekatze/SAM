@@ -573,7 +573,8 @@ still keeps these protections:
 and password stores (pass, KeePassXC, Bitwarden, 1Password, KWallet), cloud
 and developer logins (AWS, Google Cloud, Azure, Kubernetes, Docker, GitHub
 and GitLab command line tools, npm, PyPI, Cargo, rclone, `~/.netrc`, Git
-credentials and others), mail and browser profiles (Thunderbird, Firefox,
+credentials in `~/.git-credentials` and `~/.config/git/credentials`, and
+others), mail and browser profiles (Thunderbird, Firefox,
 LibreWolf, Chrome, Chromium, Brave, Vivaldi, Edge, Opera and others), and
 the data of apps installed as Flatpak or Snap. The full list is in
 `crates/sam-core/src/places.rs`. A folder becomes an empty one, and
@@ -583,7 +584,17 @@ leads too, also inside a place kept read-only (`~/.git-credentials` a link
 to `~/.config/git/credentials`): these are hidden after every other mount,
 so nothing bound later shows them again
 (`no_later_bind_shows_a_hidden_credential_again`,
-`credentials_behind_links_pipes_and_sockets_stay_hidden`).
+`credentials_behind_links_pipes_and_sockets_stay_hidden`). Git's second
+credential file is hidden on its own too, inside `~/.config/git`, which
+SAM keeps read-only as a start place, so a read-only lock alone would let
+the app read it (`git_credentials_under_config_git_stay_hidden`). Where
+`XDG_CONFIG_HOME` or `XDG_DATA_HOME` names another folder inside the home
+(`~/cfg`), the stores kept under `~/.config` or `~/.local/share` are hidden
+there as well (`~/cfg/git/credentials`, `~/cfg/keepassxc`), as the start
+places are locked there, and none of them is shared as a file named on the
+command line (`credential_stores_follow_other_config_and_data_folders`).
+Such a folder outside the home is shown only when you grant it, and SAM
+does not hide the stores in it then.
 
 **Hidden whenever anything would show them:** SAM's own folders
 (configuration, data and unpacked apps, wherever they are, and the folders

@@ -20,6 +20,11 @@ pub const SENSITIVE_DOTFILES: &[&str] = &[
     ".azure",
     ".netrc",
     ".git-credentials",
+    // git-credential-store's other default file, passwords in plain text
+    // (`$XDG_CONFIG_HOME/git/credentials`, found there too by
+    // [`sensitive_places`]). `~/.config/git` is a start place kept only
+    // read-only, so the app could still read it.
+    ".config/git/credentials",
     ".config/keepassxc",
     ".mozilla",
     ".config/chromium",
@@ -166,7 +171,42 @@ pub fn protected_places_with(
     config: Option<PathBuf>,
     data: Option<PathBuf>,
 ) -> Vec<String> {
-    let mut out: Vec<String> = PROTECTED_RO.iter().map(|p| p.to_string()).collect();
+    places_following(PROTECTED_RO, home, config, data)
+}
+
+/// The credential stores relative to the home: `SENSITIVE_DOTFILES`, and
+/// the same places under `XDG_CONFIG_HOME` and `XDG_DATA_HOME` when those
+/// point to other folders inside the home, as [`protected_places`] finds
+/// them. Programs keep their secrets where those variables say: with
+/// `XDG_CONFIG_HOME=~/cfg`, git-credential-store keeps its passwords in
+/// `~/cfg/git/credentials`, and only the fixed `~/.config/git/credentials`
+/// was hidden, so an app with the whole home could read them (`~/cfg/git`
+/// is only locked read-only). Shared by the sandbox, which hides them,
+/// and the files opened for a start, which never share them.
+pub fn sensitive_places(home: &Path) -> Vec<String> {
+    let var = |v: &str| std::env::var_os(v).map(PathBuf::from);
+    sensitive_places_with(home, var("XDG_CONFIG_HOME"), var("XDG_DATA_HOME"))
+}
+
+/// [`sensitive_places`] with the two variables given.
+pub fn sensitive_places_with(
+    home: &Path,
+    config: Option<PathBuf>,
+    data: Option<PathBuf>,
+) -> Vec<String> {
+    places_following(SENSITIVE_DOTFILES, home, config, data)
+}
+
+/// `list`, and each of its places under `.config/` or `.local/share/`
+/// again under `config` and `data` where those are other folders inside
+/// the home.
+fn places_following(
+    list: &[&str],
+    home: &Path,
+    config: Option<PathBuf>,
+    data: Option<PathBuf>,
+) -> Vec<String> {
+    let mut out: Vec<String> = list.iter().map(|p| p.to_string()).collect();
     // Compared as written and by where they lead: the variable may name
     // the home's real place (`/home/u` a link to `/data/u`), and a link on
     // the way (`~/cfg` to `~/dotfiles/cfg`) must stay watched as well as
@@ -196,7 +236,7 @@ pub fn protected_places_with(
             }
         }
         for rel in rels {
-            for p in PROTECTED_RO {
+            for p in list {
                 if let Some(rest) = p.strip_prefix(default) {
                     let alt = format!("{rel}/{rest}");
                     if !out.contains(&alt) {
@@ -1000,6 +1040,38 @@ mod tests {
         for other in [".config/samba", "cfg/fish", "dat/applications"] {
             assert!(!is_sams_name(other), "{other}");
         }
+    }
+
+    /// The credential stores follow `XDG_CONFIG_HOME` and `XDG_DATA_HOME`
+    /// inside the home as the start places do: with `~/cfg`, Git's
+    /// passwords are kept in `~/cfg/git/credentials`, which was only locked
+    /// read-only, so an app with the whole home could read them. A folder
+    /// outside the home or one written with `..` above it adds nothing, and
+    /// the usual places always stay.
+    #[test]
+    fn credential_stores_follow_other_config_and_data_folders() {
+        let t = tempfile::tempdir().unwrap();
+        let home = std::fs::canonicalize(t.path()).unwrap().join("u");
+        let places = sensitive_places_with(&home, Some(home.join("cfg")), Some(home.join("dat")));
+        for want in [
+            ".config/git/credentials",
+            ".git-credentials",
+            "cfg/git/credentials",
+            "cfg/keepassxc",
+            "dat/keyrings",
+        ] {
+            assert!(places.iter().any(|p| p == want), "{want}: {places:?}");
+        }
+        for wrong in ["cfg/keyrings", "dat/git/credentials", "cfg/.aws"] {
+            assert!(!places.iter().any(|p| p == wrong), "{wrong}: {places:?}");
+        }
+        for outside in [home.join("../elsewhere"), PathBuf::from("/elsewhere")] {
+            assert_eq!(
+                sensitive_places_with(&home, Some(outside.clone()), Some(outside)),
+                SENSITIVE_DOTFILES
+            );
+        }
+        assert_eq!(sensitive_places_with(&home, None, None), SENSITIVE_DOTFILES);
     }
 
     /// A place named like SAM's folders counts as SAM's, hidden wherever the
