@@ -1266,7 +1266,7 @@ pub fn permission_catalog() -> Vec<PermissionInfo> {
         perm!("devices.usb", "Devices", "Raw USB",
             "Raw access to USB devices. Needed by flashing tools and some hardware utilities.", Dangerous, advanced),
         perm!("devices.bluetooth", "Devices", "Bluetooth",
-            "Lets the app open Bluetooth connections to nearby devices; other apps cannot. Pairing and the Bluetooth service itself also need the system D-Bus.", Dangerous, advanced),
+            "Lets the app open Bluetooth connections to nearby devices; other apps cannot, except an app whose start program is 32-bit (the security page says why). Pairing and the Bluetooth service itself also need the system D-Bus.", Dangerous, advanced),
         perm!("audio.enabled", "Audio", "Sound",
             "Play and record audio (through PipeWire's PulseAudio service). Recording is possible once this is on.", Medium),
         perm!("audio.direct", "Audio", "Sound without SAM's relay",

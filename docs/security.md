@@ -164,7 +164,8 @@ their 64-bit twins, so the filter stays on for 32-bit AppImages
 switched off for them, which let any app choose to run without it by
 making its start program 32-bit. One gap remains, as in Flatpak: a 32-bit
 socket or socket pair made through the old `socketcall` call is not
-limited to the listed types, because its type sits where no filter can
+limited to the listed types (so it can be a Bluetooth socket even without
+the *Bluetooth* switch), because its type sits where no filter can
 read it. Other apps keep ending at a 32-bit call, so a 64-bit program
 cannot use the 32-bit doors.
 
