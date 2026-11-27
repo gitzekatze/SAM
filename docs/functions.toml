@@ -1108,6 +1108,7 @@ tests = [
   "the_release_key_signs_no_appimage_the_release_build_did_not_make",
   "an_appimage_built_for_an_older_release_is_not_signed",
   "a_file_added_to_a_draft_release_stops_the_signing",
+  "only_the_signing_tool_signs_a_release",
   "source_files_that_differ_from_the_package_recipe_are_not_signed",
   "a_checked_draft_is_signed_with_its_checksum_lists_written_again",
   "a_release_that_fails_to_build_leaves_no_tag",

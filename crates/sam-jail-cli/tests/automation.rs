@@ -448,6 +448,30 @@ fn an_appimage_built_for_an_older_release_is_not_signed() {
     d.assert_nothing_signed(&out);
 }
 
+/// Only the signing tool signs: a release build with SAM's release tools
+/// on (owner decision of 2026-11-27), so signing runs like the shipped
+/// program, with developer variables off. With only a developer build or
+/// a plain release build present, the script stops before it uses the
+/// release key and says how to build the tool; it used to fall back to
+/// them.
+#[test]
+fn only_the_signing_tool_signs_a_release() {
+    for other in ["target/debug/sam-jail", "target/release/sam-jail"] {
+        let d = Draft::new();
+        d.attest_all();
+        let dest = d.path("repo").join(other);
+        fs::create_dir_all(dest.parent().unwrap()).unwrap();
+        fs::rename(d.path("repo/target/sign-tools/release/sam-jail"), &dest).unwrap();
+        let out = d.sign();
+        d.assert_nothing_signed(&out);
+        assert!(
+            text(&out.stderr).contains("build the signing tool first"),
+            "{other}: {}",
+            text(&out.stderr)
+        );
+    }
+}
+
 /// A file someone added to the draft stops the signing: the release key
 /// signs only files that were checked or written here, so neither a new
 /// file nor a .sha256 without its AppImage gets SAM's signature (audit P1).
