@@ -244,10 +244,19 @@ rule: **no more than the app, no less than asked.**
     any link (a link the app made could lead to a place it sees protected
     or hidden); such a request is refused. SAM's room helper then checks,
     before anything else, that every place shown by handle is exactly the
-    file or folder SAM opened (same device and inode) and ends the room
-    otherwise: Ubuntu 24.04's Bubblewrap mounts a handle's path by name,
-    so an app swapping a folder for a link while its room is built would
-    put the link's target in the room. Device places are the one thing
+    file or folder SAM opened (same device and inode), reached without
+    following any link, and still the root of the mount Bubblewrap made
+    there, and ends the room otherwise: Ubuntu 24.04's Bubblewrap mounts a
+    handle's path by name, so an app swapping a folder for a link while
+    its room is built would put the link's target in the room; and a
+    program outside the room that can write the folder holding a place can
+    move the place away once Bubblewrap mounted it (the mount goes with
+    the name) and put the very same file back at its name through a second
+    name made before (a hard link), so the room would show it without the
+    mount, and without what the mount gave (read-only, for example). A
+    kernel that does not say whether a place is the root of a mount (older
+    than Linux 5.8) ends every room this way, with a message naming the
+    cause. Device places are the one thing
     shown by name (Bubblewrap cannot show a device by handle): only as a
     whole, as SAM or the person named them, never a path below one (which
     could lead through a link the app made in `/dev/shm`); one missing
