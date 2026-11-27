@@ -164,6 +164,15 @@ impl Default for Security {
     }
 }
 
+/// The global switches that take a protection away from every sandboxed
+/// app when turned off. Turning one off is made only after a yes: the
+/// window asks first, `config set` and `config put` need `--yes` (audit
+/// G-F11). Turning one on, and every other setting, needs no yes.
+pub const PROTECTIONS: [&str; 2] = [
+    "security.experimental_landlock",
+    "security.baseline_seccomp",
+];
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Dependencies {
@@ -405,6 +414,21 @@ impl Config {
         }
         dirs.dedup();
         dirs
+    }
+
+    /// The [`PROTECTIONS`] that are on here and off in `new`: what changing
+    /// this configuration into `new` turns off for every app.
+    pub fn protections_turned_off(&self, new: &Config) -> Vec<&'static str> {
+        let on = |c: &Config, key: &str| {
+            c.get_key(key)
+                .ok()
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+        };
+        PROTECTIONS
+            .into_iter()
+            .filter(|key| on(self, key) && !on(new, key))
+            .collect()
     }
 
     pub fn get_key(&self, key: &str) -> Result<serde_json::Value> {

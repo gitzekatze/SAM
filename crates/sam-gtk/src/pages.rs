@@ -83,7 +83,7 @@ pub fn language(app: &Rc<App>) -> adw::NavigationPage {
             let Some(app) = w.upgrade() else { return };
             let code = code.clone();
             glib::spawn_future_local(async move {
-                app.set_config("general.language", &code).await;
+                app.set_config("general.language", &code, false).await;
                 app.offer_restart();
             });
         });
@@ -99,21 +99,24 @@ pub fn language(app: &Rc<App>) -> adw::NavigationPage {
 /// takes a protection away from every sandbox: heading, text and the
 /// button that goes ahead. `None` for every other change (audit G-F11:
 /// Landlock and the syscall filter went off for all apps without a word,
-/// while the same switch on one app's page asks).
+/// while the same switch on one app's page asks). Which switches ask is
+/// sam-core's rule, the one `config set` refuses without `--yes`.
 pub(crate) fn weakening(key: &str, on: bool) -> Option<(String, String, String)> {
-    match (key, on) {
-        ("security.experimental_landlock", false) => Some((
+    if on || !sam_core::config::PROTECTIONS.contains(&key) {
+        return None;
+    }
+    let (heading, body) = match key {
+        "security.experimental_landlock" => (
             tr("Turn Off Landlock for Every App?"),
             tr("Every sandboxed app loses Landlock's write protection and the block on abstract sockets outside the sandbox (such as XWayland's). Apps can then reach more of this computer than their settings say. To help one app, turn it off on that app's page instead."),
-            tr("Turn Off"),
-        )),
-        ("security.baseline_seccomp", false) => Some((
+        ),
+        "security.baseline_seccomp" => (
             tr("Turn Off the Syscall Filter for Every App?"),
             tr("Every sandboxed app can then use kernel interfaces no desktop app needs (modules, BPF, perf, keyrings, io_uring, terminal injection), which attacks on the kernel use. To help one app, use its repair steps instead."),
-            tr("Turn Off"),
-        )),
-        _ => None,
-    }
+        ),
+        _ => return None,
+    };
+    Some((heading, body, tr("Turn Off")))
 }
 
 pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
@@ -142,14 +145,19 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
             glib::spawn_future_local(async move {
                 // A switch that takes a protection away from every app asks
                 // first, like the same switch on an app's page (audit G-F11).
-                let go = match weakening(key, on) {
+                // It confirms the change for the command line exactly when
+                // it asked.
+                let question = weakening(key, on);
+                let asked = question.is_some();
+                let go = match question {
                     Some((heading, body, accept)) => {
                         window::confirm(&app.window, &heading, &body, &accept, true).await
                     }
                     None => true,
                 };
                 if go {
-                    app.set_config(key, if on { "true" } else { "false" }).await;
+                    app.set_config(key, if on { "true" } else { "false" }, asked)
+                        .await;
                 }
                 // The switch shows what is stored: after Cancel, and after
                 // a save that failed (audit G-F15: it kept the new position).
@@ -186,7 +194,7 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
                 let v = o.0;
                 let (r, syncing) = (r.clone(), syncing.clone());
                 glib::spawn_future_local(async move {
-                    if !app.set_config(key, v).await {
+                    if !app.set_config(key, v, false).await {
                         // Shows what is stored again (audit G-F15).
                         let cur = util::str_of(&app.state.borrow().config, key).to_string();
                         syncing.set(true);
@@ -227,7 +235,7 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
                     if let (Some(app), Some(r)) = (w.upgrade(), rw.upgrade()) {
                         let s = format!("{}", v as i64);
                         glib::spawn_future_local(async move {
-                            if !app.set_config(key, &s).await {
+                            if !app.set_config(key, &s, false).await {
                                 // Shows what is stored again (audit G-F15).
                                 if let Some(cur) = util::get(&app.state.borrow().config, key)
                                     .and_then(Value::as_f64)
@@ -392,7 +400,7 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
             let Some(app) = w.upgrade() else { return };
             let (row, reset) = (row.clone(), reset.clone());
             glib::spawn_future_local(async move {
-                app.set_config("extraction.location", &value).await;
+                app.set_config("extraction.location", &value, false).await;
                 let now =
                     util::str_of(&app.state.borrow().config, "extraction.location").to_string();
                 row.set_subtitle(&esc(&format!(
@@ -1225,6 +1233,70 @@ mod tests {
             "updates.check_on_start",
         ] {
             assert!(super::weakening(key, false).is_none(), "{key}");
+        }
+    }
+
+    /// The window asks before exactly the switches sam-core's rule names
+    /// (the ones `config set` refuses without `--yes`), and confirms the
+    /// change for the command line exactly when it asked: without the
+    /// `--yes` the command line refuses it, with one it never asked about
+    /// the window would turn a protection off unasked.
+    #[test]
+    fn the_window_confirms_turning_a_protection_off_exactly_when_it_asked() {
+        use sam_core::config::{Config, PROTECTIONS};
+        // Every setting there is, by its key (security.baseline_seccomp).
+        fn keys(v: &serde_json::Value, at: &str, out: &mut Vec<String>) {
+            for (k, val) in v.as_object().into_iter().flatten() {
+                let key = if at.is_empty() {
+                    k.clone()
+                } else {
+                    format!("{at}.{k}")
+                };
+                if val.is_object() {
+                    keys(val, &key, out);
+                } else {
+                    out.push(key);
+                }
+            }
+        }
+        let defaults = Config::default();
+        let mut all = Vec::new();
+        keys(&serde_json::to_value(&defaults).unwrap(), "", &mut all);
+        for key in PROTECTIONS {
+            assert!(all.iter().any(|k| k == key), "{key} is a setting");
+            // On unless turned off, so turning it off is a change.
+            assert_eq!(
+                defaults.get_key(key).unwrap(),
+                serde_json::json!(true),
+                "{key}"
+            );
+        }
+        // The window's list is the rule's: it asks for these and no other.
+        for key in &all {
+            assert_eq!(
+                super::weakening(key, false).is_some(),
+                PROTECTIONS.contains(&key.as_str()),
+                "{key}"
+            );
+        }
+        for key in &all {
+            for on in [false, true] {
+                let value = if on { "true" } else { "false" };
+                let asked = super::weakening(key, on).is_some();
+                let args = crate::window::config_set_args(key, value, asked);
+                assert_eq!(&args[..4], ["config", "set", key.as_str(), value]);
+                assert_eq!(args.iter().any(|a| a == "--yes"), asked, "{args:?}");
+                // What the window confirms is what the command line asks
+                // a yes for, judged on the stored settings.
+                let mut new = defaults.clone();
+                if new.set_key(key, value).is_ok() {
+                    assert_eq!(
+                        asked,
+                        !defaults.protections_turned_off(&new).is_empty(),
+                        "{args:?}"
+                    );
+                }
+            }
         }
     }
 }

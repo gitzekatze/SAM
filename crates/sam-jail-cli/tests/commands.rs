@@ -685,3 +685,71 @@ fn declining_an_update_deletes_the_download_that_waited() {
         .text(&["update", &id, "--decline-key-change"])
         .contains("No update of"));
 }
+
+/// `config set` turns Landlock or the syscall filter off for every app
+/// only with --yes, as the window asks first: without it the change is
+/// refused with `config-needs-yes`, names what goes off and nothing is
+/// saved. Turning them on, and other settings, need no --yes (one pasted
+/// line turned a protection off for all apps unasked).
+#[test]
+fn turning_a_protection_off_for_every_app_needs_yes() {
+    let e = Env::new();
+    let file = e.root().join("config/config.toml");
+    for (key, name) in [
+        ("security.experimental_landlock", "Landlock"),
+        ("security.baseline_seccomp", "syscall filter"),
+    ] {
+        let before = e.json(&["config", "show"], None);
+        let saved = fs::read(&file).ok();
+        let o = e.run(&["--json", "config", "set", key, "false"], None);
+        assert!(!o.status.success(), "{key}: refused without --yes");
+        let v: Value = serde_json::from_slice(&o.stdout).unwrap();
+        assert_eq!(v["code"], "config-needs-yes", "{v}");
+        let msg = v["error"].as_str().unwrap();
+        assert!(msg.contains(name) && msg.contains("--yes"), "{msg}");
+        assert_eq!(e.json(&["config", "show"], None), before, "{key}");
+        assert_eq!(fs::read(&file).ok(), saved, "{key}: nothing saved");
+
+        e.json(&["config", "set", key, "false", "--yes"], None);
+        assert_eq!(e.json(&["config", "get", key], None), false, "{key}");
+        // Already off: setting it off again turns nothing off.
+        e.json(&["config", "set", key, "false"], None);
+        e.json(&["config", "set", key, "true"], None);
+        assert_eq!(e.json(&["config", "get", key], None), true, "{key}");
+    }
+    e.json(&["config", "set", "security.warn_x11", "false"], None);
+    assert_eq!(e.json(&["config", "get", "security.warn_x11"], None), false);
+}
+
+/// `config put` saves a configuration that turns the syscall filter off
+/// for every app only with --yes (code `config-needs-yes`, nothing
+/// saved); one that changes something else needs none.
+#[test]
+fn putting_a_configuration_that_turns_a_protection_off_needs_yes() {
+    let e = Env::new();
+    let before = e.json(&["config", "show"], None);
+    let mut other = before.clone();
+    other["security"]["warn_x11"] = Value::Bool(false);
+    e.json(&["config", "put"], Some(&other.to_string()));
+    let before = e.json(&["config", "show"], None);
+    assert_eq!(before["security"]["warn_x11"], false);
+
+    let mut off = before.clone();
+    off["security"]["baseline_seccomp"] = Value::Bool(false);
+    let o = e.run(&["--json", "config", "put"], Some(&off.to_string()));
+    assert!(!o.status.success(), "refused without --yes");
+    let v: Value = serde_json::from_slice(&o.stdout).unwrap();
+    assert_eq!(v["code"], "config-needs-yes", "{v}");
+    let msg = v["error"].as_str().unwrap();
+    assert!(
+        msg.contains("syscall filter") && msg.contains("--yes"),
+        "{msg}"
+    );
+    assert_eq!(e.json(&["config", "show"], None), before, "nothing saved");
+
+    e.json(&["config", "put", "--yes"], Some(&off.to_string()));
+    assert_eq!(
+        e.json(&["config", "get", "security.baseline_seccomp"], None),
+        false
+    );
+}

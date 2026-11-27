@@ -17,15 +17,15 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 | Promise | Test |
 |---|---|
-| A complete configuration file with every section loads without loss. | [`a_complete_configuration_file_loads_every_setting`](../crates/sam-core/src/config.rs#L479) |
-| SAM contacts no update source on its own: the daily check when the window opens is off until the user switches it on. | [`update_checks_stay_off_unless_switched_on`](../crates/sam-core/src/config.rs#L519) |
-| The window's language is empty (follow the system) or one of the languages SAM speaks; anything else is refused, and a wrong value in the file is reset to the system's language. | [`the_language_is_the_system_or_one_sam_speaks`](../crates/sam-core/src/config.rs#L532) |
-| ⟲ Regression (audit U-L4): one value of the wrong kind (`max_files = "x"`) or an unknown word made the whole file unreadable, and SAM used the defaults for everything, losing stricter choices such as "never offer compatibility mode". | [`one_unreadable_setting_does_not_cost_the_others`](../crates/sam-core/src/config.rs#L562) |
-| Settings can be changed by key, and old theme names are migrated to Light, Dark or System. | [`settings_change_by_key_and_old_theme_names_are_migrated`](../crates/sam-core/src/config.rs#L613) |
-| `sam-jail config get` reads back what is set; an unknown key is an error. | [`settings_read_back_by_key_and_text_is_taken_literally`](../crates/sam-core/src/config.rs#L640) |
-| A settings file that exists but cannot be read (not text, or a folder) is an error that names it, and it stays as it is: the stricter settings in it are never silently replaced by the defaults, which a later save would write over it. | [`a_settings_file_that_cannot_be_read_is_an_error_and_stays`](../crates/sam-core/src/config.rs#L671) |
-| A file already in the current format is not migrated again: an old theme name in it is an invalid value and is reset to System. | [`a_current_settings_file_is_not_migrated_again`](../crates/sam-core/src/config.rs#L698) |
-| The extraction folder is a folder of its own: never the root, never the home folder itself (however it is written), never relative and never with `..`. | [`the_extraction_folder_is_never_the_root_or_the_home_folder`](../crates/sam-core/src/config.rs#L737) |
+| A complete configuration file with every section loads without loss. | [`a_complete_configuration_file_loads_every_setting`](../crates/sam-core/src/config.rs#L503) |
+| SAM contacts no update source on its own: the daily check when the window opens is off until the user switches it on. | [`update_checks_stay_off_unless_switched_on`](../crates/sam-core/src/config.rs#L543) |
+| The window's language is empty (follow the system) or one of the languages SAM speaks; anything else is refused, and a wrong value in the file is reset to the system's language. | [`the_language_is_the_system_or_one_sam_speaks`](../crates/sam-core/src/config.rs#L556) |
+| ⟲ Regression (audit U-L4): one value of the wrong kind (`max_files = "x"`) or an unknown word made the whole file unreadable, and SAM used the defaults for everything, losing stricter choices such as "never offer compatibility mode". | [`one_unreadable_setting_does_not_cost_the_others`](../crates/sam-core/src/config.rs#L586) |
+| Settings can be changed by key, and old theme names are migrated to Light, Dark or System. | [`settings_change_by_key_and_old_theme_names_are_migrated`](../crates/sam-core/src/config.rs#L637) |
+| `sam-jail config get` reads back what is set; an unknown key is an error. | [`settings_read_back_by_key_and_text_is_taken_literally`](../crates/sam-core/src/config.rs#L664) |
+| A settings file that exists but cannot be read (not text, or a folder) is an error that names it, and it stays as it is: the stricter settings in it are never silently replaced by the defaults, which a later save would write over it. | [`a_settings_file_that_cannot_be_read_is_an_error_and_stays`](../crates/sam-core/src/config.rs#L695) |
+| A file already in the current format is not migrated again: an old theme name in it is an invalid value and is reset to System. | [`a_current_settings_file_is_not_migrated_again`](../crates/sam-core/src/config.rs#L722) |
+| The extraction folder is a folder of its own: never the root, never the home folder itself (however it is written), never relative and never with `..`. | [`the_extraction_folder_is_never_the_root_or_the_home_folder`](../crates/sam-core/src/config.rs#L761) |
 | The code of an error survives being wrapped in context, so the window recognizes it whatever language the message is in. | [`an_error_names_its_sam_function_and_keeps_its_message`](../crates/sam-core/src/error.rs#L120) |
 | An error code survives added context. | [`an_error_code_survives_added_context`](../crates/sam-core/src/error.rs#L144) |
 | SAM refuses to overwrite a file written by a newer SAM and reads files without a format number as format 0. | [`files_from_a_newer_sam_are_never_overwritten`](../crates/sam-core/src/format.rs#L102) |
@@ -950,7 +950,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-jail-cli: The command line and its JSON interface
 
-135 tests.
+137 tests.
 
 | Promise | Test |
 |---|---|
@@ -1015,6 +1015,8 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `desktop APP install` and `remove` put the app's launcher in the menu and take it out; `desktop all refresh` renews every launcher; other actions are refused. | [`desktop_installs_removes_and_refreshes_launchers`](../crates/sam-jail-cli/tests/commands.rs#L624) |
 | `onboarding` answers whether the first-start tour is done without changing it; `done` and `reset` change it. | [`onboarding_is_changed_only_by_done_and_reset`](../crates/sam-jail-cli/tests/commands.rs#L643) |
 | `update APP --decline-key-change` (the window's answer "no" to an update signed differently) deletes the download that waited for that answer, and only that one; the app stays as it was. | [`declining_an_update_deletes_the_download_that_waited`](../crates/sam-jail-cli/tests/commands.rs#L659) |
+| `config set` turns Landlock or the syscall filter off for every app only with --yes, as the window asks first: without it the change is refused with `config-needs-yes`, names what goes off and nothing is saved. | [`turning_a_protection_off_for_every_app_needs_yes`](../crates/sam-jail-cli/tests/commands.rs#L694) |
+| `config put` saves a configuration that turns the syscall filter off for every app only with --yes (code `config-needs-yes`, nothing saved); one that changes something else needs none. | [`putting_a_configuration_that_turns_a_protection_off_needs_yes`](../crates/sam-jail-cli/tests/commands.rs#L727) |
 | The quick checks notice a broken or missing tool. | [`the_quick_checks_notice_a_broken_or_missing_tool`](../crates/sam-jail-cli/tests/contracts.rs#L48) |
 | A full disk in the unpack sandbox stops unpacking. | [`a_full_disk_in_the_unpack_sandbox_stops_unpacking`](../crates/sam-jail-cli/tests/disk_full.rs#L46) |
 | `compat` takes on and off in any case and refuses anything else. | [`compat_takes_on_and_off_in_any_case_and_nothing_else`](../crates/sam-jail-cli/tests/exit_codes.rs#L100) |
@@ -1092,7 +1094,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-gtk: The window (logic that runs without a display)
 
-29 tests.
+30 tests.
 
 | Promise | Test |
 |---|---|
@@ -1117,14 +1119,15 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | A new icon is noticed by the desktop's icon caches: the folders from the icon up to the theme are marked as changed, also when an earlier version had replaced the icon in place; once they are newer than the icon, nothing is touched again (regression: the taskbar kept SAM's old icon). | [`a_new_icon_marks_its_folders_as_changed`](../crates/sam-gtk/src/main.rs#L549) |
 | ⟲ Regression: the "startup" handler that loads SAM's style sheet was connected after `register()`, which emits "startup" for the first instance at once. | [`the_style_sheet_handler_is_connected_before_register`](../crates/sam-gtk/src/main.rs#L601) |
 | Every color SAM's window uses has a style rule: the badge tones in the code, the three risk levels of tags and badges, and the outline. | [`every_color_in_use_has_a_style_rule`](../crates/sam-gtk/src/main.rs#L615) |
-| Turning Landlock or the syscall filter off for every app asks first; turning them on, and every other preference, does not (audit G-F11). | [`turning_a_protection_off_for_every_app_asks_first`](../crates/sam-gtk/src/pages.rs#L1209) |
+| Turning Landlock or the syscall filter off for every app asks first; turning them on, and every other preference, does not (audit G-F11). | [`turning_a_protection_off_for_every_app_asks_first`](../crates/sam-gtk/src/pages.rs#L1217) |
+| The window asks before exactly the switches sam-core's rule names (the ones `config set` refuses without `--yes`), and confirms the change for the command line exactly when it asked: without the `--yes` the command line refuses it, with one it never asked about the window would turn a protection off unasked. | [`the_window_confirms_turning_a_protection_off_exactly_when_it_asked`](../crates/sam-gtk/src/pages.rs#L1244) |
 | The editor (the app's page and the Permission Manager for one app) shows every permission in the catalogue, the one list of permissions (audit G-F14: the lists drifted; a setting was missing here). | [`the_editor_shows_every_permission`](../crates/sam-gtk/src/perms.rs#L1285) |
 | A switch whose key the saved form leaves out while it is at its default shows that default: Room service shows on for an app that has it on (every app, unless turned off), off once turned off. | [`a_left_out_setting_shows_its_default`](../crates/sam-gtk/src/perms.rs#L1299) |
 | The window names each risk level with its own words, the same the command line uses: a Medium app reads "Some access", no longer "Harmless" like a Low one, in badges, the app page and the hover text (owner decision 17 of 2026-11-23). | [`the_window_names_each_risk_level_in_its_own_words`](../crates/sam-gtk/src/util.rs#L527) |
-| The question before a preset names the risk before and after in the words the badges use ("Harmless", "Some access"), never the JSON's level names (owner decision 17 of 2026-11-23). | [`the_preset_question_names_the_risk_in_its_words`](../crates/sam-gtk/src/window.rs#L1931) |
-| A named pipe dropped on the window is no AppImage, and checking it does not block the window until something writes to it (audit G-F16). | [`dropped_pipes_and_icon_bombs_never_reach_gtk`](../crates/sam-gtk/src/window.rs#L1951) |
-| The release page of SAM's own update opens only when it is an https page: another scheme could open a local file or start a program through its handler (audit G-F12/13). | [`only_an_https_release_page_is_opened`](../crates/sam-gtk/src/window.rs#L1997) |
-| The folder watcher reacts to AppImages and ignores hidden files and downloads in progress. | [`the_folder_watcher_ignores_hidden_files_and_unfinished_downloads`](../crates/sam-gtk/src/window.rs#L2019) |
+| The question before a preset names the risk before and after in the words the badges use ("Harmless", "Some access"), never the JSON's level names (owner decision 17 of 2026-11-23). | [`the_preset_question_names_the_risk_in_its_words`](../crates/sam-gtk/src/window.rs#L1946) |
+| A named pipe dropped on the window is no AppImage, and checking it does not block the window until something writes to it (audit G-F16). | [`dropped_pipes_and_icon_bombs_never_reach_gtk`](../crates/sam-gtk/src/window.rs#L1966) |
+| The release page of SAM's own update opens only when it is an https page: another scheme could open a local file or start a program through its handler (audit G-F12/13). | [`only_an_https_release_page_is_opened`](../crates/sam-gtk/src/window.rs#L2012) |
+| The folder watcher reacts to AppImages and ignores hidden files and downloads in progress. | [`the_folder_watcher_ignores_hidden_files_and_unfinished_downloads`](../crates/sam-gtk/src/window.rs#L2034) |
 
 ## The window and real AppImages
 
@@ -1139,4 +1142,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 1052 automated Rust tests plus 8 scripted checks.
+Total: 1055 automated Rust tests plus 8 scripted checks.

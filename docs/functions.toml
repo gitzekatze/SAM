@@ -159,6 +159,9 @@ tests = ["the_strictest_window_profile_is_low_risk", "full_home_is_dangerous", "
   "missing_sound_names_pipewire_pulse_when_pipewire_runs",
   "every_grant_the_risk_words_question_is_warned_about",
   "turning_a_protection_off_for_every_app_asks_first",
+  "the_window_confirms_turning_a_protection_off_exactly_when_it_asked",
+  "turning_a_protection_off_for_every_app_needs_yes",
+  "putting_a_configuration_that_turns_a_protection_off_needs_yes",
 ]
 
 [[function]]
