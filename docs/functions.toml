@@ -1129,6 +1129,7 @@ tests = [
   "a_release_that_fails_to_build_leaves_no_tag",
   "release_builds_use_one_fixed_rust_and_stop_on_overflow",
   "release_builds_never_turn_on_debug_assertions",
+  "cargo_config_only_replaces_sources",
   "the_release_build_check_refuses_a_program_that_follows_developer_variables",
   "the_release_stand_in_answers_like_the_real_program",
   "the_release_build_check_keeps_the_program_inside_a_temporary_folder",

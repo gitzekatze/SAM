@@ -313,9 +313,13 @@ fn sets_a_level_that_may_be_zero(line: &str) -> bool {
 /// release guide's build commands or the shipped AppImage's test script
 /// turn them on by a flag (`-C debug-assertions`,
 /// `--config profile.release.debug-assertions=true`) or a variable
-/// (`CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS`), and the repository keeps no
-/// Cargo configuration file (`.cargo/config.toml`), which every build in it
-/// would read. Settings from outside the repository are left to
+/// (`CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS`), and a Cargo configuration
+/// file next to the source (`.cargo/config.toml`), which every build in it
+/// would read, only replaces the crate sources: the git checkout keeps none,
+/// and the package builds have the one `scripts/make-release.sh` writes into
+/// the vendor tarball, which points Cargo at the vendored crates
+/// (`cargo_config_only_replaces_sources`). Settings from outside the
+/// source folder are left to
 /// `scripts/check-release-build.sh`, which asks the built program itself
 /// (`release_build_paths_check_the_programs_they_build`).
 ///
@@ -354,17 +358,17 @@ fn release_builds_never_turn_on_debug_assertions() {
         root().join("docs/releasing.md"),
         root().join("scripts/test-shipped.sh"),
     ];
-    // A Cargo configuration in the repository would reach every build made
-    // in it, and the source tarball through `git archive`: none is kept,
-    // so no setting can hide there from this test.
-    for config in [".cargo/config.toml", ".cargo/config"] {
-        assert!(
-            !root().join(config).exists(),
-            "{config} exists: a Cargo configuration in the repository reaches \
-             every release build made from it; put build settings into \
-             Cargo.toml or the scripts this test reads"
-        );
-    }
+    // A Cargo configuration next to the source reaches every build made in
+    // it. The package builds have one: the vendor tarball's, which only
+    // points Cargo at the vendored crates. Anything more could hide build
+    // settings from this test.
+    let config = cargo_config_beyond_sources(&root());
+    assert!(
+        config.is_empty(),
+        "a Cargo configuration next to the source sets more than where the \
+         crates come from, and reaches every release build made there; put \
+         build settings into Cargo.toml or the scripts this test reads: {config:?}"
+    );
     let before = files.len();
     files_below(&root().join("packaging"), &mut files);
     // The recipes that build SAM with --release are among them: a moved
@@ -457,6 +461,128 @@ fn release_builds_never_turn_on_debug_assertions() {
                 .contains("opt-level"),
         "%build in {SPEC} must set RUSTFLAGS once, without an optimisation level: {flags:?}"
     );
+}
+
+/// What the Cargo configuration files of the source folder `dir`
+/// (`.cargo/config.toml`, and the older name `.cargo/config`) set beyond
+/// where the crates come from (`[source.*]` with the keys of source
+/// replacement), one entry per setting. Profiles, compiler flags, target
+/// settings, aliases and anything this cannot read are all listed.
+fn cargo_config_beyond_sources(dir: &Path) -> Vec<String> {
+    const SOURCE_KEYS: [&str; 7] = [
+        "replace-with",
+        "directory",
+        "registry",
+        "git",
+        "branch",
+        "tag",
+        "rev",
+    ];
+    let mut found = Vec::new();
+    for name in [".cargo/config.toml", ".cargo/config"] {
+        let path = dir.join(name);
+        if !path.exists() {
+            continue;
+        }
+        let config = fs::read_to_string(&path)
+            .map_err(|e| e.to_string())
+            .and_then(|raw| toml::from_str::<toml::Value>(&raw).map_err(|e| e.to_string()));
+        let config = match config {
+            Ok(config) => config,
+            Err(e) => {
+                found.push(format!("{name}: unreadable: {e}"));
+                continue;
+            }
+        };
+        for (key, value) in config.as_table().into_iter().flatten() {
+            let sources = if key == "source" {
+                value.as_table()
+            } else {
+                None
+            };
+            let Some(sources) = sources else {
+                found.push(format!("{name}: {key}"));
+                continue;
+            };
+            for (source, entry) in sources {
+                let Some(entry) = entry.as_table() else {
+                    found.push(format!("{name}: source.{source}"));
+                    continue;
+                };
+                for setting in entry.keys() {
+                    if !SOURCE_KEYS.contains(&setting.as_str()) {
+                        found.push(format!("{name}: source.{source}.{setting}"));
+                    }
+                }
+            }
+        }
+    }
+    found
+}
+
+/// The package builds unpack the vendor tarball next to the source, and
+/// with it the Cargo configuration `scripts/make-release.sh` writes
+/// (`cargo vendor`'s answer): it only points Cargo at the vendored crates,
+/// so it passes. A configuration that also sets a profile, compiler flags,
+/// a target's flags or anything else is refused, as is one that is not
+/// TOML, under either file name.
+#[test]
+fn cargo_config_only_replaces_sources() {
+    let vendored = "[source.crates-io]\nreplace-with = \"vendored-sources\"\n\n\
+                    [source.vendored-sources]\ndirectory = \"vendor\"\n";
+    let script = fs::read_to_string(root().join("scripts/make-release.sh")).unwrap();
+    assert!(
+        script.contains("cargo vendor ") && script.contains("> .cargo/config.toml"),
+        "scripts/make-release.sh no longer writes the vendored sources' Cargo \
+         configuration this test stands in for"
+    );
+    let source = |config: &str, name: &str| {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join(".cargo")).unwrap();
+        fs::write(dir.path().join(name), config).unwrap();
+        cargo_config_beyond_sources(dir.path())
+    };
+    assert!(cargo_config_beyond_sources(tempfile::tempdir().unwrap().path()).is_empty());
+    assert_eq!(source(vendored, ".cargo/config.toml"), Vec::<String>::new());
+    assert_eq!(source(vendored, ".cargo/config"), Vec::<String>::new());
+    for (what, extra, expect) in [
+        (
+            "a release profile",
+            "[profile.release]\ndebug-assertions = true\n",
+            ".cargo/config.toml: profile",
+        ),
+        (
+            "compiler flags",
+            "[build]\nrustflags = [\"-Copt-level=0\"]\n",
+            ".cargo/config.toml: build",
+        ),
+        (
+            "a target's flags",
+            "[target.x86_64-unknown-linux-gnu]\nrustflags = [\"-Cdebug-assertions\"]\n",
+            ".cargo/config.toml: target",
+        ),
+        (
+            "a setting inside a source",
+            "[source.extra]\ndirectory = \"x\"\nrustflags = \"-Copt-level=0\"\n",
+            ".cargo/config.toml: source.extra.rustflags",
+        ),
+        (
+            "no TOML",
+            "[profile.release\n",
+            ".cargo/config.toml: unreadable",
+        ),
+    ] {
+        let found = source(&format!("{vendored}{extra}"), ".cargo/config.toml");
+        assert!(
+            found.iter().any(|f| f.starts_with(expect)),
+            "{what} passed: {found:?}"
+        );
+    }
+    let found = source(
+        &format!("{vendored}[profile.release]\ndebug-assertions = true\n"),
+        ".cargo/config",
+    );
+    assert_eq!(found, [".cargo/config: profile"]);
 }
 
 /// Runs scripts/check-release-build.sh on the program `sam`.
