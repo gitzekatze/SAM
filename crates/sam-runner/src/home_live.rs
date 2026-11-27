@@ -4,9 +4,10 @@
 //! terminal opened meanwhile would have run it. Now Linux reports every
 //! change in the folders that hold the watched places (inotify), and SAM
 //! looks again at once (`HomeWatch::settle`): the file is moved aside and a
-//! replaced link put back within moments. It looks in its turn with the
-//! other launches ([`Turns`]), so a file several watches see is reported
-//! once.
+//! replaced link put back within moments. It takes turns with the other
+//! launches ([`Turns`]): it waits at most about a second for its turn, then
+//! looks anyway, so two looks can then overlap; a file several watches see
+//! is therefore normally reported once.
 //!
 //! Cost: the thread sleeps in `poll` until something changes in those few
 //! folders or the app ends; no timer, no regular wake-ups.
@@ -29,7 +30,8 @@ pub struct LiveWatch {
 
 impl LiveWatch {
     /// Starts watching the folders of `watch`; what is found goes to
-    /// `aside`, each look in its turn (`turns`). The watch is `None` when
+    /// `aside`, each look waiting at most about a second for its turn
+    /// (`turns`), then looking anyway. The watch is `None` when
     /// there is nothing to watch or Linux refuses; the text says what is
     /// not watched while the app runs, so that is never silent (regression, audit L-F4: another app can use up
     /// the inotify instances, and one watched folder out of many counted as
@@ -235,8 +237,10 @@ mod tests {
         );
     }
 
-    /// The live watch looks in its turn: while another launch is looking
-    /// at the home, it waits, then moves the planted file once. Before, two
+    /// The live watch waits for its turn: while another launch is looking
+    /// at the home, it waits up to its bound (about a second for SAM's
+    /// launches, then it looks anyway), and moves the planted file once as
+    /// soon as that look ends. Before, two
     /// live watches on one place acted at the same moment, and the second
     /// reported the file the first had moved as deleted or as still there.
     /// (Fails when the live watch calls the watch directly, as before: it

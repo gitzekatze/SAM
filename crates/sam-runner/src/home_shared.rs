@@ -10,16 +10,17 @@
 //!   last look: its record is no longer locked, and the next look moves
 //!   aside what the app left, before anything can act on it (F2). Before,
 //!   the watch lived only in the launcher's memory;
-//! - launches look at the home one at a time ([`Turns`]), so a file one app
-//!   plants in a place several launches watch is normally moved aside and
-//!   reported once. A look waits at most about a second for another
-//!   launch's turn and then looks anyway, so the live watches and final
-//!   looks of running launches keep moving files aside while another
-//!   launcher is stopped in the middle of its look (Ctrl+Z). That bound is
-//!   only for the turn (`.settle`): a start, and the last look for a killed
-//!   launcher, also need `.lock`, which [`Shared::open`] waits for without
-//!   a limit, so they wait while a launcher is stopped in its start look.
-//!   And a look on a home that hangs (a network home) hangs as well.
+//! - launches take turns to look at the home ([`Turns`]): a look waits at
+//!   most about a second for its turn, then looks anyway, so two looks can
+//!   then overlap. A file one app plants in a place several launches watch
+//!   is therefore normally moved aside and reported once. Looking anyway
+//!   keeps the live watches and final looks of running launches moving
+//!   files aside while another launcher is stopped in the middle of its
+//!   look (Ctrl+Z). That bound is only for the turn (`.settle`): a start,
+//!   and the last look for a killed launcher, also need `.lock`, the
+//!   records of the running apps, which [`Shared::open`] waits for with no
+//!   time limit yet, so they wait while a launcher is stopped in its start
+//!   look. And a look on a home that hangs (a network home) hangs as well.
 
 use std::fs;
 use std::io::Write;
@@ -139,14 +140,16 @@ impl Turns {
         }
     }
 
-    /// [`HomeWatch::settle`] in this launch's turn: two launches watching
-    /// one place then never both act on the same file, so it is moved and
-    /// reported once (before, the second look reported it as deleted or as
-    /// still there, or moved aside a link of the person's that the first
-    /// had just put back). The look always happens: after the wait, also
-    /// when the turn could not be had (a launcher stopped mid-look) or the
-    /// lock file cannot be opened. The watch is the protection; the turn
-    /// only keeps the reports right.
+    /// [`HomeWatch::settle`] in this launch's turn: the look waits at most
+    /// `wait` (about a second for SAM's launches) for its turn, then looks
+    /// anyway, so two looks can then overlap. Within that wait, two
+    /// launches watching one place do not both act on the same file, so it
+    /// is moved and reported once (before, the second look reported it as
+    /// deleted or as still there, or moved aside a link of the person's
+    /// that the first had just put back). The look always happens: after
+    /// the wait, also when the turn could not be had (a launcher stopped
+    /// mid-look) or the lock file cannot be opened. The watch is the
+    /// protection; the turn only keeps the reports right.
     pub fn settle(&self, watch: &HomeWatch, aside: &Path) -> Vec<MovedAside> {
         // `std::fs` opens with O_CLOEXEC: no program SAM starts keeps it.
         let lock = fs::OpenOptions::new()
@@ -195,7 +198,9 @@ impl Shared {
         let lock = fs::File::create(dir.join(".lock"))
             .with_context(|| format!("creating {}", dir.join(".lock").display()))?;
         // SAFETY: `lock` is open; flock only takes its descriptor. Waits for
-        // the launch that holds it (a moment: it only looks and writes).
+        // the launch that holds it, with no time limit yet: normally a
+        // moment (it only looks and writes), but a launcher stopped in its
+        // start look (Ctrl+Z) holds it until it goes on or ends.
         while unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) } != 0 {
             if std::io::Error::last_os_error().kind() != std::io::ErrorKind::Interrupted {
                 anyhow::bail!(
@@ -400,12 +405,13 @@ mod tests {
         HomeWatch::before(&ctx_for(&full_rw(), home)).unwrap()
     }
 
-    /// Two launches watching one place never look at the same moment: a
-    /// look waits while another launch's look holds the turn, and goes on
-    /// as soon as it ends (well before its bound). Before, both looked at
-    /// once and the second reported a file the first had just moved as
-    /// deleted or as still there. (`Turns` is new with this rule; the
-    /// mutant that does not wait moves the file before the first check.)
+    /// A look waits for its turn while another launch's look holds it, and
+    /// goes on as soon as that look ends, here well before its bound (SAM's
+    /// launches wait at most about a second, then look anyway, so two looks
+    /// can then overlap). Before, both looked at once and the second
+    /// reported a file the first had just moved as deleted or as still
+    /// there. (`Turns` is new with this rule; the mutant that does not wait
+    /// moves the file before the first check.)
     #[test]
     fn launches_look_at_a_home_one_at_a_time() {
         let t = tempfile::tempdir().unwrap();
@@ -441,13 +447,14 @@ mod tests {
     }
 
     /// A look waits for another launch's turn at most its bound (about a
-    /// second for SAM's launches), then looks anyway, so a launcher stopped
-    /// in the middle of its look (Ctrl+Z) does not keep the live watches of
-    /// running launches from moving a planted file aside; and a look also
-    /// happens when the turn's lock cannot be opened. This covers only the
-    /// wait for the turn: a start, and the last look for a killed launcher,
-    /// also wait for the records' lock, without a limit. (The mutants that
-    /// wait without a bound, or skip the look, fail here.)
+    /// second for SAM's launches), then looks anyway, so two looks can then
+    /// overlap, and a launcher stopped in the middle of its look (Ctrl+Z)
+    /// does not keep the live watches of running launches from moving a
+    /// planted file aside; and a look also happens when the turn's lock
+    /// cannot be opened. This covers only the wait for the turn: a start,
+    /// and the last look for a killed launcher, also wait for the records
+    /// of the running apps, and that wait has no time limit yet. (The
+    /// mutants that wait without a bound, or skip the look, fail here.)
     #[test]
     fn a_look_never_waits_long_for_another_launch() {
         let t = tempfile::tempdir().unwrap();
@@ -494,7 +501,8 @@ mod tests {
     }
 
     /// The last look for a launch whose launcher was killed takes its turn
-    /// like any other look: it waits while another launch is looking.
+    /// like any other look: it waits for its turn while another launch is
+    /// looking, up to its bound.
     /// (Fails when that look calls the watch directly, as before.)
     #[test]
     fn a_last_look_for_a_killed_launcher_takes_its_turn() {

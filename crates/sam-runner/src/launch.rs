@@ -661,7 +661,8 @@ pub fn prepare(
         sam_sandbox::write_identity_files(&ctx)?;
         // Launches that can write start places take turns here: each takes
         // over what the running ones saw at their start and keeps its own
-        // record on disk (`home_shared`, review 2026-11-23 F1 and F2).
+        // record on disk (`home_shared`, review 2026-11-23 F1 and F2). This
+        // wait for the records of the running apps has no time limit yet.
         let shared = if sam_sandbox::writes_start_places(&ctx) {
             // What is moved aside comes from the person's home: for them
             // only (review F4).

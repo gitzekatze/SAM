@@ -6,8 +6,11 @@
 //! of the whole way through SAM's launches (the live watches, the start
 //! and the last looks); the unit tests of `home_shared`, `home_live` and
 //! `put_aside` are the ones that fail without the rule: here the two
-//! watches met at the same moment often, but not in every run. In its own
-//! file because it sets `HOME` for the test process.
+//! watches met at the same moment often, but not in every run. Here no
+//! launcher is stopped and every look ends well within the wait for a turn
+//! (at most about a second, after which a look looks anyway and two looks
+//! can overlap), so each file is reported once. In its own file because it
+//! sets `HOME` for the test process.
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
 #![allow(clippy::disallowed_macros)] // a test's own notes, not SAM's output
 
