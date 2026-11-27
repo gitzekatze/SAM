@@ -166,6 +166,69 @@ fn read_only_grants(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
     out
 }
 
+/// Granted user folders (Documents, Downloads, …) that the sandbox does
+/// not show although the person set them: one set to `/tmp` or a folder in
+/// it where programs outside the sandbox listen, and one reached through a
+/// link in a folder the app can change. The window and `sam-jail info` say
+/// so before the start, with the words of the launch note, in the order
+/// the sandbox decides them. Told only in the launch log, a Downloads set
+/// to `/tmp` (so downloads clear themselves) looked as before, while what
+/// the app saved there was gone when it quit (review of finding R63).
+fn refused_user_folders(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
+    let Some(host) = ctx.host else {
+        return Vec::new();
+    };
+    XDG_DIR_KEYS
+        .iter()
+        .filter(|key| p.filesystem.xdg_access(key).is_granted())
+        .filter_map(|key| {
+            let dir = host.xdg_dir(key)?;
+            let note = if let Some(link) =
+                crate::places::user_folder_link_the_app_can_change(p, host, dir)
+            {
+                crate::places::user_folder_link_note(key, dir, &link)
+            } else if crate::risk::shows_host_sockets(
+                &crate::places::resolve(dir).to_string_lossy(),
+            ) {
+                crate::places::user_folder_sockets_note(key, dir)
+            } else {
+                return None;
+            };
+            Some(
+                Warning::warn("user-folder-not-shown", "Not shown", note)
+                    .with_key(&format!("filesystem.{key}")),
+            )
+        })
+        .collect()
+}
+
+/// Granted user folders set to one place at different access (Music read
+/// and write, Pictures read-only, both `~/Media`): the stricter setting
+/// wins, so the app sees the place read-only
+/// ([`crate::places::user_folder_access`], owner decision of 2026-11-27).
+/// The window and `sam-jail info` name the folders and the rule before
+/// the start, with the words of the launch note, at the first of them set
+/// to read and write, the one that does not get what its switch says.
+fn user_folders_at_one_place(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
+    let Some(host) = ctx.host else {
+        return Vec::new();
+    };
+    crate::places::user_folders_at_one_place(p, host)
+        .into_iter()
+        .map(|(place, keys)| {
+            let note = crate::places::user_folders_at_one_place_note(&keys, &place);
+            let w = Warning::warn("user-folders-one-place", "Shown read-only", note);
+            match keys
+                .iter()
+                .find(|k| p.filesystem.xdg_access(k) == Access::Rw)
+            {
+                Some(k) => w.with_key(&format!("filesystem.{k}")),
+                None => w,
+            }
+        })
+        .collect()
+}
+
 pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
     let mut w = Vec::new();
     let ignored = crate::permissions::blocked_wildcards(&p.dbus.session);
@@ -226,6 +289,8 @@ pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
         ));
     }
     w.extend(read_only_grants(p, ctx));
+    w.extend(refused_user_folders(p, ctx));
+    w.extend(user_folders_at_one_place(p, ctx));
     for path in p
         .filesystem
         .custom_write
@@ -1168,6 +1233,135 @@ mod tests {
         let mut p = PermissionSet::strict_gui();
         p.filesystem.custom_write = vec!["~/Games/other".into()];
         assert!(!codes(&evaluate(&p, &ctx)).contains(&"start-place-read-only"));
+    }
+
+    /// A granted user folder the sandbox does not show is named on the app
+    /// page and in `sam-jail info` before the start, with the launch note's
+    /// words and the way out: Downloads set to `/tmp` (so downloads clear
+    /// themselves), where programs outside the sandbox listen, and one
+    /// reached through a link in the writable home. Said only in the launch
+    /// log, what the app saved to such a Downloads was gone when it quit.
+    /// An ordinary folder, or one not granted, gives no such warning.
+    #[test]
+    fn a_user_folder_the_sandbox_does_not_show_is_named_before_the_start() {
+        let t = tempfile::tempdir().unwrap();
+        let home = std::fs::canonicalize(t.path()).unwrap().join("home");
+        let elsewhere = home.parent().unwrap().join("elsewhere");
+        std::fs::create_dir_all(home.join("Music")).unwrap();
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, home.join("Downloads")).unwrap();
+        let warned = |p: &PermissionSet, downloads: &std::path::Path| {
+            let mut host = HostInfo {
+                home: home.clone(),
+                ..Default::default()
+            };
+            host.xdg_dirs
+                .insert("downloads".into(), downloads.to_path_buf());
+            let ctx = WarningContext {
+                host: Some(&host),
+                ..Default::default()
+            };
+            evaluate(p, &ctx)
+                .into_iter()
+                .find(|w| w.code == "user-folder-not-shown")
+        };
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.downloads = Access::Rw;
+        let hit = warned(&p, std::path::Path::new("/tmp")).expect("Downloads at /tmp is named");
+        assert_eq!(hit.key.as_deref(), Some("filesystem.downloads"));
+        assert!(
+            hit.message.contains("programs outside the sandbox listen")
+                && hit.message.contains("/tmp/downloads"),
+            "{}",
+            hit.message
+        );
+        assert!(warned(&p, &home.join("Music")).is_none());
+        let mut none = p.clone();
+        none.filesystem.downloads = Access::None;
+        assert!(warned(&none, std::path::Path::new("/tmp")).is_none());
+        // A link in the writable whole home.
+        let mut full = p.clone();
+        full.filesystem.home = true;
+        full.filesystem.home_access = Access::Rw;
+        let hit = warned(&full, &home.join("Downloads")).expect("a planted link is named");
+        assert!(
+            hit.message.contains("the app may have put it there"),
+            "{}",
+            hit.message
+        );
+        assert!(
+            warned(&p, &home.join("Downloads")).is_none(),
+            "without the home"
+        );
+    }
+
+    /// Two granted user folders set to one place at different access
+    /// (Music read and write, Pictures read-only, both `~/Media`) are named
+    /// on the app page and in `sam-jail info` before the start, with the
+    /// place, the rule (the stricter setting wins, so the app sees it
+    /// read-only) and the way out, at the switch of the writable one,
+    /// whatever their order. Folders at one place at one access, at
+    /// places of their own, or not granted give no such warning.
+    #[test]
+    fn user_folders_at_one_place_with_different_access_are_named() {
+        let t = tempfile::tempdir().unwrap();
+        let home = std::fs::canonicalize(t.path()).unwrap().join("home");
+        let media = home.join("Media");
+        std::fs::create_dir_all(&media).unwrap();
+        std::fs::create_dir_all(home.join("Pictures")).unwrap();
+        let mut host = HostInfo {
+            home: home.clone(),
+            ..Default::default()
+        };
+        host.xdg_dirs.insert("music".into(), media.clone());
+        host.xdg_dirs.insert("videos".into(), media.clone());
+        host.xdg_dirs
+            .insert("pictures".into(), home.join("Pictures"));
+        let warned = |p: &PermissionSet, host: &HostInfo| {
+            let ctx = WarningContext {
+                host: Some(host),
+                ..Default::default()
+            };
+            evaluate(p, &ctx)
+                .into_iter()
+                .filter(|w| w.code == "user-folders-one-place")
+                .collect::<Vec<_>>()
+        };
+        for (music, videos, key) in [
+            (Access::Rw, Access::Ro, "filesystem.music"),
+            (Access::Ro, Access::Rw, "filesystem.videos"),
+        ] {
+            let mut p = PermissionSet::strict_gui();
+            p.filesystem.music = music;
+            p.filesystem.videos = videos;
+            let hits = warned(&p, &host);
+            assert_eq!(hits.len(), 1, "{music:?} {videos:?}: {hits:?}");
+            let hit = &hits[0];
+            assert_eq!(hit.key.as_deref(), Some(key));
+            assert!(
+                hit.message.contains("music, videos")
+                    && hit.message.contains("/Media")
+                    && hit.message.contains("The stricter setting wins")
+                    && hit.message.contains("read-only")
+                    && hit.message.contains("places of their own"),
+                "{}",
+                hit.message
+            );
+        }
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.music = Access::Rw;
+        p.filesystem.videos = Access::Rw;
+        p.filesystem.pictures = Access::Ro;
+        assert!(warned(&p, &host).is_empty(), "one access at one place");
+        let mut apart = host.clone();
+        apart
+            .xdg_dirs
+            .insert("videos".into(), home.join("Pictures"));
+        p.filesystem.pictures = Access::None;
+        p.filesystem.videos = Access::Ro;
+        assert!(warned(&p, &apart).is_empty(), "places of their own");
+        p.filesystem.music = Access::None;
+        assert!(warned(&p, &host).is_empty(), "one not granted");
     }
 
     /// The X11 warning disappears when the user turns it off in the preferences.

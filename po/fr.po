@@ -9416,6 +9416,60 @@ msgstr ""
 msgid "unknown flat preset key '{other}'"
 msgstr "clé « {other} » inconnue dans le modèle plat"
 
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-core/src/places.rs:524
+msgid ""
+"The {keys} folders are all set to {path}, some read and write, some read-"
+"only. The stricter setting wins: the app sees {path} read-only. To let it "
+"write there, set each of these folders to read and write, or give them "
+"places of their own."
+msgstr ""
+"Les dossiers {keys} pointent tous vers {path}, certains en lecture et "
+"écriture, d’autres en lecture seule. Le réglage le plus strict l’emporte : "
+"l’application voit {path} en lecture seule. Pour qu’elle puisse y écrire, "
+"mets chacun de ces dossiers en lecture et écriture, ou donne-leur des "
+"emplacements à eux."
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-core/src/places.rs:540
+msgid ""
+"{key} folder is set to {path}, where programs outside the sandbox listen; "
+"not bound. The app sees its own empty /tmp there instead, and what it saves "
+"there is gone when it quits. Set the folder to one of its own, such as /tmp/"
+"{key}, to keep what the app saves."
+msgstr ""
+"Le dossier {key} pointe vers {path}, où écoutent des programmes hors du bac "
+"à sable ; non lié. L’application y voit à la place son propre /tmp vide, et "
+"ce qu’elle y enregistre disparaît quand elle se ferme. Faites pointer le "
+"dossier vers un dossier à lui, comme /tmp/{key}, pour garder ce que "
+"l’application enregistre."
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-core/src/places.rs:551
+msgid ""
+"{key} folder is set to {path}, whose way leads through the link {link} in a "
+"folder the app can change, so the app may have put it there; not bound"
+msgstr ""
+"Le dossier {key} pointe vers {path}, dont le chemin passe par le lien {link} "
+"dans un dossier que l’app peut modifier, l’app a donc pu le placer là ; non "
+"lié"
+
+#: crates/sam-runner/src/doctor.rs:351
+msgid "needs Bubblewrap 0.10 or newer; app folders stay read-only"
+msgstr ""
+"nécessite Bubblewrap 0.10 ou plus récent ; les dossiers des applications "
+"restent en lecture seule"
+
+#: crates/sam-runner/src/launch.rs:530
+msgid ""
+"The writable app folder needs Bubblewrap 0.10 or newer; the installed one is "
+"older, so the app folder stays read-only. Update Bubblewrap to use this "
+"setting."
+msgstr ""
+"Le dossier de l’application modifiable nécessite Bubblewrap 0.10 ou plus "
+"récent ; celui qui est installé est plus ancien, donc le dossier reste en "
+"lecture seule. Mets Bubblewrap à jour pour utiliser ce réglage."
+
 #~ msgid "Lets the app use keys loaded in your SSH agent."
 #~ msgstr ""
 #~ "Permet à l’application d’utiliser les clés chargées dans ton agent SSH."
@@ -9764,3 +9818,10 @@ msgstr "clé « {other} » inconnue dans le modèle plat"
 
 #~ msgid "reading the room's rules"
 #~ msgstr "lecture des règles de la pièce"
+
+#~ msgid ""
+#~ "{key} folder is set to {path}, where programs outside the sandbox listen; "
+#~ "not bound"
+#~ msgstr ""
+#~ "Le dossier {key} pointe vers {path}, où écoutent des programmes hors du "
+#~ "bac à sable ; non lié"

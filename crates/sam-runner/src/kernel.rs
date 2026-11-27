@@ -86,8 +86,10 @@ pub fn landlock_spec(
         // Private home (or full home read/write).
         write.push(host.home.clone());
     }
+    // At the access the sandbox shows each at: two set to one place at
+    // different access are both read-only (stricter wins).
     for key in XDG_DIR_KEYS {
-        if fs.xdg_access(key) == Access::Rw {
+        if sam_core::places::user_folder_access(p, host, key) == Access::Rw {
             if let Some(d) = host.xdg_dir(key) {
                 write.push(d.to_path_buf());
             }
@@ -763,16 +765,25 @@ mod tests {
     use super::*;
     use sam_core::sandbox::sample_context;
 
-    /// The Landlock rules allow writing exactly in the folders the permissions grant.
+    /// The Landlock rules allow writing exactly in the folders the
+    /// permissions grant, a user folder at the access the sandbox shows it
+    /// at: Documents read and write set to the same place as Pictures
+    /// read-only is not writable (the stricter setting wins).
     #[test]
     fn landlock_allows_writing_exactly_in_granted_folders() {
-        let ctx = sample_context();
+        let mut ctx = sample_context();
         let mut p = PermissionSet::strict_gui();
         p.filesystem.documents = Access::Rw;
         p.filesystem.music = Access::Ro;
         let s = landlock_spec(&p, &ctx.host, "/run/user/1000", &[]);
         assert!(s.write.contains(&PathBuf::from("/home/tester/Documents")));
         assert!(!s.write.contains(&PathBuf::from("/home/tester/Music")));
+        let mut same = p.clone();
+        same.filesystem.pictures = Access::Ro;
+        let docs = ctx.host.xdg_dir("documents").unwrap().to_path_buf();
+        ctx.host.xdg_dirs.insert("pictures".into(), docs.clone());
+        let s = landlock_spec(&same, &ctx.host, "/run/user/1000", &[]);
+        assert!(!s.write.contains(&docs), "{:?}", s.write);
         assert!(
             s.write.contains(&PathBuf::from("/home/tester")),
             "private home is writable"

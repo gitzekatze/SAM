@@ -9324,6 +9324,57 @@ msgstr ""
 msgid "unknown flat preset key '{other}'"
 msgstr "unbekannter Schlüssel „{other}“ in der flachen Vorlage"
 
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-core/src/places.rs:524
+msgid ""
+"The {keys} folders are all set to {path}, some read and write, some read-"
+"only. The stricter setting wins: the app sees {path} read-only. To let it "
+"write there, set each of these folders to read and write, or give them "
+"places of their own."
+msgstr ""
+"Die Ordner {keys} sind alle auf {path} gesetzt, teils zum Lesen und "
+"Schreiben, teils nur lesbar. Die strengere Einstellung gilt: Die App sieht "
+"{path} nur lesbar. Damit sie dort schreiben kann, setze jeden dieser Ordner "
+"auf Lesen und Schreiben oder gib ihnen eigene Orte."
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-core/src/places.rs:540
+msgid ""
+"{key} folder is set to {path}, where programs outside the sandbox listen; "
+"not bound. The app sees its own empty /tmp there instead, and what it saves "
+"there is gone when it quits. Set the folder to one of its own, such as /tmp/"
+"{key}, to keep what the app saves."
+msgstr ""
+"Der Ordner {key} ist auf {path} gesetzt, wo Programme außerhalb der Sandbox "
+"lauschen; nicht eingebunden. Die App sieht dort stattdessen ihr eigenes "
+"leeres /tmp, und was sie dort speichert, ist weg, wenn sie sich beendet. "
+"Setze den Ordner auf einen eigenen, etwa /tmp/{key}, damit erhalten bleibt, "
+"was die App speichert."
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-core/src/places.rs:551
+msgid ""
+"{key} folder is set to {path}, whose way leads through the link {link} in a "
+"folder the app can change, so the app may have put it there; not bound"
+msgstr ""
+"Der Ordner {key} ist auf {path} gesetzt, dessen Weg über die Verknüpfung "
+"{link} in einem Ordner führt, den die App ändern kann; die App könnte sie "
+"also selbst angelegt haben; nicht eingebunden"
+
+#: crates/sam-runner/src/doctor.rs:351
+msgid "needs Bubblewrap 0.10 or newer; app folders stay read-only"
+msgstr "braucht Bubblewrap 0.10 oder neuer; App-Ordner bleiben nur lesbar"
+
+#: crates/sam-runner/src/launch.rs:530
+msgid ""
+"The writable app folder needs Bubblewrap 0.10 or newer; the installed one is "
+"older, so the app folder stays read-only. Update Bubblewrap to use this "
+"setting."
+msgstr ""
+"Der beschreibbare App-Ordner braucht Bubblewrap 0.10 oder neuer; das "
+"installierte ist älter, deshalb bleibt der App-Ordner nur lesbar. "
+"Aktualisiere Bubblewrap, um diese Einstellung zu nutzen."
+
 #~ msgid "Lets the app use keys loaded in your SSH agent."
 #~ msgstr ""
 #~ "Erlaubt der App, die in deinem SSH-Agenten geladenen Schlüssel zu "
@@ -9670,3 +9721,10 @@ msgstr "unbekannter Schlüssel „{other}“ in der flachen Vorlage"
 
 #~ msgid "reading the room's rules"
 #~ msgstr "die Regeln des Raums lesen"
+
+#~ msgid ""
+#~ "{key} folder is set to {path}, where programs outside the sandbox listen; "
+#~ "not bound"
+#~ msgstr ""
+#~ "Der Ordner {key} ist auf {path} gesetzt, wo Programme außerhalb der "
+#~ "Sandbox lauschen; nicht eingebunden"

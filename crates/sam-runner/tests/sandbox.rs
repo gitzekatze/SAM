@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use sam_core::permissions::*;
@@ -61,9 +61,13 @@ fn parse(log: &Path) -> HashMap<String, String> {
         .collect()
 }
 
+/// The tests here that set `HOME` for the whole test process take turns.
+static HOME_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// Inside a real sandbox, each profile shows exactly the files and services it allows.
 #[test]
 fn a_real_sandbox_shows_exactly_what_each_profile_allows() {
+    let _one = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     if !bwrap_works() {
         sam_runner::contracts::skip("bubblewrap is not functional here")
             .unwrap_or_else(|e| panic!("{e}"));
@@ -399,4 +403,467 @@ fn host_tools_that_start_programs_outside_meet_their_stand_ins() {
         "systemd-run runs the command in the sandbox: {}",
         String::from_utf8_lossy(&run.stderr)
     );
+}
+
+/// The probe of [`a_read_only_user_folder_outside_the_home_is_shown_with_the_whole_home`]:
+/// it finds Documents as apps do, in `user-dirs.dirs`, reads a file there
+/// and adds one.
+const OUTSIDE_PROBE: &str = r#"#!/bin/sh
+. "$HOME/.config/user-dirs.dirs"
+D="$XDG_DOCUMENTS_DIR"
+echo "DOCS_AT=$D"
+grep -q hello "$D/report.txt" 2>/dev/null && echo DOCS_READ=yes || echo DOCS_READ=no
+( echo x > "$D/new.txt" ) 2>/dev/null && echo DOCS_WRITE=yes || echo DOCS_WRITE=no
+echo END=1
+"#;
+
+/// A user folder outside the home (`XDG_DOCUMENTS_DIR=/data/Documents`) is
+/// shown at its own access with the whole home granted, read-only or
+/// writable, the home read-only or writable: inside a real sandbox the app
+/// reads it, writes there only when it is set to read and write, and a
+/// read-only one stays as it was on the host. Before, with the whole home
+/// granted no user folder outside it was bound, so the app saw nothing of
+/// what the person had granted.
+#[test]
+fn a_read_only_user_folder_outside_the_home_is_shown_with_the_whole_home() {
+    let _one = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    if !bwrap_works() {
+        sam_runner::contracts::skip("bubblewrap is not functional here")
+            .unwrap_or_else(|e| panic!("{e}"));
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    sam_runner::testenv::isolate_this_process(root);
+    let home = root.join("home/tester");
+    let docs = root.join("data/Documents");
+    fs::create_dir_all(&docs).unwrap();
+    fs::create_dir_all(home.join(".config")).unwrap();
+    fs::write(docs.join("report.txt"), "hello\n").unwrap();
+    fs::write(
+        home.join(".config/user-dirs.dirs"),
+        format!("XDG_DOCUMENTS_DIR=\"{}\"\n", docs.display()),
+    )
+    .unwrap();
+    std::env::set_var("HOME", &home);
+    std::env::set_var("XDG_CONFIG_HOME", home.join(".config"));
+    std::env::set_var("XDG_DATA_HOME", home.join(".local/share"));
+
+    let img = root.join("Outside-1.0-x86_64.AppImage");
+    let mut spec = FixtureSpec::hello("Outside");
+    spec.apprun = OUTSIDE_PROBE.into();
+    build(&img, &spec).unwrap();
+    let app = Sam::with_paths(Paths::rooted(&root.join("sam"))).unwrap();
+    let id = app
+        .add(
+            &img,
+            &AddOptions {
+                accept: true,
+                launcher: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .entry
+        .id;
+    let host = sam_runner::testenv::test_host(HostInfo::probe());
+    assert_eq!(
+        host.xdg_dir("documents"),
+        Some(docs.as_path()),
+        "the test's own"
+    );
+    for home_access in [Access::Rw, Access::Ro] {
+        for documents in [Access::Ro, Access::Rw] {
+            let mut p = PermissionSet::strict_gui();
+            p.filesystem.home = true;
+            p.filesystem.home_access = home_access;
+            p.filesystem.documents = documents;
+            let mut e = app.set_permissions(&id, p).unwrap();
+            let opts = LaunchOptions {
+                quiet: true,
+                owd: Some(home.clone()),
+                ..Default::default()
+            };
+            let rec = run(&mut e, &opts, &app.config, &app.paths, &host).unwrap();
+            assert!(rec.success, "launch failed: {}", rec.summary);
+            let r = parse(rec.log_file.as_ref().unwrap());
+            let case = format!("{home_access:?} home, {documents:?} Documents: {r:?}");
+            assert_eq!(r.get("END").map(String::as_str), Some("1"), "{case}");
+            assert_eq!(r["DOCS_AT"], docs.display().to_string(), "{case}");
+            assert_eq!(r["DOCS_READ"], "yes", "{case}");
+            let rw = documents == Access::Rw;
+            assert_eq!(r["DOCS_WRITE"], if rw { "yes" } else { "no" }, "{case}");
+            assert_eq!(docs.join("new.txt").is_file(), rw, "{case}");
+            let _ = fs::remove_file(docs.join("new.txt"));
+            assert_eq!(
+                fs::read_to_string(docs.join("report.txt")).unwrap(),
+                "hello\n",
+                "{case}"
+            );
+        }
+    }
+}
+
+/// The probe of [`a_user_folder_link_the_app_planted_never_shows_where_it_leads`]:
+/// told to (`plant PLACE`), it turns Downloads into a link to `PLACE`, as
+/// an app with the whole home writable can; otherwise it reads and writes
+/// through Downloads.
+const PLANT_PROBE: &str = r#"#!/bin/sh
+H="$HOME"
+if [ "$1" = plant ]; then
+  mv "$H/Downloads" "$H/D" 2>/dev/null && ln -s "$2" "$H/Downloads" 2>/dev/null && echo PLANTED=yes || echo PLANTED=no
+fi
+grep -q secret "$H/Downloads/secret.txt" 2>/dev/null && echo READ=yes || echo READ=no
+( echo x > "$H/Downloads/new.txt" ) 2>/dev/null && echo WRITE=yes || echo WRITE=no
+echo END=1
+"#;
+
+/// An app with the whole home writable and Downloads granted turns
+/// `~/Downloads` into a link to a folder outside the home that it was never
+/// shown (in one start). In the next start, SAM does not show where the
+/// link leads: the app can neither read nor write there. Before, SAM followed the link and bound the place,
+/// any place on the computer the app chose (also the host's `/tmp`, with
+/// the sockets of programs outside the sandbox).
+#[test]
+fn a_user_folder_link_the_app_planted_never_shows_where_it_leads() {
+    let _one = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    if !bwrap_works() {
+        sam_runner::contracts::skip("bubblewrap is not functional here")
+            .unwrap_or_else(|e| panic!("{e}"));
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    sam_runner::testenv::isolate_this_process(root);
+    let home = root.join("home/tester");
+    let secret = root.join("data/secret");
+    fs::create_dir_all(home.join("Downloads")).unwrap();
+    fs::create_dir_all(&secret).unwrap();
+    fs::create_dir_all(home.join(".config")).unwrap();
+    fs::write(secret.join("secret.txt"), "secret\n").unwrap();
+    fs::write(
+        home.join(".config/user-dirs.dirs"),
+        "XDG_DOWNLOAD_DIR=\"$HOME/Downloads\"\n",
+    )
+    .unwrap();
+    std::env::set_var("HOME", &home);
+    std::env::set_var("XDG_CONFIG_HOME", home.join(".config"));
+    std::env::set_var("XDG_DATA_HOME", home.join(".local/share"));
+
+    let img = root.join("Plant-1.0-x86_64.AppImage");
+    let mut spec = FixtureSpec::hello("Plant");
+    spec.apprun = PLANT_PROBE.into();
+    build(&img, &spec).unwrap();
+    let app = Sam::with_paths(Paths::rooted(&root.join("sam"))).unwrap();
+    let id = app
+        .add(
+            &img,
+            &AddOptions {
+                accept: true,
+                launcher: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .entry
+        .id;
+    let host = sam_runner::testenv::test_host(HostInfo::probe());
+    assert_eq!(
+        host.xdg_dir("downloads"),
+        Some(home.join("Downloads").as_path()),
+        "the test's own"
+    );
+    let mut p = PermissionSet::strict_gui();
+    p.filesystem.home = true;
+    p.filesystem.home_access = Access::Rw;
+    p.filesystem.downloads = Access::Rw;
+    let start = |args: &[&str]| {
+        let mut e = app.set_permissions(&id, p.clone()).unwrap();
+        let opts = LaunchOptions {
+            args: args.iter().map(|a| a.to_string()).collect(),
+            quiet: true,
+            owd: Some(home.clone()),
+            ..Default::default()
+        };
+        let rec = run(&mut e, &opts, &app.config, &app.paths, &host).unwrap();
+        assert!(rec.success, "launch failed: {}", rec.summary);
+        let r = parse(rec.log_file.as_ref().unwrap());
+        assert_eq!(r.get("END").map(String::as_str), Some("1"), "{r:?}");
+        r
+    };
+    let secret_text = secret.to_string_lossy().into_owned();
+    let r = start(&["plant", &secret_text]);
+    assert_eq!(r["PLANTED"], "yes", "the writable home lets it: {r:?}");
+    assert_eq!(r["READ"], "no", "not shown in the same start: {r:?}");
+    assert!(fs::symlink_metadata(home.join("Downloads"))
+        .unwrap()
+        .file_type()
+        .is_symlink());
+
+    let r = start(&[]);
+    assert_eq!(r["READ"], "no", "{r:?}");
+    assert_eq!(r["WRITE"], "no", "{r:?}");
+    assert!(!secret.join("new.txt").exists());
+}
+
+/// The probe of [`a_link_planted_inside_a_refused_read_only_folder_is_never_followed`],
+/// [`the_folders_above_a_read_only_user_folder_cannot_be_renamed`],
+/// [`the_font_folders_stay_read_only_around_an_extra_folder_inside`] and
+/// [`a_linked_start_file_inside_a_writable_folder_in_the_fonts_stays_pinned`]:
+/// told to (`plant PLACE`), it turns Downloads, found as apps find it, into
+/// a link to `PLACE`; told to (`rename`), it tries to rename the folders
+/// above the read-only ones and writes inside them; told to (`fonts`), it
+/// writes into the font folders; told to (`fontwork`), it tries to rename
+/// the folder in `~/.fonts/work` where a start file is kept and writes
+/// there and into `~/.fonts`; otherwise it reads and writes through
+/// Downloads.
+const FOLDER_PROBE: &str = r#"#!/bin/sh
+. "$HOME/.config/user-dirs.dirs"
+D="$XDG_DOWNLOAD_DIR"
+if [ "$1" = plant ]; then
+  mv "$D" "$HOME/x" 2>/dev/null && ln -s "$2" "$D" 2>/dev/null && echo PLANTED=yes || echo PLANTED=no
+fi
+if [ "$1" = rename ]; then
+  mv "$HOME/Sync" "$HOME/S2" 2>/dev/null && echo SYNC_MOVED=yes || echo SYNC_MOVED=no
+  mv "$HOME/work" "$HOME/w2" 2>/dev/null && echo WORK_MOVED=yes || echo WORK_MOVED=no
+  ( echo x > "$HOME/Sync/Documents/proj/new.txt" ) 2>/dev/null && echo PROJ_WRITE=yes || echo PROJ_WRITE=no
+  ( echo x > "$HOME/Sync/Documents/new.txt" ) 2>/dev/null && echo DOCS_WRITE=yes || echo DOCS_WRITE=no
+fi
+if [ "$1" = fonts ]; then
+  ( echo x > "$HOME/.fonts/new.txt" ) 2>/dev/null && echo FONTS_WRITE=yes || echo FONTS_WRITE=no
+  ( echo x > "$HOME/.local/share/fonts/a/new.txt" ) 2>/dev/null && echo SHARE_FONTS_WRITE=yes || echo SHARE_FONTS_WRITE=no
+  ( echo x > "$HOME/new.txt" ) 2>/dev/null && echo HOME_WRITE=yes || echo HOME_WRITE=no
+fi
+if [ "$1" = fontwork ]; then
+  mv "$HOME/.fonts/work/dots" "$HOME/.fonts/work/d2" 2>/dev/null && echo DOTS_MOVED=yes || echo DOTS_MOVED=no
+  ( echo x > "$HOME/.fonts/work/new.txt" ) 2>/dev/null && echo WORK_WRITE=yes || echo WORK_WRITE=no
+  ( echo x > "$HOME/.fonts/new.txt" ) 2>/dev/null && echo FONTS_WRITE=yes || echo FONTS_WRITE=no
+fi
+grep -q secret "$D/secret.txt" 2>/dev/null && echo READ=yes || echo READ=no
+( echo x > "$D/new.txt" ) 2>/dev/null && echo WRITE=yes || echo WRITE=no
+echo END=1
+"#;
+
+/// Starts the app `id` of `app` with the permissions `p` and the arguments
+/// `args`, and returns what its probe printed.
+fn start_probe(
+    app: &Sam,
+    id: &str,
+    p: &PermissionSet,
+    home: &Path,
+    host: &HostInfo,
+    args: &[&str],
+) -> HashMap<String, String> {
+    let mut e = app.set_permissions(id, p.clone()).unwrap();
+    let opts = LaunchOptions {
+        args: args.iter().map(|a| a.to_string()).collect(),
+        quiet: true,
+        owd: Some(home.to_path_buf()),
+        ..Default::default()
+    };
+    let rec = run(&mut e, &opts, &app.config, &app.paths, host).unwrap();
+    assert!(rec.success, "launch failed: {}", rec.summary);
+    let r = parse(rec.log_file.as_ref().unwrap());
+    assert_eq!(r.get("END").map(String::as_str), Some("1"), "{r:?}");
+    r
+}
+
+/// Sets up a test home at `root/home/tester` with `user-dirs.dirs` holding
+/// `dirs`, and adds the folder probe as an app; returns SAM, the app's id,
+/// the home and the host.
+fn folder_probe_app(root: &Path, name: &str, dirs: &str) -> (Sam, String, PathBuf, HostInfo) {
+    sam_runner::testenv::isolate_this_process(root);
+    let home = root.join("home/tester");
+    fs::create_dir_all(home.join(".config")).unwrap();
+    fs::write(home.join(".config/user-dirs.dirs"), dirs).unwrap();
+    std::env::set_var("HOME", &home);
+    std::env::set_var("XDG_CONFIG_HOME", home.join(".config"));
+    std::env::set_var("XDG_DATA_HOME", home.join(".local/share"));
+    let img = root.join(format!("{name}-1.0-x86_64.AppImage"));
+    let mut spec = FixtureSpec::hello(name);
+    spec.apprun = FOLDER_PROBE.into();
+    build(&img, &spec).unwrap();
+    let app = Sam::with_paths(Paths::rooted(&root.join("sam"))).unwrap();
+    let id = app
+        .add(
+            &img,
+            &AddOptions {
+                accept: true,
+                launcher: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .entry
+        .id;
+    let host = sam_runner::testenv::test_host(HostInfo::probe());
+    (app, id, home, host)
+}
+
+/// With the whole home writable, Documents read-only but itself a link in
+/// the home (`~/Documents` to `~/Dropbox/Documents`, so SAM does not mount
+/// it) and Downloads read and write inside it, an app turns Downloads into
+/// a link to a folder outside the home that it was never shown. In the
+/// next start, SAM does not show where the link leads: the app can neither
+/// read nor write there. Before, SAM took the link's folder for read-only
+/// and bound the place writable (review of finding R63).
+#[test]
+fn a_link_planted_inside_a_refused_read_only_folder_is_never_followed() {
+    let _one = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    if !bwrap_works() {
+        sam_runner::contracts::skip("bubblewrap is not functional here")
+            .unwrap_or_else(|e| panic!("{e}"));
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    let secret = root.join("data/secret");
+    fs::create_dir_all(&secret).unwrap();
+    fs::write(secret.join("secret.txt"), "secret\n").unwrap();
+    let (app, id, home, host) = folder_probe_app(
+        root,
+        "PlantIn",
+        "XDG_DOCUMENTS_DIR=\"$HOME/Documents\"\nXDG_DOWNLOAD_DIR=\"$HOME/Dropbox/Documents/Downloads\"\n",
+    );
+    let downloads = home.join("Dropbox/Documents/Downloads");
+    fs::create_dir_all(&downloads).unwrap();
+    std::os::unix::fs::symlink(home.join("Dropbox/Documents"), home.join("Documents")).unwrap();
+    assert_eq!(
+        host.xdg_dir("downloads"),
+        Some(downloads.as_path()),
+        "the test's own"
+    );
+    let mut p = PermissionSet::strict_gui();
+    p.filesystem.home = true;
+    p.filesystem.home_access = Access::Rw;
+    p.filesystem.documents = Access::Ro;
+    p.filesystem.downloads = Access::Rw;
+    let secret_text = secret.to_string_lossy().into_owned();
+    let r = start_probe(&app, &id, &p, &home, &host, &["plant", &secret_text]);
+    assert_eq!(r["PLANTED"], "yes", "the writable home lets it: {r:?}");
+    assert!(fs::symlink_metadata(&downloads)
+        .unwrap()
+        .file_type()
+        .is_symlink());
+    let r = start_probe(&app, &id, &p, &home, &host, &[]);
+    assert_eq!(r["READ"], "no", "{r:?}");
+    assert_eq!(r["WRITE"], "no", "{r:?}");
+    assert!(!secret.join("new.txt").exists());
+}
+
+/// With the whole home writable, Documents read-only in `~/Sync`, an extra
+/// writable folder inside it and an extra read-only folder in `~/work`,
+/// the app can rename neither `~/Sync` nor `~/work`: each is a mount point
+/// of its own. A second start of the app with these permissions could
+/// otherwise rename one, which carries the read-only mount along, and put
+/// a link in its place while SAM starts the app again, so that start bound
+/// where the link led (review of finding R63). The extra writable folder
+/// stays writable, Documents read-only.
+#[test]
+fn the_folders_above_a_read_only_user_folder_cannot_be_renamed() {
+    let _one = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    if !bwrap_works() {
+        sam_runner::contracts::skip("bubblewrap is not functional here")
+            .unwrap_or_else(|e| panic!("{e}"));
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    let (app, id, home, host) = folder_probe_app(
+        root,
+        "Rename",
+        "XDG_DOCUMENTS_DIR=\"$HOME/Sync/Documents\"\n",
+    );
+    for d in ["Sync/Documents/proj", "work/ref"] {
+        fs::create_dir_all(home.join(d)).unwrap();
+    }
+    let st = |p: &Path| p.to_string_lossy().into_owned();
+    let mut p = PermissionSet::strict_gui();
+    p.filesystem.home = true;
+    p.filesystem.home_access = Access::Rw;
+    p.filesystem.documents = Access::Ro;
+    p.filesystem.custom_read = vec![st(&home.join("work/ref"))];
+    p.filesystem.custom_write = vec![st(&home.join("Sync/Documents/proj"))];
+    let r = start_probe(&app, &id, &p, &home, &host, &["rename"]);
+    assert_eq!(r["SYNC_MOVED"], "no", "{r:?}");
+    assert_eq!(r["WORK_MOVED"], "no", "{r:?}");
+    assert_eq!(r["PROJ_WRITE"], "yes", "{r:?}");
+    assert_eq!(r["DOCS_WRITE"], "no", "{r:?}");
+    assert!(home.join("Sync/Documents/proj/new.txt").is_file());
+    assert!(!home.join("Sync/Documents/new.txt").exists());
+    assert!(home.join("work/ref").is_dir() && !home.join("w2").exists());
+}
+
+/// With the whole home writable and an extra read-only folder inside each
+/// font folder (`~/.fonts/licensed`, `~/.local/share/fonts/a/licensed`),
+/// the font folders stay read-only, as SAM always binds them: the pins of
+/// the folders above a read-only extra folder (review of finding R63) once
+/// bound `~/.fonts` writable after its read-only bind. The home stays
+/// writable.
+#[test]
+fn the_font_folders_stay_read_only_around_an_extra_folder_inside() {
+    let _one = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    if !bwrap_works() {
+        sam_runner::contracts::skip("bubblewrap is not functional here")
+            .unwrap_or_else(|e| panic!("{e}"));
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    let (app, id, home, host) = folder_probe_app(root, "Fonts", "");
+    for d in [".fonts/licensed", ".local/share/fonts/a/licensed"] {
+        fs::create_dir_all(home.join(d)).unwrap();
+    }
+    let st = |p: &Path| p.to_string_lossy().into_owned();
+    let mut p = PermissionSet::strict_gui();
+    p.filesystem.home = true;
+    p.filesystem.home_access = Access::Rw;
+    p.filesystem.custom_read = vec![
+        st(&home.join(".fonts/licensed")),
+        st(&home.join(".local/share/fonts/a/licensed")),
+    ];
+    let r = start_probe(&app, &id, &p, &home, &host, &["fonts"]);
+    assert_eq!(r["FONTS_WRITE"], "no", "{r:?}");
+    assert_eq!(r["SHARE_FONTS_WRITE"], "no", "{r:?}");
+    assert_eq!(r["HOME_WRITE"], "yes", "{r:?}");
+    assert!(!home.join(".fonts/new.txt").exists());
+    assert!(!home.join(".local/share/fonts/a/new.txt").exists());
+}
+
+/// With the whole home writable, `~/.fonts` an extra read-only folder, an
+/// extra writable folder inside it (`~/.fonts/work`) and `~/.bashrc` kept
+/// as a link to `~/.fonts/work/dots/bashrc`, the app cannot rename `dots`:
+/// it is a mount point of its own, so the guard of the start file stays
+/// where the link leads (review B2 S3, R50). Skipped on or inside the
+/// whole font folder, that pin was lost, and the app could rename `dots`
+/// away with the guard and put a start file of its own where the link
+/// leads. The writable folder stays writable, the font folder read-only.
+#[test]
+fn a_linked_start_file_inside_a_writable_folder_in_the_fonts_stays_pinned() {
+    let _one = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    if !bwrap_works() {
+        sam_runner::contracts::skip("bubblewrap is not functional here")
+            .unwrap_or_else(|e| panic!("{e}"));
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    let (app, id, home, host) = folder_probe_app(root, "FontWork", "");
+    let dots = home.join(".fonts/work/dots");
+    fs::create_dir_all(&dots).unwrap();
+    fs::write(dots.join("bashrc"), "").unwrap();
+    std::os::unix::fs::symlink(".fonts/work/dots/bashrc", home.join(".bashrc")).unwrap();
+    let st = |p: &Path| p.to_string_lossy().into_owned();
+    let mut p = PermissionSet::strict_gui();
+    p.filesystem.home = true;
+    p.filesystem.home_access = Access::Rw;
+    p.filesystem.custom_read = vec![st(&home.join(".fonts"))];
+    p.filesystem.custom_write = vec![st(&home.join(".fonts/work"))];
+    let r = start_probe(&app, &id, &p, &home, &host, &["fontwork"]);
+    assert_eq!(r["DOTS_MOVED"], "no", "{r:?}");
+    assert_eq!(r["WORK_WRITE"], "yes", "{r:?}");
+    assert_eq!(r["FONTS_WRITE"], "no", "{r:?}");
+    assert!(dots.join("bashrc").is_file() && !home.join(".fonts/work/d2").exists());
+    assert!(home.join(".fonts/work/new.txt").is_file());
+    assert!(!home.join(".fonts/new.txt").exists());
 }
