@@ -2353,7 +2353,9 @@ mod tests {
     /// keeps the record lock longer than SAM waits), the record still asks
     /// first and the start is refused. Before, the mark was only in the
     /// closing save, so the new content started with the old settings and
-    /// was never asked about.
+    /// was never asked about. The start's warning about the changed
+    /// AppImage then says the unpacked copy may not be that file; before,
+    /// it said the previous version runs, while the new content ran.
     #[test]
     fn a_changed_appimage_still_asks_first_when_the_closing_save_fails() {
         if crate::doctor::bwrap_functional(&HostInfo::probe()).is_err() {
@@ -2425,6 +2427,40 @@ mod tests {
                 .iter()
                 .any(|m| m.contains("replaced by something other than a SAM update")),
             "the new content starts unconfirmed: {errors:?}"
+        );
+        // The unpacked copy holds the new content while the record still
+        // names the file unpacked before: the start's warning about the
+        // changed AppImage never says the previous version runs.
+        let appdir = &e.extraction.as_ref().unwrap().appdir;
+        let new_content_unpacked = fs::read_dir(appdir).unwrap().flatten().any(|d| {
+            d.path().extension().is_some_and(|x| x == "desktop")
+                && fs::read_to_string(d.path())
+                    .is_ok_and(|s| s.contains("a different file under the same name"))
+        });
+        assert!(new_content_unpacked, "the new content is unpacked");
+        // Both files were built within the same second at the same place:
+        // a file put there at another time has another modification time,
+        // which is what the start's quick look at the file compares.
+        fs::File::options()
+            .write(true)
+            .open(&img)
+            .unwrap()
+            .set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(86_400))
+            .unwrap();
+        let warns = crate::launch::preflight(&e).1;
+        let stale = warns
+            .iter()
+            .find(|w| w.code == "source-stale")
+            .expect("the start warns that the AppImage changed");
+        assert!(
+            !stale.message.contains("previous version"),
+            "the warning says the previous version runs, but the new content runs: {}",
+            stale.message
+        );
+        assert!(
+            stale.message.contains("may not be this file"),
+            "{}",
+            stale.message
         );
     }
 

@@ -386,10 +386,14 @@ pub fn preflight(app: &AppEntry) -> (Vec<String>, Vec<Warning>) {
         if let Ok(SourceStatus::Changed { .. }) =
             fingerprint::check(&app.source_path, &x.source, false)
         {
+            // "May not be": when the closing save of an "Unpack Again"
+            // failed (another SAM process kept the record lock too long, a
+            // full disk), the unpacked copy already holds this file while
+            // the record still names the file unpacked before.
             warns.push(Warning::warn(
                 "source-stale",
                 "AppImage changed",
-                "The AppImage changed since it was unpacked. SAM runs the previous version until you unpack it again.",
+                "The AppImage changed since SAM last recorded unpacking it, so the unpacked copy SAM starts may not be this file. Unpack it again so that SAM starts this file and its record describes it.",
             ));
         }
     }

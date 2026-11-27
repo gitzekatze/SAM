@@ -71,7 +71,7 @@ impl Sam {
         }
         match e.state {
             AppState::Stale => {
-                w.push(Warning::warn("stale", "AppImage changed", "The AppImage changed since it was unpacked. Unpack it again to update the sandbox."))
+                w.push(Warning::warn("stale", "AppImage changed", "The AppImage changed since SAM last recorded unpacking it. Unpack it again so that SAM starts this file and its record describes it."))
             }
             AppState::Missing => w.push(Warning::warn(
                 "missing",

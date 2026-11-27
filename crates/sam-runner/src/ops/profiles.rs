@@ -11,9 +11,11 @@ pub(super) enum SetChange {
     /// Some switches: only those are written, a switch another SAM process
     /// saved meanwhile stays.
     Switches,
-    /// The whole set, chosen as one (a preset, a reset, an undo of the
-    /// repair steps, the compatibility mode, a whole set the person
-    /// confirmed): written as one value.
+    /// The whole set, chosen as one (a preset, the compatibility mode, a
+    /// whole set the person confirmed): written as one value. A reset (SAM's
+    /// recommendation, also written as one value) and an undo of the repair
+    /// steps are made on the record as it is under the lock instead
+    /// ([`Sam::reset_profile`], [`Sam::undo_repairs`]).
     WholeSet,
 }
 
@@ -47,8 +49,8 @@ impl Sam {
         let saved = self.change_profile(&id, |now| {
             sam_storage::apply_changes(now, read, entry)?;
             if kind == SetChange::WholeSet {
-                // A preset, a reset, an undo of the repair steps, the
-                // compatibility mode or a whole set the person confirmed:
+                // A preset, the compatibility mode or a whole set the
+                // person confirmed:
                 // a switch another process saved meanwhile is replaced
                 // too, never mixed in. The later save wins, as for any
                 // one setting two saves change.
@@ -162,17 +164,34 @@ impl Sam {
         }
     }
 
+    /// Puts SAM's recommended settings back and forgets the repair steps,
+    /// on the record as it is under the record lock. An argument a listed
+    /// step added (`--no-sandbox`) goes with its step, so no argument stays
+    /// on once no step names it. Worked out on a copy read before the lock,
+    /// a step another SAM process applied meanwhile kept its argument while
+    /// the reset cleared the lists that named it.
     pub fn reset_profile(&self, query: &str) -> Result<AppEntry> {
-        let mut e = self.resolve(query)?;
-        let read = e.clone();
-        e.profile.permissions = e.recommended.clone();
-        e.profile.compatibility_mode = false;
-        e.repairs_applied.clear();
-        e.applied_repairs.clear();
-        e.repair_backup = None;
-        e.profile.preset = None;
-        self.save_profile(&read, &mut e, SetChange::WholeSet)?;
-        Ok(e)
+        let id = self.resolve(query)?.id;
+        self.change_profile(&id, |e| {
+            let added_args: Vec<String> = e
+                .applied_repairs
+                .iter()
+                .filter(|r| {
+                    r.step
+                        .as_ref()
+                        .is_some_and(|s| matches!(s.action, FixAction::AddArg { .. }))
+                })
+                .filter_map(|r| r.added.clone())
+                .collect();
+            e.profile.args.retain(|a| !added_args.contains(a));
+            e.profile.permissions = e.recommended.clone();
+            e.profile.compatibility_mode = false;
+            e.repairs_applied.clear();
+            e.applied_repairs.clear();
+            e.repair_backup = None;
+            e.profile.preset = None;
+            Ok(())
+        })
     }
 
     pub fn set_compat(&self, query: &str, on: bool) -> Result<AppEntry> {
@@ -462,29 +481,34 @@ impl Sam {
     /// profile from before the first step was put back). Older records
     /// without the steps' own records fall back to that copy.
     pub fn undo_repairs(&self, query: &str) -> Result<AppEntry> {
-        let mut e = self.resolve(query)?;
-        let read = e.clone();
-        if !e.applied_repairs.is_empty() {
-            for r in e.applied_repairs.clone().iter().rev() {
-                crate::repair::revert_step(&mut e, r)?;
-            }
-            e.repair_backup = None;
-        } else if let Some(backup) = e.repair_backup.take() {
-            e.profile = backup;
-        } else {
-            bail!(
-                "{}",
-                sam_core::i18n::trf(
-                    "no repair steps to undo for {app}",
-                    &[("app", &e.display_name())]
+        let id = self.resolve(query)?.id;
+        // On the record as it is under the record lock, as for one step: a
+        // step another SAM process applied meanwhile is turned back with
+        // the others. Worked out on a copy read before the lock, its
+        // argument (`--no-sandbox`) stayed while the lists no longer named
+        // it.
+        self.change_profile(&id, |e| {
+            if !e.applied_repairs.is_empty() {
+                for r in e.applied_repairs.clone().iter().rev() {
+                    crate::repair::revert_step(e, r)?;
+                }
+                e.repair_backup = None;
+            } else if let Some(backup) = e.repair_backup.take() {
+                e.profile = backup;
+            } else {
+                bail!(
+                    "{}",
+                    sam_core::i18n::trf(
+                        "no repair steps to undo for {app}",
+                        &[("app", &e.display_name())]
+                    )
                 )
-            )
-        }
-        e.repairs_applied.clear();
-        e.applied_repairs.clear();
-        e.tried_repairs.clear();
-        self.save_profile(&read, &mut e, SetChange::WholeSet)?;
-        Ok(e)
+            }
+            e.repairs_applied.clear();
+            e.applied_repairs.clear();
+            e.tried_repairs.clear();
+            Ok(())
+        })
     }
 
     pub fn mark_reviewed(&self, query: &str) -> Result<AppEntry> {
@@ -959,7 +983,9 @@ mod record_lock_tests {
 
     /// Every writer that replaces the whole set (a whole set the person
     /// confirmed, a preset, a reset, the compatibility mode, an undo of
-    /// the repair steps) saves exactly the set it chose, also when another
+    /// the repair steps of an older record that lists no step of its own and
+    /// goes back to the copy from before the first step) saves exactly the
+    /// set it chose, also when another
     /// SAM process granted a folder between the writer's read and its
     /// save. Before, each setting the writer left as it read it kept the
     /// value on disk, so the saved set held a grant nobody chose while it
@@ -1227,6 +1253,55 @@ mod record_lock_tests {
         );
         let undone = sam.undo_repair_step(ID, "seccomp-baseline").unwrap();
         assert!(undone.profile.permissions.advanced.seccomp_baseline);
+    }
+
+    /// "Undo repairs" and a reset made while another SAM process applies a
+    /// repair step that adds an argument (`--no-sandbox`, which turns off
+    /// the app's own Chromium sandbox) never leave that argument on with no
+    /// step naming it. Before, both worked on a copy read before that step
+    /// was saved: the argument on disk stayed, the lists that named the
+    /// step were saved empty, and nothing offered to turn it back.
+    #[test]
+    fn undoing_repairs_or_a_reset_turns_back_an_argument_a_step_added_meanwhile() {
+        let no_sandbox = || Suggestion {
+            action: FixAction::AddArg {
+                value: "--no-sandbox".into(),
+            },
+            ..step("chromium-no-sandbox", "", "")
+        };
+        type Writer = fn(&Sam, &str) -> Result<AppEntry>;
+        let writers: [(&str, Writer); 2] = [
+            ("\"Undo repairs\"", |s, id| s.undo_repairs(id)),
+            ("a reset", |s, id| s.reset_profile(id)),
+        ];
+        for (what, write) in writers {
+            let t = tempfile::tempdir().unwrap();
+            let paths = Paths::rooted(t.path());
+            let sam = Sam::with_paths(paths.clone()).unwrap();
+            const ID: &str = "appimage-args-1a2b";
+            strict_app(&sam, ID);
+            sam.apply_suggestion(ID, &userns_on(), true, true).unwrap();
+            let other = paths.clone();
+            let step = no_sandbox();
+            meanwhile(move || {
+                Sam::with_paths(other)
+                    .unwrap()
+                    .apply_suggestion(ID, &step, true, true)
+                    .unwrap();
+            });
+            write(&sam, ID).unwrap();
+            let back = sam.resolve(ID).unwrap();
+            assert!(
+                !back.profile.args.iter().any(|a| a == "--no-sandbox"),
+                "{what}: --no-sandbox stays on; the steps still listed: {:?}",
+                listed(&back)
+            );
+            assert!(
+                back.applied_repairs.is_empty() && back.repairs_applied.is_empty(),
+                "{what}"
+            );
+            assert!(!back.profile.permissions.advanced.allow_userns, "{what}");
+        }
     }
 
     /// Confirming from the app's page (`sam-jail review --seen`) checks

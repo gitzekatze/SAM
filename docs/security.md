@@ -1822,10 +1822,13 @@ was easily misread.
   fields they changed: a save keeps what others saved in other fields; for
   the same field the later save wins (a list, such as the granted folders,
   counts as one field). A change that replaces the whole set of settings
-  (a preset, a reset, the compatibility mode, an undo of the repair steps,
-  a whole set you confirm) saves that set as one value. Applying or
-  undoing one repair step works on the record as it is under the lock, so
-  a step another process applied meanwhile stays applied and listed. A
+  (a preset, a reset, the compatibility mode, a whole set you confirm)
+  saves that set as one value. Applying or undoing one repair step works
+  on the record as it is under the lock, so a step another process applied
+  meanwhile stays applied and listed. Undoing all repair steps and a reset
+  also work on the record as it is under the lock, so a step another
+  process applied meanwhile is undone with the others; a reset also takes
+  off an argument a listed step added (`--no-sandbox`). A
   "look at it first" mark is never cleared by such a save. A start that stores its
   result writes the app's state and last error as the start read or set
   them, so a notice another process saved there while the app ran can be
@@ -1835,7 +1838,9 @@ was easily misread.
   describe). When the AppImage changed outside SAM, "unpack again" saves
   the "look at it first" mark before it unpacks, so that copy does not
   start until you confirm it, unless you confirmed the app while the
-  unpacking still ran. Confirming from the app's page checks what the page
+  unpacking still ran. The warning about a changed AppImage says only that
+  the unpacked copy SAM starts may not be that file, because after such a
+  failed save it already is. Confirming from the app's page checks what the page
   showed under the lock; `sam-jail review` without `--seen` confirms what
   is there when it gets the lock. A SAM version from before this lock does not take it: while
   it runs at the same time as this one (an old window left open after an

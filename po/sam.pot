@@ -418,7 +418,7 @@ msgstr ""
 msgid "Play and record audio (through PipeWire's PulseAudio service). Recording is possible once this is on."
 msgstr ""
 
-#: crates/sam-core/src/permissions.rs:1249 crates/sam-core/src/risk.rs:350 crates/sam-runner/src/launch.rs:2257
+#: crates/sam-core/src/permissions.rs:1249 crates/sam-core/src/risk.rs:350 crates/sam-runner/src/launch.rs:2261
 msgid "Sound without SAM's relay"
 msgstr ""
 
@@ -2158,12 +2158,12 @@ msgstr ""
 msgid "These settings let the app reach far outside its sandbox"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:180 crates/sam-runner/src/launch.rs:389 crates/sam-runner/src/ops/overview.rs:74
+#: crates/sam-gtk/src/app_page/render.rs:180 crates/sam-runner/src/launch.rs:393 crates/sam-runner/src/ops/overview.rs:74
 msgid "AppImage changed"
 msgstr ""
 
 #: crates/sam-gtk/src/app_page/render.rs:180
-msgid "The AppImage file changed since it was unpacked; SAM still runs the previous version until you update the sandbox"
+msgid "The AppImage file changed since SAM last recorded unpacking it; the unpacked copy SAM starts may not be this file until you unpack it again"
 msgstr ""
 
 #: crates/sam-gtk/src/app_page/render.rs:181 crates/sam-gtk/src/window.rs:1775
@@ -2273,8 +2273,8 @@ msgstr ""
 msgid "Update Now"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:416
-msgid "The AppImage changed since it was unpacked. Unpack it again to use the new version."
+#: crates/sam-gtk/src/app_page/render.rs:416 crates/sam-runner/src/ops/overview.rs:74
+msgid "The AppImage changed since SAM last recorded unpacking it. Unpack it again so that SAM starts this file and its record describes it."
 msgstr ""
 
 #: crates/sam-gtk/src/app_page/render.rs:417
@@ -2313,7 +2313,7 @@ msgstr ""
 msgid "Confirm Settings"
 msgstr ""
 
-#: crates/sam-gtk/src/app_page/render.rs:493 crates/sam-runner/src/ops/profiles.rs:513
+#: crates/sam-gtk/src/app_page/render.rs:493 crates/sam-runner/src/ops/profiles.rs:537
 #. Keep the {placeholders}; their order may change.
 msgid "{app} changed since this page showed it. Look at it again, then confirm."
 msgstr ""
@@ -4052,7 +4052,7 @@ msgid "Its settings let it reach far outside its sandbox"
 msgstr ""
 
 #: crates/sam-gtk/src/window.rs:1790
-msgid "The AppImage file changed since it was unpacked"
+msgid "The AppImage file changed since SAM last recorded unpacking it"
 msgstr ""
 
 #: crates/sam-gtk/src/window.rs:1791
@@ -4314,7 +4314,7 @@ msgstr ""
 msgid "This start runs without {layers}, which its settings ask for. It still runs in its sandbox. SAM's page for the app says why."
 msgstr ""
 
-#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:367 crates/sam-runner/src/ops/maintain.rs:300 crates/sam-runner/src/ops/maintain.rs:481 crates/sam-runner/src/ops/maintain.rs:498 crates/sam-runner/src/ops/mod.rs:215 crates/sam-runner/src/ops/profiles.rs:92
+#: crates/sam-jail-cli/src/bin/sam-jail-run.rs:367 crates/sam-runner/src/ops/maintain.rs:300 crates/sam-runner/src/ops/maintain.rs:481 crates/sam-runner/src/ops/maintain.rs:498 crates/sam-runner/src/ops/mod.rs:215 crates/sam-runner/src/ops/profiles.rs:94
 #. Keep the {placeholders}; their order may change.
 msgid "no registered app '{id}'"
 msgstr ""
@@ -4553,7 +4553,7 @@ msgid_plural "Closed {n} running launches"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/sam-jail-cli/src/main.rs:977 crates/sam-runner/src/launch.rs:1723
+#: crates/sam-jail-cli/src/main.rs:977 crates/sam-runner/src/launch.rs:1727
 #. Keep the {placeholders}; their order may change.
 msgid "set by SAM's helper for the app, after its layers: {variables}"
 msgstr ""
@@ -5287,11 +5287,11 @@ msgstr ""
 msgid "sam-jail-run was not found next to sam-jail; Landlock and seccomp are not applied."
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:233 crates/sam-runner/src/launch.rs:814 crates/sam-runner/src/launch.rs:827 crates/sam-runner/src/launch.rs:877 crates/sam-runner/src/launch.rs:888
+#: crates/sam-runner/src/launch.rs:233 crates/sam-runner/src/launch.rs:818 crates/sam-runner/src/launch.rs:831 crates/sam-runner/src/launch.rs:881 crates/sam-runner/src/launch.rs:892
 msgid "Room service unavailable"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:236 crates/sam-runner/src/launch.rs:830 crates/sam-runner/src/launch.rs:880 crates/sam-runner/src/launch.rs:891
+#: crates/sam-runner/src/launch.rs:236 crates/sam-runner/src/launch.rs:834 crates/sam-runner/src/launch.rs:884 crates/sam-runner/src/launch.rs:895
 #. Keep the {placeholders}; their order may change.
 msgid "{error}; programs in this app that build a sandbox of their own fail this time"
 msgstr ""
@@ -5350,241 +5350,241 @@ msgstr ""
 msgid "The selected AppImage no longer exists. SAM runs the last unpacked copy; APPIMAGE is not set."
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:389
-msgid "The AppImage changed since it was unpacked. SAM runs the previous version until you unpack it again."
+#: crates/sam-runner/src/launch.rs:393
+msgid "The AppImage changed since SAM last recorded unpacking it, so the unpacked copy SAM starts may not be this file. Unpack it again so that SAM starts this file and its record describes it."
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:427
+#: crates/sam-runner/src/launch.rs:431
 msgid "the AppImage has not been unpacked"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:546 crates/sam-runner/src/launch.rs:554
+#: crates/sam-runner/src/launch.rs:550 crates/sam-runner/src/launch.rs:558
 msgid "Writable app folder unavailable"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:546
+#: crates/sam-runner/src/launch.rs:550
 msgid "The writable app folder needs overlays, which the installed Bubblewrap does not offer (they came with Bubblewrap 0.11), so the app folder stays read-only. Update Bubblewrap to use this setting."
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:574
+#: crates/sam-runner/src/launch.rs:578
 #. Keep the {placeholders}; their order may change.
 msgid "creating the private home {folder}"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:633
+#: crates/sam-runner/src/launch.rs:637
 msgid "Wayland functions not restricted"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:633
+#: crates/sam-runner/src/launch.rs:637
 msgid "This desktop does not support Wayland security contexts, so the app can use every Wayland function it offers, including privileged ones some desktops provide (clipboard history, screen capture)."
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:641
+#: crates/sam-runner/src/launch.rs:645
 msgid "Wayland security context failed"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:641
+#: crates/sam-runner/src/launch.rs:645
 #. Keep the {placeholders}; their order may change.
 msgid "{error}; the app uses the normal Wayland socket"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:715 crates/sam-runner/src/launch.rs:733
+#: crates/sam-runner/src/launch.rs:719 crates/sam-runner/src/launch.rs:737
 msgid "D-Bus name not allowed"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:718 crates/sam-runner/src/launch.rs:736
+#: crates/sam-runner/src/launch.rs:722 crates/sam-runner/src/launch.rs:740
 #. Keep the {placeholders}; their order may change.
 msgid "The app may not own {name}: {why}."
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:744
+#: crates/sam-runner/src/launch.rs:748
 msgid "D-Bus proxy failed"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:747
+#: crates/sam-runner/src/launch.rs:751
 #. Keep the {placeholders}; their order may change.
 msgid "{error}; the session bus is off for this start"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:814
+#: crates/sam-runner/src/launch.rs:818
 msgid "This Bubblewrap cannot show places by handle (--ro-bind-fd, Bubblewrap 0.10 or newer); programs in this app that build a sandbox of their own use it as before Room service."
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:910
+#: crates/sam-runner/src/launch.rs:914
 msgid "\"This computer only\" unavailable"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:913
+#: crates/sam-runner/src/launch.rs:917
 #. Keep the {placeholders}; their order may change.
 msgid "{error}. Until then the app starts with no network at all, never with internet access."
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:1009
+#: crates/sam-runner/src/launch.rs:1013
 #. Keep the {placeholders}; their order may change.
 msgid "sandbox setup failed: {reason}"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:1017
+#: crates/sam-runner/src/launch.rs:1021
 msgid "the entry point could not be executed (permission denied or wrong format)"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:1025
+#: crates/sam-runner/src/launch.rs:1029
 #. Keep the {placeholders}; their order may change.
 msgid "a library the app needs is not available inside the sandbox: {library}"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:1033
+#: crates/sam-runner/src/launch.rs:1037
 msgid "the entry point or one of its interpreters was not found inside the sandbox"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:1077
+#: crates/sam-runner/src/launch.rs:1081
 #. Keep the {placeholders}; their order may change.
 msgid "the app needed its own bus name {names}; SAM allowed it and starts the app again"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:1230
+#: crates/sam-runner/src/launch.rs:1234
 #. Keep the {placeholders}; their order may change.
 msgid "warning: {text}"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:1263
+#: crates/sam-runner/src/launch.rs:1267
 msgid "Landlock is not in place, so a handle the app holds could still reach the next device"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:1267
+#: crates/sam-runner/src/launch.rs:1271
 msgid "the app may make namespaces of its own, which SAM cannot reach"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:1346
+#: crates/sam-runner/src/launch.rs:1350
 msgid "no stdout pipe"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:1359
+#: crates/sam-runner/src/launch.rs:1363
 msgid "no stderr pipe"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:1423
+#: crates/sam-runner/src/launch.rs:1427
 msgid "ended by SAM: a game controller was unplugged and SAM could not safely take it out of the sandbox"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:1432
+#: crates/sam-runner/src/launch.rs:1436
 msgid "ended when its terminal was closed"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:1548
+#: crates/sam-runner/src/launch.rs:1552
 #. Keep the {placeholders}; their order may change.
 msgid "warning: this start ran without {layers}, which its settings ask for"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:1557
+#: crates/sam-runner/src/launch.rs:1561
 #. Keep the {placeholders}; their order may change.
 msgid "the app left something that would run outside its sandbox; SAM moved it aside: {items}"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:1572
+#: crates/sam-runner/src/launch.rs:1576
 #. Keep the {placeholders}; their order may change.
 msgid "the repair step did not help, so SAM undid it: {steps}"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:1603
+#: crates/sam-runner/src/launch.rs:1607
 msgid "you blocked it (always blocked names)"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:1620
+#: crates/sam-runner/src/launch.rs:1624
 msgid "your home folder"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:1640
+#: crates/sam-runner/src/launch.rs:1644
 msgid "only its private home"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:1642
+#: crates/sam-runner/src/launch.rs:1646
 #. Keep the {placeholders}; their order may change.
 msgid "{folders} and its private home"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:1647
+#: crates/sam-runner/src/launch.rs:1651
 #. Keep the {placeholders}; their order may change.
 msgid "{app} runs sandboxed, in a terminal of its own. It sees {sees} (files it saves anywhere else stay there). It cannot type into this shell or use the clipboard through the terminal."
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:1659
+#: crates/sam-runner/src/launch.rs:1663
 #. Keep the {placeholders}; their order may change.
 msgid "SAM did not share {files} with it, because files you open with this app are set to No access."
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:1857
+#: crates/sam-runner/src/launch.rs:1861
 msgid "pasta command without '--'"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:1858
+#: crates/sam-runner/src/launch.rs:1862
 msgid "pasta command without a program after '--'"
-msgstr ""
-
-#: crates/sam-runner/src/launch.rs:2023
-#. Keep the {placeholders}; their order may change.
-msgid "~/{place} → {to} (renamed in place: SAM's folder could not take it)"
 msgstr ""
 
 #: crates/sam-runner/src/launch.rs:2027
 #. Keep the {placeholders}; their order may change.
-msgid "~/{place}: deleted (it could not be moved)"
+msgid "~/{place} → {to} (renamed in place: SAM's folder could not take it)"
 msgstr ""
 
 #: crates/sam-runner/src/launch.rs:2031
 #. Keep the {placeholders}; their order may change.
+msgid "~/{place}: deleted (it could not be moved)"
+msgstr ""
+
+#: crates/sam-runner/src/launch.rs:2035
+#. Keep the {placeholders}; their order may change.
 msgid "~/{place}: COULD NOT BE REMOVED; it may run outside the sandbox: remove it yourself"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:2131
+#: crates/sam-runner/src/launch.rs:2135
 msgid "sandbox setup failed (Bubblewrap could not build the sandbox)"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:2139
+#: crates/sam-runner/src/launch.rs:2143
 msgid "closed by SAM"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:2144
+#: crates/sam-runner/src/launch.rs:2148
 #. Keep the {placeholders}; their order may change.
 msgid "kept running for {seconds} s (test start, ended by SAM)"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:2152
+#: crates/sam-runner/src/launch.rs:2156
 msgid "exited normally"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:2153
+#: crates/sam-runner/src/launch.rs:2157
 #. Keep the {placeholders}; their order may change.
 msgid "exited with code {code}"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:2154
+#: crates/sam-runner/src/launch.rs:2158
 msgid "ended by signal 11 (segmentation fault)"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:2155
+#: crates/sam-runner/src/launch.rs:2159
 msgid "ended by signal 6 (abort)"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:2156
+#: crates/sam-runner/src/launch.rs:2160
 #. Keep the {placeholders}; their order may change.
 msgid "ended by signal {signal}"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:2157
+#: crates/sam-runner/src/launch.rs:2161
 msgid "finished"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:2260
+#: crates/sam-runner/src/launch.rs:2264
 #. Keep the {placeholders}; their order may change.
 msgid "SAM's sound relay could not run ({why}), and sound without it is allowed for this app: it talks to your sound server directly and could make it load code outside the sandbox."
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:2266
+#: crates/sam-runner/src/launch.rs:2270
 msgid "No sound"
 msgstr ""
 
-#: crates/sam-runner/src/launch.rs:2269
+#: crates/sam-runner/src/launch.rs:2273
 #. Keep the {placeholders}; their order may change.
 msgid "The app has no sound: SAM's sound relay could not run ({why}). Sound straight from the sound server would let the app load code outside the sandbox; to allow that anyway, turn on \"Sound without SAM's relay\" for this app."
 msgstr ""
@@ -5593,12 +5593,12 @@ msgstr ""
 msgid "\"This computer only\" needs pasta (package \"passt\"), which is not installed"
 msgstr ""
 
-#: crates/sam-runner/src/ops/add.rs:22 crates/sam-runner/src/ops/overview.rs:341 crates/sam-runner/src/ops/profiles.rs:268
+#: crates/sam-runner/src/ops/add.rs:22 crates/sam-runner/src/ops/overview.rs:341 crates/sam-runner/src/ops/profiles.rs:287
 #. Keep the {placeholders}; their order may change.
 msgid "{file} does not exist"
 msgstr ""
 
-#: crates/sam-runner/src/ops/add.rs:27 crates/sam-runner/src/ops/profiles.rs:273
+#: crates/sam-runner/src/ops/add.rs:27 crates/sam-runner/src/ops/profiles.rs:292
 #. Keep the {placeholders}; their order may change.
 msgid "{file} is not a file"
 msgstr ""
@@ -5887,10 +5887,6 @@ msgstr ""
 msgid "Isolation assessment"
 msgstr ""
 
-#: crates/sam-runner/src/ops/overview.rs:74
-msgid "The AppImage changed since it was unpacked. Unpack it again to update the sandbox."
-msgstr ""
-
 #: crates/sam-runner/src/ops/overview.rs:76
 msgid "The AppImage no longer exists. You can still run the unpacked copy, point SAM at the moved file, or remove the app."
 msgstr ""
@@ -5947,35 +5943,35 @@ msgstr ""
 msgid "SAM unpacks AppImages only inside a sandbox, and none can be built here: {reason}. Diagnostics (sam-jail doctor) says what is missing."
 msgstr ""
 
-#: crates/sam-runner/src/ops/profiles.rs:153
+#: crates/sam-runner/src/ops/profiles.rs:155
 #. Keep the {placeholders}; their order may change.
 msgid "{settings} of {app} changed elsewhere in the meantime. Nothing was changed: look at the settings as they are now and make the change again."
 msgstr ""
 
-#: crates/sam-runner/src/ops/profiles.rs:182
+#: crates/sam-runner/src/ops/profiles.rs:201
 msgid "compatibility mode is disabled in settings (compatibility.behavior = never)"
 msgstr ""
 
-#: crates/sam-runner/src/ops/profiles.rs:244
+#: crates/sam-runner/src/ops/profiles.rs:263
 msgid "checking the sandbox before starting"
 msgstr ""
 
-#: crates/sam-runner/src/ops/profiles.rs:249
+#: crates/sam-runner/src/ops/profiles.rs:268
 #. Keep the {placeholders}; their order may change.
 msgid "sandbox check failed: {list}"
 msgstr ""
 
-#: crates/sam-runner/src/ops/profiles.rs:450
+#: crates/sam-runner/src/ops/profiles.rs:469
 #. Keep the {placeholders}; their order may change.
 msgid "the repair step '{step_id}' is not applied"
 msgstr ""
 
-#: crates/sam-runner/src/ops/profiles.rs:477
+#: crates/sam-runner/src/ops/profiles.rs:501
 #. Keep the {placeholders}; their order may change.
 msgid "no repair steps to undo for {app}"
 msgstr ""
 
-#: crates/sam-runner/src/ops/profiles.rs:551
+#: crates/sam-runner/src/ops/profiles.rs:575
 #. Keep the {placeholders}; their order may change.
 msgid "the preset “{preset}” changed after it was checked; nothing was applied. Check it again."
 msgstr ""

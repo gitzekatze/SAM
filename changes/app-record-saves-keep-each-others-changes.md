@@ -15,12 +15,17 @@
   the later save wins (a list, such as the granted folders, counts as one
   field).
 - A change that replaces all settings at once (a preset, a reset, the
-  compatibility mode, undoing the repair steps, a whole set you confirm)
-  saves exactly that set, never mixed with a switch saved meanwhile.
+  compatibility mode, a whole set you confirm) saves exactly that set,
+  never mixed with a switch saved meanwhile.
 - Applying or undoing one repair step works on the record as it is under
   the lock: a step applied at the same time elsewhere stays applied and
   listed, so it can be undone. Before, one of two steps applied at the
   same time was lost.
+- Undoing all repair steps and a reset also work on the record as it is
+  under the lock: a step applied at the same time elsewhere is undone with
+  the others. A reset now also takes off an argument a listed repair step
+  added, such as `--no-sandbox`. Before, that argument could stay on while
+  no step was listed any more, so nothing offered to undo it.
 - Confirming from the app's page checks what the page showed and clears
   the marks under the same lock, so it never clears a mark saved while it
   waited. `sam-jail review` without `--seen` shows no page and confirms
@@ -36,6 +41,11 @@
   first" mark before it unpacks, so that copy does not start until you
   confirm it (unless you confirmed the app while the unpacking still ran).
   If the unpacking then fails, SAM asks once more about the old content.
+- After such a failed save, the unpacked copy may already be the new
+  file. The start's warning and the app page no longer say that SAM runs
+  the previous version: they say that the unpacked copy SAM starts may not
+  be the AppImage file, and ask you to unpack it again so that SAM starts
+  that file and its record describes it.
 - Records written by older SAM versions read as before. An older SAM that
   runs at the same time does not take the lock, so close old SAM windows
   after updating SAM.

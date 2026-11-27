@@ -880,6 +880,7 @@ tests = ["steps_that_add_are_undone_and_tried_steps_are_no_hints", "only_an_ordi
   "only_a_system_file_replaces_a_bundled_library",
   "two_repair_steps_applied_at_once_are_both_listed",
   "undoing_one_repair_step_keeps_a_step_applied_meanwhile",
+  "undoing_repairs_or_a_reset_turns_back_an_argument_a_step_added_meanwhile",
 ]
 
 [[function]]
