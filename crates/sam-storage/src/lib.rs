@@ -493,9 +493,11 @@ impl Registry {
     /// (`Sam::mark_reviewed`, the one caller outside tests): like
     /// [`Registry::try_update`], but the record is saved exactly as
     /// `change` leaves it, so it may clear the "look at it first" marks.
-    /// `change` sees the record as it is under the lock, so it checks
-    /// there that the person saw what it confirms: a mark set just before
-    /// is never cleared unseen.
+    /// `change` sees the record as it is under the lock, so a confirmation
+    /// from the app's page checks there that the person saw what it
+    /// confirms: a mark set just before is never cleared unseen. A
+    /// confirmation at the terminal without the page's fingerprint checks
+    /// nothing and confirms what is there then.
     pub fn update_confirmed(
         &self,
         id: &str,
@@ -1518,12 +1520,13 @@ mod tests {
         assert_eq!(Registry::new(&paths).get(id).unwrap().unwrap().name, "Y");
     }
 
-    /// Confirming that the person looked at an app checks what the page
-    /// showed on the record as it is under the record lock: a "look at it
-    /// first" mark that another SAM process saves while the confirmation
-    /// waits for the lock makes the confirmation fail, and the mark stays.
-    /// Checked before the lock was taken, the confirmation would clear a
-    /// mark nobody saw.
+    /// The storage step of a confirmation (`update_confirmed`) gives its
+    /// check the record as it is once the record lock is taken: a "look at
+    /// it first" mark that another SAM process saves while the
+    /// confirmation waits for the lock is what the check sees, so a check
+    /// of what the page showed fails and the mark stays. SAM's own
+    /// confirmation, which makes that check, has its own test in
+    /// sam-runner (`a_confirmation_from_the_page_never_clears_a_mark_saved_before_its_lock`).
     #[test]
     fn a_confirmation_never_clears_a_mark_saved_while_it_waits() {
         use std::sync::mpsc;

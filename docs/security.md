@@ -1823,14 +1823,21 @@ was easily misread.
   the same field the later save wins (a list, such as the granted folders,
   counts as one field). A change that replaces the whole set of settings
   (a preset, a reset, the compatibility mode, an undo of the repair steps,
-  a whole set you confirm) saves that set as one value. A "look at it
-  first" mark is never cleared by such a save. A start that stores its
+  a whole set you confirm) saves that set as one value. Applying or
+  undoing one repair step works on the record as it is under the lock, so
+  a step another process applied meanwhile stays applied and listed. A
+  "look at it first" mark is never cleared by such a save. A start that stores its
   result writes the app's state and last error as the start read or set
   them, so a notice another process saved there while the app ran can be
   replaced. When a save waits more than 10 seconds for the lock, it stops
   with an error and saves nothing; work done before it stays (after an
   "unpack again", the newly unpacked copy, which the record then does not
-  describe). A SAM version from before this lock does not take it: while
+  describe). When the AppImage changed outside SAM, "unpack again" saves
+  the "look at it first" mark before it unpacks, so that copy does not
+  start until you confirm it, unless you confirmed the app while the
+  unpacking still ran. Confirming from the app's page checks what the page
+  showed under the lock; `sam-jail review` without `--seen` confirms what
+  is there when it gets the lock. A SAM version from before this lock does not take it: while
   it runs at the same time as this one (an old window left open after an
   update), one of its saves can still undo a change this SAM saved. Close
   old SAM windows after updating SAM.

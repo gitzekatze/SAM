@@ -43,8 +43,8 @@ impl Sam {
         entry: &mut AppEntry,
         kind: SetChange,
     ) -> Result<()> {
-        before_save();
-        let saved = self.registry().try_update(&entry.id, |now| {
+        let id = entry.id.clone();
+        let saved = self.change_profile(&id, |now| {
             sam_storage::apply_changes(now, read, entry)?;
             if kind == SetChange::WholeSet {
                 // A preset, a reset, an undo of the repair steps, the
@@ -54,6 +54,27 @@ impl Sam {
                 // one setting two saves change.
                 now.profile.permissions = entry.profile.permissions.clone();
             }
+            Ok(())
+        })?;
+        *entry = saved;
+        Ok(())
+    }
+
+    /// Makes `change` on the record of `id` as it is under the record lock,
+    /// then saves it as every change of an app's settings is saved; returns
+    /// the record as saved. For a change that must see the record as it is
+    /// now: a repair step changes switches and the list of applied steps
+    /// together, so another process's step saved meanwhile stays in both
+    /// (merged field by field, a switch and the list that names its step
+    /// could come from two different saves).
+    fn change_profile(
+        &self,
+        id: &str,
+        change: impl FnOnce(&mut AppEntry) -> Result<()>,
+    ) -> Result<AppEntry> {
+        before_save();
+        let saved = self.registry().try_update(id, |now| {
+            change(now)?;
             now.profile.user_modified = now.profile.permissions != now.recommended;
             // The note of an update's needs keeps what is not granted yet: a
             // changed switch is not the person seeing it (review L5).
@@ -68,10 +89,7 @@ impl Sam {
             now.clear_launch_failure();
             Ok(())
         })?;
-        *entry = saved.with_context(|| {
-            sam_core::i18n::trf("no registered app '{id}'", &[("id", &entry.id)])
-        })?;
-        Ok(())
+        saved.with_context(|| sam_core::i18n::trf("no registered app '{id}'", &[("id", &id)]))
     }
 
     /// Changes one setting. Leaves the app unconfirmed when it was.
@@ -357,31 +375,40 @@ impl Sam {
         as_repair: bool,
         confirmed: bool,
     ) -> Result<AppEntry> {
-        let mut e = self.resolve(query)?;
-        let read = e.clone();
-        let change = crate::gate::Change::Apply {
-            e: &e,
-            cfg: &self.config,
-            paths: &self.paths,
-            sug,
-        };
-        crate::gate::confirm(&change, confirmed)?;
-        if as_repair && e.repair_backup.is_none() {
-            e.repair_backup = Some(e.profile.clone());
-        }
-        let mut undo = sam_core::model::AppliedRepair {
-            step: Some(sug.clone()),
-            on_trial: as_repair,
-            ..Default::default()
-        };
-        crate::repair::apply_step(&mut e, sug, &mut undo)?;
-        e.profile.preset = None;
-        if as_repair && !e.repairs_applied.contains(&sug.id) {
-            e.repairs_applied.push(sug.id.clone());
-            e.applied_repairs.push(undo);
-        }
-        self.save_profile(&read, &mut e, SetChange::Switches)?;
-        Ok(e)
+        let id = self.resolve(query)?.id;
+        // Judged, applied and listed on the record as it is under the
+        // record lock: a step another SAM process applied meanwhile stays
+        // in the switches and in the list of applied steps, so every
+        // switch a step turned off can be undone by name. The gate reads
+        // the record and this computer's settings; its one slower check
+        // (whether overlays work here, a short Bubblewrap run) is made
+        // once per process.
+        self.change_profile(&id, |e| {
+            crate::gate::confirm(
+                &crate::gate::Change::Apply {
+                    e: &*e,
+                    cfg: &self.config,
+                    paths: &self.paths,
+                    sug,
+                },
+                confirmed,
+            )?;
+            if as_repair && e.repair_backup.is_none() {
+                e.repair_backup = Some(e.profile.clone());
+            }
+            let mut undo = sam_core::model::AppliedRepair {
+                step: Some(sug.clone()),
+                on_trial: as_repair,
+                ..Default::default()
+            };
+            crate::repair::apply_step(e, sug, &mut undo)?;
+            e.profile.preset = None;
+            if as_repair && !e.repairs_applied.contains(&sug.id) {
+                e.repairs_applied.push(sug.id.clone());
+                e.applied_repairs.push(undo);
+            }
+            Ok(())
+        })
     }
 
     /// Find a suggestion by id among the app's hints, findings and repair steps.
@@ -411,22 +438,23 @@ impl Sam {
     /// Switches off one applied repair step: puts back exactly what that
     /// step changed and keeps the other steps.
     pub fn undo_repair_step(&self, query: &str, step_id: &str) -> Result<AppEntry> {
-        let mut e = self.resolve(query)?;
-        let read = e.clone();
-        let i = e
-            .applied_repairs
-            .iter()
-            .position(|r| r.step.as_ref().is_some_and(|s| s.id == step_id))
-            .with_context(|| {
-                sam_core::i18n::trf(
-                    "the repair step '{step_id}' is not applied",
-                    &[("step_id", &step_id)],
-                )
-            })?;
-        let r = e.applied_repairs.remove(i);
-        crate::repair::revert_step(&mut e, &r)?;
-        self.save_profile(&read, &mut e, SetChange::Switches)?;
-        Ok(e)
+        let id = self.resolve(query)?.id;
+        // On the record as it is under the record lock, as for applying a
+        // step: a step applied meanwhile keeps its entry in the list.
+        self.change_profile(&id, |e| {
+            let i = e
+                .applied_repairs
+                .iter()
+                .position(|r| r.step.as_ref().is_some_and(|s| s.id == step_id))
+                .with_context(|| {
+                    sam_core::i18n::trf(
+                        "the repair step '{step_id}' is not applied",
+                        &[("step_id", &step_id)],
+                    )
+                })?;
+            let r = e.applied_repairs.remove(i);
+            crate::repair::revert_step(e, &r)
+        })
     }
 
     /// Undo every repair step, newest first, each taking back only what it
@@ -472,9 +500,11 @@ impl Sam {
     /// is there now is confirmed.
     pub fn mark_reviewed_as_shown(&self, query: &str, seen: Option<&str>) -> Result<AppEntry> {
         let id = self.resolve(query)?.id;
-        // Checked and confirmed on the record as it is under the record
-        // lock: a mark or notice another SAM process saved after the check
-        // is never cleared unseen.
+        before_save();
+        // Checked against `seen` and confirmed on the record as it is under
+        // the record lock: a mark or notice another SAM process saved after
+        // the page was drawn is never cleared unseen. Without `seen`, what
+        // is there when the lock is taken is confirmed.
         let saved = self.registry().update_confirmed(&id, |e| {
             if let Some(seen) = seen {
                 if sam_storage::review_fingerprint(e)? != seen {
@@ -885,9 +915,10 @@ mod record_lock_tests {
         static BEFORE_SAVE: RefCell<Option<Box<dyn FnOnce()>>> = const { RefCell::new(None) };
     }
 
-    /// Called by `save_profile` before it takes the record lock: the
-    /// moment a save by another process can land between the writer's
-    /// read and its save.
+    /// Called by a change of the settings (`save_profile`, a repair step)
+    /// and by a confirmation before they take the record lock: the moment
+    /// a save by another process can land between the writer's read and
+    /// its save.
     pub(super) fn before_save() {
         if let Some(h) = BEFORE_SAVE.with(|h| h.borrow_mut().take()) {
             h();
@@ -1079,5 +1110,162 @@ mod record_lock_tests {
         );
         assert!(back.content_changed_outside, "the mark stays");
         assert_eq!(changed.signing_key_changed, back.signing_key_changed);
+    }
+
+    /// A repair step that sets one switch, as SAM's ladder offers them.
+    fn step(id: &str, key: &str, value: &str) -> Suggestion {
+        Suggestion {
+            id: id.into(),
+            title: id.into(),
+            explanation: String::new(),
+            action: FixAction::Set {
+                key: key.into(),
+                value: value.into(),
+            },
+            risk: RiskLevel::High,
+            from_app_output: false,
+        }
+    }
+
+    fn seccomp_off() -> Suggestion {
+        step("seccomp-baseline", "advanced.seccomp_baseline", "false")
+    }
+
+    fn userns_on() -> Suggestion {
+        step("userns", "advanced.allow_userns", "true")
+    }
+
+    /// The steps the record lists as applied, by id.
+    fn listed(e: &AppEntry) -> Vec<String> {
+        e.applied_repairs
+            .iter()
+            .filter_map(|r| r.step.as_ref())
+            .map(|s| s.id.clone())
+            .collect()
+    }
+
+    /// A record with SAM's strict settings for a window app, confirmed.
+    fn strict_app(sam: &Sam, id: &str) {
+        let mut e = AppEntry {
+            id: id.into(),
+            name: "Steps".into(),
+            recommended: PermissionSet::strict_gui(),
+            ..Default::default()
+        };
+        e.profile.permissions = PermissionSet::strict_gui();
+        sam.registry().save_confirmed(&mut e).unwrap();
+    }
+
+    /// Two repair steps applied at the same time (the window and
+    /// `sam-jail repair` from a terminal) are both applied and both listed,
+    /// so a failed start or "Undo repairs" can turn each back. Before, the
+    /// switches were saved one by one but the list of applied steps as one
+    /// value: the later save's list replaced the earlier one, and the
+    /// syscall filter stayed off with no record of the step that turned
+    /// it off.
+    #[test]
+    fn two_repair_steps_applied_at_once_are_both_listed() {
+        let t = tempfile::tempdir().unwrap();
+        let paths = Paths::rooted(t.path());
+        let sam = Sam::with_paths(paths.clone()).unwrap();
+        const ID: &str = "appimage-steps-1a2b";
+        strict_app(&sam, ID);
+        let other = paths.clone();
+        meanwhile(move || {
+            Sam::with_paths(other)
+                .unwrap()
+                .apply_suggestion(ID, &userns_on(), true, true)
+                .unwrap();
+        });
+        sam.apply_suggestion(ID, &seccomp_off(), true, true)
+            .unwrap();
+        let back = sam.resolve(ID).unwrap();
+        let p = &back.profile.permissions.advanced;
+        assert!(!p.seccomp_baseline && p.allow_userns, "both steps applied");
+        assert_eq!(
+            listed(&back),
+            ["userns", "seccomp-baseline"],
+            "a switch a step changed is not listed as that step"
+        );
+        assert_eq!(back.repairs_applied, ["userns", "seccomp-baseline"]);
+        let undone = sam.undo_repairs(ID).unwrap();
+        let p = &undone.profile.permissions.advanced;
+        assert!(
+            p.seccomp_baseline && !p.allow_userns,
+            "\"Undo repairs\" turns every step back"
+        );
+    }
+
+    /// Undoing one repair step while another SAM process applies another
+    /// step keeps that other step applied and listed. Before, the undo
+    /// saved its list without the new step, while the new step's switch
+    /// (the syscall filter off) stayed.
+    #[test]
+    fn undoing_one_repair_step_keeps_a_step_applied_meanwhile() {
+        let t = tempfile::tempdir().unwrap();
+        let paths = Paths::rooted(t.path());
+        let sam = Sam::with_paths(paths.clone()).unwrap();
+        const ID: &str = "appimage-undo-1a2b";
+        strict_app(&sam, ID);
+        sam.apply_suggestion(ID, &userns_on(), true, true).unwrap();
+        let other = paths.clone();
+        meanwhile(move || {
+            Sam::with_paths(other)
+                .unwrap()
+                .apply_suggestion(ID, &seccomp_off(), true, true)
+                .unwrap();
+        });
+        sam.undo_repair_step(ID, "userns").unwrap();
+        let back = sam.resolve(ID).unwrap();
+        let p = &back.profile.permissions.advanced;
+        assert!(!p.allow_userns, "the undone step is undone");
+        assert!(!p.seccomp_baseline, "the step applied meanwhile stays");
+        assert_eq!(
+            listed(&back),
+            ["seccomp-baseline"],
+            "the step applied meanwhile is no longer listed"
+        );
+        let undone = sam.undo_repair_step(ID, "seccomp-baseline").unwrap();
+        assert!(undone.profile.permissions.advanced.seccomp_baseline);
+    }
+
+    /// Confirming from the app's page (`sam-jail review --seen`) checks
+    /// what the page showed on the record as it is under the record lock:
+    /// a "look at it first" mark another SAM process saves after the page
+    /// was drawn and before the confirmation takes the lock makes the
+    /// confirmation fail with `review-out-of-date`, and the mark stays.
+    /// Checked before the lock was taken, the confirmation cleared a mark
+    /// nobody saw.
+    #[test]
+    fn a_confirmation_from_the_page_never_clears_a_mark_saved_before_its_lock() {
+        let t = tempfile::tempdir().unwrap();
+        let paths = Paths::rooted(t.path());
+        let sam = Sam::with_paths(paths.clone()).unwrap();
+        const ID: &str = "appimage-shown-1a2b";
+        let mut e = AppEntry {
+            id: ID.into(),
+            name: "Shown".into(),
+            ..Default::default()
+        };
+        sam.registry().save_confirmed(&mut e).unwrap();
+        let shown = sam_storage::review_fingerprint(&sam.resolve(ID).unwrap()).unwrap();
+        let other = paths.clone();
+        meanwhile(move || {
+            Sam::with_paths(other)
+                .unwrap()
+                .update_record(ID, |f| f.content_changed_outside = true)
+                .unwrap();
+        });
+        let err = sam
+            .mark_reviewed_as_shown(ID, Some(&shown))
+            .expect_err("a mark the page never showed was confirmed");
+        assert_eq!(
+            sam_core::error::code_of(&err),
+            Some("review-out-of-date"),
+            "{err:#}"
+        );
+        let back = sam.resolve(ID).unwrap();
+        assert!(back.content_changed_outside, "the mark stays");
+        assert!(!back.reviewed, "nothing is confirmed");
     }
 }

@@ -878,6 +878,8 @@ code = ["sam-runner/src/repair.rs", "sam-sandbox/src/lib.rs"]
 tests = ["steps_that_add_are_undone_and_tried_steps_are_no_hints", "only_an_ordinary_start_judges_repair_steps", "the_no_sandbox_hint_is_only_for_electron_where_it_is_blocked", "the_graphics_hint_is_only_for_apps_without_it", "the_chromium_sandbox_check_matches_what_this_computer_allows", "a_repair_step_is_kept_when_it_helps_and_undone_when_it_does_not", "a_repair_step_that_did_not_help_is_undone", "the_ladder_offers_only_what_can_help_and_says_what_it_costs", "compatibility_mode_needs_yes_and_says_why", "a_repair_step_says_what_it_changes_and_costs", "ladder_skips_applied_and_noop_steps", "a_writable_app_folder_is_offered_only_where_it_can_work", "undoing_repair_steps_restores_the_settings_from_before_the_first_step", "switching_off_one_repair_step_keeps_the_others", "only_plain_library_names_are_accepted", "system_copies_replace_only_bundled_libraries_by_plain_name",
   "undoing_repair_steps_keeps_what_the_person_changed_since",
   "only_a_system_file_replaces_a_bundled_library",
+  "two_repair_steps_applied_at_once_are_both_listed",
+  "undoing_one_repair_step_keeps_a_step_applied_meanwhile",
 ]
 
 [[function]]
@@ -921,6 +923,7 @@ tests = ["records_changed_outside_sam_are_recognized", "a_save_of_an_older_copy_
   "a_whole_set_is_saved_as_chosen_when_a_switch_was_saved_meanwhile",
   "one_switch_changed_keeps_a_grant_saved_meanwhile",
   "a_confirmation_never_clears_a_mark_saved_while_it_waits",
+  "a_confirmation_from_the_page_never_clears_a_mark_saved_before_its_lock",
 ]
 checks = ["tests/gui/app-page-atspi.sh"]
 
@@ -1027,7 +1030,9 @@ id = 29
 area = "F"
 promise = "SAM notices AppImages that were moved or changed."
 code = ["sam-intake/src/fingerprint.rs", "sam-runner/src/ops/maintain.rs"]
-tests = ["a_swapped_appimage_does_not_start_until_it_is_confirmed", "what_is_unpacked_is_what_sam_checked_even_if_the_file_is_swapped", "a_swapped_appimage_stays_marked_when_a_switch_changes", "a_swapped_appimage_is_marked_also_after_the_change_check", "a_swapped_appimage_file_is_marked_and_old_records_stay_unchanged", "a_changed_appimage_file_is_noticed", "a_moved_appimage_is_recognized_by_its_content", "a_swapped_appimage_moved_elsewhere_is_not_taken_for_the_apps_own_file", "a_moved_appimage_added_again_is_followed_with_its_marks", "following_a_moved_appimage_keeps_a_change_made_while_it_was_checked"]
+tests = ["a_swapped_appimage_does_not_start_until_it_is_confirmed", "what_is_unpacked_is_what_sam_checked_even_if_the_file_is_swapped", "a_swapped_appimage_stays_marked_when_a_switch_changes", "a_swapped_appimage_is_marked_also_after_the_change_check", "a_swapped_appimage_file_is_marked_and_old_records_stay_unchanged", "a_changed_appimage_file_is_noticed", "a_moved_appimage_is_recognized_by_its_content", "a_swapped_appimage_moved_elsewhere_is_not_taken_for_the_apps_own_file", "a_moved_appimage_added_again_is_followed_with_its_marks", "following_a_moved_appimage_keeps_a_change_made_while_it_was_checked",
+  "a_changed_appimage_still_asks_first_when_the_closing_save_fails",
+]
 
 [[area]]
 id = "G"

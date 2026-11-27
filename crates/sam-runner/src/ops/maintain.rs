@@ -3,6 +3,15 @@
 
 use super::*;
 
+/// The moment after "Unpack Again" placed the new content and before it
+/// saves the record, where a test lets another SAM process hold the record
+/// lock; outside tests nothing happens here. A function of its own, so the
+/// translation collector skips only it as test code.
+fn before_closing_save() {
+    #[cfg(test)]
+    tests::before_closing_save();
+}
+
 impl Sam {
     // ------------------------------------------------------------ maintain
 
@@ -110,6 +119,20 @@ impl Sam {
             },
             ..checked.placed.clone()
         };
+        // Compared with what was unpacked last, not with the file's last
+        // seen checksum: the change check and relocate update that one, so
+        // a swapped file looked known (regression, audit U-H2).
+        let changed_content = unpacked_sha256(&entry) != fp.sha256;
+        if changed_content && !checked.sams_update {
+            // The "look at it first" mark is saved before the new content
+            // replaces the old one in the same folder: when the closing
+            // save below fails (another SAM process kept the record lock
+            // too long, a full disk), the record still asks first, so the
+            // new content does not start unconfirmed. When this save
+            // fails, nothing is unpacked yet. When the unpacking fails,
+            // the mark stays and SAM asks once more about the old content.
+            self.update_record(&entry.id, |f| f.content_changed_outside = true)?;
+        }
         let root = self.unpack_root()?.join(&entry.id);
         let mut log = Vec::new();
         let req = ExtractRequest {
@@ -123,11 +146,7 @@ impl Sam {
         match extract(&req, &mut log) {
             Ok(out) => {
                 entry.appimage_type = info.kind;
-                // Compared with what was unpacked last, not with the file's
-                // last seen checksum: the change check and relocate update
-                // that one, so a swapped file looked known (regression,
-                // audit U-H2).
-                if unpacked_sha256(&entry) != fp.sha256 {
+                if changed_content {
                     if !checked.sams_update {
                         entry.content_changed_outside = true;
                     }
@@ -163,6 +182,7 @@ impl Sam {
                 return Err(e);
             }
         }
+        before_closing_save();
         self.registry().save_changes(&read, &mut entry)?;
         Ok(entry)
     }
@@ -2310,7 +2330,103 @@ fn forget_earlier_backups(backups: &Path, keep: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::RefCell;
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    use std::rc::Rc;
+
+    thread_local! {
+        /// What another SAM process does after "Unpack Again" placed the
+        /// new content and before it saves the record.
+        static AT_CLOSING_SAVE: RefCell<Option<Box<dyn FnOnce()>>> = const { RefCell::new(None) };
+    }
+
+    /// Called by `reextract_from` right before its closing save.
+    pub(super) fn before_closing_save() {
+        if let Some(h) = AT_CLOSING_SAVE.with(|h| h.borrow_mut().take()) {
+            h();
+        }
+    }
+
+    /// "Unpack Again" of an AppImage whose content changed outside SAM
+    /// places the new content in the same folder before it saves the
+    /// record. When that closing save fails (here: another SAM process
+    /// keeps the record lock longer than SAM waits), the record still asks
+    /// first and the start is refused. Before, the mark was only in the
+    /// closing save, so the new content started with the old settings and
+    /// was never asked about.
+    #[test]
+    fn a_changed_appimage_still_asks_first_when_the_closing_save_fails() {
+        if crate::doctor::bwrap_functional(&HostInfo::probe()).is_err() {
+            crate::contracts::skip(
+                "bubblewrap is not functional here (SAM unpacks inside a sandbox)",
+            )
+            .unwrap_or_else(|e| panic!("{e}"));
+            return;
+        }
+        use sam_intake::testkit::{build, FixtureSpec};
+        let t = tempfile::tempdir().unwrap();
+        let img = t.path().join("Tool.AppImage");
+        build(&img, &FixtureSpec::hello("Tool")).unwrap();
+        let paths = Paths::rooted(&t.path().join("sam"));
+        let sam = Sam::with_paths(paths.clone()).unwrap();
+        let id = sam
+            .add(
+                &img,
+                &AddOptions {
+                    accept: true,
+                    launcher: Some(false),
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+            .entry
+            .id;
+        let mut spec = FixtureSpec::hello("Tool");
+        spec.comment = "a different file under the same name".into();
+        build(&img, &spec).unwrap();
+        // Another SAM process takes the record lock once the new content is
+        // in place, and keeps it.
+        let held: Rc<RefCell<Option<fs::File>>> = Rc::default();
+        let holder = held.clone();
+        let lock_file = paths.apps_dir().join(".records.lock");
+        AT_CLOSING_SAVE.with(|h| {
+            *h.borrow_mut() = Some(Box::new(move || {
+                let f = fs::OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .create(true)
+                    .truncate(false)
+                    .open(&lock_file)
+                    .unwrap();
+                f.lock().unwrap();
+                *holder.borrow_mut() = Some(f);
+            }))
+        });
+        let err = sam
+            .reextract(&id, false)
+            .expect_err("the closing save was made without the record lock");
+        assert!(
+            format!("{err:#}").contains("kept the app records locked"),
+            "{err:#}"
+        );
+        drop(
+            held.borrow_mut()
+                .take()
+                .expect("the other process held the lock"),
+        );
+        let e = sam.resolve(&id).unwrap();
+        assert!(
+            e.content_changed_outside,
+            "the record of the newly unpacked content asks first"
+        );
+        let errors = crate::launch::preflight(&e).0;
+        assert!(
+            errors
+                .iter()
+                .any(|m| m.contains("replaced by something other than a SAM update")),
+            "the new content starts unconfirmed: {errors:?}"
+        );
+    }
 
     /// A change works on the app's record as it is once it holds the app,
     /// not on the copy read when the change was asked for: another change
