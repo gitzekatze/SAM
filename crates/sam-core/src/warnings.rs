@@ -68,6 +68,11 @@ pub struct WarningContext<'a> {
     /// app page decides about an extra folder in SAM's folders as the
     /// sandbox does.
     pub sam_dirs: &'a [std::path::PathBuf],
+    /// The folder of SAM's runtime folders (`Paths::runtime_dir`'s
+    /// parent), where SAM's helpers listen, so the app page decides about a
+    /// user folder that leads there as the sandbox does
+    /// ([`crate::places::user_folder_refused`]).
+    pub sam_runtime: &'a [std::path::PathBuf],
 }
 
 impl WarningContext<'_> {
@@ -167,33 +172,38 @@ fn read_only_grants(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
 }
 
 /// Granted user folders (Documents, Downloads, …) that the sandbox does
-/// not show although the person set them: one set to `/tmp` or a folder in
-/// it where programs outside the sandbox listen, and one reached through a
-/// link in a folder the app can change. The window and `sam-jail info` say
-/// so before the start, with the words of the launch note, in the order
-/// the sandbox decides them. Told only in the launch log, a Downloads set
-/// to `/tmp` (so downloads clear themselves) looked as before, while what
-/// the app saved there was gone when it quit (review of finding R63).
+/// not show although the person set them: one whose way leads through a
+/// link the app could have planted out of what the home shows, or through
+/// a link to where programs outside the sandbox listen (anything in `/tmp`
+/// and `/var/tmp`, the runtime folders), one reached through a link in a
+/// folder the app can change, and one set to `/tmp` or a folder there
+/// known by its name as one where programs outside the sandbox listen
+/// ([`crate::places::user_folder_refused`]). The window and `sam-jail
+/// info` say so before the start, with the words of the launch note, in
+/// the order the sandbox decides them. Told only in the launch log, a
+/// Downloads set to `/tmp` (so downloads clear themselves) looked as
+/// before, while what the app saved there was gone when it quit (review
+/// of finding R63); the same with a Downloads that is a link to
+/// `/tmp/dl`. The app page cannot know the folders a start opens or SAM's
+/// own writable binds, which count as folders the app can change for that
+/// start only: a link planted in one of them is named in the launch log
+/// alone.
 fn refused_user_folders(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
     let Some(host) = ctx.host else {
         return Vec::new();
+    };
+    let this = crate::places::ThisStart {
+        writable: Vec::new(),
+        sam_runtime: ctx.sam_runtime.to_vec(),
     };
     XDG_DIR_KEYS
         .iter()
         .filter(|key| p.filesystem.xdg_access(key).is_granted())
         .filter_map(|key| {
             let dir = host.xdg_dir(key)?;
-            let note = if let Some(link) =
-                crate::places::user_folder_link_the_app_can_change(p, host, dir)
-            {
-                crate::places::user_folder_link_note(key, dir, &link)
-            } else if crate::risk::shows_host_sockets(
-                &crate::places::resolve(dir).to_string_lossy(),
-            ) {
-                crate::places::user_folder_sockets_note(key, dir)
-            } else {
-                return None;
-            };
+            let why = crate::places::user_folder_refused(p, host, key, &this)?;
+            let write = p.filesystem.xdg_access(key) == Access::Rw;
+            let note = crate::places::user_folder_refused_note(key, dir, &why, write);
             Some(
                 Warning::warn("user-folder-not-shown", "Not shown", note)
                     .with_key(&format!("filesystem.{key}")),
@@ -1235,35 +1245,97 @@ mod tests {
         assert!(!codes(&evaluate(&p, &ctx)).contains(&"start-place-read-only"));
     }
 
+    /// A folder beside the test program, outside `/tmp` and `/var/tmp`:
+    /// there every link counts as one to where programs outside the sandbox
+    /// listen, which would hide the other rules.
+    fn scratch() -> tempfile::TempDir {
+        let exe = std::env::current_exe().unwrap();
+        let t = tempfile::Builder::new()
+            .prefix("warnings-")
+            .tempdir_in(exe.parent().unwrap())
+            .unwrap();
+        let real = std::fs::canonicalize(t.path()).unwrap();
+        assert!(
+            !real.starts_with("/tmp") && !real.starts_with("/var/tmp"),
+            "the test program lies in a temp folder: {}",
+            real.display()
+        );
+        t
+    }
+
     /// A granted user folder the sandbox does not show is named on the app
     /// page and in `sam-jail info` before the start, with the launch note's
     /// words and the way out: Downloads set to `/tmp` (so downloads clear
     /// themselves), where programs outside the sandbox listen, and one
     /// reached through a link in the writable home. Said only in the launch
     /// log, what the app saved to such a Downloads was gone when it quit.
-    /// An ordinary folder, or one not granted, gives no such warning.
+    /// Also, with the words of the start's note
+    /// ([`crate::places::left_out_note`]), one the sandbox leaves out for a
+    /// link: one that leads to a folder in `/tmp` not known by its name
+    /// (`/tmp/dl`, so downloads clear themselves), to the host's runtime
+    /// folder or SAM's own, read and write or read-only, also with the whole
+    /// home writable, where the note names the danger and no way out; and
+    /// with the whole home writable one that is a link out of the home to
+    /// an ordinary folder, where the start says the app may have made that
+    /// link and how to show the folder.
+    /// The app page named none of these, while the start left them out.
+    /// An ordinary folder, a link a private home cannot have planted to a
+    /// folder outside `/tmp`, or a folder not granted gives no such
+    /// warning.
     #[test]
     fn a_user_folder_the_sandbox_does_not_show_is_named_before_the_start() {
-        let t = tempfile::tempdir().unwrap();
-        let home = std::fs::canonicalize(t.path()).unwrap().join("home");
-        let elsewhere = home.parent().unwrap().join("elsewhere");
-        std::fs::create_dir_all(home.join("Music")).unwrap();
-        std::fs::create_dir_all(&elsewhere).unwrap();
-        std::os::unix::fs::symlink(&elsewhere, home.join("Downloads")).unwrap();
-        let warned = |p: &PermissionSet, downloads: &std::path::Path| {
-            let mut host = HostInfo {
-                home: home.clone(),
-                ..Default::default()
+        use crate::places::{left_out_note, LeftOut, LeftOutPlace};
+        let t = scratch();
+        let base = std::fs::canonicalize(t.path()).unwrap();
+        let home = base.join("home");
+        let elsewhere = base.join("elsewhere");
+        let run = base.join("run");
+        let sam_run = base.join("samrun");
+        let in_tmp =
+            std::path::PathBuf::from(format!("/tmp/sam-test-dl-{}-not-made", std::process::id()));
+        for d in [home.join("Music"), home.join("Data/dl"), elsewhere.clone()] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        for d in [run.join("doc"), sam_run.join("app")] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        let link = |name: &str, to: &std::path::Path| {
+            let at = home.join(name);
+            std::os::unix::fs::symlink(to, &at).unwrap();
+            at
+        };
+        let downloads = link("Downloads", &elsewhere);
+        let in_home = link("Dl", &home.join("Data/dl"));
+        let to_tmp = link("DlTmp", &in_tmp);
+        let to_run = link("DlRun", &run.join("doc"));
+        let to_sam = link("DlSam", &sam_run.join("app"));
+        let warned_with =
+            |p: &PermissionSet, downloads: &std::path::Path, sam: &[std::path::PathBuf]| {
+                let mut host = HostInfo {
+                    home: home.clone(),
+                    runtime_dir: Some(run.clone()),
+                    ..Default::default()
+                };
+                host.xdg_dirs
+                    .insert("downloads".into(), downloads.to_path_buf());
+                let ctx = WarningContext {
+                    host: Some(&host),
+                    sam_runtime: sam,
+                    ..Default::default()
+                };
+                evaluate(p, &ctx)
+                    .into_iter()
+                    .find(|w| w.code == "user-folder-not-shown")
             };
-            host.xdg_dirs
-                .insert("downloads".into(), downloads.to_path_buf());
-            let ctx = WarningContext {
-                host: Some(&host),
-                ..Default::default()
-            };
-            evaluate(p, &ctx)
-                .into_iter()
-                .find(|w| w.code == "user-folder-not-shown")
+        let warned =
+            |p: &PermissionSet, downloads: &std::path::Path| warned_with(p, downloads, &[]);
+        let start_note = |dir: &std::path::Path, why: LeftOut, write: bool| {
+            left_out_note(
+                &crate::util::tildify(dir),
+                &why,
+                LeftOutPlace::UserFolder,
+                write,
+            )
         };
         let mut p = PermissionSet::strict_gui();
         p.filesystem.downloads = Access::Rw;
@@ -1279,20 +1351,73 @@ mod tests {
         let mut none = p.clone();
         none.filesystem.downloads = Access::None;
         assert!(warned(&none, std::path::Path::new("/tmp")).is_none());
-        // A link in the writable whole home.
+        // A link in the writable whole home that leads out of it: the start
+        // leaves it out as a link the app may have made, with the way out.
         let mut full = p.clone();
         full.filesystem.home = true;
         full.filesystem.home_access = Access::Rw;
-        let hit = warned(&full, &home.join("Downloads")).expect("a planted link is named");
+        let hit = warned(&full, &downloads).expect("a planted link is named");
+        assert_eq!(
+            hit.message,
+            start_note(&downloads, LeftOut::Link(downloads.clone()), true)
+        );
+        assert!(
+            hit.message.contains("may have made that link")
+                && hit.message.contains("user-dirs.dirs"),
+            "{}",
+            hit.message
+        );
+        // A link in the writable whole home that stays in it: only the rule
+        // for a link in a folder the app can change refuses it.
+        let hit = warned(&full, &in_home).expect("a link the app can change is named");
+        assert_eq!(
+            hit.message,
+            crate::places::user_folder_link_note("downloads", &in_home, &in_home)
+        );
         assert!(
             hit.message.contains("the app may have put it there"),
             "{}",
             hit.message
         );
-        assert!(
-            warned(&p, &home.join("Downloads")).is_none(),
-            "without the home"
-        );
+        assert!(warned(&p, &downloads).is_none(), "without the home");
+        // Links to where programs outside the sandbox listen, whoever made
+        // them: a folder in `/tmp` by any name, the host's runtime folder
+        // and SAM's. Also with the whole home writable, where the app may
+        // have made the link: the note names the danger and gives no way
+        // out. The note for a planted link said to set Downloads to the
+        // place it leads to, and set by its real place, a socket folder in
+        // `/tmp` by a name no list knows is shown as set.
+        for (dir, place, sam) in [
+            (&to_tmp, in_tmp.clone(), Vec::new()),
+            (&to_run, run.join("doc"), Vec::new()),
+            (&to_sam, sam_run.join("app"), vec![sam_run.clone()]),
+        ] {
+            for (access, write) in [(Access::Rw, true), (Access::Ro, false)] {
+                for whole_home in [false, true] {
+                    let mut q = PermissionSet::strict_gui();
+                    q.filesystem.downloads = access;
+                    q.filesystem.home = whole_home;
+                    q.filesystem.home_access = Access::Rw;
+                    let case = format!("{} {access:?}, whole home {whole_home}", dir.display());
+                    let hit =
+                        warned_with(&q, dir, &sam).unwrap_or_else(|| panic!("{case} is named"));
+                    assert_eq!(hit.key.as_deref(), Some("filesystem.downloads"));
+                    assert_eq!(
+                        hit.message,
+                        start_note(dir, LeftOut::HostServices(place.clone()), write),
+                        "{case}"
+                    );
+                    assert!(
+                        hit.message
+                            .contains("where programs outside the sandbox listen")
+                            && !hit.message.contains("may have made that link")
+                            && !hit.message.contains("user-dirs.dirs"),
+                        "{case}: {}",
+                        hit.message
+                    );
+                }
+            }
+        }
     }
 
     /// Two granted user folders set to one place at different access

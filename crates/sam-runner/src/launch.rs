@@ -396,6 +396,20 @@ pub fn preflight(app: &AppEntry) -> (Vec<String>, Vec<Warning>) {
     (errors, warns)
 }
 
+/// The folder that holds every app's runtime folders, where SAM's helpers
+/// (the D-Bus proxy, the sound relay) listen: the app page and the sandbox
+/// check count a user folder or bind that leads there as one that leads to
+/// where programs outside the sandbox listen, as the sandbox does for its
+/// start ([`sam_core::places::ThisStart`]).
+pub fn sam_runtime_folders(paths: &Paths) -> Vec<PathBuf> {
+    paths
+        .runtime_dir("app")
+        .parent()
+        .map(Path::to_path_buf)
+        .into_iter()
+        .collect()
+}
+
 pub fn prepare(
     app: &AppEntry,
     opts: &LaunchOptions,
@@ -415,6 +429,7 @@ pub fn prepare(
     let perms = &app.profile.permissions;
 
     let own_dirs = paths.sam_dirs(&cfg.extraction.location);
+    let sam_runtime = sam_runtime_folders(paths);
     let ctx_w = WarningContext {
         app_needs_network: Some(crate::ops::app_needs_network(app)),
         host: Some(host),
@@ -422,6 +437,7 @@ pub fn prepare(
         warn_full_home: cfg.security.warn_full_home,
         terminal_program: app.metadata.terminal,
         sam_dirs: &own_dirs,
+        sam_runtime: &sam_runtime,
     };
     warnings.extend(evaluate(perms, &ctx_w));
     // A terminal of its own for a user's start from a terminal, and for a
@@ -1628,13 +1644,24 @@ fn terminal_banner(app: &AppEntry, ctx: &LaunchContext) -> String {
             &[("folders", &sees.join(", "))],
         )
     };
-    format!(
-        "\x1b[2msam-jail: {}\x1b[0m",
-        sam_core::i18n::trf(
-            "{app} runs sandboxed, in a terminal of its own. It sees {sees} (files it saves anywhere else stay there). It cannot type into this shell or use the clipboard through the terminal.",
-            &[("app", &app.display_name()), ("sees", &sees)],
-        )
-    )
+    let mut line = sam_core::i18n::trf(
+        "{app} runs sandboxed, in a terminal of its own. It sees {sees} (files it saves anywhere else stay there). It cannot type into this shell or use the clipboard through the terminal.",
+        &[("app", &app.display_name()), ("sees", &sees)],
+    );
+    // A file named here that the app does not get ("No access"): said
+    // plainly, so the app's "file not found" does not look like a fault.
+    let withheld: Vec<String> = sam_sandbox::withheld_opened_paths(ctx)
+        .iter()
+        .map(|p| sam_core::util::tildify(p))
+        .collect();
+    if !withheld.is_empty() {
+        line.push(' ');
+        line.push_str(&sam_core::i18n::trf(
+            "SAM did not share {files} with it, because files you open with this app are set to No access.",
+            &[("files", &withheld.join(", "))],
+        ));
+    }
+    format!("\x1b[2msam-jail: {line}\x1b[0m")
 }
 
 /// What the launch log says before the app's output: how the sandbox is
@@ -2947,6 +2974,25 @@ mod tests {
         let line = terminal_banner(&app, &ctx);
         assert!(line.contains(&at("Pictures")), "{line}");
         assert!(!line.contains(&at("Games/sam")), "{line}");
+        // A file named on the command line is listed as seen while files
+        // opened with the app are shared; with "No access" it is not seen,
+        // and the line says that SAM did not share it.
+        std::fs::write(home.join("plan.txt"), "x").unwrap();
+        ctx.args = vec!["plan.txt".into()];
+        ctx.permissions.filesystem.opened_files = sam_core::permissions::Access::Ro;
+        let line = terminal_banner(&app, &ctx);
+        assert!(line.contains(&at("plan.txt")), "{line}");
+        assert!(!line.contains("did not share"), "{line}");
+        ctx.permissions.filesystem.opened_files = sam_core::permissions::Access::None;
+        let line = terminal_banner(&app, &ctx);
+        let sees = line.split(" (files it saves").next().unwrap_or_default();
+        assert!(!sees.contains(&at("plan.txt")), "{line}");
+        assert!(
+            line.contains(&format!("SAM did not share {} with it", at("plan.txt"))),
+            "{line}"
+        );
+        // The checks below name no file on the command line.
+        ctx.args = Vec::new();
         // With the whole home, a user folder outside it is shown on its own
         // and named; one inside it is part of the home.
         let outside = home.parent().unwrap().join("data/Documents");

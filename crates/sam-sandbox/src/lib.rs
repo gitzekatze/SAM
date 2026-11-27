@@ -20,7 +20,8 @@ use std::path::{Component, Path, PathBuf};
 use anyhow::{Context, Result};
 use sam_core::permissions::*;
 use sam_core::places::{
-    protected_places, resolve, start_place_of_bound_write_grant, SENSITIVE_DOTFILES,
+    protected_places, resolve, sensitive_places, start_place_of_bound_write_grant,
+    UserFolderRefused,
 };
 use sam_core::util::expand_home;
 use sam_core::{BubblewrapStatus, HostInfo, LaunchContext, SandboxCommand};
@@ -330,12 +331,8 @@ pub fn prepare_home_protection_alongside(ctx: &LaunchContext, running: &[HomeWat
 /// under them can be renamed away.
 fn protected_ancestors(home: &Path) -> Vec<String> {
     let places = protected_places(home);
-    ancestors_of(
-        places
-            .iter()
-            .map(String::as_str)
-            .chain(SENSITIVE_DOTFILES.iter().copied()),
-    )
+    let stores = sensitive_places(home);
+    ancestors_of(places.iter().chain(&stores).map(String::as_str))
 }
 
 /// The folders above each of `places` (relative to the home), parents first.
@@ -776,6 +773,19 @@ fn remove_any(p: &Path) -> bool {
     }
 }
 
+/// The places of the home (relative to it) that SAM shows an app with the
+/// permissions `p` on its own, read-only, where they lead ([`own_bind`]):
+/// the fonts, the fonts settings and, with `advanced.host_themes` and
+/// without the whole home, the theme files. SAM's sandbox check takes the
+/// same list.
+pub fn own_home_places(p: &PermissionSet) -> Vec<&'static str> {
+    let mut own: Vec<&'static str> = vec![".local/share/fonts", ".fonts", ".config/fontconfig"];
+    if p.advanced.host_themes && !p.filesystem.home {
+        own.extend(THEME_FILES);
+    }
+    own
+}
+
 /// Host theme configuration (read-only) when `advanced.host_themes` is on.
 const THEME_FILES: &[&str] = &[
     ".config/gtk-3.0",
@@ -1157,7 +1167,7 @@ impl Views {
             match g.how {
                 WriteBind::Writable => v.grants.push((g.bound.clone(), true)),
                 WriteBind::ReadOnly(_) => v.grants.push((g.bound.clone(), false)),
-                WriteBind::Below(_) | WriteBind::InsideSam => {}
+                WriteBind::Below(_) | WriteBind::InsideSam | WriteBind::LeftOut(_) => {}
             }
         }
         v
@@ -1181,8 +1191,12 @@ impl Views {
                 }
             }
         }
+        // Never one SAM leaves out ([`read_grant_left_out`]): its place
+        // is not shown.
         for c in &fsp.custom_read {
-            grants.push((grant_path(c), false));
+            if read_grant_left_out(ctx, c).is_none() {
+                grants.push((grant_path(c), false));
+            }
         }
         Views { grants }
     }
@@ -1318,6 +1332,10 @@ enum NotShown {
     /// The way to it (the first path) holds a link (the second) in a
     /// folder the app can change, which the app could have put there.
     Link(PathBuf, PathBuf),
+    /// Its way (as `user-dirs.dirs` names it) leads through a link the app
+    /// could have planted, or to where programs outside the sandbox listen
+    /// ([`sam_core::places::user_folder_left_out`]).
+    LeftOut(PathBuf, sam_core::places::LeftOut),
 }
 
 /// A granted user folder as it is bound: where `user-dirs.dirs` says it is,
@@ -1335,15 +1353,36 @@ enum NotShown {
 /// whole home writable, `ln -s /tmp ~/Downloads` in one start showed the
 /// host's `/tmp` in the next. Nor a folder in `/tmp` where programs outside
 /// the sandbox listen, which also the person may have set.
+///
+/// Nor one whose way leads through a link the app could have planted out
+/// of what it is shown, also in a folder only this start shows writable,
+/// nor one that leads to where programs outside the sandbox listen
+/// ([`sam_core::places::user_folder_left_out`]): with `~/Sync` writable
+/// and `XDG_DOCUMENTS_DIR` set to `~/Sync/Documents`, not made yet, the
+/// app made it a link to `/tmp/tmux-1000`, and the next start bound the
+/// host's tmux sockets over the sandbox's own `/tmp`. Each rule refuses
+/// on its own, so the folder is shown only where both let it.
+///
+/// Where both rules refuse a folder, the rule for planted links and
+/// listening programs decides what the start says ([`NotShown::LeftOut`]):
+/// its note names the danger (a link to where programs outside the sandbox
+/// listen) or the link and that it leads out of what the home shows, and
+/// tells the person how to show the folder if they made the link
+/// themselves. The note for a link the app can change
+/// ([`NotShown::Link`]) is left for the links only that rule refuses: in
+/// a folder the app can change, to a place the home shows anyway.
 fn user_dir(ctx: &LaunchContext, key: &str) -> std::result::Result<PathBuf, NotShown> {
     let dir = ctx.host.xdg_dir(key).ok_or(NotShown::Missing)?;
-    if let Some(link) =
-        sam_core::places::user_folder_link_the_app_can_change(&ctx.permissions, &ctx.host, dir)
+    // In the order the app page asks too, so it names the folder with the
+    // words of the launch note ([`sam_core::places::user_folder_refused`]).
+    match sam_core::places::user_folder_refused(&ctx.permissions, &ctx.host, key, &this_start(ctx))
     {
-        return Err(NotShown::Link(dir.to_path_buf(), link));
-    }
-    if sam_core::risk::shows_host_sockets(&resolve(dir).to_string_lossy()) {
-        return Err(NotShown::Sockets(dir.to_path_buf()));
+        Some(UserFolderRefused::LeftOut(why)) => {
+            return Err(NotShown::LeftOut(dir.to_path_buf(), why))
+        }
+        Some(UserFolderRefused::Link(link)) => return Err(NotShown::Link(dir.to_path_buf(), link)),
+        Some(UserFolderRefused::Sockets) => return Err(NotShown::Sockets(dir.to_path_buf())),
+        None => {}
     }
     match sam_core::places::user_folder_place(dir, &ctx.host.home) {
         Some(real) if !inside_sam(ctx, &real) => Ok(real),
@@ -1351,8 +1390,9 @@ fn user_dir(ctx: &LaunchContext, key: &str) -> std::result::Result<PathBuf, NotS
     }
 }
 
-/// What the start says about the user folder `key` that it does not show.
-fn user_folder_note(key: &str, why: &NotShown) -> String {
+/// What the start says about the user folder `key` that it does not show;
+/// `write`: the folder is set to read/write.
+fn user_folder_note(key: &str, why: &NotShown, write: bool) -> String {
     match why {
         NotShown::Missing => sam_core::i18n::trf(
             "{key} folder does not exist on the host; not bound",
@@ -1362,9 +1402,20 @@ fn user_folder_note(key: &str, why: &NotShown) -> String {
             "{key} folder is set to {path}, which shows more than a user folder (the home, a folder above it, a system or SAM folder, or a protected place); not bound",
             &[("key", &key), ("path", &dir.display())],
         ),
-        NotShown::Sockets(dir) => sam_core::places::user_folder_sockets_note(key, dir),
-        NotShown::Link(dir, link) => sam_core::places::user_folder_link_note(key, dir, link),
+        // The words the app page and `sam-jail info` take as well.
+        NotShown::Sockets(dir) => refused_note(key, dir, UserFolderRefused::Sockets, write),
+        NotShown::Link(dir, link) => {
+            refused_note(key, dir, UserFolderRefused::Link(link.clone()), write)
+        }
+        NotShown::LeftOut(dir, why) => {
+            refused_note(key, dir, UserFolderRefused::LeftOut(why.clone()), write)
+        }
     }
+}
+
+/// [`sam_core::places::user_folder_refused_note`].
+fn refused_note(key: &str, dir: &Path, why: UserFolderRefused, write: bool) -> String {
+    sam_core::places::user_folder_refused_note(key, dir, &why, write)
 }
 
 /// Whether the whole home, mounted at `home`, already shows the user folder
@@ -1460,6 +1511,10 @@ enum WriteBind {
     Below(PathBuf),
     /// In SAM's own folders, which the app never sees: not bound.
     InsideSam,
+    /// Reached through a link the app could have planted, out of what it
+    /// is shown, or through a link to where programs outside the sandbox
+    /// listen ([`sam_core::places::linked_place_left_out`]): not bound.
+    LeftOut(sam_core::places::LeftOut),
 }
 
 /// The extra writable folders of this start, each decided once
@@ -1494,6 +1549,7 @@ fn write_grants(ctx: &LaunchContext) -> Vec<WriteGrant> {
         v.grants.extend(opened);
         v
     };
+    let this = this_start(ctx);
     let app_can_change = |d: &Path| {
         shown_writable(&all, d)
             || sam_core::places::inside_sams_folders(d, &sams)
@@ -1507,7 +1563,15 @@ fn write_grants(ctx: &LaunchContext) -> Vec<WriteGrant> {
         .map(|(written, bound, place)| {
             // One answer for the sandbox and its check (independent review
             // of decision 9: the check missed SAM's folders kept elsewhere).
-            let how = if sam_core::places::write_grant_in_sams_folders(
+            let how = if let Some(why) = sam_core::places::linked_place_left_out(
+                &ctx.permissions,
+                &ctx.host,
+                &expand_home(&written),
+                true,
+                &this,
+            ) {
+                WriteBind::LeftOut(why)
+            } else if sam_core::places::write_grant_in_sams_folders(
                 &bound,
                 place.as_ref(),
                 &sams,
@@ -1546,6 +1610,116 @@ fn write_grants(ctx: &LaunchContext) -> Vec<WriteGrant> {
 /// so the checks see what the app sees.
 fn grant_path(c: &str) -> PathBuf {
     resolve(&expand_home(c))
+}
+
+/// Why this start leaves out the extra read-only folder `c` (as the
+/// person wrote it), if it does: reached through a link the app could have
+/// planted, out of what it is shown, or through a link to where programs
+/// outside the sandbox listen ([`sam_core::places::linked_place_left_out`]).
+/// With the whole home writable, an extra folder not made yet was turned
+/// into a link to `/tmp/tmux-1000` in one start, and the next start bound
+/// the host's tmux sockets.
+fn read_grant_left_out(ctx: &LaunchContext, c: &str) -> Option<sam_core::places::LeftOut> {
+    sam_core::places::linked_place_left_out(
+        &ctx.permissions,
+        &ctx.host,
+        &expand_home(c),
+        false,
+        &this_start(ctx),
+    )
+}
+
+/// What this start adds to its permissions for the binds SAM makes where
+/// their links lead ([`sam_core::places::ThisStart`]):
+/// - the folders it shows writable besides them, as `write_grants` counts
+///   them: SAM's writable binds and, when opened files are writable, every
+///   folder opened with the app, judged against no grant at all (a folder
+///   another grant already shows counts too, which leaves out more, never
+///   less; judged against the grants, they would depend on this answer);
+/// - SAM's runtime folders: this start's own (`<base>/<app>/<start>`) and
+///   the two folders above it that hold every app's and every start's,
+///   never a folder at the top of the computer (`/tmp`) or one that holds
+///   the home.
+fn this_start(ctx: &LaunchContext) -> sam_core::places::ThisStart {
+    let mut writable: Vec<PathBuf> = ctx
+        .extra_binds
+        .iter()
+        .filter(|(_, _, rw)| *rw)
+        .map(|(h, _, _)| resolve(h))
+        .collect();
+    if ctx.permissions.filesystem.opened_files == Access::Rw {
+        let none = Views { grants: Vec::new() };
+        writable.extend(opened_paths_in(ctx, &none).into_iter().map(|(p, _)| p));
+    }
+    let homes = [ctx.host.home.clone(), resolve(&ctx.host.home)];
+    let sam_runtime = ctx
+        .runtime_dir
+        .ancestors()
+        .take(3)
+        .filter(|a| a.components().count() > 2 && !homes.iter().any(|h| h.starts_with(a)))
+        .map(Path::to_path_buf)
+        .collect();
+    sam_core::places::ThisStart {
+        writable,
+        sam_runtime,
+    }
+}
+
+/// Where to bind the place `at` of the home that SAM shows the app on its
+/// own, read-only (the fonts, the fonts settings, the theme files), or why
+/// it is left out: never through a link the app could have planted out of
+/// what it is shown, never to where programs outside the sandbox listen,
+/// never to the home or a folder above it, and never to a key or
+/// credential store, a protected place or SAM's own folders (`guarded`,
+/// [`sam_core::places::own_place_left_out_where`]), except where a grant
+/// of this start already shows the place writable where the app reaches
+/// it (the whole home writable, an extra writable folder `~/.config`, a
+/// writable user folder): the grant shows it anyway, the read-only bind
+/// lands there and only narrows it, and `guard_home` and the hiding of
+/// SAM's folders come after it. Left out there, the fonts were writable
+/// through the home, and in a private home through an extra writable
+/// `~/.config` once the app had made `~/.config/vivaldi` a link to
+/// `~/.config/fontconfig`. Only where the app reaches the place through
+/// the views ([`Views::reached_at`]), which is where [`bind_place`] binds
+/// it: a place they do not show is bound at its own name, and one whose
+/// way leads out of them where it really is, where no protection of a
+/// grant reaches. `~/.fonts` a link to `~/.config/gh` would show the
+/// token as fonts, whatever `~/.config` shows; and with the home kept
+/// behind a link (`/home/u` a link to `/data/u`) and writable, `~/.fonts`
+/// made a link to `/data/u/.ssh` lies in the home where it really is, yet
+/// was bound at `/data/u/.ssh`, beside the home, where the keys were not
+/// hidden.
+/// With the whole home writable and `~/.fonts` missing, the app made it a
+/// link to `/tmp/tmux-1000`, and the next start bound the host's tmux
+/// sockets over the sandbox's own `/tmp`.
+fn own_bind(
+    ctx: &LaunchContext,
+    views: &Views,
+    guarded: &[PathBuf],
+    at: &Path,
+) -> std::result::Result<PathBuf, sam_core::places::LeftOut> {
+    // Where the app reaches `at` ([`Views::reached_at`], none for a place
+    // the views do not show or whose way leads out of them), as
+    // [`bind_place`] binds it. Shown writable there by a grant, or by the
+    // whole home writable also below an extra read-only folder (which the
+    // app may have made lead there): never by the home's real place alone,
+    // where the bind would not land.
+    let fsp = &ctx.permissions.filesystem;
+    let home_rw = fsp.home && fsp.home_access == Access::Rw;
+    let shown_writable = views
+        .reached_at(at)
+        .is_some_and(|r| views.writable(&r) || (home_rw && r.starts_with(&ctx.host.home)));
+    match sam_core::places::own_place_left_out_where(
+        &ctx.permissions,
+        &ctx.host,
+        at,
+        guarded,
+        &this_start(ctx),
+        shown_writable,
+    ) {
+        Some(why) => Err(why),
+        None => Ok(bind_place(views, at)),
+    }
 }
 
 /// The places bound read-only that the views do not record (the fonts, the
@@ -1662,17 +1836,20 @@ fn pins(
 }
 
 /// The credential stores in the home that this start hides: the key
-/// folders not given, and the other stores unless hidden files are.
-fn masked_places(fsp: &FilesystemPerms) -> Vec<&'static str> {
-    let mut masks: Vec<&'static str> = Vec::new();
+/// folders not given, and the other stores unless hidden files are, also
+/// under `XDG_CONFIG_HOME` and `XDG_DATA_HOME` inside the home
+/// ([`sensitive_places`]: with `XDG_CONFIG_HOME=~/cfg`, Git's passwords in
+/// `~/cfg/git/credentials` stayed readable with the whole home).
+fn masked_places(home: &Path, fsp: &FilesystemPerms) -> Vec<String> {
+    let mut masks: Vec<String> = Vec::new();
     if !fsp.ssh {
-        masks.push(".ssh");
+        masks.push(".ssh".into());
     }
     if !fsp.gnupg {
-        masks.push(".gnupg");
+        masks.push(".gnupg".into());
     }
     if !fsp.hidden_files {
-        masks.extend(SENSITIVE_DOTFILES);
+        masks.extend(sensitive_places(home));
     }
     masks
 }
@@ -1683,7 +1860,7 @@ fn guarded_places(home: &Path, fsp: &FilesystemPerms) -> Vec<PathBuf> {
     protected_places(home)
         .iter()
         .map(|p| home.join(p))
-        .chain(masked_places(fsp).iter().map(|m| home.join(m)))
+        .chain(masked_places(home, fsp).iter().map(|m| home.join(m)))
         .collect()
 }
 
@@ -1762,7 +1939,7 @@ fn guard_home(a: &mut Args, home: &Path, fsp: &FilesystemPerms, views: &Views, s
     // covers the hiding. With `~/.git-credentials` a link into
     // `~/.config/git`, the protected place bound read-only after it showed
     // the real file again (mutation run 2026-11-23).
-    for m in masked_places(fsp) {
+    for m in masked_places(home, fsp) {
         let path = home.join(m);
         let Ok(md) = fs::symlink_metadata(&path) else {
             continue;
@@ -1797,6 +1974,7 @@ fn guard_home(a: &mut Args, home: &Path, fsp: &FilesystemPerms, views: &Views, s
 /// Files and folders named on the command line ("Open with", or typed in a
 /// terminal: `hx notes.txt`, `hx .`), granted for this launch only, like a
 /// document portal; `true` means writable (`filesystem.opened_files`).
+/// With "No access" (`none`) nothing is granted this way.
 /// Relative names count from the folder the app was started in.
 ///
 /// Never granted this way: options (`-x`), sensitive paths (keys and
@@ -1826,11 +2004,14 @@ pub fn shown_extra_folders(ctx: &LaunchContext) -> Vec<String> {
         .filesystem
         .custom_read
         .iter()
-        .filter(|c| !sam_core::places::inside_sams_folders(&grant_path(c), &sams))
+        .filter(|c| {
+            !sam_core::places::inside_sams_folders(&grant_path(c), &sams)
+                && read_grant_left_out(ctx, c).is_none()
+        })
         .cloned();
     let writes = write_grants(ctx)
         .into_iter()
-        .filter(|g| !matches!(g.how, WriteBind::InsideSam))
+        .filter(|g| !matches!(g.how, WriteBind::InsideSam | WriteBind::LeftOut(_)))
         .map(|g| g.written);
     reads.chain(writes).collect()
 }
@@ -1853,7 +2034,42 @@ pub fn shown_user_folders(ctx: &LaunchContext) -> Vec<PathBuf> {
 /// [`opened_paths`] against the grants `views` ([`Views::base`]) worked out
 /// once for this start.
 fn opened_paths_in(ctx: &LaunchContext, views: &Views) -> Vec<(PathBuf, bool)> {
-    let rw = ctx.permissions.filesystem.opened_files == Access::Rw;
+    // "No access" shares nothing named on the command line, not even
+    // read-only: it used to share like "Read-only", so the setting said
+    // less than the sandbox gave.
+    let rw = match ctx.permissions.filesystem.opened_files {
+        Access::None => return Vec::new(),
+        Access::Ro => false,
+        Access::Rw => true,
+    };
+    shareable_paths_in(ctx, views, rw)
+}
+
+/// The files and folders named on the command line that SAM would share
+/// but does not, because files opened with the app are set to "No access"
+/// (`filesystem.opened_files = "none"`): what the start line and the
+/// launch log name, so that a person learns why the app cannot open the
+/// file. A file the app sees anyway (inside a granted folder) is not
+/// named, and nothing is named under "Read-only" or "Read & write".
+pub fn withheld_opened_paths(ctx: &LaunchContext) -> Vec<PathBuf> {
+    withheld_opened_paths_in(ctx, &Views::base(ctx))
+}
+
+/// [`withheld_opened_paths`] against the grants `views` ([`Views::base`]).
+fn withheld_opened_paths_in(ctx: &LaunchContext, views: &Views) -> Vec<PathBuf> {
+    if ctx.permissions.filesystem.opened_files != Access::None {
+        return Vec::new();
+    }
+    shareable_paths_in(ctx, views, false)
+        .into_iter()
+        .map(|(p, _)| p)
+        .collect()
+}
+
+/// Every file and folder named on the command line that may be shared
+/// (the rules of [`opened_paths`]), each with `rw`; what the setting
+/// allows of them decides the caller.
+fn shareable_paths_in(ctx: &LaunchContext, views: &Views, rw: bool) -> Vec<(PathBuf, bool)> {
     let home = &ctx.host.home;
     let on_drive = |p: &Path| {
         ["/media", "/mnt", "/run/media"]
@@ -1869,8 +2085,8 @@ fn opened_paths_in(ctx: &LaunchContext, views: &Views) -> Vec<(PathBuf, bool)> {
     };
     let keep_out: Vec<PathBuf> = protected_places(home)
         .iter()
+        .chain(&sensitive_places(home))
         .map(String::as_str)
-        .chain(SENSITIVE_DOTFILES.iter().copied())
         .chain([".ssh", ".gnupg"])
         .flat_map(|p| both(home.join(p)))
         .collect();
@@ -2022,6 +2238,7 @@ impl Bubblewrap {
         let writes = write_grants(ctx);
         let base = Views::of_writes(ctx, &writes);
         let opened = opened_paths_in(ctx, &base);
+        let withheld = withheld_opened_paths_in(ctx, &base);
         let views = Views::with_opened(ctx, base, &opened);
         let mut s = Section {
             ctx,
@@ -2029,6 +2246,7 @@ impl Bubblewrap {
             notes: Vec::new(),
             exec_env: Vec::new(),
             opened,
+            withheld,
             writes,
             views,
             sams: sams_folders(ctx),
@@ -2080,6 +2298,9 @@ struct Section<'c> {
     /// The files named on the command line that are granted, worked out
     /// once per start (audit S-F13: four times before).
     opened: Vec<(PathBuf, bool)>,
+    /// The files named on the command line that are not shared because of
+    /// "No access" ([`withheld_opened_paths`]), named in the notes.
+    withheld: Vec<PathBuf>,
     /// The extra writable folders, decided once ([`write_grants`]).
     writes: Vec<WriteGrant>,
     /// Every grant ([`Views::of`]).
@@ -2350,7 +2571,11 @@ impl Section<'_> {
                     // home's access, as before.
                     Err(NotShown::Missing | NotShown::Refused(_)) => continue,
                     Err(why) => {
-                        notes.push(user_folder_note(key, &why));
+                        notes.push(user_folder_note(
+                            key,
+                            &why,
+                            fsp.xdg_access(key) == Access::Rw,
+                        ));
                         continue;
                     }
                 };
@@ -2439,7 +2664,11 @@ impl Section<'_> {
                             mount(dir, &|m| m.op2("--symlink", &real, dir));
                         }
                     }
-                    Err(why) => notes.push(user_folder_note(key, &why)),
+                    Err(why) => notes.push(user_folder_note(
+                        key,
+                        &why,
+                        fsp.xdg_access(key) == Access::Rw,
+                    )),
                 }
             }
         }
@@ -2458,22 +2687,26 @@ impl Section<'_> {
                 || self.opened.iter().any(|(o, rw)| *rw && o == at)
                 || ctx.extra_binds.iter().any(|(_, sb, rw)| *rw && sb == at)
         };
-        // Safe read-only user resources.
-        for r in [".local/share/fonts", ".fonts", ".config/fontconfig"] {
-            let at = bind_place(&self.views, &home.join(r));
-            mount(&at, &|m| m.ro(&at));
-            if !bound_writable_after(&at) {
-                read_only.push(at);
+        // Safe read-only user resources, each only where it leads to a
+        // place it may show ([`own_bind`]).
+        let guarded = sam_core::places::guarded_places_everywhere(&home, &self.sams);
+        for rel in own_home_places(p) {
+            match own_bind(ctx, &self.views, &guarded, &home.join(rel)) {
+                Ok(at) => {
+                    mount(&at, &|m| m.ro(&at));
+                    if !bound_writable_after(&at) {
+                        read_only.push(at);
+                    }
+                }
+                Err(why) => notes.push(sam_core::places::left_out_note(
+                    &format!("~/{rel}"),
+                    &why,
+                    sam_core::places::LeftOutPlace::Own,
+                    false,
+                )),
             }
         }
         if p.advanced.host_themes && !fsp.home {
-            for t in THEME_FILES {
-                let at = bind_place(&self.views, &home.join(t));
-                mount(&at, &|m| m.ro(&at));
-                if !bound_writable_after(&at) {
-                    read_only.push(at);
-                }
-            }
             // Deeper than its folder, so mounted after it. Only a plain
             // file: a link inside leads where the sandbox shows nothing,
             // and Bubblewrap cannot mount over a link.
@@ -2487,7 +2720,18 @@ impl Section<'_> {
             }
         }
         // Extra folders, at their resolved place: what the app sees there.
+        // Never one reached through a link that could take it somewhere it
+        // must not lead ([`read_grant_left_out`]).
         for c in &fsp.custom_read {
+            if let Some(why) = read_grant_left_out(ctx, c) {
+                notes.push(sam_core::places::left_out_note(
+                    c,
+                    &why,
+                    sam_core::places::LeftOutPlace::Extra,
+                    false,
+                ));
+                continue;
+            }
             let path = grant_path(c);
             mount(&path, &|m| m.op2("--ro-bind-try", &path, &path));
         }
@@ -2519,6 +2763,15 @@ impl Section<'_> {
                     notes.push(sam_core::places::inside_sams_folders_note(&g.written));
                     continue;
                 }
+                WriteBind::LeftOut(why) => {
+                    notes.push(sam_core::places::left_out_note(
+                        &g.written,
+                        why,
+                        sam_core::places::LeftOutPlace::Extra,
+                        true,
+                    ));
+                    continue;
+                }
             };
             let path = &g.bound;
             mount(path, &|m| m.op2(op, path, path));
@@ -2543,6 +2796,13 @@ impl Section<'_> {
                     &[("path", &path.display())],
                 )
             });
+        }
+        // Named, not shared: the log says why the app cannot open it.
+        for path in self.withheld.clone() {
+            notes.push(sam_core::i18n::trf(
+                "did not share {path}, named when starting the app: files you open with this app are set to No access",
+                &[("path", &path.display())],
+            ));
         }
         let views = &self.views;
         // An extra folder shown read-only for a start place counts as a
@@ -3386,50 +3646,12 @@ pub fn write_identity_files(ctx: &LaunchContext) -> Result<()> {
 /// Whether reaching `p` passes a link that sits in a folder the app can
 /// change (`app_can_change`, asked with the folder's real place): the app
 /// could have put that link there, pointing anywhere. Followed the way the
-/// kernel does, link by link; a path with too many links counts as one.
+/// kernel does, link by link; a path with too many links counts as one
+/// (the one rule every bind through links takes,
+/// [`sam_core::places::link_the_app_could_plant`]).
 fn link_the_app_can_change(p: &Path, app_can_change: &dyn Fn(&Path) -> bool) -> bool {
-    use std::ffi::OsString;
-    use std::path::Component;
-    // The parts still to walk, as owned names ("/" for the root).
-    let parts = |p: &Path| -> Vec<OsString> {
-        p.components()
-            .map(|c| match c {
-                Component::RootDir | Component::Prefix(_) => OsString::from("/"),
-                other => other.as_os_str().to_os_string(),
-            })
-            .collect()
-    };
-    let p = match p.is_absolute() {
-        true => p.to_path_buf(),
-        false => std::env::current_dir().unwrap_or_default().join(p),
-    };
-    let mut todo: std::collections::VecDeque<OsString> = parts(&p).into();
-    let mut at = PathBuf::from("/");
-    let mut links = 0;
-    while let Some(c) = todo.pop_front() {
-        if c == "/" {
-            at = PathBuf::from("/");
-        } else if c == ".." {
-            at.pop();
-        } else if c != "." {
-            let next = at.join(&c);
-            if !fs::symlink_metadata(&next).is_ok_and(|m| m.file_type().is_symlink()) {
-                at = next;
-                continue;
-            }
-            links += 1;
-            if app_can_change(&at) || links > 40 {
-                return true;
-            }
-            let Ok(target) = fs::read_link(&next) else {
-                return true;
-            };
-            for t in parts(&target).into_iter().rev() {
-                todo.push_front(t);
-            }
-        }
-    }
-    false
+    let way = sam_core::places::follow(p);
+    sam_core::places::link_the_app_could_plant(&way, app_can_change).is_some()
 }
 
 /// True for an existing Unix socket (not a folder, file or device).
@@ -3907,6 +4129,28 @@ mod tests {
         let f = proj.join("notes.txt").display().to_string();
         assert!(has_seq(&a, &["--ro-bind-try", &f, &f]));
         assert!(has_seq(&a, &["--chdir", proj.to_str().unwrap()]));
+        assert_eq!(withheld_opened_paths(&ctx), Vec::<PathBuf>::new());
+        // "No access" shares nothing, not even read-only (it used to share
+        // like "Read-only"): no bind, the app starts in its private home
+        // rather than in a folder it cannot see, and the log names the file
+        // it did not share.
+        ctx.permissions.filesystem.opened_files = Access::None;
+        assert_eq!(opened_paths(&ctx), vec![], "none shares no opened file");
+        let a = args_of(&ctx);
+        assert!(!a.contains(&f), "no bind of the opened file");
+        assert!(has_seq(&a, &["--chdir", home.to_str().unwrap()]));
+        assert_eq!(withheld_opened_paths(&ctx), vec![proj.join("notes.txt")]);
+        let notes = Bubblewrap.build(&ctx).unwrap().notes;
+        assert!(
+            notes
+                .iter()
+                .any(|n| n.contains(&f) && n.contains("No access")),
+            "{notes:?}"
+        );
+        // A file nobody may open is not named either.
+        ctx.args = vec!["../.bashrc".into()];
+        assert_eq!(withheld_opened_paths(&ctx), Vec::<PathBuf>::new());
+        ctx.permissions.filesystem.opened_files = Access::Ro;
         ctx.args.clear();
         assert!(
             has_seq(&args_of(&ctx), &["--chdir", home.to_str().unwrap()]),
@@ -4979,6 +5223,14 @@ mod guard_tests {
 
     use super::*;
     use sam_core::sandbox::sample_context;
+    use sam_core::util::tildify;
+
+    /// Whether the launch note `note` names the place `p`: by its full
+    /// path, or as SAM shows a place below the real home to people (`~/…`),
+    /// which happens wherever the test folders lie in the home (CI).
+    fn names(note: &str, p: &Path) -> bool {
+        note.contains(p.to_string_lossy().as_ref()) || note.contains(&tildify(p))
+    }
 
     /// An app started from SAM's window keeps the system's language, even
     /// when the window itself shows another one.
@@ -5235,6 +5487,34 @@ mod guard_tests {
             at(&a, &["--bind", &s("vault"), &s("vault")]).is_some(),
             "{a:?}"
         );
+    }
+
+    /// The folders above each credential store are pinned with the whole
+    /// home writable also when hidden files are granted and the stores are
+    /// shown (`~/.var` above `~/.var/app`, `~/.cargo` above
+    /// `~/.cargo/credentials`): nothing else guards them then, so without
+    /// the pin the app could rename them away. With hidden files off, the
+    /// hidden store pins them as well.
+    #[test]
+    fn the_folders_above_a_shown_credential_store_are_pinned() {
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap().join("home");
+        for d in [".var/app", ".cargo"] {
+            fs::create_dir_all(home.join(d)).unwrap();
+        }
+        let s = |p: &str| home.join(p).to_string_lossy().into_owned();
+        for hidden_files in [true, false] {
+            let mut p = full_rw();
+            p.filesystem.hidden_files = hidden_files;
+            let a = args_of(&ctx_for(&p, &home));
+            for d in [".var", ".cargo"] {
+                assert!(
+                    has_seq(&a, &["--bind", &s(d), &s(d)]),
+                    "{d} is pinned, hidden files {hidden_files}: {a:?}"
+                );
+            }
+            assert!(!a.contains(&s("xyzzy")), "no pin where no folder is: {a:?}");
+        }
     }
 
     /// The app's way to a host path is followed link by link as Linux
@@ -5955,10 +6235,13 @@ mod guard_tests {
 
     /// A user folder set to the root, the folder above the home, a link to
     /// it, a key folder or SAM's folder is never shown; a usual one is, at
-    /// its real place with a link where the app looks (audit S-F11).
+    /// its real place with a link where the app looks (audit S-F11). Built
+    /// outside `/tmp`: a link to a folder above the home that lies in
+    /// `/tmp` leads to where programs outside the sandbox listen, which is
+    /// the reason the start gives then ([`user_dir`]), checked at the end.
     #[test]
     fn a_user_folder_that_shows_more_is_not_shown() {
-        let t = tempfile::tempdir().unwrap();
+        let t = scratch();
         let home = t.path().join("home/ann");
         for d in [".ssh", "real-docs", "sam"] {
             fs::create_dir_all(home.join(d)).unwrap();
@@ -6010,6 +6293,27 @@ mod guard_tests {
         let d = home.join("Docs").to_string_lossy().into_owned();
         assert!(has_seq(&a, &["--bind-try", &r, &r]), "{a:?}");
         assert!(has_seq(&a, &["--symlink", &r, &d]), "{a:?}");
+        // The same link in a home kept in `/tmp`: not shown, for where it
+        // leads.
+        let in_tmp = tempfile::tempdir().unwrap();
+        let above = in_tmp.path().join("home");
+        let tmp_home = above.join("ann");
+        fs::create_dir_all(&tmp_home).unwrap();
+        std::os::unix::fs::symlink(&above, tmp_home.join("up")).unwrap();
+        ctx.host.home = tmp_home.clone();
+        ctx.sam_dirs = vec![tmp_home.join("sam")];
+        assert!(matches!(
+            docs(&mut ctx, tmp_home.join("up")),
+            Err(NotShown::LeftOut(
+                _,
+                sam_core::places::LeftOut::HostServices(_)
+            ))
+        ));
+        let a = args_of(&ctx);
+        assert!(
+            !a.iter().any(|x| Path::new(x) == above),
+            "{above:?} not bound: {a:?}"
+        );
     }
 
     /// An extra writable folder that is a start place, lies inside one or
@@ -6594,6 +6898,10 @@ mod guard_tests {
                     assert!(!rw && !ro && in_views.is_none(), "{g:?}");
                     kinds.push("left out");
                 }
+                WriteBind::LeftOut(_) => {
+                    assert!(!rw && !ro && in_views.is_none(), "{g:?}");
+                    kinds.push("left out");
+                }
                 WriteBind::ReadOnly(_) => {
                     assert!(
                         ro && !rw && in_views == Some(&(g.bound.clone(), false)),
@@ -6810,10 +7118,12 @@ mod guard_tests {
     /// read-only one, and outside the home at all
     /// (`XDG_DOCUMENTS_DIR=/data/Documents`), read-only or writable. A link
     /// outside the home is put where the app looks; one in the home comes
-    /// with it. The views give the same answer as the mounts.
+    /// with it. The views give the same answer as the mounts. Built outside
+    /// `/tmp`, where a link counts as one to where programs outside the
+    /// sandbox listen: there it is left out as well, checked at the end.
     #[test]
     fn a_user_folder_is_mounted_at_its_own_access_with_the_whole_home() {
-        let t = tempfile::tempdir().unwrap();
+        let t = scratch();
         let base = fs::canonicalize(t.path()).unwrap();
         let home = base.join("home");
         let outside = base.join("data/Documents");
@@ -6918,7 +7228,9 @@ mod guard_tests {
         );
         assert!(!a.iter().any(|x| *x == st(&in_home)), "{a:?}");
         // In a writable home the app could have put that link there: where
-        // it leads is not shown, and the start names the link.
+        // it leads is not shown, and the start names the link. Both rules
+        // for user folders refuse it; the one for planted links that lead
+        // out of what the home shows says why ([`user_dir`]).
         let ctx = start(Access::Rw, Access::Ro, &in_home);
         let cmd = Bubblewrap.build(&ctx).unwrap();
         assert!(
@@ -6929,11 +7241,23 @@ mod guard_tests {
         assert!(
             cmd.notes
                 .iter()
-                .any(|n| n.contains(&st(&in_home)) && n.contains("the app may have put it there")),
+                .any(|n| names(n, &in_home) && n.contains("may have made that link")),
             "{:?}",
             cmd.notes
         );
         assert!(!Views::base(&ctx).visible(&outside.join("x")));
+        assert_eq!(
+            sam_core::places::user_folder_link_the_app_can_change(
+                &ctx.permissions,
+                &ctx.host,
+                &in_home
+            ),
+            Some(in_home.clone())
+        );
+        assert!(matches!(
+            user_dir(&ctx, "documents"),
+            Err(NotShown::LeftOut(_, sam_core::places::LeftOut::Link(l))) if l == in_home
+        ));
         // A user folder that shows more than one is still not shown.
         fs::create_dir_all(home.join(".ssh")).unwrap();
         let a = args_of(&start(Access::Rw, Access::Ro, &home.join(".ssh")));
@@ -6942,6 +7266,28 @@ mod guard_tests {
             !has_seq(&a, &["--ro-bind-try", &ssh, &ssh]),
             "refused: {a:?}"
         );
+        // A link outside the home in `/tmp`: whoever made it, it leads to
+        // where programs outside the sandbox listen, so it is not mounted,
+        // read-only or writable, and the start says why.
+        let in_tmp = tempfile::tempdir().unwrap();
+        let tmp_link = fs::canonicalize(in_tmp.path()).unwrap().join("Docs");
+        std::os::unix::fs::symlink(&outside, &tmp_link).unwrap();
+        for (home_access, acc) in [(Access::Rw, Access::Ro), (Access::Ro, Access::Rw)] {
+            let ctx = start(home_access, acc, &tmp_link);
+            let cmd = Bubblewrap.build(&ctx).unwrap();
+            assert!(
+                !cmd.args.iter().any(|x| *x == st(&outside)),
+                "{home_access:?} home, {acc:?}: {:?}",
+                cmd.args
+            );
+            assert!(
+                cmd.notes.iter().any(|n| n.contains(&st(&tmp_link))
+                    && n.contains("where programs outside the sandbox listen")),
+                "{:?}",
+                cmd.notes
+            );
+            assert!(!Views::base(&ctx).visible(&outside.join("x")));
+        }
     }
 
     /// A start file kept as a link into a read-only user folder
@@ -6998,10 +7344,14 @@ mod guard_tests {
     /// (Downloads set to `~/Documents/dl`, Documents writable) without the
     /// whole home, and a link inside a link's target. A link in a folder
     /// the app cannot change is followed as before. The start names the
-    /// link, and the views agree with the mounts.
+    /// link, and the views agree with the mounts. Where the link leads out
+    /// of what the home shows, the rule for planted links refuses it too
+    /// and says why ([`user_dir`]); one to a place the home shows anyway is
+    /// refused by this rule alone. Built outside `/tmp`, where every link
+    /// counts as one to where programs outside the sandbox listen.
     #[test]
     fn a_user_folder_behind_a_link_the_app_could_plant_is_not_shown() {
-        let t = tempfile::tempdir().unwrap();
+        let t = scratch();
         let base = fs::canonicalize(t.path()).unwrap();
         let home = base.join("home");
         let elsewhere = base.join("data/elsewhere");
@@ -7032,18 +7382,53 @@ mod guard_tests {
             assert!(
                 cmd.notes
                     .iter()
-                    .any(|n| n.contains(&st(link)) && n.contains("the app may have put it there")),
+                    .any(|n| names(n, link) && n.contains("may have made that link")),
                 "{:?}",
                 cmd.notes
             );
             assert!(!Views::base(ctx).visible(&elsewhere.join("x")));
+            let dir = ctx.host.xdg_dir("downloads").unwrap();
+            assert_eq!(
+                sam_core::places::user_folder_link_the_app_can_change(
+                    &ctx.permissions,
+                    &ctx.host,
+                    dir
+                )
+                .as_deref(),
+                Some(link)
+            );
             assert!(matches!(
                 user_dir(ctx, "downloads"),
-                Err(NotShown::Link(_, l)) if l == link
+                Err(NotShown::LeftOut(_, sam_core::places::LeftOut::Link(l))) if l == link
             ));
         };
         // The writable whole home holds the link.
         refused(&start(&full_rw(), &planted), &planted);
+        // One to a place the writable home shows anyway (`~/D`), set
+        // read-only: refused by this rule alone, which names the link, so
+        // it gets no read-only mount of its own there.
+        let to_home = home.join("Dl");
+        std::os::unix::fs::symlink(home.join("D"), &to_home).unwrap();
+        let mut ctx = start(&full_rw(), &to_home);
+        ctx.permissions.filesystem.downloads = Access::Ro;
+        let cmd = Bubblewrap.build(&ctx).unwrap();
+        let d = st(&home.join("D"));
+        assert!(
+            !has_seq(&cmd.args, &["--ro-bind-try", &d, &d]),
+            "{:?}",
+            cmd.args
+        );
+        assert!(
+            cmd.notes
+                .iter()
+                .any(|n| n.contains(&st(&to_home)) && n.contains("the app may have put it there")),
+            "{:?}",
+            cmd.notes
+        );
+        assert!(matches!(
+            user_dir(&ctx, "downloads"),
+            Err(NotShown::Link(_, l)) if l == to_home
+        ));
         // A writable user folder holds it, without the whole home.
         let dl = home.join("Documents/dl");
         std::os::unix::fs::symlink(&elsewhere, &dl).unwrap();
@@ -7182,10 +7567,13 @@ mod guard_tests {
     /// read-only, `mv ~/Dropbox/Documents/Downloads ~/x; ln -s /srv/data
     /// ~/Dropbox/Documents/Downloads` in one start bound `/srv/data`
     /// writable as Downloads in the next (review of finding R63). The same
-    /// inside a read-only extra folder.
+    /// inside a read-only extra folder. Each such link leads out of what
+    /// the home shows, so the rule for planted links refuses it too and
+    /// says why ([`user_dir`]). Built outside `/tmp`, where every link
+    /// counts as one to where programs outside the sandbox listen.
     #[test]
     fn a_link_inside_a_read_only_folder_in_the_writable_home_is_not_followed() {
-        let t = tempfile::tempdir().unwrap();
+        let t = scratch();
         let base = fs::canonicalize(t.path()).unwrap();
         let home = base.join("home");
         let elsewhere = base.join("srv/data");
@@ -7224,14 +7612,24 @@ mod guard_tests {
             assert!(
                 cmd.notes
                     .iter()
-                    .any(|n| n.contains(&st(link)) && n.contains("the app may have put it there")),
+                    .any(|n| names(n, link) && n.contains("may have made that link")),
                 "{:?}",
                 cmd.notes
             );
             assert!(!Views::base(ctx).visible(&elsewhere.join("x")));
+            let dir = ctx.host.xdg_dir("downloads").unwrap();
+            assert_eq!(
+                sam_core::places::user_folder_link_the_app_can_change(
+                    &ctx.permissions,
+                    &ctx.host,
+                    dir
+                )
+                .as_deref(),
+                Some(link)
+            );
             assert!(matches!(
                 user_dir(ctx, "downloads"),
-                Err(NotShown::Link(_, l)) if l == link
+                Err(NotShown::LeftOut(_, sam_core::places::LeftOut::Link(l))) if l == link
             ));
         };
         // The review's case: Documents is refused and not mounted.
@@ -7583,6 +7981,16 @@ mod guard_tests {
     /// `dots` away with the guard. Skipped on or inside the whole read-only
     /// place, those pins were lost. The read-only place itself, where it
     /// is still the topmost mount, stays unpinned.
+    ///
+    /// SAM does not bind a font or theme place on its own that holds a
+    /// place it protects ([`own_bind`]), except where a grant shows it
+    /// writable anyway (the whole home writable, the writable folder at
+    /// the place itself); so with the start file's target inside, the
+    /// place is bound read-only only there or where it is also an extra
+    /// read-only folder; the pins stay all the same. The same with an extra
+    /// read-only folder inside instead (`~/.fonts/work/dots/licensed`),
+    /// where SAM's own read-only bind is made: `dots` is pinned after the
+    /// writable folder and before the extra one.
     #[test]
     fn a_writable_folder_inside_a_read_only_font_or_theme_place_keeps_its_pins() {
         let st = |p: &Path| p.to_string_lossy().into_owned();
@@ -7602,35 +8010,80 @@ mod guard_tests {
             (".config/gtk-3.0", ".config/gtk-3.0/work", themes),
         ];
         let mut lost = Vec::new();
-        for (ro, work, mut p) in cases {
-            let t = tempfile::tempdir().unwrap();
+        for ((ro_rel, work, p), start_file) in cases
+            .iter()
+            .flat_map(|c| [(c.clone(), true), (c.clone(), false)])
+        {
+            let mut p = p.clone();
+            let t = scratch();
             let home = fs::canonicalize(t.path()).unwrap().join("home");
             let dots = home.join(work).join("dots");
-            fs::create_dir_all(&dots).unwrap();
-            fs::write(dots.join("bashrc"), "").unwrap();
-            std::os::unix::fs::symlink(dots.join("bashrc"), home.join(".bashrc")).unwrap();
-            let in_home = |v: &[String]| v.iter().map(|c| st(&home.join(c))).collect();
+            let licensed = dots.join("licensed");
+            fs::create_dir_all(&licensed).unwrap();
+            let in_home =
+                |v: &[String]| -> Vec<String> { v.iter().map(|c| st(&home.join(c))).collect() };
             p.filesystem.custom_read = in_home(&p.filesystem.custom_read);
             p.filesystem.custom_write = in_home(&[work.to_string()]);
-            let a = args_of(&ctx_for(&p, &home));
-            let (ro, work, dots) = (st(&home.join(ro)), st(&home.join(work)), st(&dots));
-            let bashrc = format!("{dots}/bashrc");
+            let guarded = if start_file {
+                fs::write(dots.join("bashrc"), "").unwrap();
+                std::os::unix::fs::symlink(dots.join("bashrc"), home.join(".bashrc")).unwrap();
+                format!("{}/bashrc", st(&dots))
+            } else {
+                p.filesystem.custom_read.push(st(&licensed));
+                st(&licensed)
+            };
+            let cmd = Bubblewrap.build(&ctx_for(&p, &home)).unwrap();
+            let a = cmd.args;
+            let (ro, work, dots) = (st(&home.join(ro_rel)), st(&home.join(work)), st(&dots));
             let first = |seq: &[&str]| at_seq(&a, seq).first().copied();
-            let ro_bind = first(&["--ro-bind-try", &ro, &ro]).expect("bound read-only");
+            let case = format!("{ro} ({}, start file {start_file})", p.filesystem.home);
+            let ro_bind = first(&["--ro-bind-try", &ro, &ro]);
+            // With the start file's target inside, SAM's own bind of the
+            // place is left out in a private home, and says why; an extra
+            // read-only folder at the place is still bound. With the whole
+            // home writable, or the writable folder at the place itself,
+            // which show the place anyway, SAM's own bind is made all the
+            // same.
+            let home_rw = p.filesystem.home && p.filesystem.home_access == Access::Rw;
+            let shown_writable = home_rw || ro == work;
+            let notes_own = |says: &str| {
+                cmd.notes.iter().any(|n| {
+                    n.contains(&format!(
+                        "SAM does not bind ~/{ro_rel} for this app on its own"
+                    )) && n.contains(says)
+                })
+            };
+            assert_eq!(
+                notes_own("a place SAM protects"),
+                start_file && !shown_writable,
+                "{case}: {:?}",
+                cmd.notes
+            );
+            if shown_writable {
+                assert!(!notes_own(""), "{case}: own bind made: {:?}", cmd.notes);
+            }
+            let extra_at_place = p.filesystem.custom_read.contains(&ro);
+            assert_eq!(
+                ro_bind.is_some(),
+                !start_file || shown_writable || extra_at_place,
+                "{case}: bound read-only: {a:?}"
+            );
             let write = first(&["--bind-try", &work, &work]).expect("bound writable");
-            assert!(ro_bind < write, "{work} after {ro}: {a:?}");
+            if let Some(ro_bind) = ro_bind {
+                assert!(ro_bind < write, "{case}: {work} after {ro}: {a:?}");
+            }
             let pin = first(&["--bind", &dots, &dots]);
-            let guard = first(&["--ro-bind-try", &bashrc, &bashrc]).expect("bashrc guarded");
+            let guard = first(&["--ro-bind-try", &guarded, &guarded]).expect("guarded");
             // Every case checked, so each one shows when its pin is lost.
             if !pin.is_some_and(|pin| write < pin && pin < guard) {
                 lost.push(format!(
-                    "{dots} pinned after {work} ({write}) and before the guard ({guard}): {pin:?}"
+                    "{case}: {dots} pinned after {work} ({write}) and before the guard ({guard}): {pin:?}"
                 ));
             }
             if ro != work {
                 assert!(
                     first(&["--bind", &ro, &ro]).is_none(),
-                    "{ro} never pinned: {a:?}"
+                    "{case}: {ro} never pinned: {a:?}"
                 );
             }
         }
@@ -7646,38 +8099,348 @@ mod guard_tests {
     /// views, which record the user folder writable, `dots` was pinned
     /// after the read-only bind and made writable inside the read-only font
     /// folder. The font folder stays read-only, and nothing in it is bound
-    /// writable.
+    /// writable. The same for an extra read-only folder inside
+    /// (`~/.fonts/work/dots/licensed`), whose folders above are pinned as
+    /// those above a start file.
+    ///
+    /// With the start file's target inside, the font folder holds a place
+    /// SAM protects; with the whole home writable SAM binds it read-only
+    /// all the same ([`own_bind`]): the home shows it anyway, and the start
+    /// file is still locked after it.
     #[test]
     fn a_writable_user_folder_the_home_shows_inside_a_font_folder_adds_no_pin() {
-        let t = tempfile::tempdir().unwrap();
-        let home = fs::canonicalize(t.path()).unwrap().join("home");
-        let work = home.join(".fonts/work");
-        let dots = work.join("dots");
-        fs::create_dir_all(&dots).unwrap();
-        fs::write(dots.join("bashrc"), "").unwrap();
-        std::os::unix::fs::symlink(dots.join("bashrc"), home.join(".bashrc")).unwrap();
-        let mut p = full_rw();
-        p.filesystem.music = Access::Rw;
-        let mut ctx = ctx_for(&p, &home);
-        ctx.host.xdg_dirs.insert("music".into(), work.clone());
-        let a = args_of(&ctx);
         let st = |p: &Path| p.to_string_lossy().into_owned();
+        for start_file in [false, true] {
+            let t = scratch();
+            let home = fs::canonicalize(t.path()).unwrap().join("home");
+            let work = home.join(".fonts/work");
+            let dots = work.join("dots");
+            let licensed = dots.join("licensed");
+            fs::create_dir_all(&licensed).unwrap();
+            let mut p = full_rw();
+            p.filesystem.music = Access::Rw;
+            if start_file {
+                fs::write(dots.join("bashrc"), "").unwrap();
+                std::os::unix::fs::symlink(dots.join("bashrc"), home.join(".bashrc")).unwrap();
+            } else {
+                p.filesystem.custom_read = vec![st(&licensed)];
+            }
+            let mut ctx = ctx_for(&p, &home);
+            ctx.host.xdg_dirs.insert("music".into(), work.clone());
+            let cmd = Bubblewrap.build(&ctx).unwrap();
+            let a = &cmd.args;
+            let fonts = st(&home.join(".fonts"));
+            if start_file {
+                assert!(
+                    !cmd.notes
+                        .iter()
+                        .any(|n| n.contains("SAM does not bind ~/.fonts for this app on its own")),
+                    "{:?}",
+                    cmd.notes
+                );
+                let bashrc = st(&dots.join("bashrc"));
+                assert!(
+                    has_seq(a, &["--ro-bind-try", &bashrc, &bashrc]),
+                    "the start file stays locked: {a:?}"
+                );
+            }
+            assert!(
+                !at_seq(a, &["--ro-bind-try", &fonts, &fonts]).is_empty(),
+                "start file {start_file}: {fonts} bound read-only: {a:?}"
+            );
+            let writable_inside: Vec<&[String]> = a
+                .windows(3)
+                .filter(|w| {
+                    (w[0] == "--bind" || w[0] == "--bind-try")
+                        && w[1] == w[2]
+                        && Path::new(&w[1]).starts_with(&fonts)
+                })
+                .collect();
+            assert!(
+                writable_inside.is_empty(),
+                "nothing inside {fonts} bound writable: {writable_inside:?}"
+            );
+        }
+    }
+
+    /// With the whole home writable and hidden files on, the app made
+    /// `~/.aws` a link to the home in one start: in the next, every font
+    /// place led into a guarded place, SAM left out their read-only binds,
+    /// and the home showed `~/.fonts`, `~/.local/share/fonts` and
+    /// `~/.config/fontconfig` writable, so the app could plant fonts and
+    /// fontconfig rules that programs outside the sandbox load. They stay
+    /// bound read-only, as without the link ([`own_bind`]).
+    #[test]
+    fn a_guarded_link_to_the_home_keeps_the_font_places_read_only() {
+        let st = |p: &Path| p.to_string_lossy().into_owned();
+        let t = scratch();
+        let home = fs::canonicalize(t.path()).unwrap().join("home");
+        let places = [".fonts", ".local/share/fonts", ".config/fontconfig"];
+        for d in places {
+            fs::create_dir_all(home.join(d)).unwrap();
+        }
+        std::os::unix::fs::symlink(&home, home.join(".aws")).unwrap();
+        let mut p = full_rw();
+        p.filesystem.hidden_files = true;
+        let cmd = Bubblewrap.build(&ctx_for(&p, &home)).unwrap();
+        for rel in places {
+            let at = st(&home.join(rel));
+            assert!(
+                has_seq(&cmd.args, &["--ro-bind-try", &at, &at]),
+                "~/{rel} bound read-only: {:?}",
+                cmd.args
+            );
+            assert!(
+                !cmd.notes.iter().any(|n| n.contains(&format!(
+                    "SAM does not bind ~/{rel} for this app on its own"
+                ))),
+                "{:?}",
+                cmd.notes
+            );
+        }
+    }
+
+    /// With the home kept behind a link (`/home/u` a link to `/data/u`) and
+    /// writable, the app made a missing `~/.fonts` a link to the real place
+    /// of `~/.ssh` (`/data/u/.ssh`, which it can read in
+    /// `/proc/self/mountinfo`): that place lies in the home where it really
+    /// is, so the whole home counted as showing it writable, and the next
+    /// start bound `/data/u/.ssh` read-only at that name. The sandbox shows
+    /// the home only as `/home/u`, so the keys were hidden there and stayed
+    /// readable at `/data/u/.ssh`. The same with SAM's own folder
+    /// (`/data/u/.local/share/sam`, which holds other apps' private homes).
+    /// SAM binds a guarded place only where the app reaches it through
+    /// what the home shows ([`own_bind`]); here it leaves `~/.fonts` out
+    /// and says why. Where the fonts are real folders, they stay bound
+    /// read-only under the home's name, also with `~/.aws` made a link to
+    /// the home's real place (hidden files on).
+    #[test]
+    fn a_font_link_to_the_real_place_of_a_home_behind_a_link_binds_no_guarded_place() {
+        let st = |p: &Path| p.to_string_lossy().into_owned();
+        for guarded_rel in [".ssh", ".local/share/sam"] {
+            let t = scratch();
+            let base = fs::canonicalize(t.path()).unwrap();
+            let real = base.join("data/u");
+            let named = base.join("home/u");
+            fs::create_dir_all(real.join(guarded_rel)).unwrap();
+            fs::write(real.join(guarded_rel).join("id_ed25519"), "secret").unwrap();
+            fs::create_dir_all(base.join("home")).unwrap();
+            std::os::unix::fs::symlink(&real, &named).unwrap();
+            let target = real.join(guarded_rel);
+            std::os::unix::fs::symlink(&target, real.join(".fonts")).unwrap();
+            let mut ctx = ctx_for(&full_rw(), &named);
+            ctx.sam_dirs = vec![named.join(".local/share/sam")];
+            let cmd = Bubblewrap.build(&ctx).unwrap();
+            let target = st(&target);
+            let bound: Vec<&[String]> = cmd
+                .args
+                .windows(3)
+                .filter(|w| w[0].contains("bind") && (w[1] == target || w[2] == target))
+                .collect();
+            assert!(
+                bound.is_empty(),
+                "~/.fonts a link to {target}: never bound there: {bound:?}"
+            );
+            assert!(
+                cmd.notes.iter().any(|n| n
+                    .contains("SAM does not bind ~/.fonts for this app on its own")
+                    && n.contains("a place SAM protects")),
+                "{guarded_rel}: {:?}",
+                cmd.notes
+            );
+        }
+        // SAM's own folder at a name no protected place has
+        // (`SAM_DATA_DIR=~/Games/sam`): guarded only as named, so
+        // `/data/u/Games/sam` was bound beside the home. And in a private
+        // home, the unpack folder set to `~/Apps/sam` with `~/Apps` a link
+        // to another disk: `~/.fonts` made a link to the real place of that
+        // folder in an earlier start with the whole home writable was
+        // bound and showed every unpacked app.
+        for private in [false, true] {
+            let t = scratch();
+            let base = fs::canonicalize(t.path()).unwrap();
+            let (named, target, sams, p) = if private {
+                let named = base.join("home/u");
+                let disk = base.join("mnt/disk/Apps");
+                fs::create_dir_all(&named).unwrap();
+                fs::create_dir_all(disk.join("sam")).unwrap();
+                std::os::unix::fs::symlink(&disk, named.join("Apps")).unwrap();
+                (
+                    named.clone(),
+                    disk.join("sam"),
+                    named.join("Apps/sam"),
+                    PermissionSet::strict_gui(),
+                )
+            } else {
+                let real = base.join("data/u");
+                let named = base.join("home/u");
+                fs::create_dir_all(real.join("Games/sam")).unwrap();
+                fs::create_dir_all(base.join("home")).unwrap();
+                std::os::unix::fs::symlink(&real, &named).unwrap();
+                (
+                    named.clone(),
+                    real.join("Games/sam"),
+                    named.join("Games/sam"),
+                    full_rw(),
+                )
+            };
+            fs::write(target.join("id_ed25519"), "secret").unwrap();
+            std::os::unix::fs::symlink(&target, named.join(".fonts")).unwrap();
+            let mut ctx = ctx_for(&p, &named);
+            ctx.sam_dirs = vec![sams];
+            let cmd = Bubblewrap.build(&ctx).unwrap();
+            let target = st(&target);
+            let fonts = st(&named.join(".fonts"));
+            let bound: Vec<&[String]> = cmd
+                .args
+                .windows(3)
+                .filter(|w| {
+                    w[0].contains("bind")
+                        && [&target, &fonts]
+                            .iter()
+                            .any(|at| w[1] == **at || w[2] == **at)
+                })
+                .collect();
+            assert!(
+                bound.is_empty(),
+                "private home {private}: ~/.fonts a link to {target}: never bound: {bound:?}"
+            );
+            assert!(
+                cmd.notes.iter().any(|n| n
+                    .contains("SAM does not bind ~/.fonts for this app on its own")
+                    && n.contains("a place SAM protects")),
+                "private home {private}: {:?}",
+                cmd.notes
+            );
+        }
+        // The control: real font folders in a home behind a link, also
+        // with `~/.aws` a link to the home's real place, stay bound
+        // read-only where the app reaches them.
+        let places = [".fonts", ".local/share/fonts", ".config/fontconfig"];
+        for aws in [false, true] {
+            let t = scratch();
+            let base = fs::canonicalize(t.path()).unwrap();
+            let real = base.join("data/u");
+            let named = base.join("home/u");
+            for d in places {
+                fs::create_dir_all(real.join(d)).unwrap();
+            }
+            fs::create_dir_all(base.join("home")).unwrap();
+            std::os::unix::fs::symlink(&real, &named).unwrap();
+            if aws {
+                std::os::unix::fs::symlink(&real, real.join(".aws")).unwrap();
+            }
+            let mut p = full_rw();
+            p.filesystem.hidden_files = true;
+            let cmd = Bubblewrap.build(&ctx_for(&p, &named)).unwrap();
+            for rel in places {
+                let at = st(&named.join(rel));
+                assert!(
+                    has_seq(&cmd.args, &["--ro-bind-try", &at, &at]),
+                    "~/.aws a link {aws}: ~/{rel} bound read-only: {:?}",
+                    cmd.args
+                );
+                assert!(
+                    !cmd.notes.iter().any(|n| n.contains(&format!(
+                        "SAM does not bind ~/{rel} for this app on its own"
+                    ))),
+                    "~/.aws a link {aws}: {:?}",
+                    cmd.notes
+                );
+            }
+        }
+    }
+
+    /// In a private or read-only home with hidden files on, a font or
+    /// theme place inside an extra writable folder stays bound read-only
+    /// after it, although a sensitive place leads to it: the app made
+    /// `~/.config/vivaldi` a link to `~/.config/fontconfig` (or
+    /// `~/.local/share/keyrings` one to `~/.local/share/fonts`, or
+    /// `~/.config/vivaldi` one to `~/.config/gtk-3.0`) in one start, so in
+    /// the next SAM left the read-only bind out as leading into a guarded
+    /// place, and the writable folder showed the fonts settings, the fonts
+    /// or the theme files writable: rules that programs outside the
+    /// sandbox load ([`own_bind`]). A font place the views do not show,
+    /// made a link to a credential store inside that writable folder,
+    /// stays left out: bound at its own name, it would show the store.
+    #[test]
+    fn a_writable_extra_folder_keeps_the_font_and_theme_places_in_it_read_only() {
+        let st = |p: &Path| p.to_string_lossy().into_owned();
+        let mut ro_home = PermissionSet::strict_gui();
+        ro_home.filesystem.home = true;
+        ro_home.filesystem.home_access = Access::Ro;
+        let mut themes = PermissionSet::strict_gui();
+        themes.advanced.host_themes = true;
+        // The permissions, the extra writable folder, the planted link and
+        // the place SAM binds read-only on its own.
+        let cases = [
+            (
+                PermissionSet::strict_gui(),
+                ".config",
+                ".config/vivaldi",
+                ".config/fontconfig",
+            ),
+            (ro_home, ".config", ".config/vivaldi", ".config/fontconfig"),
+            (
+                PermissionSet::strict_gui(),
+                ".local/share",
+                ".local/share/keyrings",
+                ".local/share/fonts",
+            ),
+            (themes, ".config", ".config/vivaldi", ".config/gtk-3.0"),
+        ];
+        for (p, write, link, place) in cases {
+            let mut p = p.clone();
+            let t = scratch();
+            let home = fs::canonicalize(t.path()).unwrap().join("home");
+            fs::create_dir_all(home.join(place)).unwrap();
+            std::os::unix::fs::symlink(home.join(place), home.join(link)).unwrap();
+            p.filesystem.hidden_files = true;
+            p.filesystem.custom_write = vec![st(&home.join(write))];
+            let cmd = Bubblewrap.build(&ctx_for(&p, &home)).unwrap();
+            let a = &cmd.args;
+            let case = format!("~/{link} a link to ~/{place}, home {}", p.filesystem.home);
+            let (write, at) = (st(&home.join(write)), st(&home.join(place)));
+            let writable = at_seq(a, &["--bind-try", &write, &write]);
+            let read_only = at_seq(a, &["--ro-bind-try", &at, &at]);
+            assert!(
+                !writable.is_empty(),
+                "{case}: {write} bound writable: {a:?}"
+            );
+            assert!(
+                read_only.last() > writable.last(),
+                "{case}: {at} bound read-only after {write}: {a:?}"
+            );
+            assert!(
+                !cmd.notes.iter().any(|n| n.contains(&format!(
+                    "SAM does not bind ~/{place} for this app on its own"
+                ))),
+                "{case}: {:?}",
+                cmd.notes
+            );
+        }
+        // The control: `~/.fonts`, which the views do not show, made a link
+        // to the token in the writable `~/.config`, stays left out.
+        let t = scratch();
+        let home = fs::canonicalize(t.path()).unwrap().join("home");
+        fs::create_dir_all(home.join(".config/gh")).unwrap();
+        std::os::unix::fs::symlink(home.join(".config/gh"), home.join(".fonts")).unwrap();
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.hidden_files = true;
+        p.filesystem.custom_write = vec![st(&home.join(".config"))];
+        let cmd = Bubblewrap.build(&ctx_for(&p, &home)).unwrap();
         let fonts = st(&home.join(".fonts"));
         assert!(
-            !at_seq(&a, &["--ro-bind-try", &fonts, &fonts]).is_empty(),
-            "{fonts} bound read-only: {a:?}"
+            !has_seq(&cmd.args, &["--ro-bind-try", &fonts, &fonts]),
+            "{:?}",
+            cmd.args
         );
-        let writable_inside: Vec<&[String]> = a
-            .windows(3)
-            .filter(|w| {
-                (w[0] == "--bind" || w[0] == "--bind-try")
-                    && w[1] == w[2]
-                    && Path::new(&w[1]).starts_with(&fonts)
-            })
-            .collect();
         assert!(
-            writable_inside.is_empty(),
-            "nothing inside {fonts} bound writable: {writable_inside:?}"
+            cmd.notes.iter().any(|n| n
+                .contains("SAM does not bind ~/.fonts for this app on its own")
+                && n.contains("a place SAM protects")),
+            "{:?}",
+            cmd.notes
         );
     }
 
@@ -7732,38 +8495,65 @@ mod guard_tests {
     /// `dots`, between that mount and the guard (review B2 S3, R50): left
     /// out of the writable mounts, the user folder counted as covered by
     /// the read-only bind, `dots` lost its pin, and the app could rename
-    /// it away with the guard. `~/.fonts` itself stays unpinned.
+    /// it away with the guard. `~/.fonts` itself stays unpinned. The same
+    /// for an extra read-only folder inside (`~/.fonts/work/dots/licensed`).
+    ///
+    /// SAM does not bind a font folder on its own that holds a place it
+    /// protects ([`own_bind`]): with the start file's target inside,
+    /// `~/.fonts` is not bound read-only, the start says why, and `dots`
+    /// keeps its pin.
     #[test]
     fn a_writable_user_folder_inside_a_font_folder_in_a_private_home_keeps_its_pins() {
         let st = |p: &Path| p.to_string_lossy().into_owned();
-        let t = tempfile::tempdir().unwrap();
-        let home = fs::canonicalize(t.path()).unwrap().join("home");
-        let work = home.join(".fonts/work");
-        let dots = work.join("dots");
-        fs::create_dir_all(&dots).unwrap();
-        fs::write(dots.join("bashrc"), "").unwrap();
-        std::os::unix::fs::symlink(dots.join("bashrc"), home.join(".bashrc")).unwrap();
-        let mut p = PermissionSet::strict_gui();
-        p.filesystem.music = Access::Rw;
-        let mut ctx = ctx_for(&p, &home);
-        ctx.host.xdg_dirs.insert("music".into(), work.clone());
-        let a = args_of(&ctx);
-        let (fonts, work, dots) = (st(&home.join(".fonts")), st(&work), st(&dots));
-        let bashrc = format!("{dots}/bashrc");
-        let first = |seq: &[&str]| at_seq(&a, seq).first().copied();
-        let ro_bind = first(&["--ro-bind-try", &fonts, &fonts]).expect("bound read-only");
-        let write = first(&["--bind-try", &work, &work]).expect("Music bound writable");
-        assert!(ro_bind < write, "{work} after {fonts}: {a:?}");
-        let guard = first(&["--ro-bind-try", &bashrc, &bashrc]).expect("bashrc guarded");
-        let pin = first(&["--bind", &dots, &dots]);
-        assert!(
-            pin.is_some_and(|pin| write < pin && pin < guard),
-            "{dots} pinned after {work} ({write}) and before the guard ({guard}): {pin:?}: {a:?}"
-        );
-        assert!(
-            first(&["--bind", &fonts, &fonts]).is_none(),
-            "{fonts} never pinned: {a:?}"
-        );
+        for start_file in [false, true] {
+            let t = scratch();
+            let home = fs::canonicalize(t.path()).unwrap().join("home");
+            let work = home.join(".fonts/work");
+            let dots = work.join("dots");
+            let licensed = dots.join("licensed");
+            fs::create_dir_all(&licensed).unwrap();
+            let mut p = PermissionSet::strict_gui();
+            p.filesystem.music = Access::Rw;
+            let guarded = if start_file {
+                fs::write(dots.join("bashrc"), "").unwrap();
+                std::os::unix::fs::symlink(dots.join("bashrc"), home.join(".bashrc")).unwrap();
+                st(&dots.join("bashrc"))
+            } else {
+                p.filesystem.custom_read = vec![st(&licensed)];
+                st(&licensed)
+            };
+            let mut ctx = ctx_for(&p, &home);
+            ctx.host.xdg_dirs.insert("music".into(), work.clone());
+            let cmd = Bubblewrap.build(&ctx).unwrap();
+            let a = &cmd.args;
+            let (fonts, work, dots) = (st(&home.join(".fonts")), st(&work), st(&dots));
+            let first = |seq: &[&str]| at_seq(a, seq).first().copied();
+            let ro_bind = first(&["--ro-bind-try", &fonts, &fonts]);
+            let write = first(&["--bind-try", &work, &work]).expect("Music bound writable");
+            if start_file {
+                assert!(ro_bind.is_none(), "{fonts} holds a protected place: {a:?}");
+                assert!(
+                    cmd.notes.iter().any(|n| n
+                        .contains("SAM does not bind ~/.fonts for this app on its own")
+                        && n.contains("a place SAM protects")),
+                    "{:?}",
+                    cmd.notes
+                );
+            } else {
+                let ro_bind = ro_bind.expect("bound read-only");
+                assert!(ro_bind < write, "{work} after {fonts}: {a:?}");
+            }
+            let guard = first(&["--ro-bind-try", &guarded, &guarded]).expect("guarded");
+            let pin = first(&["--bind", &dots, &dots]);
+            assert!(
+                pin.is_some_and(|pin| write < pin && pin < guard),
+                "start file {start_file}: {dots} pinned after {work} ({write}) and before the guard ({guard}): {pin:?}: {a:?}"
+            );
+            assert!(
+                first(&["--bind", &fonts, &fonts]).is_none(),
+                "{fonts} never pinned: {a:?}"
+            );
+        }
     }
 
     /// A font folder opened with the app, or bound writable by SAM itself,
@@ -8285,6 +9075,42 @@ mod guard_tests {
         }
     }
 
+    /// The file chooser's bookmarks and servers in the theme folders are
+    /// hidden (an empty read-only file in their place) only where SAM shows
+    /// the theme settings on its own, with no home shown. Without the
+    /// theme settings, an empty read-only file there kept the app from
+    /// saving bookmarks of its own and told it that the host has such a
+    /// file. Built in a real home, where the files exist.
+    #[test]
+    fn theme_private_files_are_hidden_only_when_the_theme_settings_are_shown() {
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap().join("home");
+        fs::create_dir_all(home.join(".config/gtk-3.0")).unwrap();
+        let files = [".config/gtk-3.0/bookmarks", ".config/gtk-3.0/servers"];
+        for f in files {
+            fs::write(home.join(f), "file:///x\n").unwrap();
+        }
+        let st = |p: &Path| p.to_string_lossy().into_owned();
+        for (themes, whole_home) in [(false, false), (true, false), (true, true), (false, true)] {
+            let mut p = PermissionSet::strict_gui();
+            p.advanced.host_themes = themes;
+            p.filesystem.home = whole_home;
+            p.filesystem.home_access = Access::Ro;
+            let a = args_of(&ctx_for(&p, &home));
+            for f in files {
+                let at = st(&home.join(f));
+                assert_eq!(
+                    has_seq(&a, &["--ro-bind", "/dev/null", &at]),
+                    themes && !whole_home,
+                    "{f}: themes {themes}, home {whole_home}: {a:?}"
+                );
+                if !themes && !whole_home {
+                    assert!(!a.contains(&at), "{f} is not named at all: {a:?}");
+                }
+            }
+        }
+    }
+
     /// A bundled library is replaced only by a plain file of the system's
     /// own (the copy found is checked by
     /// `system_copies_replace_only_bundled_libraries_by_plain_name`):
@@ -8658,5 +9484,517 @@ mod guard_tests {
         let a = args_of(&ctx_for(&p, &home));
         let netrc = home.join(".netrc").to_string_lossy().into_owned();
         assert!(has_seq(&a, &["--ro-bind", "/dev/null", &netrc]), "{a:?}");
+    }
+
+    /// The places SAM shows on its own (`~/.fonts`,
+    /// `~/.local/share/fonts`, `~/.config/fontconfig`, the theme files) and
+    /// the extra folders never follow a link the app could have planted out
+    /// of what it is shown, nor a link to where programs outside the
+    /// sandbox listen: with the whole home writable and `~/.fonts` a link
+    /// to `/tmp/tmux-…`, the start bound the host's folder over its own
+    /// `/tmp`. A place SAM shows on its own never leads to the keys either.
+    /// The start says why (for a link to the sockets that danger, also
+    /// where the app may have planted it), and the views and the list of extra folders
+    /// agree. A link that stays in the home, or one in a folder the app
+    /// cannot change that leads to an ordinary folder, is still followed.
+    #[test]
+    fn fonts_themes_and_extra_folders_never_follow_a_planted_link() {
+        let t = scratch();
+        let base = fs::canonicalize(t.path()).unwrap();
+        let home = base.join("home");
+        let outside = base.join("outside");
+        for d in [
+            home.join(".config"),
+            home.join(".local/share"),
+            home.join(".ssh"),
+            home.join("myfonts"),
+            home.join("shared"),
+            outside.clone(),
+        ] {
+            fs::create_dir_all(d).unwrap();
+        }
+        let sockets = tempfile::Builder::new()
+            .prefix("tmux-")
+            .tempdir_in("/tmp")
+            .unwrap();
+        let sock = sockets.path().to_path_buf();
+        let st = |p: &Path| p.to_string_lossy().into_owned();
+        let link = |to: &Path, at: &Path| {
+            let _ = fs::remove_file(at);
+            std::os::unix::fs::symlink(to, at).unwrap();
+        };
+        let said = |notes: &[String], place: &str, why: &str| {
+            assert!(
+                notes.iter().any(|n| n.contains(place) && n.contains(why)),
+                "{place}: {notes:?}"
+            );
+        };
+        // The whole home writable: every place planted.
+        link(&sock, &home.join(".fonts"));
+        link(&sock, &home.join(".config/fontconfig"));
+        link(&outside, &home.join(".local/share/fonts"));
+        link(&sock, &home.join("shared/ro"));
+        link(&outside, &home.join("shared/rw"));
+        let mut p = full_rw();
+        p.filesystem.custom_read = vec![st(&home.join("shared/ro"))];
+        p.filesystem.custom_write = vec![st(&home.join("shared/rw"))];
+        let ctx = ctx_for(&p, &home);
+        let cmd = Bubblewrap.build(&ctx).unwrap();
+        assert!(
+            !cmd.args.iter().any(|a| a.starts_with(&st(&sock))),
+            "{:?}",
+            cmd.args
+        );
+        assert!(
+            !cmd.args.iter().any(|a| *a == st(&outside)),
+            "{:?}",
+            cmd.args
+        );
+        // A planted link to the sockets gets the note that names them,
+        // with no way out; one to a folder the app is not shown, the note
+        // for a planted link.
+        let listen = "where programs outside the sandbox listen";
+        for (place, why) in [
+            ("~/.fonts".to_string(), listen),
+            ("~/.config/fontconfig".to_string(), listen),
+            (
+                "~/.local/share/fonts".to_string(),
+                "may have made that link",
+            ),
+            (st(&home.join("shared/ro")), listen),
+            (st(&home.join("shared/rw")), "may have made that link"),
+        ] {
+            said(&cmd.notes, &place, why);
+            if why == listen {
+                assert!(
+                    !cmd.notes
+                        .iter()
+                        .any(|n| n.contains(&place) && n.contains("may have made that link")),
+                    "{place}: {:?}",
+                    cmd.notes
+                );
+            }
+        }
+        assert!(!Views::of(&ctx).visible(&sock.join("x")));
+        assert!(!Views::of(&ctx).visible(&outside.join("x")));
+        assert!(shown_extra_folders(&ctx).is_empty());
+
+        // The theme files without the whole home: a writable `~/.config`
+        // holds the planted link.
+        let mut p = PermissionSet::strict_gui();
+        p.advanced.host_themes = true;
+        p.filesystem.custom_write = vec![st(&home.join(".config"))];
+        link(&outside, &home.join(".config/gtk-3.0"));
+        let cmd = Bubblewrap.build(&ctx_for(&p, &home)).unwrap();
+        assert!(
+            !cmd.args.iter().any(|a| *a == st(&outside)),
+            "{:?}",
+            cmd.args
+        );
+        said(&cmd.notes, "~/.config/gtk-3.0", "may have made that link");
+
+        // A private home: the app cannot change the home, yet a link made
+        // there by someone else to the sockets or to the keys is not
+        // followed; one to an ordinary folder is.
+        let private = PermissionSet::strict_gui();
+        let fonts = home.join(".fonts");
+        let bound = |ctx: &LaunchContext| {
+            let a = args_of(ctx);
+            has_seq(&a, &["--ro-bind-try", &st(&fonts), &st(&fonts)])
+        };
+        link(&sock, &fonts);
+        let cmd = Bubblewrap.build(&ctx_for(&private, &home)).unwrap();
+        assert!(!bound(&ctx_for(&private, &home)), "{:?}", cmd.args);
+        said(
+            &cmd.notes,
+            "~/.fonts",
+            "where programs outside the sandbox listen",
+        );
+        link(&home.join(".ssh"), &fonts);
+        let cmd = Bubblewrap.build(&ctx_for(&private, &home)).unwrap();
+        assert!(!bound(&ctx_for(&private, &home)), "{:?}", cmd.args);
+        said(&cmd.notes, "~/.fonts", "your keys or passwords");
+        link(&outside, &fonts);
+        assert!(bound(&ctx_for(&private, &home)));
+        // An extra folder named by its link to the sockets, in a private
+        // home: left out, the start says why.
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.custom_read = vec![st(&home.join("shared/ro"))];
+        let ctx = ctx_for(&p, &home);
+        let cmd = Bubblewrap.build(&ctx).unwrap();
+        assert!(
+            !cmd.args.iter().any(|a| a.starts_with(&st(&sock))),
+            "{:?}",
+            cmd.args
+        );
+        said(
+            &cmd.notes,
+            &st(&home.join("shared/ro")),
+            "where programs outside the sandbox listen",
+        );
+        assert!(!Views::of(&ctx).visible(&sock));
+
+        // The control: with the whole home writable, a link that stays in
+        // the home is bound where the app reaches it, without a note.
+        link(&home.join("myfonts"), &fonts);
+        let ctx = ctx_for(&full_rw(), &home);
+        let cmd = Bubblewrap.build(&ctx).unwrap();
+        let mine = st(&home.join("myfonts"));
+        assert!(
+            has_seq(&cmd.args, &["--ro-bind-try", &mine, &mine]),
+            "{:?}",
+            cmd.args
+        );
+        assert!(
+            !cmd.notes.iter().any(|n| n.contains("~/.fonts")),
+            "{:?}",
+            cmd.notes
+        );
+    }
+    /// With the home read-only and Downloads writable, an extra writable
+    /// folder in Downloads not made yet is not bound; the app makes it a
+    /// link to the home, and the next start bound the whole home writable
+    /// over its read-only bind. Now it is left out, and the start says why,
+    /// as a writable folder left out: the read-only home still shows the
+    /// place, so the note never says the app is not shown it. One the app
+    /// makes a link to a writable user folder is still shown.
+    #[test]
+    fn a_planted_link_never_makes_a_read_only_home_writable() {
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap().join("home");
+        for d in ["Downloads", "Documents/sub"] {
+            fs::create_dir_all(home.join(d)).unwrap();
+        }
+        let st = |p: &Path| p.to_string_lossy().into_owned();
+        let out = home.join("Downloads/out");
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.home = true;
+        p.filesystem.home_access = Access::Ro;
+        p.filesystem.downloads = Access::Rw;
+        p.filesystem.documents = Access::Rw;
+        p.filesystem.custom_write = vec![st(&out)];
+        let ctx = |p: &PermissionSet| {
+            let mut c = ctx_for(p, &home);
+            c.host
+                .xdg_dirs
+                .insert("downloads".into(), home.join("Downloads"));
+            c.host
+                .xdg_dirs
+                .insert("documents".into(), home.join("Documents"));
+            c
+        };
+        let h = st(&home);
+        std::os::unix::fs::symlink(&home, &out).unwrap();
+        let c = ctx(&p);
+        let cmd = Bubblewrap.build(&c).unwrap();
+        assert!(has_seq(&cmd.args, &["--ro-bind", &h, &h]), "{:?}", cmd.args);
+        assert!(
+            !has_seq(&cmd.args, &["--bind-try", &h, &h]),
+            "the read-only home was bound writable: {:?}",
+            cmd.args
+        );
+        assert!(!Views::of(&c).writable(&home.join("notes.txt")));
+        assert!(
+            cmd.notes
+                .iter()
+                .any(|n| n.contains(&st(&out)) && n.contains("may have made that link")),
+            "{:?}",
+            cmd.notes
+        );
+        assert!(
+            cmd.notes.iter().any(|n| n.contains(&st(&out))
+                && n.contains("leaves out the writable folder")
+                && !n.contains("not shown otherwise")),
+            "{:?}",
+            cmd.notes
+        );
+        // Into a writable user folder: the folder shows it writable anyway.
+        fs::remove_file(&out).unwrap();
+        std::os::unix::fs::symlink(home.join("Documents/sub"), &out).unwrap();
+        let cmd = Bubblewrap.build(&ctx(&p)).unwrap();
+        assert!(
+            !cmd.notes
+                .iter()
+                .any(|n| n.contains("may have made that link")),
+            "{:?}",
+            cmd.notes
+        );
+    }
+
+    /// A user folder bound on its own never follows a link the app could
+    /// have planted, nor one to where programs outside the sandbox listen:
+    /// with `~/Sync` writable and Documents set to `~/Sync/Documents`, not
+    /// made yet, the app made it a link to `/tmp/tmux-…`, and the next
+    /// start bound the host's sockets over its own `/tmp`. Left out in a
+    /// private home and as a writable folder in a read-only home; the start
+    /// says why (for a writable folder as one left out writable, since a
+    /// read-only home may still show the place), naming the danger and no
+    /// way out, also where the link is one the app could have planted, and
+    /// the views agree. A
+    /// user folder you made a link in the home is still shown where it
+    /// leads.
+    #[test]
+    fn a_user_folder_never_follows_a_planted_link() {
+        let t = scratch();
+        let base = fs::canonicalize(t.path()).unwrap();
+        let home = base.join("home");
+        let outside = base.join("outside");
+        for d in [home.join("Sync"), outside.clone()] {
+            fs::create_dir_all(d).unwrap();
+        }
+        let sockets = tempfile::Builder::new()
+            .prefix("tmux-")
+            .tempdir_in("/tmp")
+            .unwrap();
+        let sock = sockets.path().to_path_buf();
+        let st = |p: &Path| p.to_string_lossy().into_owned();
+        let docs = home.join("Sync/Documents");
+        std::os::unix::fs::symlink(&sock, &docs).unwrap();
+        let ctx = |p: &PermissionSet| {
+            let mut c = ctx_for(p, &home);
+            c.host.xdg_dirs.insert("documents".into(), docs.clone());
+            c
+        };
+        let mut private = PermissionSet::strict_gui();
+        private.filesystem.documents = Access::Ro;
+        private.filesystem.custom_write = vec![st(&home.join("Sync"))];
+        let mut read_only_home = private.clone();
+        read_only_home.filesystem.home = true;
+        read_only_home.filesystem.home_access = Access::Ro;
+        read_only_home.filesystem.documents = Access::Rw;
+        let mut private_rw = private.clone();
+        private_rw.filesystem.documents = Access::Rw;
+        for (p, says) in [
+            (&private, "SAM leaves out the user folder"),
+            (&read_only_home, "leaves out the writable user folder"),
+            (&private_rw, "leaves out the writable user folder"),
+        ] {
+            let c = ctx(p);
+            let cmd = Bubblewrap.build(&c).unwrap();
+            assert!(
+                !cmd.args.iter().any(|a| a.starts_with(&st(&sock))),
+                "{:?}",
+                cmd.args
+            );
+            // The note names the danger and gives no way out: the one for
+            // a planted link says to set the folder to where it leads.
+            assert!(
+                cmd.notes.iter().any(|n| names(n, &docs)
+                    && names(n, &sock)
+                    && n.contains("where programs outside the sandbox listen")),
+                "{:?}",
+                cmd.notes
+            );
+            assert!(
+                !cmd.notes.iter().any(|n| names(n, &docs)
+                    && (n.contains("may have made that link") || n.contains("user-dirs.dirs"))),
+                "{:?}",
+                cmd.notes
+            );
+            assert!(
+                cmd.notes
+                    .iter()
+                    .any(|n| names(n, &docs) && n.contains(says)),
+                "{says}: {:?}",
+                cmd.notes
+            );
+            assert!(!Views::of(&c).visible(&sock.join("default")));
+            // The rule for links in a folder the app can change refuses it
+            // as well, and so does the one for planted links; the reason
+            // the start gives is the listening programs ([`user_dir`]).
+            assert_eq!(
+                sam_core::places::user_folder_link_the_app_can_change(
+                    &c.permissions,
+                    &c.host,
+                    &docs
+                ),
+                Some(docs.clone())
+            );
+            assert!(matches!(
+                user_dir(&c, "documents"),
+                Err(NotShown::LeftOut(_, sam_core::places::LeftOut::HostServices(l))) if l == sock
+            ));
+        }
+        // Not plantable by this app, but still the sockets.
+        let mut only_docs = PermissionSet::strict_gui();
+        only_docs.filesystem.documents = Access::Ro;
+        let cmd = Bubblewrap.build(&ctx(&only_docs)).unwrap();
+        assert!(
+            !cmd.args.iter().any(|a| a.starts_with(&st(&sock))),
+            "{:?}",
+            cmd.args
+        );
+        assert!(
+            cmd.notes
+                .iter()
+                .any(|n| n.contains("where programs outside the sandbox listen")),
+            "{:?}",
+            cmd.notes
+        );
+        // The control: a link you made in the home, which the app cannot
+        // change, to a folder outside it.
+        fs::remove_file(&docs).unwrap();
+        let mine = home.join("Documents");
+        std::os::unix::fs::symlink(&outside, &mine).unwrap();
+        let mut c = ctx_for(&only_docs, &home);
+        c.host.xdg_dirs.insert("documents".into(), mine);
+        let o = st(&outside);
+        assert!(
+            has_seq(&args_of(&c), &["--ro-bind-try", &o, &o]),
+            "{:?}",
+            args_of(&c)
+        );
+    }
+
+    /// A scratch folder outside `/tmp` and `/var/tmp`, beside the test
+    /// program: there a link's target is an ordinary folder, while
+    /// anything in `/tmp` counts as a place where programs outside the
+    /// sandbox listen ([`sam_core::places::leads_to_host_services`]).
+    fn scratch() -> tempfile::TempDir {
+        let exe = std::env::current_exe().unwrap();
+        let t = tempfile::Builder::new()
+            .prefix("sandbox-")
+            .tempdir_in(exe.parent().unwrap())
+            .unwrap();
+        let real = fs::canonicalize(t.path()).unwrap();
+        assert!(
+            !real.starts_with("/tmp") && !real.starts_with("/var/tmp"),
+            "the test program lies in a temp folder: {}",
+            real.display()
+        );
+        t
+    }
+
+    /// A folder this start shows writable besides the permissions holds
+    /// links the app may have made, as `write_grants` counts it: a folder
+    /// opened with the app while opened files are writable, and a writable
+    /// bind of SAM's. In a private home, an extra read-only folder named
+    /// by a link in such a folder to a folder the app is not shown is left
+    /// out, and the start says why; opened read-only, or bound read-only
+    /// by SAM, the folder holds no link of the app's.
+    #[test]
+    fn a_folder_this_start_shows_writable_holds_links_the_app_may_have_made() {
+        let t = scratch();
+        let base = fs::canonicalize(t.path()).unwrap();
+        let home = base.join("home");
+        let secret = base.join("secret");
+        for d in [home.join("work"), secret.clone()] {
+            fs::create_dir_all(d).unwrap();
+        }
+        let planted = home.join("work/fonts");
+        std::os::unix::fs::symlink(&secret, &planted).unwrap();
+        let st = |p: &Path| p.to_string_lossy().into_owned();
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.custom_read = vec![st(&planted)];
+        let left_out = |p: &PermissionSet, opened: bool, bind: Option<bool>| {
+            let mut c = ctx_for(p, &home);
+            c.owd = home.clone();
+            c.args = if opened {
+                vec![st(&home.join("work"))]
+            } else {
+                Vec::new()
+            };
+            c.extra_binds = bind
+                .map(|rw| vec![(home.join("work"), PathBuf::from("/run/x"), rw)])
+                .unwrap_or_default();
+            let cmd = Bubblewrap.build(&c).unwrap();
+            let s = st(&secret);
+            let bound = has_seq(&cmd.args, &["--ro-bind-try", &s, &s]);
+            let said = cmd
+                .notes
+                .iter()
+                .any(|n| n.contains(&st(&planted)) && n.contains("may have made that link"));
+            assert_eq!(bound, !said, "{:?} {:?}", cmd.args, cmd.notes);
+            said
+        };
+        assert!(!left_out(&p, false, None), "nothing the app can change");
+        p.filesystem.opened_files = Access::Ro;
+        assert!(!left_out(&p, true, None), "opened read-only");
+        p.filesystem.opened_files = Access::Rw;
+        assert!(left_out(&p, true, None), "opened writable");
+        p.filesystem.opened_files = Access::Ro;
+        assert!(!left_out(&p, false, Some(false)), "bound read-only by SAM");
+        assert!(left_out(&p, false, Some(true)), "bound writable by SAM");
+    }
+
+    /// SAM's runtime folders hold the sockets of SAM's helpers for every
+    /// running app (the D-Bus proxy, the sound relay): wherever they are,
+    /// a link to them is not followed, whoever made it. In a private home,
+    /// `~/.fonts` a link to the folder of another app's starts is left out
+    /// with the note that programs outside the sandbox listen there.
+    #[test]
+    fn a_link_to_sams_runtime_folders_is_never_followed() {
+        let t = scratch();
+        let base = fs::canonicalize(t.path()).unwrap();
+        let home = base.join("home");
+        let runtime = base.join("sam-run");
+        for d in [
+            home.clone(),
+            runtime.join("other-app/l1"),
+            runtime.join("app/l1"),
+        ] {
+            fs::create_dir_all(d).unwrap();
+        }
+        let fonts = home.join(".fonts");
+        std::os::unix::fs::symlink(runtime.join("other-app"), &fonts).unwrap();
+        let mut c = ctx_for(&PermissionSet::strict_gui(), &home);
+        c.runtime_dir = runtime.join("app/l1");
+        let cmd = Bubblewrap.build(&c).unwrap();
+        let f = fonts.to_string_lossy().into_owned();
+        assert!(
+            !has_seq(&cmd.args, &["--ro-bind-try", &f, &f]),
+            "{:?}",
+            cmd.args
+        );
+        assert!(
+            cmd.notes.iter().any(|n| n.contains("~/.fonts")
+                && n.contains("where programs outside the sandbox listen")),
+            "{:?}",
+            cmd.notes
+        );
+    }
+
+    /// SAM's runtime folders are this start's folder and the two above it,
+    /// never a folder at the top of the computer: with the runtime base
+    /// there (`XDG_RUNTIME_DIR=/` gives `/sam`, `SAM_RUNTIME_DIR=/srv`),
+    /// counting `/usr` as one left out every extra folder that leads
+    /// anywhere in it (`/usr/share`) as a place where programs outside the
+    /// sandbox listen. Nor a folder that holds the home: the home is no
+    /// such place.
+    #[test]
+    fn a_runtime_base_at_the_top_of_the_computer_never_counts_as_sams_runtime_folder() {
+        let t = scratch();
+        let base = fs::canonicalize(t.path()).unwrap();
+        let home = base.join("home");
+        fs::create_dir_all(&home).unwrap();
+        let link = base.join("share-link");
+        std::os::unix::fs::symlink("/usr/share", &link).unwrap();
+        let link = link.to_string_lossy().into_owned();
+        let mut c = ctx_for(&PermissionSet::strict_gui(), &home);
+        c.runtime_dir = PathBuf::from("/usr/sam-app/l1");
+        c.permissions.filesystem.custom_read = vec![link.clone()];
+        assert_eq!(
+            this_start(&c).sam_runtime,
+            vec![
+                PathBuf::from("/usr/sam-app/l1"),
+                PathBuf::from("/usr/sam-app")
+            ]
+        );
+        assert_eq!(read_grant_left_out(&c, &link), None);
+        let cmd = Bubblewrap.build(&c).unwrap();
+        assert!(
+            !cmd.notes
+                .iter()
+                .any(|n| n.contains("where programs outside the sandbox listen")),
+            "{:?}",
+            cmd.notes
+        );
+        // The folders above this start's that hold the home are none either.
+        let mut c = ctx_for(&PermissionSet::strict_gui(), "/srv/sam-run/app/h");
+        c.runtime_dir = PathBuf::from("/srv/sam-run/app/l1");
+        assert_eq!(
+            this_start(&c).sam_runtime,
+            vec![PathBuf::from("/srv/sam-run/app/l1")]
+        );
     }
 }

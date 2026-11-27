@@ -26,6 +26,9 @@ impl Sam {
         // Where SAM keeps its own folders, so the page decides about an
         // extra folder in them as the sandbox does.
         let own_dirs = self.paths.sam_dirs(&self.config.extraction.location);
+        // And where SAM's helpers listen, so it names a user folder that
+        // leads there as the sandbox leaves it out.
+        let sam_runtime = crate::launch::sam_runtime_folders(&self.paths);
         let ctx = WarningContext {
             app_needs_network: app.map(app_needs_network),
             host: Some(host),
@@ -33,6 +36,7 @@ impl Sam {
             warn_full_home: self.config.security.warn_full_home,
             terminal_program,
             sam_dirs: &own_dirs,
+            sam_runtime: &sam_runtime,
         };
         Evaluation {
             risk: assess(perms),

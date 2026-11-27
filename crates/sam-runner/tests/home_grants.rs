@@ -13,6 +13,9 @@
 //! - a file inside SAM's folder (kept outside the home) or `~/.netrc` named
 //!   on the command line is not shared;
 //! - with the whole home, Vivaldi's profile and `~/.npmrc` stay hidden;
+//! - a file named on the command line while files opened with the app are
+//!   set to "No access" cannot be read (the control: under "Read-only" it
+//!   can);
 //! - the start's log and the app's record are for the user only.
 //!
 //! Each case has a control that shows the attack would have been seen:
@@ -35,6 +38,7 @@ use sam_runner::ops::{AddOptions, Sam};
 
 const ATTACK: &str = r#"#!/bin/sh
 H="$HOME"
+for f in "$@"; do grep -q OPENME "$f" 2>/dev/null && echo OPENED=read; done
 for f in "$@"; do echo pwned >> "$f" 2>/dev/null; done
 echo pwned >> "$H/dotfiles/bashrc" 2>/dev/null
 echo pwned >> "$H/work/notes.txt" 2>/dev/null
@@ -236,6 +240,25 @@ fn grants_of_parts_of_the_home_never_reach_start_places_or_secrets() {
     check(
         read(&home.join(".netrc")) == "machine x password SECRET\n",
         "S-F13: the app wrote ~/.netrc".into(),
+    );
+
+    // Files opened with the app set to "No access": the file named on the
+    // command line is not shared, not even read-only (it was shared like
+    // "Read-only"); under "Read-only" it is read and stays unchanged (the
+    // control).
+    fs::write(home.join("work/opened.txt"), "OPENME\n").unwrap();
+    for (access, want) in [(Access::None, None), (Access::Ro, Some("read"))] {
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.opened_files = access;
+        let (r, _) = start(p, vec![home.join("work/opened.txt")], None);
+        check(
+            r.get("OPENED").map(String::as_str) == want,
+            format!("opened files {access:?}: the app's read of the file: {r:?}"),
+        );
+    }
+    check(
+        read(&home.join("work/opened.txt")) == "OPENME\n",
+        "a file opened read-only was written".into(),
     );
 
     // Credential stores the list missed: hidden with the whole home (whose

@@ -751,6 +751,155 @@ fn a_link_planted_inside_a_refused_read_only_folder_is_never_followed() {
     assert!(!secret.join("new.txt").exists());
 }
 
+/// [`start_probe`], with the start's launch log as well, which holds its
+/// notes.
+fn start_probe_log(
+    app: &Sam,
+    id: &str,
+    p: &PermissionSet,
+    home: &Path,
+    host: &HostInfo,
+    args: &[&str],
+) -> (HashMap<String, String>, String) {
+    let mut e = app.set_permissions(id, p.clone()).unwrap();
+    let opts = LaunchOptions {
+        args: args.iter().map(|a| a.to_string()).collect(),
+        quiet: true,
+        owd: Some(home.to_path_buf()),
+        ..Default::default()
+    };
+    let rec = run(&mut e, &opts, &app.config, &app.paths, host).unwrap();
+    assert!(rec.success, "launch failed: {}", rec.summary);
+    let log = rec.log_file.clone().unwrap();
+    let text = fs::read_to_string(&log).unwrap_or_default();
+    let r = parse(&log);
+    assert_eq!(r.get("END").map(String::as_str), Some("1"), "{r:?}\n{text}");
+    (r, text)
+}
+
+/// A folder outside `/tmp` and `/var/tmp` (in the build's own scratch
+/// folder) for the place a planted link leads to: anything in `/tmp`
+/// counts as a place where programs outside the sandbox listen, which
+/// leaves it out whoever made the link, so only there the rule for links
+/// the app could have planted is what keeps it out.
+fn outside_tmp() -> tempfile::TempDir {
+    let t = tempfile::tempdir_in(env!("CARGO_TARGET_TMPDIR")).unwrap();
+    let real = fs::canonicalize(t.path()).unwrap();
+    assert!(
+        !real.starts_with("/tmp") && !real.starts_with("/var/tmp"),
+        "the build's scratch folder lies in a temp folder: {}",
+        real.display()
+    );
+    t
+}
+
+/// [`a_user_folder_link_the_app_planted_never_shows_where_it_leads`] with
+/// the place the link leads to outside `/tmp`, so the rule for links the
+/// app could have planted keeps it out, not the rule for places where
+/// programs outside the sandbox listen: the app can neither read nor
+/// write there, and the start says the app may have made that link.
+#[test]
+fn a_user_folder_link_the_app_planted_outside_tmp_never_shows_where_it_leads() {
+    let _one = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    if !bwrap_works() {
+        sam_runner::contracts::skip("bubblewrap is not functional here")
+            .unwrap_or_else(|e| panic!("{e}"));
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    let scratch = outside_tmp();
+    let secret = fs::canonicalize(scratch.path()).unwrap().join("secret");
+    fs::create_dir_all(&secret).unwrap();
+    fs::write(secret.join("secret.txt"), "secret\n").unwrap();
+    let (app, id, home, host) =
+        folder_probe_app(root, "PlantOut", "XDG_DOWNLOAD_DIR=\"$HOME/Downloads\"\n");
+    let downloads = home.join("Downloads");
+    fs::create_dir_all(&downloads).unwrap();
+    assert_eq!(
+        host.xdg_dir("downloads"),
+        Some(downloads.as_path()),
+        "the test's own"
+    );
+    let mut p = PermissionSet::strict_gui();
+    p.filesystem.home = true;
+    p.filesystem.home_access = Access::Rw;
+    p.filesystem.downloads = Access::Rw;
+    let secret_text = secret.to_string_lossy().into_owned();
+    let (r, text) = start_probe_log(&app, &id, &p, &home, &host, &["plant", &secret_text]);
+    assert_eq!(r["PLANTED"], "yes", "the writable home lets it: {text}");
+    assert!(fs::symlink_metadata(&downloads)
+        .unwrap()
+        .file_type()
+        .is_symlink());
+    let (r, text) = start_probe_log(&app, &id, &p, &home, &host, &[]);
+    assert_eq!(r["READ"], "no", "{text}");
+    assert_eq!(r["WRITE"], "no", "{text}");
+    assert!(!secret.join("new.txt").exists());
+    assert!(
+        text.contains(
+            "# note: SAM leaves out the writable user folder ~/Downloads for this app because the way there leads through the link ~/Downloads"
+        ) && text.contains("may have made that link"),
+        "the start gives the planted-link reason: {text}"
+    );
+}
+
+/// [`a_link_planted_inside_a_refused_read_only_folder_is_never_followed`]
+/// with the place the link leads to outside `/tmp`, so the rule for links
+/// the app could have planted keeps it out, not the rule for places where
+/// programs outside the sandbox listen: the app can neither read nor
+/// write there, and the start says the app may have made that link.
+#[test]
+fn a_link_planted_inside_a_refused_read_only_folder_outside_tmp_is_never_followed() {
+    let _one = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    if !bwrap_works() {
+        sam_runner::contracts::skip("bubblewrap is not functional here")
+            .unwrap_or_else(|e| panic!("{e}"));
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    let scratch = outside_tmp();
+    let secret = fs::canonicalize(scratch.path()).unwrap().join("secret");
+    fs::create_dir_all(&secret).unwrap();
+    fs::write(secret.join("secret.txt"), "secret\n").unwrap();
+    let (app, id, home, host) = folder_probe_app(
+        root,
+        "PlantInOut",
+        "XDG_DOCUMENTS_DIR=\"$HOME/Documents\"\nXDG_DOWNLOAD_DIR=\"$HOME/Dropbox/Documents/Downloads\"\n",
+    );
+    let downloads = home.join("Dropbox/Documents/Downloads");
+    fs::create_dir_all(&downloads).unwrap();
+    std::os::unix::fs::symlink(home.join("Dropbox/Documents"), home.join("Documents")).unwrap();
+    assert_eq!(
+        host.xdg_dir("downloads"),
+        Some(downloads.as_path()),
+        "the test's own"
+    );
+    let mut p = PermissionSet::strict_gui();
+    p.filesystem.home = true;
+    p.filesystem.home_access = Access::Rw;
+    p.filesystem.documents = Access::Ro;
+    p.filesystem.downloads = Access::Rw;
+    let secret_text = secret.to_string_lossy().into_owned();
+    let (r, text) = start_probe_log(&app, &id, &p, &home, &host, &["plant", &secret_text]);
+    assert_eq!(r["PLANTED"], "yes", "the writable home lets it: {text}");
+    assert!(fs::symlink_metadata(&downloads)
+        .unwrap()
+        .file_type()
+        .is_symlink());
+    let (r, text) = start_probe_log(&app, &id, &p, &home, &host, &[]);
+    assert_eq!(r["READ"], "no", "{text}");
+    assert_eq!(r["WRITE"], "no", "{text}");
+    assert!(!secret.join("new.txt").exists());
+    assert!(
+        text.contains(
+            "# note: SAM leaves out the writable user folder ~/Dropbox/Documents/Downloads for this app because the way there leads through the link ~/Dropbox/Documents/Downloads"
+        ) && text.contains("may have made that link"),
+        "the start gives the planted-link reason: {text}"
+    );
+}
+
 /// With the whole home writable, Documents read-only in `~/Sync`, an extra
 /// writable folder inside it and an extra read-only folder in `~/work`,
 /// the app can rename neither `~/Sync` nor `~/work`: each is a mount point
