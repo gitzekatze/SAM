@@ -782,7 +782,13 @@ fn the_release_build_check_refuses_a_program_that_follows_developer_variables() 
 
 /// The release stand-in's answer to `config path` is laid out as the real
 /// `sam-jail` lays out its own: the check reads the real program's lines,
-/// not only the stand-in's.
+/// not only the stand-in's. And every line the real program answers, not
+/// only the stand-in's three, passes the check's line-by-line rule: run in
+/// the check's own environment with SAM's folder switches hidden from it,
+/// so it answers as a release build does, the real program passes the
+/// check. A new line in its answer that the rule refuses (a folder outside
+/// the fresh home folder, an empty value) fails here, on the pull request,
+/// and not first at the next release build.
 #[test]
 fn the_release_stand_in_answers_like_the_real_program() {
     let dir = tempfile::tempdir().unwrap();
@@ -811,6 +817,25 @@ fn the_release_stand_in_answers_like_the_real_program() {
             real.join("\n")
         );
     }
+
+    // The real program, seen by the check as a release build: the folder
+    // switches the check sets never reach it.
+    let hidden = dir.path().join("switches-hidden/sam-jail");
+    write_exec(
+        &hidden,
+        &format!(
+            "#!/bin/sh\nexec env -u SAM_CONFIG_DIR -u SAM_DATA_DIR -u SAM_APPLICATIONS_DIR \
+             -u SAM_RUNTIME_DIR '{}' \"$@\"\n",
+            env!("CARGO_BIN_EXE_sam-jail")
+        ),
+    );
+    let out = check_release_build(&hidden);
+    assert!(
+        out.status.success(),
+        "the real sam-jail's answer to `config path` does not pass the release-build \
+         check, so every release build would stop there:\n{}",
+        text(&out.stderr)
+    );
 }
 
 /// Cargo also takes profile settings and compiler flags from outside the
