@@ -15,7 +15,8 @@
 //! same file back at the name (a second name, a hard link, made before).
 //! Device and inode still match, but the place is no longer shown through
 //! the mount Bubblewrap made, so whatever that mount gave (read-only, the
-//! object SAM held instead of a name) no longer holds.
+//! object SAM held instead of a name) no longer holds. The check sees the
+//! moment it is made: a move made after it is not caught.
 //!
 //! Kernel needs: `openat2` (Linux 5.6) and the mount-root attribute of
 //! `statx` (Linux 5.8). Where the kernel does not report the attribute,

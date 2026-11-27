@@ -246,14 +246,22 @@ rule: **no more than the app, no less than asked.**
     before anything else, that every place shown by handle is exactly the
     file or folder SAM opened (same device and inode), reached without
     following any link, and still the root of the mount Bubblewrap made
-    there, and ends the room otherwise: Ubuntu 24.04's Bubblewrap mounts a
+    there, and ends the room otherwise. Ubuntu 24.04's Bubblewrap mounts a
     handle's path by name, so an app swapping a folder for a link while
-    its room is built would put the link's target in the room; and a
-    program outside the room that can write the folder holding a place can
-    move the place away once Bubblewrap mounted it (the mount goes with
-    the name) and put the very same file back at its name through a second
-    name made before (a hard link), so the room would show it without the
-    mount, and without what the mount gave (read-only, for example). A
+    its room is built would put the link's target in the room. The
+    mount-root rule is defence in depth against a program outside the
+    app's sandbox (another program of yours) that can write the folder
+    holding a place: once Bubblewrap mounted the place, such a program can
+    move the place's name away (the mount goes with the name) and put the
+    very same file back at its name through a second name made before (a
+    hard link), so the room reaches the file no longer through the mount
+    Bubblewrap made. Today a room loses nothing by that: Room service
+    shows nothing inside a place the app can write, so the folder that
+    then shows the file is read-only for the room as well. The rule keeps
+    a room's places exactly as SAM built them should that change. The
+    check is made once, when SAM's helper starts in the room: a move made
+    later, while the room's program runs, is not detected (see
+    [Known limitations](#known-limitations)). A
     kernel that does not say whether a place is the root of a mount (older
     than Linux 5.8) ends every room this way, with a message naming the
     cause. Device places are the one thing
@@ -1339,6 +1347,15 @@ was easily misread.
   stick, or sticks written from the same image, share theirs. Such a drive
   mounted at the same place with the same device and inode numbers could
   be shown in a room on an older kernel.
+- **A room's place moved after the room started.** SAM's room helper
+  checks once, when it starts in the room and before the room's program
+  runs, that every place is still the root of the mount Bubblewrap made
+  there. A program outside the app's sandbox that can write the folder
+  holding a place can move the place away later, while the room's program
+  runs, and put the same file back at its name; the room then reaches the
+  file without that mount, and nothing detects it. Since a room shows
+  nothing inside a place the app can write, the file is then still shown
+  read-only. Such a program can usually change the file directly anyway.
 - **Places on removable drives need Linux 5.6 or later in rooms.** Room
   service opens such a place again for each room with `openat2`, which
   refuses links; an older kernel (or a container whose syscall filter

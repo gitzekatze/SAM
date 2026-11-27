@@ -313,9 +313,10 @@ pub extern "C" fn main(_argc: c_int, _argv: *const *const std::os::raw::c_char) 
     // Every place SAM showed is exactly what SAM opened, reached without
     // links, and the root of the mount Bubblewrap made there: an older
     // Bubblewrap mounts a handle's path by name, which the app could swap
-    // while the room was built, and a program outside the room that can
-    // write a place's folder could move the mount away and put the same
-    // file back at its name. Checked before anything else.
+    // while the room was built, and a program outside the app's sandbox
+    // that can write a place's folder could move the mount away and put
+    // the same file back at its name. Checked before anything else, once:
+    // a move made while the room's program runs is not caught.
     for place in &places {
         let (at, expect) = parse_place(place);
         if let Err(why) = place_check::check(at, &expect) {
