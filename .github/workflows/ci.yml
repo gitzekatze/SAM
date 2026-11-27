@@ -62,7 +62,7 @@ jobs:
           fi
           docs='^(docs/|[^/]+\.md$|scripts/site\.py$|\.github/ISSUE_TEMPLATE/)'
           # Documents SAM builds in or its checks read: they count as code.
-          code_docs='^docs/((guide|architecture|permissions)\.md|syscalls-reviewed\.txt|contracts\.toml|functions\.toml)$'
+          code_docs='^docs/((guide|architecture|permissions|releasing)\.md|syscalls-reviewed\.txt|contracts\.toml|functions\.toml)$'
           if [ "$DRAFT" = true ]; then
             code=false   # a draft: the quick checks only
           elif [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then

@@ -35,6 +35,9 @@ all: cli gui
 
 cli:
 	$(CARGO) build --release --locked -p sam-jail-cli
+	@# Cargo settings from outside the repository could still have turned
+	@# SAM's developer variables on: the built program is asked.
+	sh scripts/check-release-build.sh target/release/sam-jail
 
 gui: mo
 	$(CARGO) build --release --locked -p sam-gtk

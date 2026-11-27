@@ -113,7 +113,12 @@ refuses those tools and `sam-jail-gui` the options `--screenshot`, `--size`
 and `--delay` (`--focus-walk` takes no value, so only the source check in
 `crates/sam-jail-cli/tests/shipped_programs.rs` guards it). `scripts/sign-release.sh`
 signs with a release build that has them switched on, so signing runs like
-the shipped program, with developer variables off.
+the shipped program, with developer variables off. Before the release key
+is used, the script runs `scripts/check-release-build.sh` on that tool,
+which fails if the tool follows SAM's developer variables (debug
+assertions turned on by Cargo settings from outside the repository);
+`scripts/make-appimage.sh` runs the same check on its release tools and on
+the `sam-jail` that goes into the AppImage.
 
 1. **Sign the AppImages** on this computer, so the key never goes to GitHub:
 

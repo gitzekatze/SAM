@@ -62,6 +62,7 @@ sed -i -e "s/^Version: .*/Version:        $new/" -e "s/^Release: .*/Release:    
     -e "s/^%changelog$/%changelog\n* $rpmdate $who - $new-1\n- SAM $new, see CHANGELOG.md.\n/" packaging/fedora/sam-jail.spec
 sed -i -e "s/^pkgver=.*/pkgver=$new/" -e "s/^pkgrel=.*/pkgrel=1/" packaging/arch/PKGBUILD
 cargo build --release --locked -p sam-jail-cli >/dev/null
+sh scripts/check-release-build.sh target/release/sam-jail >/dev/null
 SAM_MAN_DATE=$date target/release/sam-jail man data/man >/dev/null
 sed -i "s/^\.TH \(sam-jail-[a-z]*\) 1 \"[0-9-]*\"/.TH \1 1 \"$date\"/" data/man/sam-jail-run.1 data/man/sam-jail-gui.1
 appstreamcli validate --no-net data/io.github.gitzekatze.SAM.metainfo.xml >/dev/null 2>&1 || die "metainfo does not validate"

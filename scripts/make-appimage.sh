@@ -39,6 +39,7 @@ echo "$RUNTIME_SHA256  $RUNTIME" | sha256sum -c --quiet - || { echo "runtime che
 # developer variables stay off while it signs.
 tools="$root/target/appimage-tools/release/sam-jail"
 cargo build --release --locked --target-dir "$root/target/appimage-tools" -p sam-jail-cli --features dev-tools
+sh "$root/scripts/check-release-build.sh" "$tools"
 
 # Keep this computer's folder names out of the binaries (panic messages
 # carry source paths), in a build folder of its own.
@@ -54,6 +55,11 @@ if grep -q -a -e "$HOME" -e "$root" -e "$cargo_home" "$bin/sam-jail" "$bin/sam-j
     echo "build paths left in the binaries" >&2
     exit 1
 fi
+# The variables above replace every compiler flag from the environment, but
+# Cargo still takes profile settings from the environment and from Cargo
+# configuration files outside the repository: the shipped program itself
+# must show that it ignores SAM's developer variables.
+sh "$root/scripts/check-release-build.sh" "$bin/sam-jail"
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/sam-appimage.XXXXXX")
 trap 'rm -rf "$work"' EXIT

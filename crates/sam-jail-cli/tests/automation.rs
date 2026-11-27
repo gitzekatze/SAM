@@ -309,10 +309,15 @@ fn sets_a_level_that_may_be_zero(line: &str) -> bool {
 /// SAM_RUNTIME_DIR) work only where debug assertions are on (owner decision
 /// 16 of 2026-11-23). A release build with them on would honour every one
 /// of them, silently. So the release profile never turns them on, and no
-/// packaging recipe, the Makefile or the release scripts turn them on by a
-/// flag (`-C debug-assertions`,
+/// packaging recipe, the Makefile, the release and signing scripts, the
+/// release guide's build commands or the shipped AppImage's test script
+/// turn them on by a flag (`-C debug-assertions`,
 /// `--config profile.release.debug-assertions=true`) or a variable
-/// (`CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS`).
+/// (`CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS`), and the repository keeps no
+/// Cargo configuration file (`.cargo/config.toml`), which every build in it
+/// would read. Settings from outside the repository are left to
+/// `scripts/check-release-build.sh`, which asks the built program itself
+/// (`release_build_paths_check_the_programs_they_build`).
 ///
 /// An optimisation level of 0 turns them on too: Cargo passes no
 /// debug-assertions flag for a release build, so rustc derives them from
@@ -343,7 +348,23 @@ fn release_builds_never_turn_on_debug_assertions() {
         root().join("scripts/make-release.sh"),
         root().join("scripts/release.sh"),
         root().join(".github/workflows/release.yml"),
+        // The signing tool's build command, which the maintainer copies by
+        // hand, and the test tool of the shipped AppImage's container test.
+        root().join("scripts/sign-release.sh"),
+        root().join("docs/releasing.md"),
+        root().join("scripts/test-shipped.sh"),
     ];
+    // A Cargo configuration in the repository would reach every build made
+    // in it, and the source tarball through `git archive`: none is kept,
+    // so no setting can hide there from this test.
+    for config in [".cargo/config.toml", ".cargo/config"] {
+        assert!(
+            !root().join(config).exists(),
+            "{config} exists: a Cargo configuration in the repository reaches \
+             every release build made from it; put build settings into \
+             Cargo.toml or the scripts this test reads"
+        );
+    }
     let before = files.len();
     files_below(&root().join("packaging"), &mut files);
     // The recipes that build SAM with --release are among them: a moved
@@ -436,6 +457,184 @@ fn release_builds_never_turn_on_debug_assertions() {
                 .contains("opt-level"),
         "%build in {SPEC} must set RUSTFLAGS once, without an optimisation level: {flags:?}"
     );
+}
+
+/// Runs scripts/check-release-build.sh on the program `sam`.
+fn check_release_build(sam: &Path) -> Output {
+    let mut cmd = Command::new("sh");
+    cmd.arg(root().join("scripts/check-release-build.sh"))
+        .arg(sam);
+    run(cmd, 60)
+}
+
+/// The release-build check asks the built program itself, because Cargo
+/// takes profile settings from outside the repository too. A program that
+/// follows SAM's folder switches (here SAM's real developer build) is
+/// refused, as is one that answers with other folders or not at all; a
+/// program that ignores them and names the standard folders below the fresh
+/// home folder (the release stand-in) passes.
+#[test]
+fn the_release_build_check_refuses_a_program_that_follows_developer_variables() {
+    let out = check_release_build(Path::new(env!("CARGO_BIN_EXE_sam-jail")));
+    assert!(
+        !out.status.success(),
+        "a developer build passed the release-build check:\n{}",
+        text(&out.stdout)
+    );
+    assert!(
+        text(&out.stderr).contains("follows SAM's developer variables"),
+        "{}",
+        text(&out.stderr)
+    );
+
+    let dir = tempfile::tempdir().unwrap();
+    let release = dir.path().join("release/sam-jail");
+    write_exec(&release, SAM);
+    let out = check_release_build(&release);
+    assert!(
+        out.status.success(),
+        "the release stand-in was refused:\n{}",
+        text(&out.stderr)
+    );
+
+    // An answer with another folder, no answer, or no program: refused,
+    // never passed without checking.
+    let other = dir.path().join("other/sam-jail");
+    write_exec(
+        &other,
+        "#!/bin/sh\nprintf '%-14s %s\\n' config_file \"$HOME/.config/sam/config.toml\" \
+         data_dir /var/lib/sam applications \"$HOME/.local/share/applications\"\n",
+    );
+    let silent = dir.path().join("silent/sam-jail");
+    write_exec(&silent, "#!/bin/sh\nexit 0\n");
+    let failing = dir.path().join("failing/sam-jail");
+    write_exec(&failing, "#!/bin/sh\nexit 1\n");
+    for (what, program) in [
+        ("another data folder", other),
+        ("no answer", silent),
+        ("a failing program", failing),
+        ("no program", dir.path().join("missing/sam-jail")),
+    ] {
+        let out = check_release_build(&program);
+        assert!(!out.status.success(), "{what} passed the check");
+        assert!(
+            text(&out.stderr).starts_with("check-release-build: "),
+            "{what}: {}",
+            text(&out.stderr)
+        );
+    }
+}
+
+/// The release stand-in's answer to `config path` is laid out as the real
+/// `sam-jail` lays out its own: the check reads the real program's lines,
+/// not only the stand-in's.
+#[test]
+fn the_release_stand_in_answers_like_the_real_program() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path().join("home");
+    fs::create_dir_all(&home).unwrap();
+    let stand_in = dir.path().join("stand-in/sam-jail");
+    write_exec(&stand_in, SAM);
+    let answer = |program: &Path| -> Vec<String> {
+        let mut cmd = Command::new(program);
+        cmd.args(["config", "path"])
+            .env_clear()
+            .env("PATH", std::env::var("PATH").unwrap_or_default())
+            .env("HOME", &home)
+            .env("LC_ALL", "C");
+        let out = run(cmd, 60);
+        assert!(out.status.success(), "{}", text(&out.stderr));
+        text(&out.stdout).lines().map(String::from).collect()
+    };
+    let real = answer(Path::new(env!("CARGO_BIN_EXE_sam-jail")));
+    let stand_in = answer(&stand_in);
+    assert_eq!(stand_in.len(), 3, "{stand_in:?}");
+    for line in &stand_in {
+        assert!(
+            real.contains(line),
+            "the real sam-jail does not answer {line:?}:\n{}",
+            real.join("\n")
+        );
+    }
+}
+
+/// Cargo also takes profile settings and compiler flags from outside the
+/// repository (the builder's environment, Cargo configuration files in
+/// CARGO_HOME or above the source), which no test of the source can read.
+/// So every release build path asks the program it built, with
+/// scripts/check-release-build.sh, after building it and before the
+/// program is shipped, installed or used: the AppImage build (its release
+/// tools and the shipped sam-jail), the signing script (before the release
+/// key is used), the release script, the Makefile's `cli` target and the
+/// test steps of the Arch and Fedora recipes.
+#[test]
+fn release_build_paths_check_the_programs_they_build() {
+    const CHECK: &str = "scripts/check-release-build.sh";
+    // The file, the program checked, and the lines the check must come
+    // after and before.
+    let cases = [
+        (
+            "scripts/make-appimage.sh",
+            r#""$tools""#,
+            r#"--target-dir "$root/target/appimage-tools" "#,
+            r#""$tools" dev "#,
+        ),
+        (
+            "scripts/make-appimage.sh",
+            r#""$bin/sam-jail""#,
+            r#"--target-dir "$root/target/appimage" "#,
+            r#"install -Dm755 "$bin/sam-jail""#,
+        ),
+        (
+            "scripts/sign-release.sh",
+            r#""$sam""#,
+            r#"sam="$root/target/sign-tools/release/sam-jail""#,
+            "gpg ",
+        ),
+        (
+            "scripts/release.sh",
+            "target/release/sam-jail",
+            "cargo build --release --locked -p sam-jail-cli",
+            "target/release/sam-jail man",
+        ),
+        (
+            "Makefile",
+            "target/release/sam-jail",
+            "$(CARGO) build --release --locked -p sam-jail-cli",
+            "gui: mo",
+        ),
+        (
+            PKGBUILD,
+            "target/release/sam-jail",
+            "check() {",
+            "cargo test ",
+        ),
+        (SPEC, "target/release/sam-jail", "%check", "cargo test "),
+    ];
+    for (file, program, after, before) in cases {
+        let raw = fs::read_to_string(root().join(file)).unwrap_or_else(|e| panic!("{file}: {e}"));
+        let code: Vec<&str> = raw
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.starts_with('#') && !l.starts_with("@#"))
+            .collect();
+        let first = |needle: &str| {
+            code.iter()
+                .position(|l| l.contains(needle))
+                .unwrap_or_else(|| panic!("{file}: no line with {needle:?}"))
+        };
+        let (from, to) = (first(after), first(before));
+        let checked = (from + 1..to).any(|i| {
+            let words: Vec<&str> = code[i].split_whitespace().collect();
+            words.iter().any(|w| w.trim_matches('"').ends_with(CHECK)) && words.contains(&program)
+        });
+        assert!(
+            checked,
+            "{file}: no `sh {CHECK} {program}` between the line with {after:?} and \
+             the line with {before:?}: Cargo settings from outside the repository could \
+             turn SAM's developer variables on in that release build unseen"
+        );
+    }
 }
 
 /// A release build ignores SAM's developer variables (folders and tools),
@@ -651,11 +850,21 @@ case "$*" in
 esac
 "#;
 
-/// SAM's own signing and .zsync commands, which the script calls.
+/// A release build of `sam-jail` with SAM's release tools: its signing and
+/// .zsync commands, which the signing script calls, `man`, which the
+/// release script calls, and its answer to `config path`, which
+/// scripts/check-release-build.sh reads. Like a
+/// release build, it ignores SAM's folder switches and names the standard
+/// folders below `$HOME`, in the real program's layout
+/// (`the_release_stand_in_answers_like_the_real_program`).
 const SAM: &str = r#"#!/bin/sh
 case "$1 $2" in
 "dev sign-appimage") printf 'release-signature' >> "$3" ;;
 "dev make-zsync") echo "zsync of $(sha256sum "$3" | cut -d' ' -f1)" > "$3.zsync" ;;
+"man "*) ;;
+"config path")
+    printf '%-14s %s\n' applications "$HOME/.local/share/applications" \
+        config_file "$HOME/.config/sam/config.toml" data_dir "$HOME/.local/share/sam" ;;
 *) exit 2 ;;
 esac
 "#;
@@ -672,11 +881,13 @@ impl Draft {
         let t = tmp.path();
         let repo = t.join("repo");
         fs::create_dir_all(repo.join("scripts")).unwrap();
-        fs::copy(
-            root().join("scripts/sign-release.sh"),
-            repo.join("scripts/sign-release.sh"),
-        )
-        .unwrap();
+        for script in ["sign-release.sh", "check-release-build.sh"] {
+            fs::copy(
+                root().join("scripts").join(script),
+                repo.join("scripts").join(script),
+            )
+            .unwrap();
+        }
         // The signing tool: a release build with the release tools on
         // (sign-release.sh, owner decision of 2026-11-27).
         write_exec(&repo.join("target/sign-tools/release/sam-jail"), SAM);
@@ -828,6 +1039,29 @@ fn only_the_signing_tool_signs_a_release() {
             text(&out.stderr)
         );
     }
+}
+
+/// A signing tool that follows SAM's developer variables, a developer
+/// build or a release build whose debug assertions Cargo settings from
+/// outside the repository turned on, signs nothing: the script asks the
+/// tool before it uses the release key. Here the tool is SAM's real
+/// developer build.
+#[test]
+fn a_signing_tool_that_follows_developer_variables_signs_nothing() {
+    let d = Draft::new();
+    d.attest_all();
+    fs::copy(
+        env!("CARGO_BIN_EXE_sam-jail"),
+        d.path("repo/target/sign-tools/release/sam-jail"),
+    )
+    .unwrap();
+    let out = d.sign();
+    d.assert_nothing_signed(&out);
+    let err = text(&out.stderr);
+    assert!(
+        err.contains("follows SAM's developer variables") && err.contains("nothing signed"),
+        "{err}"
+    );
 }
 
 /// A file someone added to the draft stops the signing: the release key
@@ -1101,15 +1335,16 @@ fn a_release_that_fails_to_build_leaves_no_tag() {
         fs::create_dir_all(p.parent().unwrap()).unwrap();
         fs::write(p, content).unwrap();
     }
-    for s in ["release.sh", "changes.py"] {
+    for s in ["release.sh", "changes.py", "check-release-build.sh"] {
         fs::create_dir_all(repo.join("scripts")).unwrap();
         fs::copy(root().join("scripts").join(s), repo.join("scripts").join(s)).unwrap();
     }
-    // The build tools: cargo builds a sam-jail that writes man pages, and
-    // `make dist` breaks.
+    // The build tools: cargo builds a release sam-jail that writes man
+    // pages, and `make dist` breaks.
+    write_exec(&t.join("release-sam-jail"), SAM);
     write_exec(
         &t.join("bin/cargo"),
-        "#!/bin/sh\nif [ \"$1\" = build ]; then mkdir -p target/release; printf '#!/bin/sh\\nexit 0\\n' > target/release/sam-jail; chmod 755 target/release/sam-jail; fi\nexit 0\n",
+        "#!/bin/sh\nif [ \"$1\" = build ]; then mkdir -p target/release; cp \"$RELEASE_SAM\" target/release/sam-jail; fi\nexit 0\n",
     );
     write_exec(&t.join("bin/appstreamcli"), "#!/bin/sh\nexit 0\n");
     write_exec(
@@ -1125,6 +1360,7 @@ fn a_release_that_fails_to_build_leaves_no_tag() {
         .current_dir(&repo)
         .env("UNSIGNED", "1")
         .env("SKIP_TESTS", "1")
+        .env("RELEASE_SAM", t.join("release-sam-jail"))
         .env_remove("SIGN_KEY")
         .env_remove("RUNTIME")
         .env("HOME", t)

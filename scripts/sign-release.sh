@@ -31,6 +31,11 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 # decision 2026-11-27). A plain release build no longer has the tools.
 sam="$root/target/sign-tools/release/sam-jail"
 [ -x "$sam" ] || die "build the signing tool first: cargo build --release --locked --target-dir target/sign-tools -p sam-jail-cli --features dev-tools"
+# Cargo settings from outside the repository can still turn the developer
+# variables on in a release build: the tool must show that it ignores them
+# before the release key is used.
+sh "$root/scripts/check-release-build.sh" "$sam" \
+    || die "the signing tool follows SAM's developer variables; build it again with the command in docs/releasing.md, without changed Cargo settings; nothing signed"
 gpg --batch --list-secret-keys "$SIGN_KEY" >/dev/null 2>&1 || die "no secret GPG key '$SIGN_KEY'"
 [ "$(gh release view "$tag" --json isDraft --jq .isDraft)" = true ] || die "$tag is not a draft release"
 

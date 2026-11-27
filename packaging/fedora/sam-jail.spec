@@ -82,6 +82,9 @@ for f in target/locale/*/LC_MESSAGES/sam.mo; do install -Dpm 0644 "$f" "%{buildr
 %find_lang sam
 
 %check
+# The programs %build made must ignore SAM's developer variables: Cargo
+# settings from outside the source could have turned them on.
+sh scripts/check-release-build.sh target/release/sam-jail
 desktop-file-validate %{buildroot}%{_datadir}/applications/io.github.gitzekatze.SAM.desktop
 appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/io.github.gitzekatze.SAM.metainfo.xml
 export CARGO_HOME="$PWD/.cargo-home"

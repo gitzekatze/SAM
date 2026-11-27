@@ -34,6 +34,15 @@ build at level 0 has debug assertions and would follow SAM's developer
 variables, and `release_builds_never_turn_on_debug_assertions` in
 `crates/sam-jail-cli/tests/automation.rs` fails if a build step, the
 Makefile, a release script or a recipe sets it outside these test steps.
+Cargo also takes profile settings from the builder's environment and from
+Cargo configuration files outside the source, which no test of the source
+can see. So the test steps of both recipes first run
+`scripts/check-release-build.sh target/release/sam-jail`: it starts the
+built `sam-jail` with SAM's folder variables pointing at a temporary folder
+and fails the package build if the program follows them. The Makefile's
+`cli` target, `scripts/make-appimage.sh`, `scripts/release.sh` and
+`scripts/sign-release.sh` run the same check on the programs they build or
+use.
 
 ## Arch / CachyOS (AUR)
 
