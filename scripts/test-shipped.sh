@@ -12,7 +12,8 @@
 # unprivileged user namespaces (CI lifts the restriction first).
 #
 # The test app is a synthetic AppImage made here, before the containers
-# start, by a build of sam-jail with the dev-tools feature (needs cargo):
+# start, by a release build of sam-jail with the dev-tools feature (needs
+# cargo):
 # the shipped AppImage has no test tools, and the containers no Rust.
 set -eu
 here=$(cd "$(dirname "$0")/.." && pwd)
@@ -24,9 +25,9 @@ command -v cargo >/dev/null || { echo "cargo is needed to make the test app" >&2
 work=$(mktemp -d "${TMPDIR:-/tmp}/sam-shipped.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 fixture="$work/Hello-1.0.AppImage"
-cargo build -q --locked --manifest-path "$here/Cargo.toml" --target-dir "$here/target/shipped-tools" \
+cargo build -q --release --locked --manifest-path "$here/Cargo.toml" --target-dir "$here/target/shipped-tools" \
     -p sam-jail-cli --features dev-tools
-"$here/target/shipped-tools/debug/sam-jail" dev make-fixture "$fixture" >/dev/null
+"$here/target/shipped-tools/release/sam-jail" dev make-fixture "$fixture" >/dev/null
 
 if [ $# -eq 0 ]; then
     set -- \

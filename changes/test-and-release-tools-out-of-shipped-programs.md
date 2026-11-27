@@ -9,4 +9,6 @@
   users never need.
 - Builds from a source checkout (`cargo build`) still have them, and a
   release build has them with the `dev-tools` feature. The release checks
-  now test that the finished AppImage refuses them.
+  now test that the finished AppImage refuses the five commands and the
+  options `--screenshot`, `--size` and `--delay`; a check of SAM's source
+  guards all of them, `--focus-walk` included.

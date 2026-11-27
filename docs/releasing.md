@@ -34,8 +34,10 @@ the steps; the list says what it does and what stays a person's job.
    whole sentences.
 8. **The Rust version for release builds** is still the one you want:
    `RUST_VERSION` in `.github/workflows/release.yml` (fixed, so the same
-   tag gives the same files; CI tests with the newest stable Rust). Raise it
-   on purpose, after CI has been green with that version.
+   tag gives the same files; CI tests with the newest stable Rust). It is
+   named twice there, for the AppImage build and for the test app of the
+   container test; raise both together, on purpose, after CI has been green
+   with that version.
 9. **The release key** is on this computer. Its fingerprint,
    `AFE940EDA5A0C5C4B94B0A3FB1764CFD72A238E6`, is built into SAM
    (`RELEASE_KEYS` in `crates/sam-runner/src/release_key.rs`): SAM updates
@@ -104,10 +106,12 @@ third-party action; only the job that makes the draft may write.
 
 The AppImages' programs contain no test or release tools
 ([Testing](testing.md)): the AppImage build writes the update information
-and the `.zsync` file with a `sam-jail` of its own that has the `dev-tools`
-feature, and the test on fresh containers makes its test app before the
-containers start, then checks that the shipped `sam-jail` refuses those
-tools and `sam-jail-gui` the screenshot options. `scripts/sign-release.sh`
+and the `.zsync` file with a `sam-jail` of its own, a release build with the
+`dev-tools` feature, and the test on fresh containers makes its test app
+before the containers start, then checks that the shipped `sam-jail`
+refuses those tools and `sam-jail-gui` the options `--screenshot`, `--size`
+and `--delay` (`--focus-walk` takes no value, so only the source check in
+`crates/sam-jail-cli/tests/shipped_programs.rs` guards it). `scripts/sign-release.sh`
 signs with a developer build (`cargo build`), which has them.
 
 1. **Sign the AppImages** on this computer, so the key never goes to GitHub:

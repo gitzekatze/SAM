@@ -131,8 +131,13 @@ jobs:
 
       # The test app is made from this source by SAM's test tools, which
       # the shipped AppImage does not contain (scripts/test-shipped.sh).
+      # The same Rust as the appimage job's (keep both RUST_VERSION equal).
       - name: Rust for the test app
-        run: rustup toolchain install stable --profile minimal && rustup default stable
+        env:
+          RUST_VERSION: "1.100.0"
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal
+          rustup default "$RUST_VERSION"
 
       - name: Test the AppImage on every system
         run: sh scripts/test-shipped.sh dist/SAM-*-${{ matrix.arch }}.AppImage ${{ matrix.systems }}

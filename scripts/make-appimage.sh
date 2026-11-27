@@ -35,9 +35,10 @@ echo "$RUNTIME_SHA256  $RUNTIME" | sha256sum -c --quiet - || { echo "runtime che
 # The release steps below (update information, signature, .zsync) use
 # SAM's release tools, which the shipped programs do not contain: a build of
 # sam-jail with the dev-tools feature, in a folder of its own. It never goes
-# into the AppImage.
-tools="$root/target/appimage-tools/debug/sam-jail"
-cargo build --locked --target-dir "$root/target/appimage-tools" -p sam-jail-cli --features dev-tools
+# into the AppImage. A release build, like the shipped programs: SAM's
+# developer variables stay off while it signs.
+tools="$root/target/appimage-tools/release/sam-jail"
+cargo build --release --locked --target-dir "$root/target/appimage-tools" -p sam-jail-cli --features dev-tools
 
 # Keep this computer's folder names out of the binaries (panic messages
 # carry source paths), in a build folder of its own.
