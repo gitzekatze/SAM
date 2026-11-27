@@ -1030,10 +1030,12 @@ pub enum LeftOutPlace {
 /// says the bind was a writable one: for it a link is followed only into
 /// what the home and the user folders show writable, so the place it
 /// leads to may still be shown read-only (a read-only home), and the note
-/// must not say it is hidden. No note says the place is hidden: the rule
-/// weighs only what the home and the user folders show (for a user folder
-/// the home alone), while other extra folders, opened folders and the
-/// system's own places may still show it. A place of the home SAM shows
+/// must not say it is hidden. No note says the place is hidden, nor that
+/// SAM does not show `shown`: SAM only leaves out this one bind (for a
+/// place it shows on its own, it does not bind it on its own), while the
+/// rule weighs only what the home and the user folders show (for a user
+/// folder the home alone), and other extra folders, opened folders and the
+/// system's own places may still show the place and the link itself. A place of the home SAM shows
 /// on its own (`kind` [`LeftOutPlace::Own`]) stays left out even once its
 /// target is listed as an extra folder; the app then reaches that place
 /// through the link wherever its other folders show the link.
@@ -1052,15 +1054,15 @@ pub fn left_out_note(shown: &str, why: &LeftOut, kind: LeftOutPlace, write: bool
                     args,
                 ),
                 LeftOutPlace::Own => crate::i18n::trf(
-                    "SAM does not show {path} to this app because the way there leads through the link {link}, which lies in a folder the app can change, to a place the home and the user folders do not show: the app may have made that link. The app still sees what its other folders show there. If you made the link yourself, add the place it leads to as an extra folder: SAM still leaves out {path} then, but where the app's other folders show the link, the app reaches that place through it.",
+                    "SAM does not bind {path} for this app on its own because the way there leads through the link {link}, which lies in a folder the app can change, to a place the home and the user folders do not show: the app may have made that link. The app still sees what its other folders show there. If you made the link yourself, add the place it leads to as an extra folder: SAM still leaves out {path} then, but where the app's other folders show the link, the app reaches that place through it.",
                     args,
                 ),
                 LeftOutPlace::Extra => crate::i18n::trf(
-                    "SAM does not show {path} to this app because the way there leads through the link {link}, which lies in a folder the app can change, to a place the home and the user folders do not show: the app may have made that link. The app still sees what its other folders show there. If you made the link yourself, list the place it leads to as an extra folder instead of this one.",
+                    "SAM leaves out the extra folder {path} for this app because the way there leads through the link {link}, which lies in a folder the app can change, to a place the home and the user folders do not show: the app may have made that link. The app still sees what its other folders show there. If you made the link yourself, list the place it leads to as an extra folder instead of this one.",
                     args,
                 ),
                 LeftOutPlace::UserFolder => crate::i18n::trf(
-                    "SAM does not show {path} to this app because the way there leads through the link {link}, which lies in a folder the app can change, to a place the home does not show: the app may have made that link. The app still sees what its other folders show there. If you made the link yourself, set this user folder to the place it leads to in ~/.config/user-dirs.dirs.",
+                    "SAM leaves out the user folder {path} for this app because the way there leads through the link {link}, which lies in a folder the app can change, to a place the home does not show: the app may have made that link. The app still sees what its other folders show there. If you made the link yourself, set this user folder to the place it leads to in ~/.config/user-dirs.dirs.",
                     args,
                 ),
             }
@@ -1769,8 +1771,11 @@ mod tests {
     /// writable home stays left out after its target is listed as the note
     /// advises, and the app reaches that place through the home's link; a
     /// read-only user folder behind a link in a writable folder is left
-    /// out while its place may be listed. Each note says what the rule
-    /// weighs and that the app still sees what its other folders show.
+    /// out while its place may be listed. Each note opens with what SAM
+    /// did with that one bind (it leaves out the extra or user folder, or
+    /// does not bind the place on its own), never that SAM does not show
+    /// it, and says what the rule weighs and that the app still sees what
+    /// its other folders show.
     #[test]
     fn a_left_out_note_never_says_the_place_is_hidden() {
         use crate::permissions::Access;
@@ -1794,12 +1799,18 @@ mod tests {
         host.xdg_dirs
             .insert("documents".into(), home.join("Documents"));
         let st = |p: &Path| p.display().to_string();
-        let told = |note: &str, says: &str| {
+        // The note says what SAM did with this one bind, never that SAM
+        // does not show the place: the folders around it may still show
+        // the link, and other grants the place it leads to.
+        let told = |note: &str, shown: &str, opens: &str, says: &str| {
             assert!(
-                note.contains(says)
+                note.starts_with(opens)
+                    && note.contains(says)
                     && note.contains("may have made that link")
                     && note.contains("The app still sees what its other folders show there.")
-                    && !note.contains("not shown otherwise"),
+                    && !note.contains("not shown otherwise")
+                    && !note.contains(&format!("does not show {shown}"))
+                    && !note.contains("not show ~"),
                 "{note}"
             );
         };
@@ -1819,6 +1830,8 @@ mod tests {
         );
         told(
             &note,
+            "~/Documents/Data3",
+            "SAM leaves out the extra folder ~/Documents/Data3 for this app because",
             "to a place the home and the user folders do not show",
         );
         // A place SAM shows on its own, its target listed as advised.
@@ -1834,6 +1847,8 @@ mod tests {
         let note = left_out_note("~/.fonts", why.as_ref().unwrap(), LeftOutPlace::Own, false);
         told(
             &note,
+            "~/.fonts",
+            "SAM does not bind ~/.fonts for this app on its own because",
             "to a place the home and the user folders do not show",
         );
         assert!(
@@ -1857,7 +1872,12 @@ mod tests {
             LeftOutPlace::UserFolder,
             false,
         );
-        told(&note, "to a place the home does not show");
+        told(
+            &note,
+            "~/Sync/Documents",
+            "SAM leaves out the user folder ~/Sync/Documents for this app because",
+            "to a place the home does not show",
+        );
     }
 
     /// Where the way ends is not all: a link in `/tmp` made outside the

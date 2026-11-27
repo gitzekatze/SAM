@@ -7773,7 +7773,7 @@ mod guard_tests {
         let mut private_rw = private.clone();
         private_rw.filesystem.documents = Access::Rw;
         for (p, says) in [
-            (&private, "SAM does not show"),
+            (&private, "SAM leaves out the user folder"),
             (&read_only_home, "leaves out the writable user folder"),
             (&private_rw, "leaves out the writable user folder"),
         ] {
