@@ -50,12 +50,15 @@ the steps; the list says what it does and what stays a person's job.
 After the checks above, one command does the rest, up to the last click:
 
 ```sh
+export SAM_RELEASE_TEST_COMMAND=/path/to/run-tests-in-a-container
 scripts/new-version.sh X.Y.Z --dry-run   # only checks that everything is ready
 scripts/new-version.sh X.Y.Z
 ```
 
-It checks that the version is new, the tree is clean, `main` matches GitHub,
-the last CI run on it passed and the release key is here. It asks once for
+It checks that the version is new, the tree is clean, a program to run the
+tests is named (`SAM_RELEASE_TEST_COMMAND`, or `SKIP_TESTS=1` after the
+tests passed elsewhere on this commit), `main` matches GitHub, the last CI
+run on it passed and the release key is here. It asks once for
 the key's passphrase and keeps GnuPG from forgetting it during the release.
 Then it makes a branch `release-X.Y.Z` (`main` is protected and takes
 changes only through pull requests), runs `scripts/release.sh` there (set

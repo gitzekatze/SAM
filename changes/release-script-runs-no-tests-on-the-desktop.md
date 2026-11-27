@@ -8,3 +8,6 @@
 - Without that variable, and without `SKIP_TESTS=1` after the tests passed
   elsewhere, the script stops before it changes anything and names both
   ways.
+- `scripts/new-version.sh` checks the same among its ready checks: its dry
+  run no longer says "ready" without either setting, and the real run stops
+  before it makes the branch `release-X.Y.Z`.

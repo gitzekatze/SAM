@@ -1852,6 +1852,107 @@ fn the_release_script_runs_no_tests_on_its_own_computer() {
     }
 }
 
+/// The one-command release (`scripts/new-version.sh`) checks in its ready
+/// checks that a program to run the tests is named, because
+/// `scripts/release.sh` stops without one: with neither
+/// SAM_RELEASE_TEST_COMMAND nor SKIP_TESTS=1, the dry run fails and names
+/// both instead of saying "ready", and the real run stops before it makes
+/// the branch release-X.Y.Z. With either one set, the same dry run is ready,
+/// so the stand-ins (gh, gpg, a local origin) let every other check pass.
+#[test]
+fn the_release_command_checks_for_a_test_program_before_it_starts() {
+    for (setting, dry, ready) in [
+        (None, true, false),
+        (None, false, false),
+        (
+            Some(("SAM_RELEASE_TEST_COMMAND", "/opt/run-the-tests")),
+            true,
+            true,
+        ),
+        (Some(("SKIP_TESTS", "1")), true, true),
+    ] {
+        let case = format!("{setting:?}, dry run {dry}");
+        let tmp = tempfile::tempdir().unwrap();
+        let t = tmp.path();
+        let repo = release_checkout(t);
+        let key = "AFE940EDA5A0C5C4B94B0A3FB1764CFD72A238E6";
+        let key_file = repo.join("crates/sam-runner/src/release_key.rs");
+        fs::create_dir_all(key_file.parent().unwrap()).unwrap();
+        fs::write(
+            &key_file,
+            format!("pub const RELEASE_KEYS: &[&str] = &[\n    \"{key}\",\n];\n"),
+        )
+        .unwrap();
+        fs::copy(
+            root().join("scripts/new-version.sh"),
+            repo.join("scripts/new-version.sh"),
+        )
+        .unwrap();
+        git(&repo, t, &["add", "-A"]);
+        git(&repo, t, &["commit", "-q", "-m", "new-version"]);
+        git(t, t, &["init", "-q", "--bare", "origin.git"]);
+        let origin = t.join("origin.git");
+        git(
+            &repo,
+            t,
+            &["remote", "add", "origin", origin.to_str().unwrap()],
+        );
+        git(&repo, t, &["push", "-q", "origin", "main"]);
+        // gh is signed in and the CI run passed; gpg has the key and signs.
+        write_exec(
+            &t.join("bin/gh"),
+            "#!/bin/sh\n[ \"$1 $2\" = 'run list' ] && echo success\nexit 0\n",
+        );
+        write_exec(&t.join("bin/gpg"), "#!/bin/sh\nexit 0\n");
+        let mut cmd = Command::new("sh");
+        cmd.arg("scripts/new-version.sh")
+            .arg("0.2.0")
+            .args(dry.then_some("--dry-run"))
+            .current_dir(&repo)
+            .env_remove("SKIP_TESTS")
+            .env_remove("SAM_RELEASE_TEST_COMMAND")
+            .env("RELEASE_SAM", t.join("release-sam-jail"))
+            .env("CARGO_CALLS", t.join("cargo-calls"))
+            .env("HOME", t)
+            .env("GIT_CONFIG_GLOBAL", t.join("gitconfig"))
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("PATH", path_with(&t.join("bin")));
+        if let Some((name, value)) = setting {
+            cmd.env(name, value);
+        }
+        let out = run(cmd, 120);
+        let (stdout, stderr) = (text(&out.stdout), text(&out.stderr));
+        assert_eq!(out.status.success(), ready, "{case}:\n{stdout}\n{stderr}");
+        assert_eq!(
+            stdout.contains("ready."),
+            ready,
+            "{case}: the ready line:\n{stdout}\n{stderr}"
+        );
+        if ready {
+            assert!(
+                stdout.contains("Dry run: nothing was changed."),
+                "{case}:\n{stdout}"
+            );
+        } else {
+            assert!(
+                stderr.contains("SAM_RELEASE_TEST_COMMAND=<program>")
+                    && stderr.contains("SKIP_TESTS=1"),
+                "{case}: the message names no way to test:\n{stderr}"
+            );
+        }
+        assert_eq!(
+            git_says(&repo, t, &["branch", "--list", "release-0.2.0"]),
+            "",
+            "{case}: it made the release branch:\n{stdout}\n{stderr}"
+        );
+        assert_eq!(
+            git_says(&repo, t, &["branch", "--show-current"]),
+            "main",
+            "{case}: it left main:\n{stderr}"
+        );
+    }
+}
+
 /// The sandbox tests in the desktop session are judged by cargo's exit
 /// status: a run that does not even build prints no "FAILED" and must still
 /// fail (audit D-M11).

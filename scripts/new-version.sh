@@ -4,10 +4,11 @@
 #   scripts/new-version.sh X.Y.Z            do it
 #   scripts/new-version.sh X.Y.Z --dry-run  only check that everything is ready
 #
-# 1. Checks: the version is new, the tree is clean, main matches GitHub, the
-#    last CI run on it passed, the release key is here, gh is signed in,
-#    and data made by the last released version still works
-#    (tests/upgrade/run.sh).
+# 1. Checks: the version is new, the tree is clean, a program to run the
+#    tests is named (SAM_RELEASE_TEST_COMMAND, or SKIP_TESTS=1 after they
+#    passed elsewhere), main matches GitHub, the last CI run on it passed,
+#    the release key is here, gh is signed in, and data made by the last
+#    released version still works (tests/upgrade/run.sh).
 # 2. Asks once for the release key's passphrase and keeps GnuPG from
 #    forgetting it while the release runs (GnuPG forgets after 10 minutes
 #    without use; a tiny signature every 5 minutes keeps it).
@@ -89,6 +90,12 @@ git rev-parse -q --verify "refs/tags/$tag" >/dev/null && die "the tag $tag exist
 git rev-parse -q --verify "refs/heads/$branch" >/dev/null && die "the branch $branch exists already; delete it if it is left over from a failed try (git branch -D $branch)"
 [ "$(git branch --show-current)" = main ] || die "switch to the main branch first"
 [ -z "$(git status --porcelain)" ] || die "there are uncommitted changes; commit or stash them first"
+# scripts/release.sh runs no tests on this computer and stops without a
+# program that runs them elsewhere; checked here, so the dry run says so and
+# the real run stops before it makes the branch.
+if [ "${SKIP_TESTS:-}" != 1 ] && [ -z "${SAM_RELEASE_TEST_COMMAND:-}" ]; then
+    die "the test suite does not run on this computer: set SAM_RELEASE_TEST_COMMAND=<program> to run it elsewhere (for example in a container; it gets this checkout's path), or SKIP_TESTS=1 after the tests passed elsewhere"
+fi
 command -v gh >/dev/null || die "the GitHub command line (gh) is not installed"
 gh auth status >/dev/null 2>&1 || die "gh is not signed in: run 'gh auth login'"
 git fetch -q origin main
