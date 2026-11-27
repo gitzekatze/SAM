@@ -530,7 +530,7 @@ pub fn prepare(
         warnings.push(Warning::warn(
             "writable-appdir-unavailable",
             "Writable app folder unavailable",
-            "The writable app folder needs Bubblewrap 0.10 or newer; the installed one is older, so the app folder stays read-only. Update Bubblewrap to use this setting.",
+            "The writable app folder needs Bubblewrap 0.11 or newer; the installed one is older, so the app folder stays read-only. Update Bubblewrap to use this setting.",
         ));
     } else if perms.advanced.writable_appdir
         && !sam_core::host::overlay_works_in(&paths.overlays_dir())

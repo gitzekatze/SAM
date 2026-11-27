@@ -348,7 +348,7 @@ pub fn system_report(app: &Sam, host: &HostInfo) -> DiagnosticReport {
             sam_core::i18n::trf("{folder} is on a filesystem that cannot hold an overlay; app folders stay read-only", &[("folder", &tildify(&overlays))]),
         )
     } else {
-        check("overlay", "Writable app folder", CheckStatus::Info, "needs Bubblewrap 0.10 or newer; app folders stay read-only")
+        check("overlay", "Writable app folder", CheckStatus::Info, "needs Bubblewrap 0.11 or newer; app folders stay read-only")
     });
     c.push(match crate::netns::pasta_usable() {
         Ok(p) => check(

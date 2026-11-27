@@ -181,7 +181,7 @@ fn the_overlay_checks_match_the_real_bubblewrap() {
         .collect();
     assert!(left.is_empty(), "the check left {left:?}");
     if !has_overlays {
-        not_here("this Bubblewrap has no overlays (older than 0.10)");
+        not_here("this Bubblewrap has no overlays (older than 0.11)");
     } else if !real {
         skip_or_fail("a real overlay does not work in the test's folder");
     }
