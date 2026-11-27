@@ -473,7 +473,7 @@ id = 18
 area = "C"
 promise = "Optional: a writable app folder (changes go to a separate layer); where that's impossible, a read-only start with an explanation."
 code = ["sam-sandbox/src/lib.rs", "sam-runner/src/launch.rs", "sam-core/src/host.rs"]
-tests = ["the_overlay_check_believes_bubblewraps_answer", "the_overlay_checks_match_the_real_bubblewrap", "writable_appdir_uses_overlay", "an_app_starts_read_only_when_its_writable_app_folder_cannot_work", "a_writable_app_folder_is_offered_only_where_it_can_work", "the_app_folder_stays_read_only_unless_writable_is_granted"]
+tests = ["the_overlay_check_believes_bubblewraps_answer", "the_overlay_checks_match_the_real_bubblewrap", "writable_appdir_uses_overlay", "an_app_starts_read_only_when_its_writable_app_folder_cannot_work", "a_writable_app_folder_is_offered_only_where_it_can_work", "the_app_folder_stays_read_only_unless_writable_is_granted", "overlays_count_where_bubblewrap_lists_the_option", "an_option_counts_only_as_a_word_of_its_own", "empty_help_or_an_empty_option_lists_nothing", "bubblewrap_options_come_from_a_successful_help_on_standard_output"]
 
 [[function]]
 id = 41
@@ -966,7 +966,7 @@ id = 33
 area = "G"
 promise = "The doctor check finds problems with the system or an app."
 code = ["sam-runner/src/doctor.rs", "sam-runner/src/bwrap.rs", "sam-runner/src/dbus_check.rs", "sam-core/src/host.rs"]
-tests = ["a_setuid_bubblewrap_is_told_from_a_normal_one", "the_user_namespace_knobs_are_read_as_meant", "the_landlock_version_is_the_kernels", "the_kernel_release_gives_the_least_landlock_version", "a_landlock_answer_of_zero_is_no_landlock", "missing_bubblewrap_names_the_package_to_install", "disabled_user_namespaces_are_explained_not_called_missing", "setuid_bubblewrap_works_without_user_namespaces", "reaches_the_session_bus", "the_bus_check_message_has_the_correct_wire_format", "bubblewrap_versions_are_compared_correctly", "the_built_in_contract_map_parses", "every_contract_probe_is_known", "the_login_files_check_looks_for_shadow", "a_missing_portal_interface_breaks_the_portal_contract", "the_quick_checks_notice_a_broken_or_missing_tool", "a_broken_contract_fails_a_test_with_its_name_and_playbook",
+tests = ["a_setuid_bubblewrap_is_told_from_a_normal_one", "the_bubblewrap_option_check_counts_only_the_option_itself", "the_user_namespace_knobs_are_read_as_meant", "the_landlock_version_is_the_kernels", "the_kernel_release_gives_the_least_landlock_version", "a_landlock_answer_of_zero_is_no_landlock", "missing_bubblewrap_names_the_package_to_install", "disabled_user_namespaces_are_explained_not_called_missing", "setuid_bubblewrap_works_without_user_namespaces", "reaches_the_session_bus", "the_bus_check_message_has_the_correct_wire_format", "the_built_in_contract_map_parses", "every_contract_probe_is_known", "the_login_files_check_looks_for_shadow", "a_missing_portal_interface_breaks_the_portal_contract", "the_quick_checks_notice_a_broken_or_missing_tool", "a_broken_contract_fails_a_test_with_its_name_and_playbook",
   "a_broken_contract_ends_with_not_passed",
   "doctor_ends_with_what_it_reports",
   "the_install_hint_fits_the_distribution",

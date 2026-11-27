@@ -733,17 +733,12 @@ fn plan_at_start(plan: FloorPlan) -> Result<(FloorPlan, Vec<Option<SourceHandle>
 /// Whether Bubblewrap at `bwrap` can build rooms: it must show places by
 /// handle (`--bind-fd`, `--ro-bind-fd`, Bubblewrap 0.10 or a backport).
 /// Without them no room could be built, and programs keep the computer's
-/// own Bubblewrap as before Room service. Asked once per start.
+/// own Bubblewrap as before Room service. Asked once per start, with
+/// SAM's one test for Bubblewrap's options
+/// ([`sam_core::host::bwrap_lists_option`]).
 pub fn bwrap_builds_rooms(bwrap: &Path) -> bool {
-    std::process::Command::new(bwrap)
-        .arg("--help")
-        .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output()
-        .is_ok_and(|o| {
-            let help = String::from_utf8_lossy(&o.stdout);
-            help.contains("--ro-bind-fd") && help.contains("--bind-fd")
-        })
+    use sam_core::host::bwrap_lists_option;
+    bwrap_lists_option(bwrap, "--ro-bind-fd") && bwrap_lists_option(bwrap, "--bind-fd")
 }
 
 /// Drives a person may want to unmount while the app runs: anything not
@@ -3679,6 +3674,15 @@ mod tests {
         assert!(!bwrap_builds_rooms(&old));
         assert!(bwrap_builds_rooms(&new));
         assert!(!bwrap_builds_rooms(&tmp.path().join("missing")));
+        // A help that ends in failure is no answer, whatever it printed.
+        let failing = tmp.path().join("failing");
+        std::fs::write(
+            &failing,
+            "#!/bin/sh\nprintf 'usage: bwrap\\n    --bind-fd FD DEST\\n    --ro-bind-fd FD DEST\\n'\nexit 1\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&failing, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(!bwrap_builds_rooms(&failing));
     }
 
     /// A source on a drive that may be unmounted is not held open (the
@@ -4847,6 +4851,12 @@ exec "$@"
                 "both",
                 "usage: bwrap\n    --bind-fd FD DEST\n    --ro-bind-fd FD DEST",
                 true,
+            ),
+            // Look-alikes that merely contain the two names are not them.
+            (
+                "look-alikes",
+                "usage: bwrap\n    --bind-fds FD DEST\n    --ro-bind-fd-all FD DEST",
+                false,
             ),
         ] {
             let p = tmp.path().join(name);

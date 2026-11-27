@@ -740,7 +740,7 @@ fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
         let mut p = base();
         p.advanced.writable_appdir = true;
         let r = launch("writable-appdir", p);
-        // Without overlays (Bubblewrap before 0.10, as on Ubuntu 24.04, or a
+        // Without overlays (Bubblewrap before 0.11, as on Ubuntu 24.04, or a
         // filesystem that cannot hold one, as in a container) the app folder
         // stays read-only, and the app still starts.
         assert_eq!(r["APPDIR_WRITE"], if overlays_work { "yes" } else { "no" });

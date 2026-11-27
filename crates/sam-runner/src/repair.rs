@@ -916,7 +916,7 @@ fn ladder_for(
             && !matches!(st.action, FixAction::None)
             // A terminal program has no window: display steps cannot help.
             && !(e.metadata.terminal && matches!(st.id.as_str(), "x11" | "gpu"))
-            // Needs overlays: Bubblewrap 0.10+ and a filesystem that can
+            // Needs overlays: Bubblewrap 0.11+ and a filesystem that can
             // hold the app's changes.
             && !(st.id == "writable-appdir" && !sam_core::host::overlay_works_in(&paths.overlays_dir()))
             && changes_something(p, e.profile.compatibility_mode, &e.profile.args, &st.action);
@@ -1117,7 +1117,7 @@ mod tests {
         .explanation
         .contains("‹img"));
         assert_eq!(ids("org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.secrets was not provided"), vec!["keyring"]);
-        // Offered only where Bubblewrap can do it (0.10+, overlays).
+        // Offered only where Bubblewrap can do it (0.11+, overlays).
         let expected: Vec<&str> = if sam_core::host::bwrap_supports_overlay() {
             vec!["writable-appdir"]
         } else {
