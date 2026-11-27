@@ -211,7 +211,8 @@ const PROTECTED_CREATE_FILES: &[&str] = &[
     ".config/mimeapps.list",
     // An empty one behaves like a missing one (`xdg-user-dir` answers the
     // home folder for both), and an app cannot create its own (checked for
-    // audit S-F16, which assumed otherwise).
+    // audit S-F16, which assumed otherwise). Made also where it follows
+    // `XDG_CONFIG_HOME` ([`prepare_home_protection_alongside`]).
     ".config/user-dirs.dirs",
 ];
 
@@ -269,8 +270,9 @@ fn watched_places(p: &PermissionSet, home: &Path) -> Vec<String> {
 }
 
 /// Creates the missing protected paths of `PROTECTED_CREATE_*` in the real
-/// home that this start would show writable ([`writes_start_places`]), so
-/// they can be mounted read-only.
+/// home, and `user-dirs.dirs` where it follows `XDG_CONFIG_HOME` inside
+/// the home, that this start would show writable
+/// ([`writes_start_places`]), so they can be mounted read-only.
 pub fn prepare_home_protection(ctx: &LaunchContext) {
     prepare_home_protection_alongside(ctx, &[]);
 }
@@ -308,7 +310,20 @@ pub fn prepare_home_protection_alongside(ctx: &LaunchContext, running: &[HomeWat
             let _ = fs::create_dir_all(&path);
         }
     }
-    for f in PROTECTED_CREATE_FILES {
+    // The file SAM reads the user folders from also where it follows
+    // `XDG_CONFIG_HOME` (`~/cfg/user-dirs.dirs`, or `~/user-dirs.dirs` when
+    // the variable names the home): only an existing one is locked, and
+    // one the app wrote while it was missing told a start running at the
+    // same time where Documents is.
+    let user_dirs = protected_places(home)
+        .into_iter()
+        .filter(|p| Path::new(p).file_name() == Some("user-dirs.dirs".as_ref()));
+    let files: Vec<String> = PROTECTED_CREATE_FILES
+        .iter()
+        .map(|f| f.to_string())
+        .chain(user_dirs)
+        .collect();
+    for f in &files {
         let path = home.join(f);
         if fs::symlink_metadata(&path).is_err()
             && shown_writable(&views, &path)

@@ -12,9 +12,10 @@
 //!   folder the app chose (threat model row 44).
 //! - with `XDG_CONFIG_HOME` naming the home itself, the file SAM then
 //!   reads the user folders from (`~/user-dirs.dirs`) stays read-only with
-//!   the whole home writable, and one the app creates there when it is
-//!   missing does not stay: rewritten, SAM showed other folders as the
-//!   app's Documents at its next start.
+//!   the whole home writable, and when it is missing SAM creates it empty
+//!   before the start, so the app cannot write one there while it runs
+//!   (also `~/cfg/user-dirs.dirs` with `XDG_CONFIG_HOME=~/cfg`): rewritten,
+//!   SAM showed other folders as the app's Documents at a later start.
 //! - a writable extra folder inside a start place (`~/.config/fish/conf.d`)
 //!   stays read-only, without, with a read-only and with a writable whole
 //!   home, while an ordinary writable extra folder takes the app's file
@@ -446,7 +447,9 @@ fn a_start_file_linked_into_a_read_only_user_folder_stays_locked_with_a_writable
 
 const USER_DIRS_ATTACK: &str = r#"#!/bin/sh
 H="$HOME"
-( echo 'XDG_DOCUMENTS_DIR="$HOME/.ssh"' >> "$H/user-dirs.dirs" ) 2>/dev/null && echo USERDIRS=written || echo USERDIRS=refused
+( echo 'XDG_DOCUMENTS_DIR="$HOME/.ssh"' > "$H/user-dirs.dirs" ) 2>/dev/null && echo USERDIRS=written || echo USERDIRS=refused
+( echo 'XDG_DOCUMENTS_DIR="$HOME/.ssh"' >> "$H/user-dirs.dirs" ) 2>/dev/null && echo USERDIRS_APPEND=written || echo USERDIRS_APPEND=refused
+( echo 'XDG_DOCUMENTS_DIR="$HOME/.ssh"' > "$H/cfg/user-dirs.dirs" ) 2>/dev/null && echo USERDIRS_CFG=written || echo USERDIRS_CFG=refused
 if [ -e "$H/TRY_MOVE" ]; then
   mv "$H/user-dirs.dirs" "$H/user-dirs.old" 2>/dev/null && echo USERDIRS_MOVE=done || echo USERDIRS_MOVE=refused
 fi
@@ -457,11 +460,14 @@ echo END=1
 /// With `XDG_CONFIG_HOME` naming the home itself, SAM reads where
 /// Documents and the other user folders are from `~/user-dirs.dirs`.
 /// Attacked from inside a real sandbox with the whole home writable, that
-/// file can be neither changed nor renamed away, and one the app creates
-/// there while it is missing does not stay after the start: SAM still
-/// finds Documents where it was. Before, only `~/.config/user-dirs.dirs`
-/// was locked, which SAM does not read then, and the app could point its
-/// own Documents at `~/.ssh` for its next start.
+/// file can be neither overwritten, appended to nor renamed away, and SAM
+/// still finds Documents in the folder the file names (`~/Docs`). When the
+/// file is missing, SAM creates it empty before the start, so the app
+/// cannot write one there while it runs either; the same for
+/// `~/cfg/user-dirs.dirs` with `XDG_CONFIG_HOME=~/cfg`. Before, only
+/// `~/.config/user-dirs.dirs` was locked, which SAM does not read then,
+/// and the app could point the Documents of its own later start, or of a
+/// start running at the same time, at `~/.ssh`.
 #[test]
 fn the_user_folders_file_stays_locked_when_the_config_folder_is_the_home() {
     let _one = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
@@ -475,9 +481,11 @@ fn the_user_folders_file_stays_locked_when_the_config_folder_is_the_home() {
     let root = tmp.path();
     sam_runner::testenv::isolate_this_process(root);
     let home = root.join("home/tester");
+    // Not `~/Documents`: SAM falls back to that when it reads no file.
+    fs::create_dir_all(home.join("Docs")).unwrap();
     fs::create_dir_all(home.join("Documents")).unwrap();
     fs::create_dir_all(home.join(".config")).unwrap();
-    let user_dirs = "XDG_DOCUMENTS_DIR=\"$HOME/Documents\"\n";
+    let user_dirs = "XDG_DOCUMENTS_DIR=\"$HOME/Docs\"\n";
     fs::write(home.join("user-dirs.dirs"), user_dirs).unwrap();
     fs::write(home.join("TRY_MOVE"), "").unwrap();
     std::env::set_var("HOME", &home);
@@ -490,7 +498,7 @@ fn the_user_folders_file_stays_locked_when_the_config_folder_is_the_home() {
     };
     assert_eq!(
         documents(),
-        Some(home.join("Documents")),
+        Some(home.join("Docs")),
         "the test's own: SAM reads the file at the top of the home"
     );
 
@@ -539,21 +547,44 @@ fn the_user_folders_file_stays_locked_when_the_config_folder_is_the_home() {
 
     // The file is there: read-only, and it cannot be renamed away.
     let r = start();
-    assert_eq!(r["USERDIRS"], "refused", "{r:?}");
-    assert_eq!(r["USERDIRS_MOVE"], "refused", "{r:?}");
+    assert_eq!(r["USERDIRS"], "refused", "overwritten: {r:?}");
+    assert_eq!(r["USERDIRS_APPEND"], "refused", "appended to: {r:?}");
+    assert_eq!(r["USERDIRS_MOVE"], "refused", "renamed away: {r:?}");
     assert_eq!(
         fs::read_to_string(home.join("user-dirs.dirs")).unwrap(),
         user_dirs
     );
-    assert_eq!(documents(), Some(home.join("Documents")));
+    assert_eq!(documents(), Some(home.join("Docs")));
 
-    // The file is missing: what the app creates there does not stay.
+    // The file is missing: SAM creates it empty before the start, so the
+    // app's write is refused while it runs, not only moved aside later.
     fs::remove_file(home.join("user-dirs.dirs")).unwrap();
     fs::remove_file(home.join("TRY_MOVE")).unwrap();
-    let _ = start();
-    assert!(
-        !home.join("user-dirs.dirs").exists(),
-        "the app's user-dirs.dirs stayed at the top of the home"
+    let r = start();
+    assert_eq!(
+        r["USERDIRS"], "refused",
+        "~/user-dirs.dirs was missing and the app wrote it while it ran: {r:?}"
+    );
+    assert_eq!(
+        fs::read_to_string(home.join("user-dirs.dirs")).unwrap(),
+        "",
+        "SAM's empty ~/user-dirs.dirs"
+    );
+    // An empty file names no folder: SAM falls back to `~/Documents`.
+    assert_eq!(documents(), Some(home.join("Documents")));
+
+    // The same where `XDG_CONFIG_HOME` names another folder in the home.
+    fs::create_dir_all(home.join("cfg")).unwrap();
+    std::env::set_var("XDG_CONFIG_HOME", home.join("cfg"));
+    let r = start();
+    assert_eq!(
+        r["USERDIRS_CFG"], "refused",
+        "~/cfg/user-dirs.dirs was missing and the app wrote it while it ran: {r:?}"
+    );
+    assert_eq!(
+        fs::read_to_string(home.join("cfg/user-dirs.dirs")).unwrap(),
+        "",
+        "SAM's empty ~/cfg/user-dirs.dirs"
     );
     assert_eq!(documents(), Some(home.join("Documents")));
     std::env::set_var("XDG_CONFIG_HOME", home.join(".config"));
