@@ -1425,7 +1425,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 }
                 other => bail!("unknown action '{other}' (install, remove)"),
             }
-            // Only the menu entry, onto the record as it is now (review L3).
+            // Only the menu entry, onto the record as it is now.
             let e = app.update_record(&e.id, |f| f.desktop_entry = e.desktop_entry.clone())?;
             out.emit(&json!({"desktop_entry": e.desktop_entry}), || {
                 match &e.desktop_entry {

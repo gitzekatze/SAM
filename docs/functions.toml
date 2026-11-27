@@ -870,6 +870,11 @@ tests = ["records_changed_outside_sam_are_recognized", "a_save_of_an_older_copy_
   "a_save_of_changes_keeps_what_others_saved_meanwhile",
   "a_mark_set_again_for_new_content_survives_a_confirmation_meanwhile",
   "a_settings_change_keeps_what_an_unpack_saved_meanwhile",
+  "a_whole_set_is_saved_as_chosen_when_a_switch_was_saved_meanwhile",
+  "one_switch_changed_keeps_a_grant_saved_meanwhile",
+  "a_note_set_again_for_new_content_survives_a_confirmation_meanwhile",
+  "new_content_asks_first_also_when_its_record_cannot_be_saved",
+  "nothing_is_unpacked_when_the_mark_cannot_be_saved_first",
 ]
 checks = ["tests/gui/app-page-atspi.sh"]
 

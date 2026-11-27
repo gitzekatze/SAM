@@ -165,7 +165,7 @@ fn reset_to_recommendation_brings_back_the_recommended_settings() {
 
 /// "Look at it first" (the AppImage's content changed outside SAM) stays
 /// through a save of a copy read before it was set, and only the review
-/// step clears it (review L3).
+/// step clears it.
 #[test]
 fn only_the_review_clears_look_at_it_first() {
     let tmp = tempfile::tempdir().unwrap();

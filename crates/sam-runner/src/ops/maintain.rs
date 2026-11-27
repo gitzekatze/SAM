@@ -78,7 +78,7 @@ impl Sam {
             self.lock_for_change(&entry, &sam_core::i18n::tr("unpack it again"))?;
         // Unpacking takes a while: only what it changes is saved onto the
         // record as it is then, so a switch changed in the window meanwhile
-        // stays (review L3).
+        // stays.
         let read = entry.clone();
         if !entry.source_path.exists() {
             bail!(
@@ -111,6 +111,22 @@ impl Sam {
             ..checked.placed.clone()
         };
         let root = self.unpack_root()?.join(&entry.id);
+        // Compared with what was unpacked last, not with the file's last
+        // seen checksum: the change check and relocate update that one, so
+        // a swapped file looked known (regression, audit U-H2).
+        let new_content = unpacked_sha256(&entry) != fp.sha256;
+        // New content that is not SAM's own update is marked "look at it
+        // first" on the record before it replaces the unpacked copy, and
+        // nothing is unpacked when that mark cannot be saved: a save that
+        // fails after the unpacking (the record lock held too long by
+        // another SAM process, a full disk) then leaves the record asking
+        // before the new content starts, never naming it confirmed. Before,
+        // the mark was saved only with the result, so such a failure left
+        // the new content in place unmarked.
+        if new_content && !checked.sams_update {
+            self.update_record(&entry.id, |f| f.content_changed_outside = true)?;
+            entry.content_changed_outside = true;
+        }
         let mut log = Vec::new();
         let req = ExtractRequest {
             source: &source,
@@ -120,17 +136,10 @@ impl Sam {
             allow_fallback: consent_fallback && self.config.extraction.allow_fallback,
             isolation: self.extract_isolation()?,
         };
-        match extract(&req, &mut log) {
+        let asked = match extract(&req, &mut log) {
             Ok(out) => {
                 entry.appimage_type = info.kind;
-                // Compared with what was unpacked last, not with the file's
-                // last seen checksum: the change check and relocate update
-                // that one, so a swapped file looked known (regression,
-                // audit U-H2).
-                if unpacked_sha256(&entry) != fp.sha256 {
-                    if !checked.sams_update {
-                        entry.content_changed_outside = true;
-                    }
+                if new_content {
                     let new_sig = self.check_signature(&source, false);
                     entry.signing_key_changed =
                         signing_key_change(entry.signature.as_ref(), &new_sig);
@@ -149,10 +158,11 @@ impl Sam {
                     entry.metadata.icon_name = icon_name;
                 }
                 entry.last_error = None;
-                self.finish_intake(&mut entry, &log, &ProgressSink::default())?;
+                let asked = self.finish_intake(&mut entry, &log, &ProgressSink::default())?;
                 if entry.desktop_entry.is_some() || self.config.general.desktop_integration {
                     entry.desktop_entry = desktop::install_launcher(&self.paths, &entry).ok();
                 }
+                asked
             }
             Err(e) => {
                 entry.state = AppState::Broken;
@@ -162,16 +172,53 @@ impl Sam {
                 self.registry().save_changes(&read, &mut entry)?;
                 return Err(e);
             }
-        }
-        self.registry().save_changes(&read, &mut entry)?;
+        };
+        let name = sam_core::util::display_safe(entry.display_name(), 80);
+        self.save_unpacked(&read, &mut entry, asked)
+            .with_context(|| {
+                if entry.content_changed_outside {
+                    sam_core::i18n::trf(
+                        "SAM unpacked the new content of {app} but could not save it in the app's record. SAM does not start the app until you have looked at it; unpack it again to finish",
+                        &[("app", &name)],
+                    )
+                } else {
+                    sam_core::i18n::trf(
+                        "SAM unpacked {app} again but could not save it in the app's record. Unpack it again to finish",
+                        &[("app", &name)],
+                    )
+                }
+            })?;
         Ok(entry)
+    }
+
+    /// Saves what an "unpack again", an update or a new detection changed
+    /// on the copy `entry` read as `read` ([`Registry::save_changes`]).
+    /// The note of an update's needs is settled on the record as it is
+    /// then, with the needs `asked` the new content asks for: a
+    /// confirmation saved meanwhile cleared the note the copy carries, and
+    /// the new content's needs are added again, never lost with it (the
+    /// same list in the copy as read and as changed counted as unchanged,
+    /// so the cleared note was kept).
+    pub(super) fn save_unpacked(
+        &self,
+        read: &AppEntry,
+        entry: &mut AppEntry,
+        asked: Vec<String>,
+    ) -> Result<()> {
+        // Left to `finish` below: the note as the copy holds it is never
+        // written over the one on disk.
+        entry.pending_changes = read.pending_changes.clone();
+        self.registry().save_changes_then(read, entry, |now| {
+            settle_update_note(now, NoteEvent::Asked(asked));
+            now.profile.user_modified = now.profile.permissions != now.recommended;
+        })
     }
 
     pub fn redetect(&self, query: &str) -> Result<AppEntry> {
         let mut entry = self.resolve(query)?;
         let read = entry.clone();
-        self.detect(&mut entry, &ProgressSink::default())?;
-        self.registry().save_changes(&read, &mut entry)?;
+        let asked = self.detect(&mut entry, &ProgressSink::default())?;
+        self.save_unpacked(&read, &mut entry, asked)?;
         Ok(entry)
     }
 
@@ -185,7 +232,7 @@ impl Sam {
         let mut out = Vec::new();
         for mut a in apps {
             // A deep refresh reads the whole file: only what it finds is
-            // saved onto the record as it is then (review L3).
+            // saved onto the record as it is then.
             let read = a.clone();
             let known = a
                 .extraction

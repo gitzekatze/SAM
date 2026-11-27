@@ -207,7 +207,7 @@ impl Sam {
 
     /// Sets the fields `change` sets on the record of `id` as it is on
     /// disk now, under the record lock ([`Registry::update`]): what other
-    /// SAM processes saved meanwhile stays (review L3). An error when the
+    /// SAM processes saved meanwhile stays. An error when the
     /// record is gone.
     pub fn update_record(&self, id: &str, change: impl FnOnce(&mut AppEntry)) -> Result<AppEntry> {
         self.registry()

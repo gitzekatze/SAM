@@ -3,6 +3,20 @@
 
 use super::*;
 
+/// What a change of an app's settings changes, for
+/// [`Sam::save_profile`]: every writer names it, so none merges a whole
+/// set by mistake.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(super) enum SetChange {
+    /// Some switches: only those are written, a switch another SAM process
+    /// saved meanwhile stays.
+    Switches,
+    /// The whole set, chosen as one (a preset, a reset, an undo of the
+    /// repair steps, the compatibility mode, a whole set the person
+    /// confirmed): written as one value.
+    WholeSet,
+}
+
 impl Sam {
     // ---------------------------------------------------------- profiles
 
@@ -10,11 +24,29 @@ impl Sam {
     /// the copy `read`: under the record lock, only what the change
     /// changed is written onto the record as it is now, so what another
     /// SAM process saved meanwhile (an "unpack again", an update and their
-    /// "look at it first" marks and notices) stays (review L3). `entry`
-    /// becomes the record as saved.
-    pub(super) fn save_profile(&self, read: &AppEntry, entry: &mut AppEntry) -> Result<()> {
+    /// "look at it first" marks and notices) stays. With
+    /// [`SetChange::WholeSet`] the settings are written as one value, so
+    /// the saved set is exactly the one the writer chose (before, a switch
+    /// saved meanwhile was merged into a preset or a confirmed set, which
+    /// then held a set nobody chose). `entry` becomes the record as saved.
+    pub(super) fn save_profile(
+        &self,
+        read: &AppEntry,
+        entry: &mut AppEntry,
+        kind: SetChange,
+    ) -> Result<()> {
+        #[cfg(test)]
+        record_lock_tests::before_save();
         let saved = self.registry().try_update(&entry.id, |now| {
             sam_storage::apply_changes(now, read, entry)?;
+            if kind == SetChange::WholeSet {
+                // A preset, a reset, an undo of the repair steps, the
+                // compatibility mode or a whole set the person confirmed:
+                // a switch another process saved meanwhile is replaced
+                // too, never mixed in. The later save wins, as for any
+                // one setting two saves change.
+                now.profile.permissions = entry.profile.permissions.clone();
+            }
             now.profile.user_modified = now.profile.permissions != now.recommended;
             // The note of an update's needs keeps what is not granted yet: a
             // changed switch is not the person seeing it (review L5).
@@ -41,7 +73,7 @@ impl Sam {
         let read = e.clone();
         e.profile.permissions.set_key(key, value)?;
         e.profile.preset = None;
-        self.save_profile(&read, &mut e)?;
+        self.save_profile(&read, &mut e, SetChange::Switches)?;
         Ok(e)
     }
 
@@ -69,7 +101,12 @@ impl Sam {
         e.profile.permissions = perms;
         e.profile.preset = None;
         e.reviewed |= confirms;
-        self.save_profile(&read, &mut e)?;
+        let kind = if confirms {
+            SetChange::WholeSet
+        } else {
+            SetChange::Switches
+        };
+        self.save_profile(&read, &mut e, kind)?;
         Ok(e)
     }
 
@@ -109,7 +146,7 @@ impl Sam {
         e.applied_repairs.clear();
         e.repair_backup = None;
         e.profile.preset = None;
-        self.save_profile(&read, &mut e)?;
+        self.save_profile(&read, &mut e, SetChange::WholeSet)?;
         Ok(e)
     }
 
@@ -139,7 +176,7 @@ impl Sam {
                 .unwrap_or_else(|| e.recommended.clone());
         }
         e.profile.compatibility_mode = on;
-        self.save_profile(&read, &mut e)?;
+        self.save_profile(&read, &mut e, SetChange::WholeSet)?;
         Ok(e)
     }
 
@@ -336,7 +373,7 @@ impl Sam {
             e.repairs_applied.push(sug.id.clone());
             e.applied_repairs.push(undo);
         }
-        self.save_profile(&read, &mut e)?;
+        self.save_profile(&read, &mut e, SetChange::Switches)?;
         Ok(e)
     }
 
@@ -381,7 +418,7 @@ impl Sam {
             })?;
         let r = e.applied_repairs.remove(i);
         crate::repair::revert_step(&mut e, &r)?;
-        self.save_profile(&read, &mut e)?;
+        self.save_profile(&read, &mut e, SetChange::Switches)?;
         Ok(e)
     }
 
@@ -411,7 +448,7 @@ impl Sam {
         e.repairs_applied.clear();
         e.applied_repairs.clear();
         e.tried_repairs.clear();
-        self.save_profile(&read, &mut e)?;
+        self.save_profile(&read, &mut e, SetChange::WholeSet)?;
         Ok(e)
     }
 
@@ -430,7 +467,7 @@ impl Sam {
         let id = self.resolve(query)?.id;
         // Checked and confirmed on the record as it is under the record
         // lock: a mark or notice another SAM process saved after the check
-        // is never cleared unseen (review L3).
+        // is never cleared unseen.
         let saved = self.registry().update_confirmed(&id, |e| {
             if let Some(seen) = seen {
                 if sam_storage::review_fingerprint(e)? != seen {
@@ -493,7 +530,7 @@ impl Sam {
         e.profile.preset = Some(preset.name.clone());
         // The whole set is the preset the person picked.
         e.reviewed = true;
-        self.save_profile(&read, &mut e)?;
+        self.save_profile(&read, &mut e, SetChange::WholeSet)?;
         Ok(PresetApply {
             preset: preset.name,
             check,
@@ -596,7 +633,7 @@ impl Sam {
                     std::mem::replace(&mut e.profile.permissions, new),
                 );
                 e.profile.preset = None;
-                self.save_profile(&read, &mut e)?;
+                self.save_profile(&read, &mut e, SetChange::Switches)?;
             }
         }
         Ok(out)
@@ -833,11 +870,166 @@ mod update_note_tests {
 #[cfg(test)]
 mod record_lock_tests {
     use super::*;
+    use std::cell::RefCell;
+
+    thread_local! {
+        /// What another SAM process saves between a writer's read and its
+        /// save ([`meanwhile`]).
+        static BEFORE_SAVE: RefCell<Option<Box<dyn FnOnce()>>> = const { RefCell::new(None) };
+    }
+
+    /// Called by `save_profile` before it takes the record lock: the
+    /// moment a save by another process can land between the writer's
+    /// read and its save.
+    pub(super) fn before_save() {
+        if let Some(h) = BEFORE_SAVE.with(|h| h.borrow_mut().take()) {
+            h();
+        }
+    }
+
+    /// The next `save_profile` on this thread first runs `f`.
+    fn meanwhile(f: impl FnOnce() + 'static) {
+        BEFORE_SAVE.with(|h| *h.borrow_mut() = Some(Box::new(f)));
+    }
+
+    /// Grants a folder through another SAM process, as `sam-jail set`
+    /// from a terminal does while the window saves.
+    fn grant_meanwhile(paths: &Paths, id: &'static str) {
+        let paths = paths.clone();
+        meanwhile(move || {
+            Sam::with_paths(paths)
+                .unwrap()
+                .update_record(id, |f| {
+                    f.profile
+                        .permissions
+                        .filesystem
+                        .custom_write
+                        .push("~/Granted meanwhile".into())
+                })
+                .unwrap();
+        });
+    }
+
+    fn granted_meanwhile(e: &AppEntry) -> bool {
+        e.profile
+            .permissions
+            .filesystem
+            .custom_write
+            .iter()
+            .any(|p| p.contains("meanwhile"))
+    }
+
+    /// Every writer that replaces the whole set (a whole set the person
+    /// confirmed, a preset, a reset, the compatibility mode, an undo of
+    /// the repair steps) saves exactly the set it chose, also when another
+    /// SAM process granted a folder between the writer's read and its
+    /// save. Before, each setting the writer left as it read it kept the
+    /// value on disk, so the saved set held a grant nobody chose while it
+    /// counted as confirmed or carried the preset's name.
+    #[test]
+    fn a_whole_set_is_saved_as_chosen_when_a_switch_was_saved_meanwhile() {
+        let t = tempfile::tempdir().unwrap();
+        let paths = Paths::rooted(t.path());
+        let sam = Sam::with_paths(paths.clone()).unwrap();
+        let base = PermissionSet::strict_gui();
+        let mut start = base.clone();
+        start.devices.gpu = !base.devices.gpu;
+        let mut preset = Preset {
+            name: "Offline".into(),
+            permissions: base.clone(),
+            ..Default::default()
+        };
+        PresetStore::new(&paths).save(&mut preset).unwrap();
+        const ID: &str = "appimage-whole-1a2b";
+        type Writer = Box<dyn Fn(&Sam)>;
+        let writers: Vec<(&str, PermissionSet, Writer)> = vec![
+            (
+                "a whole set confirmed",
+                base.clone(),
+                Box::new(|s| {
+                    s.set_permissions(ID, PermissionSet::strict_gui()).unwrap();
+                }),
+            ),
+            (
+                "a preset",
+                base.clone(),
+                Box::new(|s| {
+                    assert!(s.apply_preset(ID, "Offline", true, None).unwrap().applied);
+                }),
+            ),
+            (
+                "a reset",
+                base.clone(),
+                Box::new(|s| {
+                    s.reset_profile(ID).unwrap();
+                }),
+            ),
+            (
+                "the compatibility mode",
+                compatibility_profile(&start),
+                Box::new(|s| {
+                    s.set_compat(ID, true).unwrap();
+                }),
+            ),
+            (
+                "an undo of the repair steps",
+                base.clone(),
+                Box::new(|s| {
+                    s.undo_repairs(ID).unwrap();
+                }),
+            ),
+        ];
+        for (what, chosen, write) in writers {
+            let mut e = AppEntry {
+                id: ID.into(),
+                name: "Whole".into(),
+                recommended: base.clone(),
+                repair_backup: Some(SandboxProfile {
+                    permissions: base.clone(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            };
+            e.profile.permissions = start.clone();
+            sam.registry().save_confirmed(&mut e).unwrap();
+            grant_meanwhile(&paths, ID);
+            write(&sam);
+            let back = sam.resolve(ID).unwrap();
+            assert!(
+                !granted_meanwhile(&back),
+                "{what}: a folder nobody chose was mixed into the saved set"
+            );
+            assert_eq!(back.profile.permissions, chosen, "{what}");
+        }
+    }
+
+    /// A writer that changes one switch still saves only that switch: a
+    /// folder another SAM process granted between its read and its save
+    /// stays.
+    #[test]
+    fn one_switch_changed_keeps_a_grant_saved_meanwhile() {
+        let t = tempfile::tempdir().unwrap();
+        let paths = Paths::rooted(t.path());
+        let sam = Sam::with_paths(paths.clone()).unwrap();
+        const ID: &str = "appimage-switch-1a2b";
+        let mut e = AppEntry {
+            id: ID.into(),
+            name: "Switch".into(),
+            ..Default::default()
+        };
+        e.profile.permissions.devices.gpu = false;
+        sam.registry().save_confirmed(&mut e).unwrap();
+        grant_meanwhile(&paths, ID);
+        sam.set_permission(ID, "devices.gpu", "true").unwrap();
+        let back = sam.resolve(ID).unwrap();
+        assert!(back.profile.permissions.devices.gpu, "the switch is saved");
+        assert!(granted_meanwhile(&back), "the grant saved meanwhile stays");
+    }
 
     /// A change of the settings made on a copy read before an "unpack
     /// again" or an update saved its result saves only the change: the
     /// new unpacked copy, the notice of a changed signing key and the
-    /// "look at it first" mark that step saved stay (review L3: the whole
+    /// "look at it first" mark that step saved stay (before, the whole
     /// copy was written back, and the next start ran the new content
     /// without the notice).
     #[test]
@@ -862,7 +1054,8 @@ mod record_lock_tests {
         .unwrap();
         let mut changed = read.clone();
         changed.profile.permissions.devices.gpu = true;
-        sam.save_profile(&read, &mut changed).unwrap();
+        sam.save_profile(&read, &mut changed, SetChange::Switches)
+            .unwrap();
         let back = sam.registry().get(&e.id).unwrap().unwrap();
         assert!(back.profile.permissions.devices.gpu, "the change is saved");
         assert!(back.profile.user_modified);
@@ -879,5 +1072,53 @@ mod record_lock_tests {
         );
         assert!(back.content_changed_outside, "the mark stays");
         assert_eq!(changed.signing_key_changed, back.signing_key_changed);
+    }
+
+    /// The note of an update's needs that an "unpack again" of new content
+    /// sets again stays when the person confirms the older content while
+    /// SAM unpacks: the question for the new content still names what it
+    /// asks for more. A need the person saw and the new content does not
+    /// ask for again stays cleared. Before, the note the copy carried
+    /// equalled the one it had read, so the confirmation's empty note was
+    /// kept.
+    #[test]
+    fn a_note_set_again_for_new_content_survives_a_confirmation_meanwhile() {
+        use sam_core::permissions::NetworkMode;
+        let t = tempfile::tempdir().unwrap();
+        let sam = Sam::with_paths(Paths::rooted(t.path())).unwrap();
+        const ID: &str = "appimage-note-1a2b";
+        let mut e = AppEntry {
+            id: ID.into(),
+            name: "Note".into(),
+            extraction: Some(Default::default()),
+            content_changed_outside: true,
+            pending_changes: vec!["network".into(), "audio".into()],
+            ..Default::default()
+        };
+        e.recommended.network.mode = NetworkMode::Full;
+        e.recommended.audio.enabled = true;
+        e.profile.permissions.network.mode = NetworkMode::None;
+        e.profile.permissions.audio.enabled = false;
+        sam.registry().save_confirmed(&mut e).unwrap();
+        let read = sam.resolve(ID).unwrap();
+        // The unpack of newer content asks for the network again (what
+        // `detect` works out on its copy).
+        let mut mine = read.clone();
+        mine.source.sha256 = "newer content".into();
+        mine.content_changed_outside = true;
+        let asked = vec!["network".to_string()];
+        settle_update_note(&mut mine, NoteEvent::Asked(asked.clone()));
+        // Meanwhile the person confirms the page of the older content.
+        assert!(sam.mark_reviewed(ID).unwrap().pending_changes.is_empty());
+        sam.save_unpacked(&read, &mut mine, asked).unwrap();
+        let back = sam.resolve(ID).unwrap();
+        assert_eq!(back.source.sha256, "newer content");
+        assert!(back.content_changed_outside, "the new content asks first");
+        assert_eq!(
+            back.pending_changes,
+            ["network"],
+            "the new content's note stays, the one seen stays cleared"
+        );
+        assert_eq!(mine.pending_changes, back.pending_changes);
     }
 }

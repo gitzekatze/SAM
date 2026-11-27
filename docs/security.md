@@ -1512,8 +1512,13 @@ was easily misread.
 - **App records and an older SAM.** SAM's processes (the window, the
   `sam-jail` commands, a start that stores its result) save an app's
   record under one short record lock, and each saves only the fields it
-  changed, so two saves at once never undo each other or a "look at it
-  first" mark. A SAM version from before this lock does not take it: while
+  changed: a save keeps what another saved meanwhile in other fields, a
+  "look at it first" mark included. When two saves at once change the same
+  setting or the same list (the granted folders, the bus names, the
+  arguments, the repair steps), the later one wins. A change that replaces
+  the whole set of settings (a preset, a reset, the compatibility mode, an
+  undo of the repair steps) saves exactly that set, never mixed with a
+  switch saved meanwhile. A SAM version from before this lock does not take it: while
   it runs at the same time as this one (an old window left open after an
   update), one of its saves can still undo a change this SAM saved. Close
   old SAM windows after updating SAM.

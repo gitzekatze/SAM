@@ -343,13 +343,14 @@ impl Sam {
     }
 
     /// Metadata, icon, dependency detection and recommendation for an
-    /// extracted entry. Keeps user-modified profiles intact.
+    /// extracted entry. Keeps user-modified profiles intact. Returns what
+    /// [`Sam::detect`] returns.
     pub(super) fn finish_intake(
         &self,
         entry: &mut AppEntry,
         extract_log: &[u8],
         pr: &ProgressSink,
-    ) -> Result<()> {
+    ) -> Result<Vec<String>> {
         pr.step(ADD_STEPS, 2, 0.0, "");
         let mut x = entry
             .extraction
@@ -406,11 +407,15 @@ impl Sam {
                 }
             }
         }
-        self.detect(entry, pr)?;
-        Ok(())
+        self.detect(entry, pr)
     }
 
-    pub(super) fn detect(&self, entry: &mut AppEntry, pr: &ProgressSink) -> Result<()> {
+    /// Reads what the unpacked app needs and recommends its settings.
+    /// For an app SAM knows already, returns the needs its new
+    /// recommendation asks for that its settings do not grant (for the
+    /// note of an update's needs, which the caller settles on the record
+    /// as it is when it saves: [`Sam::save_unpacked`]); empty for a new app.
+    pub(super) fn detect(&self, entry: &mut AppEntry, pr: &ProgressSink) -> Result<Vec<String>> {
         let x = entry
             .extraction
             .clone()
@@ -496,22 +501,24 @@ impl Sam {
         // pending, never applied: an update keeps the sandbox it had
         // (regression, audit U-H3: v2 of a calculator could declare
         // Categories=Network and got the network without a question).
-        if self.registry().exists(&entry.id) {
+        let asked = if self.registry().exists(&entry.id) {
             // What an earlier update asked for and the person has not seen
             // stays in the note (review L5).
             let asked = new_requirements(&old_rec, &rec.permissions, &entry.profile.permissions);
-            settle_update_note(entry, NoteEvent::Asked(asked));
+            settle_update_note(entry, NoteEvent::Asked(asked.clone()));
             entry.profile.user_modified = entry.profile.permissions != entry.recommended;
+            asked
         } else {
             entry.profile.permissions = rec.permissions.clone();
             settle_update_note(entry, NoteEvent::SettingsChanged);
-        }
+            Vec::new()
+        };
         entry.state = match report.as_ref().and_then(|r| r.verdict) {
             Some(IsolationVerdict::UnsafeToSandbox) => AppState::Unsafe,
             _ => AppState::Ready,
         };
         entry.detection = report;
-        Ok(())
+        Ok(asked)
     }
 
     /// Logs hold text from the app and its files: only that text is
