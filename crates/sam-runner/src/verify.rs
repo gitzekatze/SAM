@@ -214,9 +214,14 @@ pub fn plan(p: &PermissionSet, cfg: &Config, paths: &Paths, host: &HostInfo) -> 
         let real = sam_core::places::resolve(path);
         let through_home =
             path.starts_with(&host.home) && real.starts_with(sam_core::places::resolve(&host.home));
+        // Granted and not refused for showing more than a user folder, for
+        // listening programs in `/tmp` or for a link the app could have put
+        // on its way: the sandbox shows it at its own access.
+        let shown_own =
+            a.is_granted() && sam_core::places::user_folder_shown(p, host, path).is_some();
         let want = if sam_core::places::inside_sams_folders(&real, &sam_dirs) {
             Access::Hidden
-        } else if a.is_granted() && sam_core::places::user_folder_shown(p, host, path).is_some() {
+        } else if shown_own {
             // Two user folders at one place at different access (Music
             // read and write, Pictures read-only, both `~/Media`): the
             // stricter one decides for both, as in the sandbox.
@@ -237,19 +242,21 @@ pub fn plan(p: &PermissionSet, cfg: &Config, paths: &Paths, host: &HostInfo) -> 
             } else {
                 want
             };
-        // One the sandbox binds on its own (every granted one, in a private
-        // home and with the whole home, at its own access) is left out
-        // where its way leads through a link the app could have planted,
-        // or to where programs outside the sandbox listen: by the
-        // sandbox's rule. With the whole home it is then seen only as the
-        // home shows the place its link leads to. One not granted gets no
-        // bind in either home, so nothing is counted for it where it
-        // really is: counted hidden there, it hid a wider extra folder
-        // around that place from a left-out link that leads into it.
-        let binds_own = a.is_granted();
+        // A granted one is left out where its way leads through a link the
+        // app could have planted, or to where programs outside the sandbox
+        // listen: by the sandbox's rule. With the whole home it is then
+        // seen only as the home shows the place its link leads to. Only a
+        // user folder the sandbox shows (granted, not left out, not
+        // refused as above) gets a bind of its own, in a private home and
+        // with the whole home, so only such a one is counted where it
+        // really is. One not granted, or one the sandbox refuses, gets no
+        // bind: counted hidden there, it hid a wider grant around that
+        // place (the read-only home, `/usr`) from a left-out link that
+        // leads into it. One inside SAM's own folders is hidden there
+        // whatever is counted ([`expect_at_target`]).
         let left_out =
-            binds_own && sam_core::places::user_folder_left_out(p, host, key, &this).is_some();
-        if binds_own && !left_out {
+            a.is_granted() && sam_core::places::user_folder_left_out(p, host, key, &this).is_some();
+        if shown_own && !left_out {
             shown.push((sam_core::places::resolve(path), want));
         }
         folders.push((
@@ -1934,6 +1941,77 @@ mod tests {
             folder(&pl, &title(&planted)),
             Access::ReadOnly,
             "left out in a private home, and shown read-only by the extra folder around its place"
+        );
+    }
+
+    /// A granted user folder the sandbox refuses gets no bind of its own,
+    /// so the check counts nothing for it where it really is: an extra
+    /// folder left out for a planted link that leads into such a place is
+    /// expected as the rest shows that place. Counted as hidden there, the
+    /// check expected the place hidden and failed a sandbox that showed it
+    /// as it should.
+    #[test]
+    fn the_check_expects_a_left_out_extra_folder_inside_a_refused_user_folder_as_the_rest_shows_it()
+    {
+        let t = scratch();
+        let base = fs::canonicalize(t.path()).unwrap();
+        let mut h = host_in(&base);
+        let cfg = Config::default();
+        let s = |p: &Path| p.to_string_lossy().into_owned();
+        let title = |p: &Path| format!("Extra folder {}", sam_core::util::tildify(p));
+        // The whole home read-only, `/data/w` an extra writable folder.
+        // Documents, read-only, is set to `/data/w/Docs`, a link the person
+        // made to `~/Papers`: refused, since the link lies in a folder the
+        // app can change. The app planted `/data/w/inbox`, a link to
+        // `~/Papers/inbox`, listed as an extra writable folder. The sandbox
+        // leaves it out, since the read-only home does not show the place
+        // writable, and the app reaches it read-only through `/data/w`,
+        // the link and the home.
+        let w = base.join("data/w");
+        let papers = h.home.join("Papers");
+        fs::create_dir_all(&w).unwrap();
+        fs::create_dir_all(papers.join("inbox")).unwrap();
+        let docs = w.join("Docs");
+        std::os::unix::fs::symlink(&papers, &docs).unwrap();
+        h.xdg_dirs.insert("documents".into(), docs.clone());
+        let inbox = w.join("inbox");
+        std::os::unix::fs::symlink(papers.join("inbox"), &inbox).unwrap();
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.home = true;
+        p.filesystem.home_access = Perm::Ro;
+        p.filesystem.documents = Perm::Ro;
+        p.filesystem.custom_write = vec![s(&w), s(&inbox)];
+        assert!(matches!(
+            sam_core::places::user_folder_refused(
+                &p,
+                &h,
+                "documents",
+                &sam_core::places::ThisStart::default()
+            ),
+            Some(sam_core::places::UserFolderRefused::Link(_))
+        ));
+        let pl = plan(&p, &cfg, &sam_paths(), &h);
+        assert_eq!(
+            folder(&pl, &title(&inbox)),
+            Access::ReadOnly,
+            "left out, and shown read-only by the home around its place"
+        );
+        // Documents set to `/`, read-only: refused as a folder above the
+        // home, with no link on the way. The app planted `/data/w/sys`, a
+        // link to `/usr`, listed as an extra read-only folder. The sandbox
+        // leaves it out, and `/usr` is shown read-only on its own, so the
+        // check has nothing to expect there.
+        h.xdg_dirs.insert("documents".into(), PathBuf::from("/"));
+        let sys = w.join("sys");
+        std::os::unix::fs::symlink("/usr", &sys).unwrap();
+        p.filesystem.custom_write = vec![s(&w)];
+        p.filesystem.custom_read = vec![s(&sys)];
+        assert!(sam_core::places::user_folder_place(Path::new("/"), &h.home).is_none());
+        let pl = plan(&p, &cfg, &sam_paths(), &h);
+        assert!(
+            !pl.checks.iter().any(|c| c.title == title(&sys)),
+            "left out, and `/usr` is shown on its own: {:?}",
+            pl.checks.iter().find(|c| c.title == title(&sys))
         );
     }
 
