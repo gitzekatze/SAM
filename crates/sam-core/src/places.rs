@@ -458,6 +458,30 @@ pub fn user_folder_link_the_app_can_change(
         .find(|l| l.parent().is_some_and(can_change))
 }
 
+/// The access at which a start shows the user folder `key`: its own,
+/// unless another granted user folder listed after it in [`XDG_DIR_KEYS`]
+/// is shown at the same place ([`user_folder_shown`]; Music and Videos
+/// both set to `~/Media`). Then that one's access decides, as the views
+/// and the mounts decide it: the later mount of one place covers the
+/// earlier one. The sandbox check takes this answer, so it never expects
+/// one folder at two accesses.
+pub fn user_folder_access(p: &PermissionSet, host: &HostInfo, key: &str) -> Access {
+    let fs = &p.filesystem;
+    let own = fs.xdg_access(key);
+    let shown = |k: &str| {
+        host.xdg_dir(k)
+            .filter(|_| fs.xdg_access(k).is_granted())
+            .and_then(|d| user_folder_shown(p, host, d))
+    };
+    let Some(real) = shown(key) else {
+        return own;
+    };
+    XDG_DIR_KEYS
+        .iter()
+        .rfind(|k| shown(k).as_ref() == Some(&real))
+        .map_or(own, |k| fs.xdg_access(k))
+}
+
 /// Every link on the way to the absolute path `p`, in the order the system
 /// follows them, each named in the folder that really holds it (the links
 /// before it resolved), also the links inside a link's target. A part

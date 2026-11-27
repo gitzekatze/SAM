@@ -140,7 +140,9 @@ pub fn plan(p: &PermissionSet, cfg: &Config, paths: &Paths, host: &HostInfo) -> 
         let want = if sam_core::places::inside_sams_folders(&real, &sam_dirs) {
             Access::Hidden
         } else if a.is_granted() && sam_core::places::user_folder_shown(p, host, path).is_some() {
-            level(a)
+            // Two user folders at one place: the one the sandbox mounts
+            // last decides for both (Music and Videos set to `~/Media`).
+            level(sam_core::places::user_folder_access(p, host, key))
         } else if through_home {
             home_level
         } else {
@@ -1207,6 +1209,50 @@ mod tests {
                     want,
                     "{home:?} home, {docs:?} Documents"
                 );
+            }
+        }
+    }
+
+    /// The check expects user folders set to one place at one access, the
+    /// one the sandbox takes: the folder listed last in `XDG_DIR_KEYS`
+    /// decides (Music, Pictures and Videos all `~/Media`), with the whole
+    /// home writable, read-only or not granted. Each at its own access,
+    /// the check expected one folder writable and read-only at once and
+    /// failed whatever the sandbox did.
+    #[test]
+    fn the_check_expects_user_folders_at_one_place_at_one_access() {
+        let t = tempfile::tempdir().unwrap();
+        let mut h = host_in(t.path());
+        let media = h.home.join("Media");
+        fs::create_dir_all(&media).unwrap();
+        for key in ["music", "pictures", "videos"] {
+            h.xdg_dirs.insert(key.into(), media.clone());
+        }
+        let cfg = Config::default();
+        for home in [Some(Perm::Rw), Some(Perm::Ro), None] {
+            for (music, pictures, videos, want) in [
+                (Perm::Rw, Perm::Ro, Perm::Rw, Access::ReadWrite),
+                (Perm::Rw, Perm::Ro, Perm::None, Access::ReadOnly),
+                (Perm::Ro, Perm::Rw, Perm::None, Access::ReadWrite),
+            ] {
+                let mut p = PermissionSet::strict_gui();
+                if let Some(acc) = home {
+                    p.filesystem.home = true;
+                    p.filesystem.home_access = acc;
+                }
+                p.filesystem.music = music;
+                p.filesystem.pictures = pictures;
+                p.filesystem.videos = videos;
+                let pl = plan(&p, &cfg, &sam_paths(), &h);
+                for (title, acc) in [("Music", music), ("Pictures", pictures), ("Videos", videos)] {
+                    if acc.is_granted() {
+                        assert_eq!(
+                            folder(&pl, title),
+                            want,
+                            "{home:?} home, {music:?} {pictures:?} {videos:?}: {title}"
+                        );
+                    }
+                }
             }
         }
     }

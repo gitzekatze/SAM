@@ -2299,6 +2299,24 @@ impl Section<'_> {
                         continue;
                     }
                 };
+                // Two user folders at one place (Music and Videos both set
+                // to `~/Media`): the one listed last decides, as the views
+                // decide it ([`Views::grant_of`]: the later grant of equal
+                // depth) and the sandbox check expects it
+                // ([`sam_core::places::user_folder_access`]). Judged one by
+                // one against the home, the read-only one was mounted and
+                // the writable one left to the home, so the folder was
+                // read-only while the views said writable.
+                let later_at_same_place = XDG_DIR_KEYS
+                    .iter()
+                    .skip_while(|k| **k != key)
+                    .skip(1)
+                    .any(|k| {
+                        fsp.xdg_access(k).is_granted() && user_dir(ctx, k).as_ref() == Ok(&real)
+                    });
+                if later_at_same_place {
+                    continue;
+                }
                 let rw = acc == Access::Rw;
                 if home_shows_exactly(&self.views, &home, &real, rw) {
                     continue;
@@ -7189,6 +7207,68 @@ mod guard_tests {
             "--ro-bind-try",
             &home.join("Sync/a/Documents"),
         );
+    }
+
+    /// Two user folders set to one place with different access (Music
+    /// read and write, Pictures read-only, both `~/Media`) take one
+    /// access: the one listed last in `XDG_DIR_KEYS` decides, in the
+    /// mounts as in the views, with the whole home writable, read-only or
+    /// not granted. Judged one by one against the home, the read-only one
+    /// was mounted and the writable one left to the writable home, so
+    /// `~/Media` was read-only while the views said writable.
+    #[test]
+    fn user_folders_at_one_place_take_one_access() {
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap().join("home");
+        let media = home.join("Media");
+        fs::create_dir_all(&media).unwrap();
+        let m = media.to_string_lossy().into_owned();
+        // What the mounts show at `~/Media`: the last bind of it, or the
+        // home's access.
+        let mounted_rw = |a: &[String], home_rw: bool| {
+            let rw = at_seq(a, &["--bind-try", &m, &m]).last().copied();
+            let ro = at_seq(a, &["--ro-bind-try", &m, &m]).last().copied();
+            match (rw, ro) {
+                (None, None) => home_rw,
+                (Some(_), None) => true,
+                (None, Some(_)) => false,
+                (Some(w), Some(r)) => w > r,
+            }
+        };
+        let (rw, ro, no) = (Access::Rw, Access::Ro, Access::None);
+        for home_access in [Some(rw), Some(ro), None] {
+            for (music, pictures, videos, want) in [
+                (rw, ro, rw, true),
+                (rw, ro, no, false),
+                (ro, rw, no, true),
+                (ro, no, ro, false),
+            ] {
+                let mut p = PermissionSet::strict_gui();
+                if let Some(acc) = home_access {
+                    p.filesystem.home = true;
+                    p.filesystem.home_access = acc;
+                }
+                p.filesystem.music = music;
+                p.filesystem.pictures = pictures;
+                p.filesystem.videos = videos;
+                let mut ctx = ctx_for(&p, &home);
+                for key in ["music", "pictures", "videos"] {
+                    ctx.host.xdg_dirs.insert(key.into(), media.clone());
+                }
+                let a = args_of(&ctx);
+                let case = format!("{home_access:?} home, {music:?} {pictures:?} {videos:?}");
+                assert_eq!(
+                    mounted_rw(&a, home_access == Some(rw)),
+                    want,
+                    "{case}: {a:?}"
+                );
+                assert_eq!(
+                    Views::base(&ctx).writable(&media.join("x")),
+                    want,
+                    "{case}: the views agree"
+                );
+            }
+        }
     }
 
     /// With the whole home granted, credential files are replaced by an
