@@ -18,8 +18,11 @@
   had set `SAM_DATA_DIR`, the menu entries SAM made start apps it no longer
   knows.
 - To keep using the apps you added with the old folders, together with
-  their own files, move the contents of the old folders into the standard
-  ones. The window and `sam-jail list` then show those apps again. Each
+  their own files, first close SAM's window and every app started from SAM,
+  then move the contents of the old configuration, data and menu folders
+  into the standard ones. The old runtime folder (`SAM_RUNTIME_DIR`) holds
+  only the files of running apps and need not be moved. The window and
+  `sam-jail list` then show those apps again. Each
   app's private home (`homes/` in the data folder), where the app keeps its
   own files, moves with them. Then unpack each app again (Unpack Again, or
   `sam-jail reextract`): an app record keeps the full paths of its unpacked
@@ -28,9 +31,12 @@
 - Adding an app's AppImage again instead, without moving the old folders,
   suits only apps whose own files you do not need: the new record starts
   with an empty private home and sets up its settings and permissions
-  anew, and the old home stays in the old folder. The app gets the same id
-  again, so its new menu entry replaces the old one in
-  `~/.local/share/applications` instead of adding a second one.
+  anew, and the old home stays in the old folder. If it is the same
+  AppImage file, the app gets the same id again, so its new menu entry
+  replaces the old one in `~/.local/share/applications` instead of adding a
+  second one. An AppImage that changed since (for example a newer version)
+  gets a new id: then delete the old menu entry, `sam-<id>.desktop` with
+  the old id, from that folder yourself.
 - `XDG_CONFIG_HOME` and `XDG_DATA_HOME` are no replacement for the old
   variables: they move the folders of every program started with them,
   not only SAM's, and SAM then uses `sam/` below each of them and
