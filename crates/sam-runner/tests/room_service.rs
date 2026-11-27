@@ -296,12 +296,15 @@ say grant_app "$($P read "$OTHER_APP")"
 say grant_room "$(rv room --ro-bind-try "$(dirname "$OTHER_APP")" "$(dirname "$OTHER_APP")" -- $P read "$OTHER_APP")"
 "#;
 
-/// A folder the app is shown is renamed away inside its writable home and
-/// a link to a place it is not shown is put in its place: a room shows the
-/// folder the app was shown (held since the start), never the link's target.
+/// The app tries to rename a folder it is shown away inside its writable
+/// home and to put a link to a place it is not shown in its place: a room
+/// shows the folder the app was shown (held since the start), never the
+/// link's target. Since SAM also pins the folders above a read-only extra
+/// folder (review of finding R63), the rename is refused; the room's answer
+/// stays the one it gives when the rename succeeds.
 const HELD_SOURCES: &str = r#"
 say control "$(rv room -- /usr/bin/echo ok)"
-mv "$HOME/work" "$HOME/work-moved" && mkdir -p "$HOME/work" && ln -sfn "$SECRET_DIR" "$HOME/work/docs"
+mv "$HOME/work" "$HOME/work-moved" 2>/dev/null && mkdir -p "$HOME/work" && ln -sfn "$SECRET_DIR" "$HOME/work/docs"
 say renamed "$([ -L "$HOME/work/docs" ] && echo yes || echo no)"
 say held "$(rv room --ro-bind "$HOME/work/docs" "$HOME/work/docs" -- /usr/bin/cat "$HOME/work/docs/f")"
 "#;
@@ -1534,7 +1537,7 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
     );
     failures.extend(control_built("held", &log));
     failures.extend(
-        check(&log, &[("renamed", "yes"), ("held", "inside")])
+        check(&log, &[("renamed", "no"), ("held", "inside")])
             .into_iter()
             .map(|f| format!("held: {f}")),
     );

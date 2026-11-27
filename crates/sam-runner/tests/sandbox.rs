@@ -606,14 +606,23 @@ fn a_user_folder_link_the_app_planted_never_shows_where_it_leads() {
     assert!(!secret.join("new.txt").exists());
 }
 
-/// The probe of [`a_link_planted_inside_a_refused_read_only_folder_is_never_followed`]:
+/// The probe of [`a_link_planted_inside_a_refused_read_only_folder_is_never_followed`]
+/// and [`the_folders_above_a_read_only_user_folder_cannot_be_renamed`]:
 /// told to (`plant PLACE`), it turns Downloads, found as apps find it, into
-/// a link to `PLACE`; otherwise it reads and writes through Downloads.
+/// a link to `PLACE`; told to (`rename`), it tries to rename the folders
+/// above the read-only ones and writes inside them; otherwise it reads and
+/// writes through Downloads.
 const FOLDER_PROBE: &str = r#"#!/bin/sh
 . "$HOME/.config/user-dirs.dirs"
 D="$XDG_DOWNLOAD_DIR"
 if [ "$1" = plant ]; then
   mv "$D" "$HOME/x" 2>/dev/null && ln -s "$2" "$D" 2>/dev/null && echo PLANTED=yes || echo PLANTED=no
+fi
+if [ "$1" = rename ]; then
+  mv "$HOME/Sync" "$HOME/S2" 2>/dev/null && echo SYNC_MOVED=yes || echo SYNC_MOVED=no
+  mv "$HOME/work" "$HOME/w2" 2>/dev/null && echo WORK_MOVED=yes || echo WORK_MOVED=no
+  ( echo x > "$HOME/Sync/Documents/proj/new.txt" ) 2>/dev/null && echo PROJ_WRITE=yes || echo PROJ_WRITE=no
+  ( echo x > "$HOME/Sync/Documents/new.txt" ) 2>/dev/null && echo DOCS_WRITE=yes || echo DOCS_WRITE=no
 fi
 grep -q secret "$D/secret.txt" 2>/dev/null && echo READ=yes || echo READ=no
 ( echo x > "$D/new.txt" ) 2>/dev/null && echo WRITE=yes || echo WRITE=no
@@ -725,4 +734,47 @@ fn a_link_planted_inside_a_refused_read_only_folder_is_never_followed() {
     assert_eq!(r["READ"], "no", "{r:?}");
     assert_eq!(r["WRITE"], "no", "{r:?}");
     assert!(!secret.join("new.txt").exists());
+}
+
+/// With the whole home writable, Documents read-only in `~/Sync`, an extra
+/// writable folder inside it and an extra read-only folder in `~/work`,
+/// the app can rename neither `~/Sync` nor `~/work`: each is a mount point
+/// of its own. A second start of the app with these permissions could
+/// otherwise rename one, which carries the read-only mount along, and put
+/// a link in its place while SAM starts the app again, so that start bound
+/// where the link led (review of finding R63). The extra writable folder
+/// stays writable, Documents read-only.
+#[test]
+fn the_folders_above_a_read_only_user_folder_cannot_be_renamed() {
+    let _one = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    if !bwrap_works() {
+        sam_runner::contracts::skip("bubblewrap is not functional here")
+            .unwrap_or_else(|e| panic!("{e}"));
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    let (app, id, home, host) = folder_probe_app(
+        root,
+        "Rename",
+        "XDG_DOCUMENTS_DIR=\"$HOME/Sync/Documents\"\n",
+    );
+    for d in ["Sync/Documents/proj", "work/ref"] {
+        fs::create_dir_all(home.join(d)).unwrap();
+    }
+    let st = |p: &Path| p.to_string_lossy().into_owned();
+    let mut p = PermissionSet::strict_gui();
+    p.filesystem.home = true;
+    p.filesystem.home_access = Access::Rw;
+    p.filesystem.documents = Access::Ro;
+    p.filesystem.custom_read = vec![st(&home.join("work/ref"))];
+    p.filesystem.custom_write = vec![st(&home.join("Sync/Documents/proj"))];
+    let r = start_probe(&app, &id, &p, &home, &host, &["rename"]);
+    assert_eq!(r["SYNC_MOVED"], "no", "{r:?}");
+    assert_eq!(r["WORK_MOVED"], "no", "{r:?}");
+    assert_eq!(r["PROJ_WRITE"], "yes", "{r:?}");
+    assert_eq!(r["DOCS_WRITE"], "no", "{r:?}");
+    assert!(home.join("Sync/Documents/proj/new.txt").is_file());
+    assert!(!home.join("Sync/Documents/new.txt").exists());
+    assert!(home.join("work/ref").is_dir() && !home.join("w2").exists());
 }

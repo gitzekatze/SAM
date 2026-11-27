@@ -1528,9 +1528,11 @@ fn write_grants(ctx: &LaunchContext) -> Vec<WriteGrant> {
                 // grant there shows it: below a read-only grant inside a
                 // writable one (`~/Documents/proj` with Documents
                 // read-only under the writable home), the app cannot
-                // change the way, the read-only grant is a mount of its
-                // own it cannot rename, so the folder is bound writable
-                // after it. Judged on any folder above, it was left out,
+                // change the way: the read-only grant is a mount of its
+                // own it cannot rename, and the folders above it that the
+                // app can change are pinned (`Section::home`), so the
+                // folder is bound writable after it. Judged on any folder
+                // above, it was left out,
                 // read-only under that grant, while the start said the
                 // app could already change it and the sandbox check
                 // expected it writable.
@@ -2255,6 +2257,8 @@ impl Section<'_> {
         let home = h.home.clone();
         let notes = &mut self.notes;
         let fsp = &p.filesystem;
+        // The user folders bound at a place of their own, for the pins.
+        let mut own_mounts: Vec<PathBuf> = Vec::new();
         let mut mounts: Vec<(usize, Args)> = Vec::new();
         let mut mount = |at: &Path, f: &dyn Fn(&mut Args)| {
             let mut m = Args::default();
@@ -2301,6 +2305,7 @@ impl Section<'_> {
                 }
                 let op = if rw { "--bind-try" } else { "--ro-bind-try" };
                 mount(&real, &|m| m.op2(op, &real, &real));
+                own_mounts.push(real.clone());
                 // A link where the app looks for it when that is a link
                 // outside the home; one in the home is shown with it.
                 if let Some(dir) = h
@@ -2349,6 +2354,7 @@ impl Section<'_> {
                         // At its real place, and a link where the app
                         // looks for it when that is a link on the host.
                         mount(&real, &|m| m.op2(op, &real, &real));
+                        own_mounts.push(real.clone());
                         if let Some(dir) = h.xdg_dir(key).filter(|d| *d != real) {
                             mount(dir, &|m| m.op2("--symlink", &real, dir));
                         }
@@ -2448,6 +2454,26 @@ impl Section<'_> {
             self.writes
                 .iter()
                 .filter(|g| matches!(g.how, WriteBind::ReadOnly(_)))
+                .map(|g| g.bound.clone()),
+        );
+        // So is every other folder bound at an access of its own inside a
+        // folder the app can change: a user folder bound at its own access
+        // (Documents read-only in `~/Sync` under the writable home), a
+        // read-only extra folder, and an extra writable folder bound
+        // inside a read-only one ([`write_grants`]). A second start of this
+        // app with these permissions (starts take the app lock shared)
+        // could otherwise rename a folder above it (`mv ~/Sync ~/S2`),
+        // which carries the mount along, and put a link in its place
+        // between SAM's look and Bubblewrap's mount: the next start bound
+        // where the link led, a key folder read-only or a start place
+        // writable (review of finding R63). That start has the same pins,
+        // so the rename fails.
+        guarded.extend(own_mounts);
+        guarded.extend(fsp.custom_read.iter().map(|c| grant_path(c)));
+        guarded.extend(
+            self.writes
+                .iter()
+                .filter(|g| g.how == WriteBind::Writable)
                 .map(|g| g.bound.clone()),
         );
         // The folders above where this SAM keeps its own. Those above the
@@ -7085,6 +7111,83 @@ mod guard_tests {
         refused(
             &start(&home.join("Docs"), &in_ref, vec![st(&home.join("ref"))]),
             &in_ref,
+        );
+    }
+
+    /// The folders above a folder bound at an access of its own inside a
+    /// folder the app can change are pinned: above a read-only user folder
+    /// (`~/Sync/Documents` read-only under the writable home), above a
+    /// read-only extra folder (`~/work/ref`), and so above a writable
+    /// extra folder inside a read-only one (`~/Sync/Documents/proj`), with
+    /// or without the whole home. A second start of the app with these
+    /// permissions could otherwise rename a folder above (`mv ~/Sync
+    /// ~/S2`), which carries the mount along, and put a link in its place
+    /// between SAM's look and the mount, so the next start bound where the
+    /// link led (review of finding R63). A folder that is a grant of its
+    /// own, such as the home, is a mount already.
+    #[test]
+    fn the_folders_above_a_folder_bound_at_its_own_access_are_pinned() {
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap().join("home");
+        for d in ["Sync/Documents/proj", "work/ref", "Sync/a/Documents"] {
+            fs::create_dir_all(home.join(d)).unwrap();
+        }
+        let st = |p: &Path| p.to_string_lossy().into_owned();
+        let pinned_before = |a: &[String], pin: &Path, op: &str, inside: &Path| {
+            let (pin, inside) = (st(pin), st(inside));
+            let pins = at_seq(a, &["--bind", &pin, &pin]);
+            let mounts = at_seq(a, &[op, &inside, &inside]);
+            assert!(
+                !mounts.is_empty() && pins.iter().any(|p| mounts.iter().any(|m| p < m)),
+                "{pin} pinned before {op} {inside}: {a:?}"
+            );
+        };
+        let mut p = full_rw();
+        p.filesystem.documents = Access::Ro;
+        p.filesystem.custom_read = vec![st(&home.join("work/ref"))];
+        p.filesystem.custom_write = vec![st(&home.join("Sync/Documents/proj"))];
+        let mut ctx = ctx_for(&p, &home);
+        ctx.host
+            .xdg_dirs
+            .insert("documents".into(), home.join("Sync/Documents"));
+        let a = args_of(&ctx);
+        pinned_before(
+            &a,
+            &home.join("Sync"),
+            "--ro-bind-try",
+            &home.join("Sync/Documents"),
+        );
+        pinned_before(
+            &a,
+            &home.join("work"),
+            "--ro-bind-try",
+            &home.join("work/ref"),
+        );
+        pinned_before(
+            &a,
+            &home.join("Sync"),
+            "--bind-try",
+            &home.join("Sync/Documents/proj"),
+        );
+        assert_eq!(
+            at_seq(&a, &["--bind", &st(&home), &st(&home)]).len(),
+            1,
+            "the home is bound once: {a:?}"
+        );
+        // Without the whole home: below a writable extra folder.
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.documents = Access::Ro;
+        p.filesystem.custom_write = vec![st(&home.join("Sync"))];
+        let mut ctx = ctx_for(&p, &home);
+        ctx.host
+            .xdg_dirs
+            .insert("documents".into(), home.join("Sync/a/Documents"));
+        let a = args_of(&ctx);
+        pinned_before(
+            &a,
+            &home.join("Sync/a"),
+            "--ro-bind-try",
+            &home.join("Sync/a/Documents"),
         );
     }
 
