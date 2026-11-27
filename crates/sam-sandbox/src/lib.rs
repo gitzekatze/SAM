@@ -7003,6 +7003,91 @@ mod guard_tests {
         }
     }
 
+    /// A link inside a read-only folder under the writable whole home
+    /// counts as one the app could have put there: such a folder is not
+    /// mounted at all when the sandbox refuses it (Documents itself a link
+    /// to `~/Dropbox/Documents` in the writable home), so the home shows
+    /// it writable; and where it is mounted, the app may have written
+    /// there in an earlier start, before it was set read-only. Taken as
+    /// read-only, `mv ~/Dropbox/Documents/Downloads ~/x; ln -s /srv/data
+    /// ~/Dropbox/Documents/Downloads` in one start bound `/srv/data`
+    /// writable as Downloads in the next (review of finding R63). The same
+    /// inside a read-only extra folder.
+    #[test]
+    fn a_link_inside_a_read_only_folder_in_the_writable_home_is_not_followed() {
+        let t = tempfile::tempdir().unwrap();
+        let base = fs::canonicalize(t.path()).unwrap();
+        let home = base.join("home");
+        let elsewhere = base.join("srv/data");
+        let dropbox_docs = home.join("Dropbox/Documents");
+        for d in [
+            dropbox_docs.clone(),
+            home.join("Docs"),
+            home.join("ref"),
+            elsewhere.clone(),
+        ] {
+            fs::create_dir_all(d).unwrap();
+        }
+        std::os::unix::fs::symlink(&dropbox_docs, home.join("Documents")).unwrap();
+        let st = |p: &Path| p.to_string_lossy().into_owned();
+        let start = |docs: &Path, downloads: &Path, custom_read: Vec<String>| {
+            let mut p = full_rw();
+            p.filesystem.documents = Access::Ro;
+            p.filesystem.downloads = Access::Rw;
+            p.filesystem.custom_read = custom_read;
+            let mut ctx = ctx_for(&p, &home);
+            ctx.host
+                .xdg_dirs
+                .insert("documents".into(), docs.to_path_buf());
+            ctx.host
+                .xdg_dirs
+                .insert("downloads".into(), downloads.to_path_buf());
+            ctx
+        };
+        let refused = |ctx: &LaunchContext, link: &Path| {
+            let cmd = Bubblewrap.build(ctx).unwrap();
+            assert!(
+                !cmd.args.iter().any(|x| *x == st(&elsewhere)),
+                "{link:?}: {:?}",
+                cmd.args
+            );
+            assert!(
+                cmd.notes
+                    .iter()
+                    .any(|n| n.contains(&st(link)) && n.contains("the app may have put it there")),
+                "{:?}",
+                cmd.notes
+            );
+            assert!(!Views::base(ctx).visible(&elsewhere.join("x")));
+            assert!(matches!(
+                user_dir(ctx, "downloads"),
+                Err(NotShown::Link(_, l)) if l == link
+            ));
+        };
+        // The review's case: Documents is refused and not mounted.
+        let planted = dropbox_docs.join("Downloads");
+        std::os::unix::fs::symlink(&elsewhere, &planted).unwrap();
+        let ctx = start(&home.join("Documents"), &planted, Vec::new());
+        assert!(matches!(
+            user_dir(&ctx, "documents"),
+            Err(NotShown::Link(..))
+        ));
+        refused(&ctx, &planted);
+        // A read-only Documents the sandbox mounts.
+        let dl = home.join("Docs/dl");
+        std::os::unix::fs::symlink(&elsewhere, &dl).unwrap();
+        let ctx = start(&home.join("Docs"), &dl, Vec::new());
+        assert!(user_dir(&ctx, "documents").is_ok());
+        refused(&ctx, &dl);
+        // A read-only extra folder.
+        let in_ref = home.join("ref/dl");
+        std::os::unix::fs::symlink(&elsewhere, &in_ref).unwrap();
+        refused(
+            &start(&home.join("Docs"), &in_ref, vec![st(&home.join("ref"))]),
+            &in_ref,
+        );
+    }
+
     /// With the whole home granted, credential files are replaced by an
     /// empty file and credential folders by an empty folder.
     #[test]

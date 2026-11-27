@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use sam_core::permissions::*;
@@ -601,6 +601,127 @@ fn a_user_folder_link_the_app_planted_never_shows_where_it_leads() {
         .is_symlink());
 
     let r = start(&[]);
+    assert_eq!(r["READ"], "no", "{r:?}");
+    assert_eq!(r["WRITE"], "no", "{r:?}");
+    assert!(!secret.join("new.txt").exists());
+}
+
+/// The probe of [`a_link_planted_inside_a_refused_read_only_folder_is_never_followed`]:
+/// told to (`plant PLACE`), it turns Downloads, found as apps find it, into
+/// a link to `PLACE`; otherwise it reads and writes through Downloads.
+const FOLDER_PROBE: &str = r#"#!/bin/sh
+. "$HOME/.config/user-dirs.dirs"
+D="$XDG_DOWNLOAD_DIR"
+if [ "$1" = plant ]; then
+  mv "$D" "$HOME/x" 2>/dev/null && ln -s "$2" "$D" 2>/dev/null && echo PLANTED=yes || echo PLANTED=no
+fi
+grep -q secret "$D/secret.txt" 2>/dev/null && echo READ=yes || echo READ=no
+( echo x > "$D/new.txt" ) 2>/dev/null && echo WRITE=yes || echo WRITE=no
+echo END=1
+"#;
+
+/// Starts the app `id` of `app` with the permissions `p` and the arguments
+/// `args`, and returns what its probe printed.
+fn start_probe(
+    app: &Sam,
+    id: &str,
+    p: &PermissionSet,
+    home: &Path,
+    host: &HostInfo,
+    args: &[&str],
+) -> HashMap<String, String> {
+    let mut e = app.set_permissions(id, p.clone()).unwrap();
+    let opts = LaunchOptions {
+        args: args.iter().map(|a| a.to_string()).collect(),
+        quiet: true,
+        owd: Some(home.to_path_buf()),
+        ..Default::default()
+    };
+    let rec = run(&mut e, &opts, &app.config, &app.paths, host).unwrap();
+    assert!(rec.success, "launch failed: {}", rec.summary);
+    let r = parse(rec.log_file.as_ref().unwrap());
+    assert_eq!(r.get("END").map(String::as_str), Some("1"), "{r:?}");
+    r
+}
+
+/// Sets up a test home at `root/home/tester` with `user-dirs.dirs` holding
+/// `dirs`, and adds the folder probe as an app; returns SAM, the app's id,
+/// the home and the host.
+fn folder_probe_app(root: &Path, name: &str, dirs: &str) -> (Sam, String, PathBuf, HostInfo) {
+    sam_runner::testenv::isolate_this_process(root);
+    let home = root.join("home/tester");
+    fs::create_dir_all(home.join(".config")).unwrap();
+    fs::write(home.join(".config/user-dirs.dirs"), dirs).unwrap();
+    std::env::set_var("HOME", &home);
+    std::env::set_var("XDG_CONFIG_HOME", home.join(".config"));
+    std::env::set_var("XDG_DATA_HOME", home.join(".local/share"));
+    let img = root.join(format!("{name}-1.0-x86_64.AppImage"));
+    let mut spec = FixtureSpec::hello(name);
+    spec.apprun = FOLDER_PROBE.into();
+    build(&img, &spec).unwrap();
+    let app = Sam::with_paths(Paths::rooted(&root.join("sam"))).unwrap();
+    let id = app
+        .add(
+            &img,
+            &AddOptions {
+                accept: true,
+                launcher: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .entry
+        .id;
+    let host = sam_runner::testenv::test_host(HostInfo::probe());
+    (app, id, home, host)
+}
+
+/// With the whole home writable, Documents read-only but itself a link in
+/// the home (`~/Documents` to `~/Dropbox/Documents`, so SAM does not mount
+/// it) and Downloads read and write inside it, an app turns Downloads into
+/// a link to a folder outside the home that it was never shown. In the
+/// next start, SAM does not show where the link leads: the app can neither
+/// read nor write there. Before, SAM took the link's folder for read-only
+/// and bound the place writable (review of finding R63).
+#[test]
+fn a_link_planted_inside_a_refused_read_only_folder_is_never_followed() {
+    let _one = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    if !bwrap_works() {
+        sam_runner::contracts::skip("bubblewrap is not functional here")
+            .unwrap_or_else(|e| panic!("{e}"));
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    let secret = root.join("data/secret");
+    fs::create_dir_all(&secret).unwrap();
+    fs::write(secret.join("secret.txt"), "secret\n").unwrap();
+    let (app, id, home, host) = folder_probe_app(
+        root,
+        "PlantIn",
+        "XDG_DOCUMENTS_DIR=\"$HOME/Documents\"\nXDG_DOWNLOAD_DIR=\"$HOME/Dropbox/Documents/Downloads\"\n",
+    );
+    let downloads = home.join("Dropbox/Documents/Downloads");
+    fs::create_dir_all(&downloads).unwrap();
+    std::os::unix::fs::symlink(home.join("Dropbox/Documents"), home.join("Documents")).unwrap();
+    assert_eq!(
+        host.xdg_dir("downloads"),
+        Some(downloads.as_path()),
+        "the test's own"
+    );
+    let mut p = PermissionSet::strict_gui();
+    p.filesystem.home = true;
+    p.filesystem.home_access = Access::Rw;
+    p.filesystem.documents = Access::Ro;
+    p.filesystem.downloads = Access::Rw;
+    let secret_text = secret.to_string_lossy().into_owned();
+    let r = start_probe(&app, &id, &p, &home, &host, &["plant", &secret_text]);
+    assert_eq!(r["PLANTED"], "yes", "the writable home lets it: {r:?}");
+    assert!(fs::symlink_metadata(&downloads)
+        .unwrap()
+        .file_type()
+        .is_symlink());
+    let r = start_probe(&app, &id, &p, &home, &host, &[]);
     assert_eq!(r["READ"], "no", "{r:?}");
     assert_eq!(r["WRITE"], "no", "{r:?}");
     assert!(!secret.join("new.txt").exists());

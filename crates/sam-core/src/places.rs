@@ -5,7 +5,7 @@
 use std::path::{Component, Path, PathBuf};
 
 use crate::host::HostInfo;
-use crate::permissions::{PermissionSet, XDG_DIR_KEYS};
+use crate::permissions::{Access, PermissionSet, XDG_DIR_KEYS};
 
 /// Sensitive dotfiles hidden when full home access is granted with
 /// `hidden_files = false`.
@@ -414,49 +414,45 @@ pub fn user_folder_shown(p: &PermissionSet, host: &HostInfo, dir: &Path) -> Opti
 /// person put the folder: shown there, a writable home let the app pick
 /// any place on the computer as its Downloads (`user-dirs.dirs` stays
 /// locked, but the folder it names did not). A link SAM cannot tell from
-/// one the person made is refused as well; the start says so. Judged from
-/// the permissions alone, so the sandbox, its check and the app page take
-/// one answer: a writable extra folder counts writable also where the
-/// sandbox shows it read-only (inside a start place), which refuses more,
-/// never less.
+/// one the person made is refused as well; the start says so.
+///
+/// A folder counts as one the app can change when any writable grant
+/// shows it, also where a read-only grant lies in between (Documents
+/// read-only under the writable home): the app may have written there in
+/// an earlier start, before the folder was set read-only or existed, and a
+/// read-only user folder the sandbox refuses (one that is itself a link in
+/// the writable home) is not mounted at all, so the home shows it
+/// writable. Taken as read-only there, a link the app planted inside it
+/// was followed and its target bound writable (review of finding R63).
+/// Judged from the permissions alone, so the sandbox, its check and the
+/// app page take one answer: a writable grant counts also where the
+/// sandbox shows it read-only (inside a start place) or not at all, which
+/// refuses more, never less.
 pub fn user_folder_link_the_app_can_change(
     p: &PermissionSet,
     host: &HostInfo,
     dir: &Path,
 ) -> Option<PathBuf> {
-    use crate::permissions::Access;
     let fs = &p.filesystem;
-    let mut grants: Vec<(PathBuf, bool)> = Vec::new();
-    if fs.home {
-        let rw = fs.home_access == Access::Rw;
-        grants.push((host.home.clone(), rw));
-        grants.push((resolve(&host.home), rw));
+    let mut writable: Vec<PathBuf> = Vec::new();
+    if fs.home && fs.home_access == Access::Rw {
+        writable.push(host.home.clone());
+        writable.push(resolve(&host.home));
     }
     for key in XDG_DIR_KEYS {
-        let acc = fs.xdg_access(key);
-        if acc.is_granted() {
+        if fs.xdg_access(key) == Access::Rw {
             if let Some(real) = host
                 .xdg_dir(key)
                 .and_then(|d| user_folder_place(d, &host.home))
             {
-                grants.push((real, acc == Access::Rw));
+                writable.push(real);
             }
         }
     }
-    for c in &fs.custom_read {
-        grants.push((resolve(&crate::util::expand_home(c)), false));
-    }
     for c in &fs.custom_write {
-        grants.push((resolve(&crate::util::expand_home(c)), true));
+        writable.push(resolve(&crate::util::expand_home(c)));
     }
-    // The deepest grant that shows a folder decides, as the mounts do.
-    let can_change = |d: &Path| {
-        grants
-            .iter()
-            .filter(|(g, _)| d.starts_with(g))
-            .max_by_key(|(g, rw)| (g.components().count(), *rw))
-            .is_some_and(|(_, rw)| *rw)
-    };
+    let can_change = |d: &Path| writable.iter().any(|g| d.starts_with(g));
     links_on_the_way(dir)
         .into_iter()
         .find(|l| l.parent().is_some_and(can_change))
