@@ -33,15 +33,22 @@
   as a link in `/tmp` that points elsewhere (on WSLg `/tmp/.X11-unix`
   points to the X server's folder in `/mnt/wslg`), counts as well.
 - An extra folder you name by its real place is shown as written and
-  rated by its name: the known socket folders such as `/tmp/tmux-1000`
-  are rated *Dangerous*, any other place in `/tmp` or `/var/tmp` only
-  *Think twice*.
+  rated by its name: `/tmp` itself, the known socket folders such as
+  `/tmp/tmux-1000` and anything in `/var/tmp` are rated *Dangerous*. Any
+  other place in `/tmp`, such as `/tmp/tmate-1000`, is rated *Some
+  access* when read-only, so SAM adds it without asking first, and
+  *Think twice* when writable.
 - Links that stay inside what the app is shown keep working, for example
   `~/.fonts` as a link to `~/.local/share/fonts`. If you made a link to an
   extra folder yourself and the app has the whole home writable, list the
   place it leads to as an extra folder instead of the link. The sandbox
   check expects such a folder as the rest of the app's folders show the
-  place it leads to.
+  place it leads to; where the sandbox shows its own folder there (a
+  system folder, `/run`, `/proc`, `/dev`, `/sys`, or the fonts and theme
+  files of a private home), it does not check that folder.
+- For a writable extra or user folder left out this way, the launch log
+  says that SAM leaves it out as a writable folder: with a read-only home
+  the app may still read the place it leads to.
 - SAM judges such a link by the permissions of the start at hand. A link
   the app made in an earlier start, while it had more write access (the
   whole home or a folder writable), is still followed after you narrow

@@ -783,12 +783,18 @@ How these stay protected with the home writable:
   may still be visible through the home or a user folder, so the sandbox
   check expects an extra or user folder left out this way as the other
   grants show the place the link leads to: not at all where none of them
-  shows it. A link that stays inside what the app is shown (`~/.fonts` a
+  shows it. Where the sandbox shows its own folder at that place (the
+  system and library folders it binds read-only, `/run`, `/proc`, `/dev`,
+  `/sys`, and the fonts and theme files of a private home), the check
+  expects nothing there and makes no probe for that folder. A link that
+  stays inside what the app is shown (`~/.fonts` a
   link to `~/.local/share/fonts`) works as before, and an extra folder you
-  name by its real place is shown as written and rated by its name: the
-  known socket folders (`/tmp/tmux-1000` named so) are rated *Dangerous*
-  and warned about, any other place in `/tmp` or `/var/tmp` (such as
-  `/tmp/tmate-1000`) only *Think twice*. If you made such a link yourself,
+  name by its real place is shown as written and rated by its name: `/tmp`
+  itself, the known socket folders in it (`/tmp/tmux-1000` named so) and
+  anything in `/var/tmp` (as part of `/var`) are rated *Dangerous* and
+  warned about; any other place in `/tmp` (such as `/tmp/tmate-1000`) is
+  rated *Some access* when read-only, so SAM adds it without asking first,
+  and *Think twice* when writable. If you made such a link yourself,
   list the place it leads to as an extra folder instead of the link, or
   set the user folder to that place in `~/.config/user-dirs.dirs`.
   Not covered: SAM judges a link by the permissions of the start at

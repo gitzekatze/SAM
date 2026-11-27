@@ -505,7 +505,9 @@ fn a_user_folder_link_the_app_planted_never_reaches_host_sockets() {
 /// With the home read-only and Downloads writable, the app makes an
 /// extra writable folder in Downloads, not made yet, a link to the home
 /// in one start; in the next start it can write neither in the home nor
-/// through the link: the read-only home stays read-only.
+/// through the link: the read-only home stays read-only. The start says
+/// it leaves out the writable folder, never that the app is not shown the
+/// place the read-only home still shows.
 #[test]
 fn a_link_the_app_planted_never_makes_a_read_only_home_writable() {
     let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
@@ -548,6 +550,12 @@ fn a_link_the_app_planted_never_makes_a_read_only_home_writable() {
     assert!(
         text.contains("may have made that link"),
         "the start says why: {text}"
+    );
+    // The home still shows the place read-only, so the note never says the
+    // app is not shown it.
+    assert!(
+        text.contains("leaves out the writable folder") && !text.contains("not shown otherwise"),
+        "the start says the folder is left out as a writable one: {text}"
     );
 }
 

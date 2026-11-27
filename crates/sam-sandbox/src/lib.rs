@@ -1362,12 +1362,14 @@ fn user_dir(ctx: &LaunchContext, key: &str) -> std::result::Result<PathBuf, NotS
 }
 
 /// What the start says about the user folder that `user_dir` leaves out
-/// through a link ([`NotShown::LeftOut`]).
-fn user_dir_left_out_note(dir: &Path, why: &sam_core::places::LeftOut) -> String {
+/// through a link ([`NotShown::LeftOut`]); `write`: the folder is set to
+/// read/write.
+fn user_dir_left_out_note(dir: &Path, why: &sam_core::places::LeftOut, write: bool) -> String {
     sam_core::places::left_out_note(
         &sam_core::util::tildify(dir),
         why,
         sam_core::places::LeftOutPlace::UserFolder,
+        write,
     )
 }
 
@@ -2329,7 +2331,7 @@ impl Section<'_> {
                         match user_dir(ctx, key) {
                             Ok(dir) => mount(&dir, &|m| m.op2("--bind-try", &dir, &dir)),
                             Err(NotShown::LeftOut(dir, why)) => {
-                                notes.push(user_dir_left_out_note(&dir, &why))
+                                notes.push(user_dir_left_out_note(&dir, &why, true))
                             }
                             Err(_) => {}
                         }
@@ -2384,7 +2386,7 @@ impl Section<'_> {
                         &[("key", &key)],
                     )),
                     Err(NotShown::LeftOut(dir, why)) => {
-                        notes.push(user_dir_left_out_note(&dir, &why))
+                        notes.push(user_dir_left_out_note(&dir, &why, acc == Access::Rw))
                     }
                     Err(NotShown::Refused(dir)) => notes.push(sam_core::i18n::trf(
                         "{key} folder is set to {path}, which shows more than a user folder (the home, a folder above it, a system or SAM folder, or a protected place); not bound",
@@ -2403,6 +2405,7 @@ impl Section<'_> {
                     &format!("~/{rel}"),
                     &why,
                     sam_core::places::LeftOutPlace::Own,
+                    false,
                 )),
             }
         }
@@ -2428,6 +2431,7 @@ impl Section<'_> {
                     c,
                     &why,
                     sam_core::places::LeftOutPlace::Extra,
+                    false,
                 ));
                 continue;
             }
@@ -2467,6 +2471,7 @@ impl Section<'_> {
                         &g.written,
                         why,
                         sam_core::places::LeftOutPlace::Extra,
+                        true,
                     ));
                     continue;
                 }
@@ -7659,8 +7664,10 @@ mod guard_tests {
     /// With the home read-only and Downloads writable, an extra writable
     /// folder in Downloads not made yet is not bound; the app makes it a
     /// link to the home, and the next start bound the whole home writable
-    /// over its read-only bind. Now it is left out, and the start says why;
-    /// one the app makes a link to a writable user folder is still shown.
+    /// over its read-only bind. Now it is left out, and the start says why,
+    /// as a writable folder left out: the read-only home still shows the
+    /// place, so the note never says the app is not shown it. One the app
+    /// makes a link to a writable user folder is still shown.
     #[test]
     fn a_planted_link_never_makes_a_read_only_home_writable() {
         let t = tempfile::tempdir().unwrap();
@@ -7704,6 +7711,13 @@ mod guard_tests {
             "{:?}",
             cmd.notes
         );
+        assert!(
+            cmd.notes.iter().any(|n| n.contains(&st(&out))
+                && n.contains("leaves out the writable folder")
+                && !n.contains("not shown otherwise")),
+            "{:?}",
+            cmd.notes
+        );
         // Into a writable user folder: the folder shows it writable anyway.
         fs::remove_file(&out).unwrap();
         std::os::unix::fs::symlink(home.join("Documents/sub"), &out).unwrap();
@@ -7723,8 +7737,10 @@ mod guard_tests {
     /// made yet, the app made it a link to `/tmp/tmux-…`, and the next
     /// start bound the host's sockets over its own `/tmp`. Left out in a
     /// private home and as a writable folder in a read-only home; the start
-    /// says why, and the views agree. A user folder you made a link in the
-    /// home is still shown where it leads.
+    /// says why (for a writable folder as one left out writable, since a
+    /// read-only home may still show the place), and the views agree. A
+    /// user folder you made a link in the home is still shown where it
+    /// leads.
     #[test]
     fn a_user_folder_never_follows_a_planted_link() {
         let t = scratch();
@@ -7754,7 +7770,13 @@ mod guard_tests {
         read_only_home.filesystem.home = true;
         read_only_home.filesystem.home_access = Access::Ro;
         read_only_home.filesystem.documents = Access::Rw;
-        for p in [&private, &read_only_home] {
+        let mut private_rw = private.clone();
+        private_rw.filesystem.documents = Access::Rw;
+        for (p, says) in [
+            (&private, "SAM does not show"),
+            (&read_only_home, "leaves out the writable user folder"),
+            (&private_rw, "leaves out the writable user folder"),
+        ] {
             let c = ctx(p);
             let cmd = Bubblewrap.build(&c).unwrap();
             assert!(
@@ -7767,6 +7789,13 @@ mod guard_tests {
                     .iter()
                     .any(|n| n.contains(&st(&docs)) && n.contains("may have made that link")),
                 "{:?}",
+                cmd.notes
+            );
+            assert!(
+                cmd.notes
+                    .iter()
+                    .any(|n| n.contains(&st(&docs)) && n.contains(says)),
+                "{says}: {:?}",
                 cmd.notes
             );
             assert!(!Views::of(&c).visible(&sock.join("default")));

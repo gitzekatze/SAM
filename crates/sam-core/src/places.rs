@@ -1026,13 +1026,25 @@ pub enum LeftOutPlace {
 /// or `~/.fonts`), a place of the kind `kind`, that SAM leaves out
 /// ([`LeftOut`]). For a link the person made, it says how to show its
 /// place directly: an extra folder kept alongside the link stays left out
-/// (and the sandbox check expects there what the place shows).
-pub fn left_out_note(shown: &str, why: &LeftOut, kind: LeftOutPlace) -> String {
+/// (and the sandbox check expects there what the place shows). `write`
+/// says the bind was a writable one: for it a link is followed only into
+/// what the home and the user folders show writable, so the place it
+/// leads to may still be shown read-only (a read-only home), and the note
+/// must not say it is hidden.
+pub fn left_out_note(shown: &str, why: &LeftOut, kind: LeftOutPlace, write: bool) -> String {
     let t = crate::util::tildify;
     match why {
         LeftOut::Link(link) => {
             let args: &[(&str, &dyn std::fmt::Display)] = &[("path", &shown), ("link", &t(link))];
             match kind {
+                LeftOutPlace::Extra if write => crate::i18n::trf(
+                    "SAM leaves out the writable folder {path} for this app because the way there leads through the link {link}, which lies in a folder the app can change, to a place the home and the user folders let the app read at most: the app may have made that link. The app still sees what its other folders show there. If you made the link yourself, list the place it leads to as an extra folder instead of this one.",
+                    args,
+                ),
+                LeftOutPlace::UserFolder if write => crate::i18n::trf(
+                    "SAM leaves out the writable user folder {path} for this app because the way there leads through the link {link}, which lies in a folder the app can change, to a place the home lets the app read at most: the app may have made that link. The app still sees what its other folders show there. If you made the link yourself, set this user folder to the place it leads to in ~/.config/user-dirs.dirs.",
+                    args,
+                ),
                 LeftOutPlace::Own => crate::i18n::trf(
                     "SAM does not show {path} to this app because the way there leads through the link {link}, which lies in a folder the app can change, to a place the app is not shown otherwise: the app may have made that link. If you made it yourself, add the place it leads to as an extra folder.",
                     args,
@@ -1720,7 +1732,12 @@ mod tests {
             None
         );
         // The note names the place and why.
-        let note = left_out_note("~/.fonts", &LeftOut::Link(fonts.clone()), LeftOutPlace::Own);
+        let note = left_out_note(
+            "~/.fonts",
+            &LeftOut::Link(fonts.clone()),
+            LeftOutPlace::Own,
+            false,
+        );
         assert!(
             note.contains("~/.fonts") && note.contains("may have made that link"),
             "{note}"
@@ -1729,6 +1746,7 @@ mod tests {
             "~/.fonts",
             &LeftOut::HostServices(sockets.clone()),
             LeftOutPlace::Own,
+            false,
         );
         assert!(
             note.contains(&sockets.display().to_string())
@@ -1957,7 +1975,9 @@ mod tests {
     /// left out (bound there, it made the read-only home writable). A
     /// read-only extra folder there still leads into the home, which shows
     /// it anyway; a writable one into a writable user folder or a writable
-    /// home is followed.
+    /// home is followed. The launch note for a writable extra or user
+    /// folder left out so never says the app is not shown the place: the
+    /// read-only home still shows it.
     #[test]
     fn a_writable_bind_follows_a_planted_link_only_into_what_is_shown_writable() {
         use crate::permissions::Access;
@@ -1991,13 +2011,30 @@ mod tests {
         };
         for target in [home.clone(), home.join("Pictures")] {
             to(&target);
+            let why = linked_place_left_out(&p, &host, &out, true, &none());
             assert_eq!(
-                linked_place_left_out(&p, &host, &out, true, &none()),
+                why,
                 Some(LeftOut::Link(out.clone())),
                 "{}",
                 target.display()
             );
             assert_eq!(linked_place_left_out(&p, &host, &out, false, &none()), None);
+            let why = why.unwrap();
+            for (kind, says) in [
+                (LeftOutPlace::Extra, "leaves out the writable folder"),
+                (
+                    LeftOutPlace::UserFolder,
+                    "leaves out the writable user folder",
+                ),
+            ] {
+                let note = left_out_note("~/Downloads/out", &why, kind, true);
+                assert!(
+                    note.contains(says)
+                        && note.contains("may have made that link")
+                        && !note.contains("not shown otherwise"),
+                    "{note}"
+                );
+            }
         }
         to(&home.join("Documents/sub"));
         assert_eq!(linked_place_left_out(&p, &host, &out, true, &none()), None);
@@ -2233,7 +2270,7 @@ mod tests {
                 "{}",
                 target.display()
             );
-            let note = left_out_note("~/.fonts", why.as_ref().unwrap(), LeftOutPlace::Own);
+            let note = left_out_note("~/.fonts", why.as_ref().unwrap(), LeftOutPlace::Own, false);
             assert!(
                 note.contains("where programs outside the sandbox listen"),
                 "{note}"
