@@ -298,8 +298,8 @@ setting exists for them. The owner has decided neither.
   `dangerous_socket_kind`,
   [line 472](../crates/sam-core/src/permissions.rs#L472).
 - The link check that compares the kinds: `Section::sockets` in
-  [`crates/sam-sandbox/src/lib.rs`](../crates/sam-sandbox/src/lib.rs#L2687),
-  line 2687.
+  [`crates/sam-sandbox/src/lib.rs`](../crates/sam-sandbox/src/lib.rs#L2962),
+  line 2962.
 - Tests: `key_agents_are_rated_dangerous`,
   `a_key_agent_socket_with_the_network_can_send_what_it_reads`,
   `an_extra_socket_is_passed_in_only_as_dangerous_as_its_name`.
@@ -320,8 +320,8 @@ argument undoes the sandbox: `--bind / /` shows the whole computer to the
 app, and `--share-net` gives it the network while every switch says
 otherwise. SAM keeps several protections for this one setting, and
 reviews have found new gaps in them: a change of the arguments did not
-ask again (review F7), and an argument missing its values took SAM's own
-last arguments and left the sandbox root writable (review B2 R58). Each
+ask again, and an argument missing its values took SAM's own
+last arguments and left the sandbox root writable. Each
 protection is code that must be kept correct for a setting few people
 use.
 
@@ -372,14 +372,14 @@ map on the roadmap decides further candidates from evidence.
   line 540; the second question on any change: `new_risks`,
   [line 133](../crates/sam-core/src/risk.rs#L133).
 - The check before the start: `Bubblewrap::build` in
-  [`crates/sam-sandbox/src/lib.rs`](../crates/sam-sandbox/src/lib.rs#L1827),
-  line 1827, with `raw_problem`,
-  [line 2928](../crates/sam-sandbox/src/lib.rs#L2928); the arguments
+  [`crates/sam-sandbox/src/lib.rs`](../crates/sam-sandbox/src/lib.rs#L1960),
+  line 1960, with `raw_problem`,
+  [line 3203](../crates/sam-sandbox/src/lib.rs#L3203); the arguments
   are passed on in `finish_command`,
-  [line 2879](../crates/sam-sandbox/src/lib.rs#L2879).
+  [line 3154](../crates/sam-sandbox/src/lib.rs#L3154).
 - The warning:
-  [`crates/sam-core/src/warnings.rs`](../crates/sam-core/src/warnings.rs#L411),
-  line 411.
+  [`crates/sam-core/src/warnings.rs`](../crates/sam-core/src/warnings.rs#L476),
+  line 476.
 - The setting in the window:
   [`crates/sam-gtk/src/perms.rs`](../crates/sam-gtk/src/perms.rs#L848),
   line 848.
