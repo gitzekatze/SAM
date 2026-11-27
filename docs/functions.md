@@ -9,7 +9,7 @@
 >
 > Test results are from the newest version report (2026-11-21 05:11:03).
 
-**42 functions:** 3 proven by passing tests, 38 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 1068 tests in all.
+**42 functions:** 3 proven by passing tests, 38 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 1069 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
@@ -19,10 +19,10 @@
 | 4 | [SAM reads the name, icon, description and update source from the app itself, and removes markup or control characters before showing them.](#4) | sam-intake, sam-core | 11 | ✅ 🆕 1 new test since the report |
 | 5 | [A damaged or hostile AppImage can't crash SAM or stop the list.](#5) | sam-intake, sam-detect | 11 | ✅ |
 | 6 | [SAM recommends permissions from what the app is (window app, terminal tool, game, browser and so on), starting as strict as possible.](#6) | sam-jail-cli, sam-detect, sam-profile | 19 | ✅ 🆕 3 new tests since the report |
-| 7 | [SAM explains every permission in plain language and shows how risky it is.](#7) | sam-gtk, sam-jail-cli, sam-core | 61 | ✅ 🆕 43 new tests since the report |
+| 7 | [SAM explains every permission in plain language and shows how risky it is.](#7) | sam-gtk, sam-jail-cli, sam-core | 62 | ✅ 🆕 44 new tests since the report |
 | 8 | [You can change permissions per app, for several apps at once, or through your own presets.](#8) | sam-runner, sam-profile, sam-storage, sam-core | 34 | ✅ 🆕 9 new tests since the report |
 | 9 | [Things an app printed can never grant it access on their own; SAM always asks.](#9) | sam-runner | 6 | ✅ 🆕 3 new tests since the report |
-| 10 | [The app sees only a private home folder and the folders you grant.](#10) | sam-sandbox, sam-core | 28 | ✅ 🆕 17 new tests since the report |
+| 10 | [The app sees only a private home folder and the folders you grant.](#10) | sam-sandbox, sam-core | 29 | ✅ 🆕 18 new tests since the report |
 | 11 | [Keys, passwords and the files of your other apps stay hidden, even with full home access.](#11) | sam-sandbox, sam-core | 31 | ✅ 🆕 17 new tests since the report |
 | 12 | [Network: none, "This computer only" (selected ports), or full.](#12) | sam-runner, sam-sandbox | 10 | ✅ 🆕 2 new tests since the report |
 | 13 | [The app reaches only allowed desktop services (a filtered D-Bus) and can't start programs outside its sandbox.](#13) | sam-runner, sam-sandbox, sam-core | 72 | ✅ 🆕 41 new tests since the report |
@@ -263,8 +263,9 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`reading_and_sending_together_is_dangerous`](../crates/sam-core/src/risk.rs#L1131) | The network together with your home, keys or passwords is Dangerous: each alone is Think twice, but together the app can send what it reads (audit U-M10). | ✅ |
 | [`the_catalogue_names_every_setting`](../crates/sam-core/src/permissions.rs#L1328) | The catalogue is the one list of permissions: it names every setting an app's permissions have, and every name in it can be read. | ✅ |
 | [`the_documentation_names_every_permission`](../crates/sam-core/src/permissions.rs#L1371) | The permissions page of the documentation names every permission. | ✅ |
-| [`the_editor_shows_every_permission`](../crates/sam-gtk/src/perms.rs#L1297) | The editor (the app's page and the Permission Manager for one app) shows every permission in the catalogue, the one list of permissions (audit G-F14: the lists drifted; a setting was missing here). | ✅ |
-| [`files_opened_with_the_app_offer_every_setting`](../crates/sam-gtk/src/perms.rs#L1311) | Files opened with the app offer every value the setting can hold: a stored "No access" showed as "Read-only", the first choice, since it had none of its own. | 🆕 new |
+| [`the_editor_shows_every_permission`](../crates/sam-gtk/src/perms.rs#L1300) | The editor (the app's page and the Permission Manager for one app) shows every permission in the catalogue, the one list of permissions (audit G-F14: the lists drifted; a setting was missing here). | ✅ |
+| [`files_opened_with_the_app_offer_every_setting`](../crates/sam-gtk/src/perms.rs#L1314) | Files opened with the app offer every value the setting can hold: a stored "No access" showed as "Read-only", the first choice, since it had none of its own. | 🆕 new |
+| [`the_no_access_choice_names_the_folders_the_app_sees_anyway`](../crates/sam-gtk/src/perms.rs#L1332) | The "No access" choice says what the sandbox keeps: a file inside a folder another permission shows stays visible through that permission, so the text may not promise that the app never sees an opened file (it did, while Documents set to Read-only still showed ~/Documents/report.pdf). | 🆕 new |
 | [`info_shows_every_permission_with_its_value`](../crates/sam-jail-cli/src/output.rs#L370) | `info` shows every permission of the catalogue with its value, also the ones it left out before (audit G-F14). | ✅ |
 | [`info_on_the_terminal_shows_every_permission_once`](../crates/sam-jail-cli/tests/exit_codes.rs#L167) | `sam-jail info` shows every permission with its value, each group of permissions under one heading (audit G-F14). | ✅ |
 | [`a_path_with_dots_or_double_slashes_is_rated_where_it_leads`](../crates/sam-core/src/risk.rs#L1330) | A path is rated where it leads, not as it is written: `.`, `..` and repeated `/` count for nothing, so `/.` is the whole computer and `~/..` the folder above the home, and a folder that holds the home counts as the home. | 🆕 new |
@@ -376,7 +377,8 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`a_writable_folder_stays_writable_in_a_read_only_home`](../crates/sam-sandbox/src/lib.rs#L3414) | With the home read-only, a folder set to read/write stays writable; one set to read-only adds nothing (the home shows it read-only). | ✅ |
 | [`the_strictest_profile_shares_nothing_and_keeps_the_app_read_only`](../crates/sam-sandbox/src/lib.rs#L3713) | The strictest profile builds a sandbox without network, environment or capabilities, with the app read-only. | ✅ |
 | [`files_and_folders_named_on_the_command_line`](../crates/sam-sandbox/src/lib.rs#L3615) | Files and folders named when starting an app are passed in, but never sensitive folders like autostart. | ✅ |
-| [`files_opened_with_the_app_offer_every_setting`](../crates/sam-gtk/src/perms.rs#L1311) | Files opened with the app offer every value the setting can hold: a stored "No access" showed as "Read-only", the first choice, since it had none of its own. | 🆕 new |
+| [`files_opened_with_the_app_offer_every_setting`](../crates/sam-gtk/src/perms.rs#L1314) | Files opened with the app offer every value the setting can hold: a stored "No access" showed as "Read-only", the first choice, since it had none of its own. | 🆕 new |
+| [`the_no_access_choice_names_the_folders_the_app_sees_anyway`](../crates/sam-gtk/src/perms.rs#L1332) | The "No access" choice says what the sandbox keeps: a file inside a folder another permission shows stays visible through that permission, so the text may not promise that the app never sees an opened file (it did, while Documents set to Read-only still showed ~/Documents/report.pdf). | 🆕 new |
 | [`the_loaders_extra_library_folders_are_shown_read_only`](../crates/sam-sandbox/src/lib.rs#L3575) | Extra library folders of the system loader (for example CUDA) are visible to the app read-only. | ✅ |
 | [`each_permission_adds_exactly_its_part_to_the_command`](../crates/sam-sandbox/src/lib.rs#L3820) | Each granted permission adds exactly its part to the Bubblewrap command. | ✅ |
 | [`a_real_sandbox_shows_exactly_what_each_profile_allows`](../crates/sam-runner/tests/sandbox.rs#L65) | Inside a real sandbox, each profile shows exactly the files and services it allows. | ✅ |
@@ -829,7 +831,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`nothing_of_the_room_lies_inside_a_device_place`](../crates/sam-runner/src/room_rules.rs#L2365) | A device place the app has (perhaps a folder it or the person can write) is shown only as a whole too: nothing of the room's own lies inside it in any order, and an own place inside it gets no Landlock write right. | 🆕 new |
 | [`read_only_places_inside_a_writable_request_are_recorded`](../crates/sam-runner/src/room_rules.rs#L2405) | Places inside a request's place that the app has read-only are recorded as capped when the request asked for them writable. | 🆕 new |
 | [`rooms_keep_their_first_process_and_their_order`](../crates/sam-runner/src/room_rules.rs#L2336) | --as-pid-1 is not passed into a room (Bubblewrap's own first process stays, and the room ends with SAM), and says so; a request's --remount-ro comes after its own links, as Bubblewrap would apply them; a link to a folder holding SAM's place is refused. | 🆕 new |
-| [`a_left_out_setting_shows_its_default`](../crates/sam-gtk/src/perms.rs#L1327) | A switch whose key the saved form leaves out while it is at its default shows that default: Room service shows on for an app that has it on (every app, unless turned off), off once turned off. | 🆕 new |
+| [`a_left_out_setting_shows_its_default`](../crates/sam-gtk/src/perms.rs#L1349) | A switch whose key the saved form leaves out while it is at its default shows that default: Room service shows on for an app that has it on (every app, unless turned off), off once turned off. | 🆕 new |
 | [`a_room_link_named_first_is_never_made_inside_a_later_place`](../crates/sam-runner/src/room_rules.rs#L2269) | The room's own link is never made inside a place shown from the app, also when it was named before that place (links are made last, after every mount, so a link in a read-only place of the app would lead it onto the computer). | 🆕 new |
 | [`read_only_asks_and_unwritable_own_places_are_kept_and_said`](../crates/sam-runner/src/room_rules.rs#L2292) | A place asked for read-only keeps what the room makes for it (the app's hiding places, its /dev) read-only; own new places that cannot be written are recorded. | 🆕 new |
 | [`the_apps_remount_is_not_recursive`](../crates/sam-runner/src/room_rules.rs#L2109) | The app's own --remount-ro makes read-only only the mount at its place, as Bubblewrap's (not recursive): a place mounted below it before keeps its rights, in the app as in its rooms. | 🆕 new |

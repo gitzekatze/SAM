@@ -13,7 +13,8 @@
   it cannot see, and a terminal app's start line and the launch log say
   which file SAM did not share and why.
 - The app's permissions page offers *No access* as a third choice. A saved
-  *No access* used to show there as *Read-only*.
+  *No access* used to show there as *Read-only*. Its description says
+  that a file in a folder another permission shows stays visible.
 - A file inside a folder the app may see anyway (a granted folder, the
   whole home) stays visible: the setting withholds what SAM would add for
   the start, not what another permission shows.

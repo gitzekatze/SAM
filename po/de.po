@@ -447,7 +447,10 @@ msgid ""
 "Files you open with this app (for example with 'Open with' in the file "
 "manager). Read & write lets it save them; read-only lets it only view them; "
 "no access shares none of them with the app."
-msgstr "Dateien, die du mit dieser App öffnest (zum Beispiel über „Öffnen mit“ im Dateimanager). Bei Lesen und Schreiben darf sie sie speichern, bei Nur lesen nur ansehen; bei Kein Zugriff teilt SAM keine davon mit der App."
+msgstr ""
+"Dateien, die du mit dieser App öffnest (zum Beispiel über „Öffnen mit“ im "
+"Dateimanager). Bei Lesen und Schreiben darf sie sie speichern, bei Nur lesen "
+"nur ansehen; bei Kein Zugriff teilt SAM keine davon mit der App."
 
 #: crates/sam-core/src/permissions.rs:1225
 msgid "Extra read-only folders"
@@ -1137,13 +1140,13 @@ msgid "Full home access (read-only)"
 msgstr "Voller Zugriff auf den Persönlichen Ordner (nur lesend)"
 
 #: crates/sam-core/src/risk.rs:282 crates/sam-gtk/src/all_perms.rs:39
-#: crates/sam-gtk/src/perms.rs:636 crates/sam-profile/src/tags.rs:121
+#: crates/sam-gtk/src/perms.rs:639 crates/sam-profile/src/tags.rs:121
 #: crates/sam-runner/src/repair.rs:591
 msgid "Full network"
 msgstr "Volles Netzwerk"
 
 #: crates/sam-core/src/risk.rs:283 crates/sam-gtk/src/all_perms.rs:38
-#: crates/sam-gtk/src/perms.rs:629 crates/sam-profile/src/tags.rs:122
+#: crates/sam-gtk/src/perms.rs:632 crates/sam-profile/src/tags.rs:122
 #: crates/sam-runner/src/doctor.rs:354 crates/sam-runner/src/doctor.rs:360
 msgid "This computer only"
 msgstr "Nur dieser Computer"
@@ -1161,7 +1164,7 @@ msgstr "Sitzungsbus: voller Zugriff"
 msgid "System bus: full access"
 msgstr "Systembus: voller Zugriff"
 
-#: crates/sam-core/src/risk.rs:531 crates/sam-gtk/src/perms.rs:849
+#: crates/sam-core/src/risk.rs:531 crates/sam-gtk/src/perms.rs:852
 #: crates/sam-runner/src/repair.rs:593
 msgid "All of /usr"
 msgstr "Ganz /usr"
@@ -1934,7 +1937,7 @@ msgstr "keine ELF-Datei"
 msgid "the runtime has no .upd_info section"
 msgstr "die Laufzeitumgebung hat keinen .upd_info-Abschnitt"
 
-#: crates/sam-gtk/src/all_perms.rs:33 crates/sam-gtk/src/perms.rs:895
+#: crates/sam-gtk/src/all_perms.rs:33 crates/sam-gtk/src/perms.rs:898
 msgid "Off"
 msgstr "Aus"
 
@@ -1942,37 +1945,37 @@ msgstr "Aus"
 msgid "On"
 msgstr "An"
 
-#: crates/sam-gtk/src/all_perms.rs:37 crates/sam-gtk/src/perms.rs:628
+#: crates/sam-gtk/src/all_perms.rs:37 crates/sam-gtk/src/perms.rs:631
 #: crates/sam-runner/src/verify.rs:343
 msgid "No network"
 msgstr "Kein Netzwerk"
 
 #: crates/sam-gtk/src/all_perms.rs:42 crates/sam-gtk/src/all_perms.rs:47
-#: crates/sam-gtk/src/perms.rs:79 crates/sam-gtk/src/perms.rs:606
-#: crates/sam-gtk/src/perms.rs:752 crates/sam-gtk/src/perms.rs:797
+#: crates/sam-gtk/src/perms.rs:82 crates/sam-gtk/src/perms.rs:609
+#: crates/sam-gtk/src/perms.rs:755 crates/sam-gtk/src/perms.rs:800
 msgid "No access"
 msgstr "Kein Zugriff"
 
-#: crates/sam-gtk/src/all_perms.rs:43 crates/sam-gtk/src/perms.rs:84
-#: crates/sam-gtk/src/perms.rs:607 crates/sam-gtk/src/perms.rs:717
+#: crates/sam-gtk/src/all_perms.rs:43 crates/sam-gtk/src/perms.rs:87
+#: crates/sam-gtk/src/perms.rs:610 crates/sam-gtk/src/perms.rs:720
 msgid "Read-only"
 msgstr "Nur lesen"
 
-#: crates/sam-gtk/src/all_perms.rs:44 crates/sam-gtk/src/perms.rs:89
-#: crates/sam-gtk/src/perms.rs:612 crates/sam-gtk/src/perms.rs:722
+#: crates/sam-gtk/src/all_perms.rs:44 crates/sam-gtk/src/perms.rs:92
+#: crates/sam-gtk/src/perms.rs:615 crates/sam-gtk/src/perms.rs:725
 msgid "Read & write"
 msgstr "Lesen und schreiben"
 
-#: crates/sam-gtk/src/all_perms.rs:48 crates/sam-gtk/src/perms.rs:753
+#: crates/sam-gtk/src/all_perms.rs:48 crates/sam-gtk/src/perms.rs:756
 msgid "Filtered"
 msgstr "Gefiltert"
 
-#: crates/sam-gtk/src/all_perms.rs:49 crates/sam-gtk/src/perms.rs:754
-#: crates/sam-gtk/src/perms.rs:802
+#: crates/sam-gtk/src/all_perms.rs:49 crates/sam-gtk/src/perms.rs:757
+#: crates/sam-gtk/src/perms.rs:805
 msgid "Full access"
 msgstr "Voller Zugriff"
 
-#: crates/sam-gtk/src/all_perms.rs:55 crates/sam-gtk/src/perms.rs:621
+#: crates/sam-gtk/src/all_perms.rs:55 crates/sam-gtk/src/perms.rs:624
 #: crates/sam-runner/src/verify.rs:302 crates/sam-runner/src/verify.rs:311
 #: crates/sam-runner/src/verify.rs:315 crates/sam-runner/src/verify.rs:329
 msgid "Network"
@@ -2238,7 +2241,7 @@ msgid_plural "Allow This for {n} Apps?"
 msgstr[0] "Das für {n} App erlauben?"
 msgstr[1] "Das für {n} Apps erlauben?"
 
-#: crates/sam-gtk/src/all_perms.rs:1242 crates/sam-gtk/src/perms.rs:1244
+#: crates/sam-gtk/src/all_perms.rs:1242 crates/sam-gtk/src/perms.rs:1247
 msgid "This adds:"
 msgstr "Das fügt hinzu:"
 
@@ -2763,7 +2766,7 @@ msgstr ""
 "Die anderen Menüeinträge sind ausgeblendet; die App startet jetzt nur noch "
 "in ihrer Sandbox"
 
-#: crates/sam-gtk/src/app_page/mod.rs:639 crates/sam-gtk/src/perms.rs:486
+#: crates/sam-gtk/src/app_page/mod.rs:639 crates/sam-gtk/src/perms.rs:489
 msgid "Add"
 msgstr "Hinzufügen"
 
@@ -4144,8 +4147,8 @@ msgstr ""
 "erneut entpackst. Wähle einen Ordner, in den keine App aus einer Sandbox "
 "schreiben darf."
 
-#: crates/sam-gtk/src/pages.rs:384 crates/sam-gtk/src/perms.rs:463
-#: crates/sam-gtk/src/perms.rs:471
+#: crates/sam-gtk/src/pages.rs:384 crates/sam-gtk/src/perms.rs:466
+#: crates/sam-gtk/src/perms.rs:474
 msgid "Choose a folder"
 msgstr "Ordner wählen"
 
@@ -4435,96 +4438,97 @@ msgstr "{size} gelöscht"
 msgid "Command line"
 msgstr "Befehlszeile"
 
-#: crates/sam-gtk/src/perms.rs:79
+#: crates/sam-gtk/src/perms.rs:82
 msgid ""
-"SAM does not share files you open with the app. The app cannot see them."
-msgstr "SAM teilt Dateien, die du mit der App öffnest, nicht mit ihr. Die App kann sie nicht sehen."
+"SAM does not share files you open with the app. The app sees one only if "
+"another permission shows its folder."
+msgstr "SAM teilt Dateien, die du mit der App öffnest, nicht mit ihr. Die App sieht eine nur, wenn eine andere Berechtigung ihren Ordner zeigt."
 
-#: crates/sam-gtk/src/perms.rs:84
+#: crates/sam-gtk/src/perms.rs:87
 msgid "The app can view the files but not save changes."
 msgstr "Die App kann die Dateien ansehen, aber keine Änderungen speichern."
 
-#: crates/sam-gtk/src/perms.rs:89
+#: crates/sam-gtk/src/perms.rs:92
 msgid "The app can view and save the files."
 msgstr "Die App kann die Dateien ansehen und speichern."
 
-#: crates/sam-gtk/src/perms.rs:145
+#: crates/sam-gtk/src/perms.rs:148
 msgid "Overview"
 msgstr "Übersicht"
 
-#: crates/sam-gtk/src/perms.rs:146
+#: crates/sam-gtk/src/perms.rs:149
 msgid "How much this app can reach with the settings below."
 msgstr "Wie viel diese App mit den Einstellungen unten erreichen kann."
 
-#: crates/sam-gtk/src/perms.rs:149
+#: crates/sam-gtk/src/perms.rs:152
 msgid "Risk of these settings"
 msgstr "Risiko dieser Einstellungen"
 
-#: crates/sam-gtk/src/perms.rs:263
+#: crates/sam-gtk/src/perms.rs:266
 msgid "on"
 msgstr "an"
 
-#: crates/sam-gtk/src/perms.rs:264
+#: crates/sam-gtk/src/perms.rs:267
 msgid "off"
 msgstr "aus"
 
-#: crates/sam-gtk/src/perms.rs:266 crates/sam-runner/src/doctor.rs:403
+#: crates/sam-gtk/src/perms.rs:269 crates/sam-runner/src/doctor.rs:403
 #: crates/sam-runner/src/probe.rs:439
 msgid "none"
 msgstr "keiner"
 
-#: crates/sam-gtk/src/perms.rs:267
+#: crates/sam-gtk/src/perms.rs:270
 msgid "read-only"
 msgstr "nur lesen"
 
-#: crates/sam-gtk/src/perms.rs:268
+#: crates/sam-gtk/src/perms.rs:271
 msgid "read & write"
 msgstr "lesen und schreiben"
 
-#: crates/sam-gtk/src/perms.rs:269
+#: crates/sam-gtk/src/perms.rs:272
 msgid "full"
 msgstr "voll"
 
-#: crates/sam-gtk/src/perms.rs:270
+#: crates/sam-gtk/src/perms.rs:273
 msgid "this computer only"
 msgstr "nur dieser Computer"
 
-#: crates/sam-gtk/src/perms.rs:271
+#: crates/sam-gtk/src/perms.rs:274
 msgid "filtered"
 msgstr "gefiltert"
 
-#: crates/sam-gtk/src/perms.rs:272
+#: crates/sam-gtk/src/perms.rs:275
 msgid "minimal"
 msgstr "minimal"
 
-#: crates/sam-gtk/src/perms.rs:275
+#: crates/sam-gtk/src/perms.rs:278
 msgid "default"
 msgstr "Standard"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/perms.rs:289
+#: crates/sam-gtk/src/perms.rs:292
 msgid "SAM recommends: {value}"
 msgstr "SAM empfiehlt: {value}"
 
-#: crates/sam-gtk/src/perms.rs:533
+#: crates/sam-gtk/src/perms.rs:536
 msgid "Give the full path of the socket, for example /run/user/1000/app.sock"
 msgstr ""
 "Gib den vollständigen Pfad des Sockets an, zum Beispiel /run/user/1000/"
 "app.sock"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/perms.rs:541
+#: crates/sam-gtk/src/perms.rs:544
 msgid ""
 "{path} is not a socket. Use the Files settings to share folders or files."
 msgstr ""
 "{path} ist kein Socket. Ordner oder Dateien gibst du in den "
 "Dateieinstellungen frei."
 
-#: crates/sam-gtk/src/perms.rs:559
+#: crates/sam-gtk/src/perms.rs:562
 msgid "Write it as NAME=value"
 msgstr "Schreib es als NAME=Wert"
 
-#: crates/sam-gtk/src/perms.rs:569
+#: crates/sam-gtk/src/perms.rs:572
 msgid ""
 "A variable name has only letters, digits and _, and does not start with a "
 "digit"
@@ -4532,27 +4536,27 @@ msgstr ""
 "Ein Variablenname besteht nur aus Buchstaben, Ziffern und _ und beginnt "
 "nicht mit einer Ziffer"
 
-#: crates/sam-gtk/src/perms.rs:606
+#: crates/sam-gtk/src/perms.rs:609
 msgid "Hidden from the app."
 msgstr "Vor der App verborgen."
 
-#: crates/sam-gtk/src/perms.rs:607
+#: crates/sam-gtk/src/perms.rs:610
 msgid "The app can open files here but not change or delete them."
 msgstr "Die App kann hier Dateien öffnen, aber nicht ändern oder löschen."
 
-#: crates/sam-gtk/src/perms.rs:612
+#: crates/sam-gtk/src/perms.rs:615
 msgid "The app can open, change and delete files here."
 msgstr "Die App kann hier Dateien öffnen, ändern und löschen."
 
-#: crates/sam-gtk/src/perms.rs:622
+#: crates/sam-gtk/src/perms.rs:625
 msgid "Internet and connections to services on this computer."
 msgstr "Internet und Verbindungen zu Diensten auf diesem Computer."
 
-#: crates/sam-gtk/src/perms.rs:628
+#: crates/sam-gtk/src/perms.rs:631
 msgid "No connection at all, not even to this computer."
 msgstr "Überhaupt keine Verbindung, nicht einmal zu diesem Computer."
 
-#: crates/sam-gtk/src/perms.rs:632
+#: crates/sam-gtk/src/perms.rs:635
 msgid ""
 "No internet. The app can reach the services on this computer you list below, "
 "and its own web page opens in your browser."
@@ -4560,90 +4564,90 @@ msgstr ""
 "Kein Internet. Die App erreicht die unten aufgeführten Dienste auf diesem "
 "Computer, und ihre eigene Webseite öffnet sich in deinem Browser."
 
-#: crates/sam-gtk/src/perms.rs:636
+#: crates/sam-gtk/src/perms.rs:639
 msgid "The app uses your internet connection like any other program."
 msgstr "Die App nutzt deine Internetverbindung wie jedes andere Programm."
 
-#: crates/sam-gtk/src/perms.rs:643
+#: crates/sam-gtk/src/perms.rs:646
 msgid "Port on this computer, for example 11434 for Ollama"
 msgstr "Port auf diesem Computer, zum Beispiel 11434 für Ollama"
 
-#: crates/sam-gtk/src/perms.rs:650
+#: crates/sam-gtk/src/perms.rs:653
 msgid "Port of the app (empty = automatic)"
 msgstr "Port der App (leer = automatisch)"
 
-#: crates/sam-gtk/src/perms.rs:656 crates/sam-runner/src/verify.rs:348
+#: crates/sam-gtk/src/perms.rs:659 crates/sam-runner/src/verify.rs:348
 #: crates/sam-runner/src/verify.rs:356 crates/sam-runner/src/verify.rs:369
 #: crates/sam-runner/src/verify.rs:888
 msgid "Display"
 msgstr "Anzeige"
 
-#: crates/sam-gtk/src/perms.rs:657
+#: crates/sam-gtk/src/perms.rs:660
 msgid "How the app shows its windows."
 msgstr "Wie die App ihre Fenster anzeigt."
 
-#: crates/sam-gtk/src/perms.rs:664 crates/sam-runner/src/verify.rs:379
+#: crates/sam-gtk/src/perms.rs:667 crates/sam-runner/src/verify.rs:379
 #: crates/sam-runner/src/verify.rs:393 crates/sam-runner/src/verify.rs:405
 #: crates/sam-runner/src/verify.rs:415 crates/sam-runner/src/verify.rs:429
 msgid "Sound and devices"
 msgstr "Ton und Geräte"
 
-#: crates/sam-gtk/src/perms.rs:665
+#: crates/sam-gtk/src/perms.rs:668
 msgid "Audio and hardware the app may use."
 msgstr "Ton und Hardware, die die App nutzen darf."
 
-#: crates/sam-gtk/src/perms.rs:679 crates/sam-runner/src/verify.rs:90
+#: crates/sam-gtk/src/perms.rs:682 crates/sam-runner/src/verify.rs:90
 #: crates/sam-runner/src/verify.rs:101 crates/sam-runner/src/verify.rs:147
 #: crates/sam-runner/src/verify.rs:193 crates/sam-runner/src/verify.rs:217
 msgid "Files"
 msgstr "Dateien"
 
-#: crates/sam-gtk/src/perms.rs:680
+#: crates/sam-gtk/src/perms.rs:683
 msgid "Folders the app can see. Everything else in your home stays hidden."
 msgstr ""
 "Ordner, die die App sehen kann. Alles andere in deinem Persönlichen Ordner "
 "bleibt verborgen."
 
-#: crates/sam-gtk/src/perms.rs:701 crates/sam-gtk/src/perms.rs:708
+#: crates/sam-gtk/src/perms.rs:704 crates/sam-gtk/src/perms.rs:711
 msgid "Folder path, e.g. ~/Projects"
 msgstr "Ordnerpfad, z. B. ~/Projekte"
 
-#: crates/sam-gtk/src/perms.rs:717
+#: crates/sam-gtk/src/perms.rs:720
 msgid "The app can read your whole home but not change it."
 msgstr ""
 "Die App kann deinen ganzen Persönlichen Ordner lesen, aber nicht ändern."
 
-#: crates/sam-gtk/src/perms.rs:722
+#: crates/sam-gtk/src/perms.rs:725
 msgid "The app can change and delete anything in your home."
 msgstr "Die App kann alles in deinem Persönlichen Ordner ändern und löschen."
 
-#: crates/sam-gtk/src/perms.rs:735
+#: crates/sam-gtk/src/perms.rs:738
 msgid "Desktop integration"
 msgstr "Desktop-Anbindung"
 
-#: crates/sam-gtk/src/perms.rs:736
+#: crates/sam-gtk/src/perms.rs:739
 msgid "Desktop services the app may use. Needs the filtered session bus."
 msgstr ""
 "Desktop-Dienste, die die App nutzen darf. Braucht den gefilterten "
 "Sitzungsbus."
 
-#: crates/sam-gtk/src/perms.rs:745 crates/sam-runner/src/verify.rs:507
+#: crates/sam-gtk/src/perms.rs:748 crates/sam-runner/src/verify.rs:507
 #: crates/sam-runner/src/verify.rs:550 crates/sam-runner/src/verify.rs:570
 #: crates/sam-runner/src/verify.rs:582
 msgid "D-Bus"
 msgstr "D-Bus"
 
-#: crates/sam-gtk/src/perms.rs:746
+#: crates/sam-gtk/src/perms.rs:749
 msgid "How the app talks to other programs on your desktop."
 msgstr "Wie die App mit anderen Programmen auf deinem Desktop spricht."
 
-#: crates/sam-gtk/src/perms.rs:752
+#: crates/sam-gtk/src/perms.rs:755
 msgid "No desktop services: no file dialogs, notifications or tray icon."
 msgstr ""
 "Keine Desktop-Dienste: keine Dateidialoge, Benachrichtigungen oder Symbole "
 "im Infobereich."
 
-#: crates/sam-gtk/src/perms.rs:753
+#: crates/sam-gtk/src/perms.rs:756
 msgid ""
 "File dialogs, notifications, the tray and the services you allow below. "
 "Everything else is blocked."
@@ -4651,81 +4655,81 @@ msgstr ""
 "Dateidialoge, Benachrichtigungen, der Infobereich und die Dienste, die du "
 "unten erlaubst. Alles andere ist gesperrt."
 
-#: crates/sam-gtk/src/perms.rs:754
+#: crates/sam-gtk/src/perms.rs:757
 msgid "Every desktop service, including ones that can act outside the sandbox."
 msgstr ""
 "Jeder Desktop-Dienst, auch solche, die außerhalb der Sandbox handeln können."
 
-#: crates/sam-gtk/src/perms.rs:761
+#: crates/sam-gtk/src/perms.rs:764
 msgid "Bus name, e.g. org.example.Service"
 msgstr "Busname, z. B. org.example.Service"
 
-#: crates/sam-gtk/src/perms.rs:768
+#: crates/sam-gtk/src/perms.rs:771
 msgid "Bus name, e.g. org.example.App"
 msgstr "Busname, z. B. org.example.App"
 
-#: crates/sam-gtk/src/perms.rs:775
+#: crates/sam-gtk/src/perms.rs:778
 msgid "Rule, e.g. org.example.Service=org.example.Iface.Method"
 msgstr "Regel, z. B. org.example.Service=org.example.Iface.Method"
 
-#: crates/sam-gtk/src/perms.rs:782
+#: crates/sam-gtk/src/perms.rs:785
 msgid "Rule, e.g. org.example.Service=org.example.Iface.Signal"
 msgstr "Regel, z. B. org.example.Service=org.example.Iface.Signal"
 
-#: crates/sam-gtk/src/perms.rs:789
+#: crates/sam-gtk/src/perms.rs:792
 msgid "Bus name, e.g. org.freedesktop.secrets"
 msgstr "Busname, z. B. org.freedesktop.secrets"
 
-#: crates/sam-gtk/src/perms.rs:797
+#: crates/sam-gtk/src/perms.rs:800
 msgid "The system bus controls hardware, networking and power."
 msgstr "Der Systembus steuert Hardware, Netzwerk und Energieverwaltung."
 
-#: crates/sam-gtk/src/perms.rs:802
+#: crates/sam-gtk/src/perms.rs:805
 msgid "The app can talk to every system service."
 msgstr "Die App kann mit jedem Systemdienst sprechen."
 
-#: crates/sam-gtk/src/perms.rs:812 crates/sam-runner/src/verify.rs:595
+#: crates/sam-gtk/src/perms.rs:815 crates/sam-runner/src/verify.rs:595
 #: crates/sam-runner/src/verify.rs:605 crates/sam-runner/src/verify.rs:618
 #: crates/sam-runner/src/verify.rs:628 crates/sam-runner/src/verify.rs:648
 msgid "Sockets and environment"
 msgstr "Sockets und Umgebung"
 
-#: crates/sam-gtk/src/perms.rs:813
+#: crates/sam-gtk/src/perms.rs:816
 msgid "Other services and settings passed into the sandbox."
 msgstr "Weitere Dienste und Einstellungen, die in die Sandbox gereicht werden."
 
-#: crates/sam-gtk/src/perms.rs:820
+#: crates/sam-gtk/src/perms.rs:823
 msgid "Socket path, e.g. /run/user/1000/app.sock"
 msgstr "Socket-Pfad, z. B. /run/user/1000/app.sock"
 
-#: crates/sam-gtk/src/perms.rs:827
+#: crates/sam-gtk/src/perms.rs:830
 msgid "Variable name, e.g. LANG"
 msgstr "Variablenname, z. B. LANG"
 
-#: crates/sam-gtk/src/perms.rs:834
+#: crates/sam-gtk/src/perms.rs:837
 msgid "NAME=value, e.g. QT_SCALE_FACTOR=1.5"
 msgstr "NAME=Wert, z. B. QT_SCALE_FACTOR=1.5"
 
-#: crates/sam-gtk/src/perms.rs:841
+#: crates/sam-gtk/src/perms.rs:844
 msgid "Advanced"
 msgstr "Erweitert"
 
-#: crates/sam-gtk/src/perms.rs:842
+#: crates/sam-gtk/src/perms.rs:845
 msgid "Change these only if an app does not work."
 msgstr "Ändere diese nur, wenn eine App nicht funktioniert."
 
-#: crates/sam-gtk/src/perms.rs:848
+#: crates/sam-gtk/src/perms.rs:851
 msgid "Minimal"
 msgstr "Minimal"
 
-#: crates/sam-gtk/src/perms.rs:848
+#: crates/sam-gtk/src/perms.rs:851
 msgid ""
 "System libraries plus a short list of shared data (fonts, icons, themes)."
 msgstr ""
 "Systembibliotheken und eine kurze Liste gemeinsamer Daten (Schriftarten, "
 "Symbole, Designs)."
 
-#: crates/sam-gtk/src/perms.rs:849
+#: crates/sam-gtk/src/perms.rs:852
 msgid ""
 "Everything installed on the system, read-only. For apps that look for "
 "programs or data elsewhere."
@@ -4733,19 +4737,19 @@ msgstr ""
 "Alles, was auf dem System installiert ist, nur lesend. Für Apps, die "
 "anderswo nach Programmen oder Daten suchen."
 
-#: crates/sam-gtk/src/perms.rs:861
+#: crates/sam-gtk/src/perms.rs:864
 msgid "Raw bwrap argument, e.g. --setenv FOO 1"
 msgstr "Direktes bwrap-Argument, z. B. --setenv FOO 1"
 
-#: crates/sam-gtk/src/perms.rs:868
+#: crates/sam-gtk/src/perms.rs:871
 msgid "Library file name, e.g. libstdc++.so.6"
 msgstr "Dateiname der Bibliothek, z. B. libstdc++.so.6"
 
-#: crates/sam-gtk/src/perms.rs:877
+#: crates/sam-gtk/src/perms.rs:880
 msgid "Extra Protection Layers"
 msgstr "Zusätzliche Schutzschichten"
 
-#: crates/sam-gtk/src/perms.rs:878
+#: crates/sam-gtk/src/perms.rs:881
 msgid ""
 "Protection on top of the sandbox: a filter that blocks dangerous system "
 "calls, and Landlock, which lets the kernel itself stop writes outside the "
@@ -4760,27 +4764,27 @@ msgstr ""
 "seinetwegen scheitert, und nur für diese App; SAMs Reparaturschritte sagen "
 "es, wenn das der Fall ist."
 
-#: crates/sam-gtk/src/perms.rs:887
+#: crates/sam-gtk/src/perms.rs:890
 msgid "Follow global setting"
 msgstr "Der allgemeinen Einstellung folgen"
 
-#: crates/sam-gtk/src/perms.rs:888
+#: crates/sam-gtk/src/perms.rs:891
 msgid "Uses the setting in SAM's preferences."
 msgstr "Verwendet die Einstellung aus SAMs Einstellungen."
 
-#: crates/sam-gtk/src/perms.rs:890
+#: crates/sam-gtk/src/perms.rs:893
 msgid "Enforce"
 msgstr "Durchsetzen"
 
-#: crates/sam-gtk/src/perms.rs:890
+#: crates/sam-gtk/src/perms.rs:893
 msgid "Kernel-enforced write restrictions for this app."
 msgstr "Vom Kernel durchgesetzte Schreibbeschränkungen für diese App."
 
-#: crates/sam-gtk/src/perms.rs:895
+#: crates/sam-gtk/src/perms.rs:898
 msgid "No Landlock restrictions for this app."
 msgstr "Keine Landlock-Beschränkungen für diese App."
 
-#: crates/sam-gtk/src/perms.rs:1085
+#: crates/sam-gtk/src/perms.rs:1088
 msgid ""
 "Only harmless basics: fonts, its own window and folders you share read-only."
 msgstr ""
@@ -4788,21 +4792,21 @@ msgstr ""
 "nur lesend freigibst."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/perms.rs:1088
+#: crates/sam-gtk/src/perms.rs:1091
 msgid "Set by the riskiest permission: {permission}."
 msgstr "Bestimmt durch die riskanteste Berechtigung: {permission}."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/perms.rs:1092
+#: crates/sam-gtk/src/perms.rs:1095
 msgid "Set by the riskiest permissions: {permissions}."
 msgstr "Bestimmt durch die riskantesten Berechtigungen: {permissions}."
 
-#: crates/sam-gtk/src/perms.rs:1106
+#: crates/sam-gtk/src/perms.rs:1109
 msgid "What raises the risk"
 msgstr "Was das Risiko erhöht"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/perms.rs:1107
+#: crates/sam-gtk/src/perms.rs:1110
 msgid ""
 "{n} permission beyond the basics. The level is set by the riskiest one, not "
 "by how many there are."
@@ -4817,11 +4821,11 @@ msgstr[1] ""
 "riskanteste, nicht die Anzahl."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/perms.rs:1173 crates/sam-gtk/src/perms.rs:1210
+#: crates/sam-gtk/src/perms.rs:1176 crates/sam-gtk/src/perms.rs:1213
 msgid "Allow “{permissions}”?"
 msgstr "„{permissions}“ erlauben?"
 
-#: crates/sam-gtk/src/perms.rs:1174
+#: crates/sam-gtk/src/perms.rs:1177
 msgid ""
 "This service can act outside the sandbox: start programs, run scripts in the "
 "desktop shell or change any setting. An app with access to it can escape the "
@@ -4831,11 +4835,11 @@ msgstr ""
 "in der Desktop-Oberfläche ausführen oder jede Einstellung ändern. Eine App "
 "mit Zugriff darauf kann aus der Sandbox ausbrechen."
 
-#: crates/sam-gtk/src/perms.rs:1175 crates/sam-gtk/src/perms.rs:1216
+#: crates/sam-gtk/src/perms.rs:1178 crates/sam-gtk/src/perms.rs:1219
 msgid "Allow Anyway"
 msgstr "Trotzdem erlauben"
 
-#: crates/sam-gtk/src/perms.rs:1214
+#: crates/sam-gtk/src/perms.rs:1217
 msgid ""
 "An app with this can act outside the sandbox. Only allow it for apps you "
 "trust completely."
@@ -4844,11 +4848,11 @@ msgstr ""
 "sie nur Apps, denen du voll vertraust."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/perms.rs:1240
+#: crates/sam-gtk/src/perms.rs:1243
 msgid "Grant “{permission}”?"
 msgstr "„{permission}“ erteilen?"
 
-#: crates/sam-gtk/src/perms.rs:1247
+#: crates/sam-gtk/src/perms.rs:1250
 msgid "Grant"
 msgstr "Erteilen"
 
@@ -7196,7 +7200,9 @@ msgstr ""
 msgid ""
 "SAM did not share {files} with it, because files you open with this app are "
 "set to No access."
-msgstr "SAM hat {files} nicht mit ihr geteilt, weil Dateien, die du mit dieser App öffnest, auf Kein Zugriff stehen."
+msgstr ""
+"SAM hat {files} nicht mit ihr geteilt, weil Dateien, die du mit dieser App "
+"öffnest, auf Kein Zugriff stehen."
 
 #: crates/sam-runner/src/launch.rs:1845
 msgid "pasta command without '--'"
@@ -9162,7 +9168,9 @@ msgstr "Zugriff auf die geöffnete Datei {path} erteilt"
 msgid ""
 "did not share {path}, named when starting the app: files you open with this "
 "app are set to No access"
-msgstr "{path}, beim Start der App genannt, nicht geteilt: Dateien, die du mit dieser App öffnest, stehen auf Kein Zugriff"
+msgstr ""
+"{path}, beim Start der App genannt, nicht geteilt: Dateien, die du mit "
+"dieser App öffnest, stehen auf Kein Zugriff"
 
 #: crates/sam-sandbox/src/lib.rs:2514
 msgid ""
@@ -9339,6 +9347,12 @@ msgstr ""
 #: crates/sam-storage/src/lib.rs:641
 msgid "unknown flat preset key '{other}'"
 msgstr "unbekannter Schlüssel „{other}“ in der flachen Vorlage"
+
+#~ msgid ""
+#~ "SAM does not share files you open with the app. The app cannot see them."
+#~ msgstr ""
+#~ "SAM teilt Dateien, die du mit der App öffnest, nicht mit ihr. Die App "
+#~ "kann sie nicht sehen."
 
 #~ msgid ""
 #~ "Files you open with this app (for example with 'Open with' in the file "

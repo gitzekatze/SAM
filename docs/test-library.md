@@ -1106,7 +1106,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-gtk: The window (logic that runs without a display)
 
-31 tests.
+32 tests.
 
 | Promise | Test |
 |---|---|
@@ -1133,9 +1133,10 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Every color SAM's window uses has a style rule: the badge tones in the code, the three risk levels of tags and badges, and the outline. | [`every_color_in_use_has_a_style_rule`](../crates/sam-gtk/src/main.rs#L457) |
 | Turning Landlock or the syscall filter off for every app asks first; turning them on, and every other preference, does not (audit G-F11). | [`turning_a_protection_off_for_every_app_asks_first`](../crates/sam-gtk/src/pages.rs#L1217) |
 | The window asks before exactly the switches sam-core's rule names (the ones `config set` refuses without `--yes`), and confirms the change for the command line exactly when it asked: without the `--yes` the command line refuses it, with one it never asked about the window would turn a protection off unasked. | [`the_window_confirms_turning_a_protection_off_exactly_when_it_asked`](../crates/sam-gtk/src/pages.rs#L1244) |
-| The editor (the app's page and the Permission Manager for one app) shows every permission in the catalogue, the one list of permissions (audit G-F14: the lists drifted; a setting was missing here). | [`the_editor_shows_every_permission`](../crates/sam-gtk/src/perms.rs#L1297) |
-| Files opened with the app offer every value the setting can hold: a stored "No access" showed as "Read-only", the first choice, since it had none of its own. | [`files_opened_with_the_app_offer_every_setting`](../crates/sam-gtk/src/perms.rs#L1311) |
-| A switch whose key the saved form leaves out while it is at its default shows that default: Room service shows on for an app that has it on (every app, unless turned off), off once turned off. | [`a_left_out_setting_shows_its_default`](../crates/sam-gtk/src/perms.rs#L1327) |
+| The editor (the app's page and the Permission Manager for one app) shows every permission in the catalogue, the one list of permissions (audit G-F14: the lists drifted; a setting was missing here). | [`the_editor_shows_every_permission`](../crates/sam-gtk/src/perms.rs#L1300) |
+| Files opened with the app offer every value the setting can hold: a stored "No access" showed as "Read-only", the first choice, since it had none of its own. | [`files_opened_with_the_app_offer_every_setting`](../crates/sam-gtk/src/perms.rs#L1314) |
+| The "No access" choice says what the sandbox keeps: a file inside a folder another permission shows stays visible through that permission, so the text may not promise that the app never sees an opened file (it did, while Documents set to Read-only still showed ~/Documents/report.pdf). | [`the_no_access_choice_names_the_folders_the_app_sees_anyway`](../crates/sam-gtk/src/perms.rs#L1332) |
+| A switch whose key the saved form leaves out while it is at its default shows that default: Room service shows on for an app that has it on (every app, unless turned off), off once turned off. | [`a_left_out_setting_shows_its_default`](../crates/sam-gtk/src/perms.rs#L1349) |
 | The window names each risk level with its own words, the same the command line uses: a Medium app reads "Some access", no longer "Harmless" like a Low one, in badges, the app page and the hover text (owner decision 17 of 2026-11-23). | [`the_window_names_each_risk_level_in_its_own_words`](../crates/sam-gtk/src/util.rs#L527) |
 | The question before a preset names the risk before and after in the words the badges use ("Harmless", "Some access"), never the JSON's level names (owner decision 17 of 2026-11-23). | [`the_preset_question_names_the_risk_in_its_words`](../crates/sam-gtk/src/window.rs#L1946) |
 | A named pipe dropped on the window is no AppImage, and checking it does not block the window until something writes to it (audit G-F16). | [`dropped_pipes_and_icon_bombs_never_reach_gtk`](../crates/sam-gtk/src/window.rs#L1966) |
@@ -1155,4 +1156,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 1068 automated Rust tests plus 8 scripted checks.
+Total: 1069 automated Rust tests plus 8 scripted checks.
