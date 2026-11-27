@@ -112,11 +112,13 @@ before the containers start, then checks that the shipped `sam-jail`
 refuses those tools and `sam-jail-gui` the options `--screenshot`, `--size`
 and `--delay` (`--focus-walk` takes no value, so only the source check in
 `crates/sam-jail-cli/tests/shipped_programs.rs` guards it). `scripts/sign-release.sh`
-signs with a developer build (`cargo build`), which has them.
+signs with a release build that has them switched on, so signing runs like
+the shipped program, with developer variables off.
 
 1. **Sign the AppImages** on this computer, so the key never goes to GitHub:
 
    ```sh
+   cargo build --release --locked --target-dir target/sign-tools -p sam-jail-cli --features dev-tools
    SIGN_KEY=AFE940EDA5A0C5C4B94B0A3FB1764CFD72A238E6 scripts/sign-release.sh vX.Y.Z
    ```
 
