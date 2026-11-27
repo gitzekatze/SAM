@@ -744,7 +744,12 @@ How these stay protected with the home writable:
   a read-only Downloads there handed them over) is not shown, and the
   launch log says why (a
   user folder that holds one of SAM's folders is shown, with SAM's folder
-  hidden inside it). The app page and `sam-jail info` name a granted
+  hidden inside it). With the whole home shared, the launch log names such
+  a folder only when it is refused for listening programs or for a link
+  (below); a folder refused for another reason gets no note, no place of
+  its own, and the app sees that place only where the home shows it, with
+  the home's protections (key folders, SAM's own folders) as they are for
+  the home. The app page and `sam-jail info` name a granted
   user folder that is not shown for listening programs or for a link
   (below) before the start, with the way out: a Downloads set to `/tmp`
   so that downloads clear themselves is not shown, the app saves into its
