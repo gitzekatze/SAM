@@ -1328,6 +1328,25 @@ fn user_dir(ctx: &LaunchContext, key: &str) -> std::result::Result<PathBuf, NotS
     }
 }
 
+/// Whether the whole home, mounted at `home`, already shows the user folder
+/// that really is at `real` exactly at its own access (`rw`): the deepest
+/// grant above it is the home (as named, or as reached when the home is
+/// kept behind a link), at that same access. Then the folder needs no
+/// mount of its own; otherwise it gets one (read-only in a writable home,
+/// writable in a read-only one, below another grant, or outside the home),
+/// so the mounts give the answer the views give ([`Views::without_writes`]
+/// records every granted user folder at its own access).
+fn home_shows_exactly(views: &Views, home: &Path, real: &Path, rw: bool) -> bool {
+    let real_home = resolve(home);
+    let above = |g: &Path| real.starts_with(g) || (g == home && real.starts_with(&real_home));
+    views
+        .grants
+        .iter()
+        .filter(|(g, _)| g != real && above(g))
+        .max_by_key(|(g, _)| g.components().count())
+        .is_some_and(|(g, g_rw)| g == home && *g_rw == rw)
+}
+
 /// A host path SAM never shows on its own (a system folder, the home, a
 /// key or credential store, a start place): the risk words call it
 /// dangerous. Compared with the home as it is named and as it is reached
@@ -1715,6 +1734,21 @@ pub fn shown_extra_folders(ctx: &LaunchContext) -> Vec<String> {
         .filter(|g| !matches!(g.how, WriteBind::InsideSam))
         .map(|g| g.written);
     reads.chain(writes).collect()
+}
+
+/// The user folders (Documents, Downloads, …) that this start shows the
+/// app, where the app looks for them (`user-dirs.dirs`), for what SAM tells
+/// the person: every granted one the sandbox does not refuse
+/// ([`user_dir`]: the home, a folder above it, a system or key folder, a
+/// start place or one inside SAM's folders), with or without the whole
+/// home, inside the home or outside it.
+pub fn shown_user_folders(ctx: &LaunchContext) -> Vec<PathBuf> {
+    XDG_DIR_KEYS
+        .iter()
+        .filter(|key| ctx.permissions.filesystem.xdg_access(key).is_granted())
+        .filter(|key| user_dir(ctx, key).is_ok())
+        .filter_map(|key| ctx.host.xdg_dir(key).map(Path::to_path_buf))
+        .collect()
 }
 
 /// [`opened_paths`] against the grants `views` ([`Views::base`]) worked out
@@ -2181,16 +2215,36 @@ impl Section<'_> {
                 "--ro-bind"
             };
             mount(&home, &|m| m.op2(op, &home, &home));
-            // With the home read-only, a folder set to read/write must still
-            // be writable (the switch says so; regression: it stayed
-            // read-only).
-            if fsp.home_access != Access::Rw {
-                for key in XDG_DIR_KEYS {
-                    if fsp.xdg_access(key) == Access::Rw {
-                        if let Ok(dir) = user_dir(ctx, key) {
-                            mount(&dir, &|m| m.op2("--bind-try", &dir, &dir));
-                        }
-                    }
+            // Each granted user folder at its own access, as the switch
+            // says and as the views record it, wherever the home does not
+            // already show it at exactly that access: writable in a
+            // read-only home (regression: it stayed read-only), read-only
+            // in a writable home (finding R63: a start file kept as a link
+            // into a "read-only" Documents stayed writable through the
+            // home, and no lock reached it), and outside the home at all
+            // (`XDG_DOCUMENTS_DIR=/data/Documents` was not shown). The
+            // protections inside come after it (`guard_home`).
+            for key in XDG_DIR_KEYS {
+                let acc = fsp.xdg_access(key);
+                if !acc.is_granted() {
+                    continue;
+                }
+                let Ok(real) = user_dir(ctx, key) else {
+                    continue;
+                };
+                let rw = acc == Access::Rw;
+                if home_shows_exactly(&self.views, &home, &real, rw) {
+                    continue;
+                }
+                let op = if rw { "--bind-try" } else { "--ro-bind-try" };
+                mount(&real, &|m| m.op2(op, &real, &real));
+                // A link where the app looks for it when that is a link
+                // outside the home; one in the home is shown with it.
+                if let Some(dir) = h
+                    .xdg_dir(key)
+                    .filter(|d| *d != real && !d.starts_with(&home) && real.exists())
+                {
+                    mount(dir, &|m| m.op2("--symlink", &real, dir));
                 }
             }
         } else {
@@ -6521,6 +6575,175 @@ mod guard_tests {
         assert!(
             empty.path().join(".config/user-dirs.dirs").is_file(),
             "created empty when missing, so an app cannot create it"
+        );
+    }
+
+    /// With the whole home granted, a user folder is mounted at its own
+    /// access wherever the home does not already show it at exactly that
+    /// access: read-only in a writable home (finding R63), writable in a
+    /// read-only one, and outside the home at all
+    /// (`XDG_DOCUMENTS_DIR=/data/Documents`), read-only or writable. A link
+    /// outside the home is put where the app looks; one in the home comes
+    /// with it. The views give the same answer as the mounts.
+    #[test]
+    fn a_user_folder_is_mounted_at_its_own_access_with_the_whole_home() {
+        let t = tempfile::tempdir().unwrap();
+        let base = fs::canonicalize(t.path()).unwrap();
+        let home = base.join("home");
+        let outside = base.join("data/Documents");
+        for d in [
+            home.join("Documents"),
+            home.join("Pictures"),
+            outside.clone(),
+        ] {
+            fs::create_dir_all(d).unwrap();
+        }
+        let st = |p: &Path| p.to_string_lossy().into_owned();
+        let start = |home_access: Access, docs: Access, docs_at: &Path| {
+            let mut p = PermissionSet::strict_gui();
+            p.filesystem.home = true;
+            p.filesystem.home_access = home_access;
+            p.filesystem.documents = docs;
+            p.filesystem.pictures = home_access;
+            let mut ctx = ctx_for(&p, &home);
+            ctx.host
+                .xdg_dirs
+                .insert("documents".into(), docs_at.to_path_buf());
+            ctx.host
+                .xdg_dirs
+                .insert("pictures".into(), home.join("Pictures"));
+            ctx
+        };
+        let op = |acc: Access| {
+            if acc == Access::Rw {
+                "--bind-try"
+            } else {
+                "--ro-bind-try"
+            }
+        };
+        let home_bind = |a: &[String], acc: Access| {
+            let op = if acc == Access::Rw {
+                "--bind"
+            } else {
+                "--ro-bind"
+            };
+            at_seq(a, &[op, &st(&home), &st(&home)])[0]
+        };
+        let docs = home.join("Documents");
+        let pics = st(&home.join("Pictures"));
+        for (home_access, acc) in [(Access::Rw, Access::Ro), (Access::Ro, Access::Rw)] {
+            let ctx = start(home_access, acc, &docs);
+            let a = args_of(&ctx);
+            let at = at_seq(&a, &[op(acc), &st(&docs), &st(&docs)]);
+            assert!(
+                at.iter().any(|i| *i > home_bind(&a, home_access)),
+                "{home_access:?} home, {acc:?} Documents: its own mount after the home: {a:?}"
+            );
+            assert!(
+                !a.contains(&pics),
+                "Pictures at the home's access needs no mount: {a:?}"
+            );
+            assert_eq!(
+                Views::base(&ctx).writable(&docs.join("x")),
+                acc == Access::Rw,
+                "the views agree"
+            );
+        }
+        // At the home's own access: shown through the home alone.
+        for acc in [Access::Rw, Access::Ro] {
+            let a = args_of(&start(acc, acc, &docs));
+            assert!(!a.iter().any(|x| *x == st(&docs)), "{acc:?}: {a:?}");
+        }
+        // Outside the home: bound at its own access, whatever the home's.
+        for home_access in [Access::Rw, Access::Ro] {
+            for acc in [Access::Rw, Access::Ro] {
+                let ctx = start(home_access, acc, &outside);
+                let a = args_of(&ctx);
+                assert!(
+                    has_seq(&a, &[op(acc), &st(&outside), &st(&outside)]),
+                    "{home_access:?} home, {acc:?} {outside:?}: {a:?}"
+                );
+                assert_eq!(
+                    Views::base(&ctx).writable(&outside.join("x")),
+                    acc == Access::Rw
+                );
+            }
+        }
+        // A link outside the home: shown where it leads, with the link
+        // where the app looks for it.
+        let link = base.join("data/Docs");
+        std::os::unix::fs::symlink(&outside, &link).unwrap();
+        let a = args_of(&start(Access::Rw, Access::Ro, &link));
+        assert!(
+            has_seq(&a, &["--ro-bind-try", &st(&outside), &st(&outside)]),
+            "{a:?}"
+        );
+        assert!(
+            has_seq(&a, &["--symlink", &st(&outside), &st(&link)]),
+            "{a:?}"
+        );
+        // A link in the home: the home shows the link itself.
+        let in_home = home.join("Docs");
+        std::os::unix::fs::symlink(&outside, &in_home).unwrap();
+        let a = args_of(&start(Access::Rw, Access::Ro, &in_home));
+        assert!(
+            has_seq(&a, &["--ro-bind-try", &st(&outside), &st(&outside)]),
+            "{a:?}"
+        );
+        assert!(!a.iter().any(|x| *x == st(&in_home)), "{a:?}");
+        // A user folder that shows more than one is still not shown.
+        fs::create_dir_all(home.join(".ssh")).unwrap();
+        let a = args_of(&start(Access::Rw, Access::Ro, &home.join(".ssh")));
+        let ssh = st(&home.join(".ssh"));
+        assert!(
+            !has_seq(&a, &["--ro-bind-try", &ssh, &ssh]),
+            "refused: {a:?}"
+        );
+    }
+
+    /// A start file kept as a link into a read-only user folder
+    /// (`~/.bashrc` to `~/Documents/dotfiles/bashrc`) with the whole home
+    /// writable is read-only: the folder's own read-only mount comes after
+    /// the home (finding R63). A writable user folder inside it that holds
+    /// the file (Desktop set to `~/Documents/dotfiles`) is mounted writable
+    /// after the read-only one, though the home has that access too, and
+    /// the start file is locked after both.
+    #[test]
+    fn a_start_file_linked_into_a_read_only_user_folder_is_never_writable() {
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap().join("home");
+        let dots = home.join("Documents/dotfiles");
+        fs::create_dir_all(&dots).unwrap();
+        fs::write(dots.join("bashrc"), "# rc\n").unwrap();
+        std::os::unix::fs::symlink(dots.join("bashrc"), home.join(".bashrc")).unwrap();
+        let mut p = full_rw();
+        p.filesystem.documents = Access::Ro;
+        let mut ctx = ctx_for(&p, &home);
+        ctx.host
+            .xdg_dirs
+            .insert("documents".into(), home.join("Documents"));
+        let st = |p: &Path| p.to_string_lossy().into_owned();
+        let docs = st(&home.join("Documents"));
+        let a = args_of(&ctx);
+        let h = at_seq(&a, &["--bind", &st(&home), &st(&home)])[0];
+        let ro = at_seq(&a, &["--ro-bind-try", &docs, &docs]);
+        assert!(ro.iter().any(|i| *i > h), "{a:?}");
+        assert!(!Views::base(&ctx).writable(&dots.join("bashrc")));
+        // A writable user folder inside the read-only one: mounted after
+        // it, and the start file locked after both.
+        ctx.permissions.filesystem.desktop = Access::Rw;
+        ctx.host.xdg_dirs.insert("desktop".into(), dots.clone());
+        let a = args_of(&ctx);
+        let rw = at_seq(&a, &["--bind-try", &st(&dots), &st(&dots)]);
+        assert!(
+            rw.iter()
+                .any(|i| *i > at_seq(&a, &["--ro-bind-try", &docs, &docs])[0]),
+            "{a:?}"
+        );
+        assert!(Views::base(&ctx).writable(&dots.join("bashrc")));
+        assert!(
+            locked_after(&a, &st(&dots.join("bashrc")), &st(&dots)),
+            "{a:?}"
         );
     }
 

@@ -61,9 +61,13 @@ fn parse(log: &Path) -> HashMap<String, String> {
         .collect()
 }
 
+/// The tests here that set `HOME` for the whole test process take turns.
+static HOME_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// Inside a real sandbox, each profile shows exactly the files and services it allows.
 #[test]
 fn a_real_sandbox_shows_exactly_what_each_profile_allows() {
+    let _one = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     if !bwrap_works() {
         sam_runner::contracts::skip("bubblewrap is not functional here")
             .unwrap_or_else(|e| panic!("{e}"));
@@ -399,4 +403,103 @@ fn host_tools_that_start_programs_outside_meet_their_stand_ins() {
         "systemd-run runs the command in the sandbox: {}",
         String::from_utf8_lossy(&run.stderr)
     );
+}
+
+/// The probe of [`a_read_only_user_folder_outside_the_home_is_shown_with_the_whole_home`]:
+/// it finds Documents as apps do, in `user-dirs.dirs`, reads a file there
+/// and adds one.
+const OUTSIDE_PROBE: &str = r#"#!/bin/sh
+. "$HOME/.config/user-dirs.dirs"
+D="$XDG_DOCUMENTS_DIR"
+echo "DOCS_AT=$D"
+grep -q hello "$D/report.txt" 2>/dev/null && echo DOCS_READ=yes || echo DOCS_READ=no
+( echo x > "$D/new.txt" ) 2>/dev/null && echo DOCS_WRITE=yes || echo DOCS_WRITE=no
+echo END=1
+"#;
+
+/// A user folder outside the home (`XDG_DOCUMENTS_DIR=/data/Documents`) is
+/// shown at its own access with the whole home granted, read-only or
+/// writable, the home read-only or writable: inside a real sandbox the app
+/// reads it, writes there only when it is set to read and write, and a
+/// read-only one stays as it was on the host. Before, with the whole home
+/// granted no user folder outside it was bound, so the app saw nothing of
+/// what the person had granted.
+#[test]
+fn a_read_only_user_folder_outside_the_home_is_shown_with_the_whole_home() {
+    let _one = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    if !bwrap_works() {
+        sam_runner::contracts::skip("bubblewrap is not functional here")
+            .unwrap_or_else(|e| panic!("{e}"));
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    sam_runner::testenv::isolate_this_process(root);
+    let home = root.join("home/tester");
+    let docs = root.join("data/Documents");
+    fs::create_dir_all(&docs).unwrap();
+    fs::create_dir_all(home.join(".config")).unwrap();
+    fs::write(docs.join("report.txt"), "hello\n").unwrap();
+    fs::write(
+        home.join(".config/user-dirs.dirs"),
+        format!("XDG_DOCUMENTS_DIR=\"{}\"\n", docs.display()),
+    )
+    .unwrap();
+    std::env::set_var("HOME", &home);
+    std::env::set_var("XDG_CONFIG_HOME", home.join(".config"));
+    std::env::set_var("XDG_DATA_HOME", home.join(".local/share"));
+
+    let img = root.join("Outside-1.0-x86_64.AppImage");
+    let mut spec = FixtureSpec::hello("Outside");
+    spec.apprun = OUTSIDE_PROBE.into();
+    build(&img, &spec).unwrap();
+    let app = Sam::with_paths(Paths::rooted(&root.join("sam"))).unwrap();
+    let id = app
+        .add(
+            &img,
+            &AddOptions {
+                accept: true,
+                launcher: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .entry
+        .id;
+    let host = sam_runner::testenv::test_host(HostInfo::probe());
+    assert_eq!(
+        host.xdg_dir("documents"),
+        Some(docs.as_path()),
+        "the test's own"
+    );
+    for home_access in [Access::Rw, Access::Ro] {
+        for documents in [Access::Ro, Access::Rw] {
+            let mut p = PermissionSet::strict_gui();
+            p.filesystem.home = true;
+            p.filesystem.home_access = home_access;
+            p.filesystem.documents = documents;
+            let mut e = app.set_permissions(&id, p).unwrap();
+            let opts = LaunchOptions {
+                quiet: true,
+                owd: Some(home.clone()),
+                ..Default::default()
+            };
+            let rec = run(&mut e, &opts, &app.config, &app.paths, &host).unwrap();
+            assert!(rec.success, "launch failed: {}", rec.summary);
+            let r = parse(rec.log_file.as_ref().unwrap());
+            let case = format!("{home_access:?} home, {documents:?} Documents: {r:?}");
+            assert_eq!(r.get("END").map(String::as_str), Some("1"), "{case}");
+            assert_eq!(r["DOCS_AT"], docs.display().to_string(), "{case}");
+            assert_eq!(r["DOCS_READ"], "yes", "{case}");
+            let rw = documents == Access::Rw;
+            assert_eq!(r["DOCS_WRITE"], if rw { "yes" } else { "no" }, "{case}");
+            assert_eq!(docs.join("new.txt").is_file(), rw, "{case}");
+            let _ = fs::remove_file(docs.join("new.txt"));
+            assert_eq!(
+                fs::read_to_string(docs.join("report.txt")).unwrap(),
+                "hello\n",
+                "{case}"
+            );
+        }
+    }
 }

@@ -161,9 +161,14 @@ fn runtime_has(name: &str) -> bool {
     std::env::var_os("XDG_RUNTIME_DIR").is_some_and(|d| PathBuf::from(d).join(name).exists())
 }
 
+/// The tests here set `HOME` and the rest of the environment for the whole
+/// test process: one at a time.
+static HOME_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// Inside a real sandbox, each permission grants exactly its access and nothing more.
 #[test]
 fn each_permission_grants_exactly_its_access_in_a_real_sandbox() {
+    let _one = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     if !bwrap_works() {
         sam_runner::contracts::skip("bubblewrap is not functional here")
             .unwrap_or_else(|e| panic!("{e}"));
@@ -868,4 +873,114 @@ impl PastaProbe for HostInfo {
         std::env::var_os("PATH")
             .is_some_and(|p| std::env::split_paths(&p).any(|d| d.join("pasta").is_file()))
     }
+}
+
+/// The probe of [`a_read_only_user_folder_under_a_writable_home_is_read_only`]:
+/// it changes a file in Documents, adds one, renames the folder away when
+/// told to (`move`), and, as a control, writes in the home.
+const DOCS_PROBE: &str = r#"#!/bin/sh
+H="$HOME"
+grep -q hello "$H/Documents/report.txt" 2>/dev/null && echo DOCS_READ=yes || echo DOCS_READ=no
+( echo changed >> "$H/Documents/report.txt" ) 2>/dev/null && echo DOCS_CHANGE=written || echo DOCS_CHANGE=refused
+( echo x > "$H/Documents/new.txt" ) 2>/dev/null && echo DOCS_NEW=written || echo DOCS_NEW=refused
+( echo x > "$H/ok.txt" ) 2>/dev/null && echo HOME_WRITE=yes || echo HOME_WRITE=no
+if [ "$1" = move ]; then
+  mv "$H/Documents" "$H/Docs2" 2>/dev/null && echo DOCS_MOVE=done || echo DOCS_MOVE=refused
+fi
+echo END=1
+"#;
+
+/// With the whole home writable, Documents set to read-only is read-only
+/// inside a real sandbox: the app can read it but neither change a file
+/// there, add one nor rename the folder away, and the files on the host
+/// stay as they were, while the rest of the home stays writable. Before,
+/// the home's writable mount showed it writable (finding R63, roadmap line
+/// 12). Set to read and write, the same probe writes there (control).
+#[test]
+fn a_read_only_user_folder_under_a_writable_home_is_read_only() {
+    let _one = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    if !bwrap_works() {
+        sam_runner::contracts::skip("bubblewrap is not functional here")
+            .unwrap_or_else(|e| panic!("{e}"));
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    sam_runner::testenv::isolate_this_process(root);
+    let home = root.join("home/tester");
+    let docs = home.join("Documents");
+    fs::create_dir_all(&docs).unwrap();
+    fs::create_dir_all(home.join(".config")).unwrap();
+    fs::write(docs.join("report.txt"), "hello\n").unwrap();
+    fs::write(
+        home.join(".config/user-dirs.dirs"),
+        "XDG_DOCUMENTS_DIR=\"$HOME/Documents\"\n",
+    )
+    .unwrap();
+    std::env::set_var("HOME", &home);
+    std::env::set_var("XDG_CONFIG_HOME", home.join(".config"));
+    std::env::set_var("XDG_DATA_HOME", home.join(".local/share"));
+
+    let img = root.join("Docs-1.0-x86_64.AppImage");
+    let mut spec = FixtureSpec::hello("Docs");
+    spec.apprun = DOCS_PROBE.into();
+    build(&img, &spec).unwrap();
+    let app = Sam::with_paths(Paths::rooted(&root.join("sam"))).unwrap();
+    let id = app
+        .add(
+            &img,
+            &AddOptions {
+                accept: true,
+                launcher: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .entry
+        .id;
+    let host = sam_runner::testenv::test_host(HostInfo::probe());
+    assert_eq!(
+        host.xdg_dir("documents"),
+        Some(docs.as_path()),
+        "the test's own"
+    );
+    let start = |documents: Access, args: &[&str]| {
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.home = true;
+        p.filesystem.home_access = Access::Rw;
+        p.filesystem.documents = documents;
+        let mut e = app.set_permissions(&id, p).unwrap();
+        let opts = LaunchOptions {
+            args: args.iter().map(|a| a.to_string()).collect(),
+            quiet: true,
+            owd: Some(home.clone()),
+            ..Default::default()
+        };
+        let rec = run(&mut e, &opts, &app.config, &app.paths, &host).unwrap();
+        assert!(rec.success, "launch failed: {}", rec.summary);
+        let r = parse(rec.log_file.as_ref().unwrap());
+        assert_eq!(r.get("END").map(String::as_str), Some("1"), "{r:?}");
+        r
+    };
+
+    let r = start(Access::Ro, &["move"]);
+    assert_eq!(r["DOCS_READ"], "yes", "{r:?}");
+    assert_eq!(r["DOCS_CHANGE"], "refused", "{r:?}");
+    assert_eq!(r["DOCS_NEW"], "refused", "{r:?}");
+    assert_eq!(r["DOCS_MOVE"], "refused", "{r:?}");
+    assert_eq!(
+        r["HOME_WRITE"], "yes",
+        "control: the home is writable: {r:?}"
+    );
+    assert_eq!(
+        fs::read_to_string(docs.join("report.txt")).unwrap(),
+        "hello\n"
+    );
+    assert!(!docs.join("new.txt").exists());
+    assert!(!home.join("Docs2").exists(), "Documents is where it was");
+
+    // Control: set to read and write, the probe writes there.
+    let r = start(Access::Rw, &[]);
+    assert_eq!(r["DOCS_NEW"], "written", "{r:?}");
+    assert!(docs.join("new.txt").is_file());
 }

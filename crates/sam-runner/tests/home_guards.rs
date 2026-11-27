@@ -27,7 +27,12 @@
 //!   only read-only: the app cannot read them with the whole home or with
 //!   a grant of `~/cfg` and `~/dat` (independent review of decision 9).
 //!
-//! In its own file because it sets `HOME` for the test process.
+//! - a start file kept as a link into a read-only user folder
+//!   (`~/.bashrc` to `~/Documents/dotfiles/bashrc`) stays read-only with
+//!   the whole home writable, also when a writable user folder inside it
+//!   holds the file (finding R63).
+//!
+//! Its tests take turns, because each sets `HOME` for the test process.
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
 
 use std::collections::HashMap;
@@ -76,8 +81,13 @@ fn parse(log: &Path) -> HashMap<String, String> {
         .collect()
 }
 
+/// The tests here set `HOME` and the rest of the environment for the whole
+/// test process: one at a time.
+static HOME_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[test]
 fn the_home_protections_hold_whatever_else_is_granted() {
+    let _one = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let host = HostInfo::probe();
     if host.tools.bwrap.is_none() || sam_runner::doctor::bwrap_functional(&host).is_err() {
         sam_runner::contracts::skip("bubblewrap is not functional here")
@@ -305,4 +315,126 @@ fn the_home_protections_hold_whatever_else_is_granted() {
     }
     std::env::set_var("XDG_CONFIG_HOME", home.join(".config"));
     std::env::set_var("XDG_DATA_HOME", home.join(".local/share"));
+}
+
+const RC_ATTACK: &str = r#"#!/bin/sh
+H="$HOME"
+( echo evil >> "$H/.bashrc" ) 2>/dev/null && echo RC=written || echo RC=refused
+( echo evil > "$H/Documents/dotfiles/bashrc" ) 2>/dev/null && echo RC_TARGET=written || echo RC_TARGET=refused
+( echo x > "$H/Documents/dotfiles/notes.txt" ) 2>/dev/null && echo DOTS_WRITE=yes || echo DOTS_WRITE=no
+mv "$H/Documents/dotfiles" "$H/Documents/d2" 2>/dev/null && echo RC_MOVE=done || echo RC_MOVE=refused
+( echo x > "$H/ok.txt" ) 2>/dev/null && echo HOME_WRITE=yes || echo HOME_WRITE=no
+echo END=1
+"#;
+
+/// Finding R63, attacked from inside a real sandbox: with the whole home
+/// writable and Documents set to read-only, a start file kept as a link
+/// into Documents (`~/.bashrc` to `Documents/dotfiles/bashrc`, as stow
+/// makes it) cannot be changed, through the link or where it leads, and
+/// its folder cannot be renamed away. Before, Documents was shown writable
+/// through the home, and no lock reached the file, because SAM took it for
+/// read-only; the change ran at the next shell outside the sandbox. With
+/// the dotfiles folder a writable user folder of its own inside the
+/// read-only Documents (Desktop set to it), the start file is still locked
+/// (the protections come after every mount), while the rest of that folder
+/// takes the app's file.
+#[test]
+fn a_start_file_linked_into_a_read_only_user_folder_stays_locked_with_a_writable_home() {
+    let _one = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let host = HostInfo::probe();
+    if host.tools.bwrap.is_none() || sam_runner::doctor::bwrap_functional(&host).is_err() {
+        sam_runner::contracts::skip("bubblewrap is not functional here")
+            .unwrap_or_else(|e| panic!("{e}"));
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    sam_runner::testenv::isolate_this_process(root);
+    let home = root.join("home/tester");
+    let dots = home.join("Documents/dotfiles");
+    fs::create_dir_all(&dots).unwrap();
+    fs::create_dir_all(home.join(".config")).unwrap();
+    let rc = "# the person's own\n";
+    fs::write(dots.join("bashrc"), rc).unwrap();
+    std::os::unix::fs::symlink("Documents/dotfiles/bashrc", home.join(".bashrc")).unwrap();
+    fs::write(
+        home.join(".config/user-dirs.dirs"),
+        "XDG_DOCUMENTS_DIR=\"$HOME/Documents\"\nXDG_DESKTOP_DIR=\"$HOME/Documents/dotfiles\"\n",
+    )
+    .unwrap();
+    std::env::set_var("HOME", &home);
+    std::env::set_var("XDG_CONFIG_HOME", home.join(".config"));
+    std::env::set_var("XDG_DATA_HOME", home.join(".local/share"));
+
+    let img = root.join("Rc-1.0-x86_64.AppImage");
+    let mut spec = FixtureSpec::hello("Rc");
+    spec.apprun = RC_ATTACK.into();
+    build(&img, &spec).unwrap();
+    let app = Sam::with_paths(Paths::rooted(&root.join("sam"))).unwrap();
+    let id = app
+        .add(
+            &img,
+            &AddOptions {
+                accept: true,
+                launcher: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .entry
+        .id;
+    let host = sam_runner::testenv::test_host(HostInfo::probe());
+    assert_eq!(
+        host.xdg_dir("documents"),
+        Some(home.join("Documents").as_path()),
+        "the test's own"
+    );
+    let start = |desktop: Access| {
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.home = true;
+        p.filesystem.home_access = Access::Rw;
+        p.filesystem.documents = Access::Ro;
+        p.filesystem.desktop = desktop;
+        let mut e = app.set_permissions(&id, p).unwrap();
+        let rec = run(
+            &mut e,
+            &LaunchOptions {
+                quiet: true,
+                owd: Some(home.clone()),
+                ..Default::default()
+            },
+            &app.config,
+            &app.paths,
+            &host,
+        )
+        .unwrap();
+        let r = parse(rec.log_file.as_ref().unwrap());
+        assert_eq!(r.get("END").map(String::as_str), Some("1"), "{r:?}");
+        r
+    };
+
+    let r = start(Access::None);
+    assert_eq!(r["RC"], "refused", "{r:?}");
+    assert_eq!(r["RC_TARGET"], "refused", "{r:?}");
+    assert_eq!(r["DOTS_WRITE"], "no", "{r:?}");
+    assert_eq!(r["RC_MOVE"], "refused", "{r:?}");
+    assert_eq!(
+        r["HOME_WRITE"], "yes",
+        "control: the home is writable: {r:?}"
+    );
+    assert_eq!(fs::read_to_string(dots.join("bashrc")).unwrap(), rc);
+    assert!(dots.is_dir(), "the folder is where it was");
+
+    // The dotfiles folder a writable user folder inside the read-only
+    // Documents: the start file stays locked, the rest takes the file.
+    let r = start(Access::Rw);
+    assert_eq!(r["RC"], "refused", "{r:?}");
+    assert_eq!(r["RC_TARGET"], "refused", "{r:?}");
+    assert_eq!(r["DOTS_WRITE"], "yes", "control: {r:?}");
+    assert_eq!(r["RC_MOVE"], "refused", "{r:?}");
+    assert_eq!(fs::read_to_string(dots.join("bashrc")).unwrap(), rc);
+    assert!(fs::symlink_metadata(home.join(".bashrc"))
+        .unwrap()
+        .file_type()
+        .is_symlink());
 }
