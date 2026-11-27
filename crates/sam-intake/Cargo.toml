@@ -6,6 +6,12 @@ edition.workspace = true
 license.workspace = true
 publish = false
 
+# The test AppImages (testkit.rs) are in development builds; a release
+# build has them only with this feature. Release builds and packages never
+# turn it on (docs/testing.md).
+[features]
+dev-tools = []
+
 [dependencies]
 sam-core.workspace = true
 sam-detect.workspace = true

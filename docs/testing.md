@@ -152,6 +152,23 @@ names a folder of stand-in tools that SAM's tests may run although the user
 owns them. SAM's scripts and tests that set them (`tests/real-apps/`,
 `tests/gui/desktop-sandbox.sh`, the integration tests) use developer builds.
 
+The test and release tools are in developer builds only, too: `sam-jail dev
+make-fixture` (test AppImages), `dev bench`, `dev set-update-info`, `dev
+make-zsync` and `dev sign-appimage`, and the window's `--screenshot`,
+`--size`, `--delay` and `--focus-walk`. A release build has them only with
+the `dev-tools` feature (for example `cargo build --release -p sam-jail-cli
+--features dev-tools`): the version report's benchmark, the AppImage
+build's release steps and the test app of `make test-shipped` use such a
+release build, each in a build folder of its own; the programs SAM ships
+and the packages never turn it on.
+`crates/sam-jail-cli/tests/shipped_programs.rs` checks that switch in the
+source, and the release gate (`make test-shipped`) checks the finished
+AppImage: its `sam-jail` refuses these commands, and its `sam-jail-gui`
+`--screenshot`, `--size` and `--delay`. `--focus-walk` takes no value, so
+the gate cannot see it from outside; only the source check guards it.
+`dev peek` and `dev extract-squashfs` stay in every build, because SAM runs
+them inside its unpack sandbox.
+
 ## Manual checks and details
 
 ## 0. Automated permission matrix

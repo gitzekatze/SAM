@@ -6,7 +6,9 @@
 # libadwaita.
 #
 # Runs as root inside a fresh, privileged container of the distribution
-# (scripts/test-shipped.sh starts it), with the AppImage at /shipped/SAM.AppImage.
+# (scripts/test-shipped.sh starts it), with the AppImage at /shipped/SAM.AppImage
+# and the test app, made before with SAM's test tools (which the AppImage
+# does not contain), at /shipped/Hello-1.0.AppImage.
 #
 #   EXPECT=works        everything above must pass (the default)
 #   EXPECT=too-old      the system is older than SAM supports: the AppImage
@@ -53,8 +55,18 @@ step "doctor"
 as_tester "./SAM.AppImage cli doctor" || true   # reports, does not decide
 step "Bubblewrap works for this user"
 as_tester "bwrap --ro-bind / / --dev /dev --proc /proc --unshare-all true"
+step "the shipped command line has no test or release tools"
+# `dev peek` stays (SAM runs it inside its unpack sandbox); the others are
+# only in development builds.
+as_tester "./SAM.AppImage cli dev peek --help" >/dev/null
+for tool in make-fixture bench set-update-info make-zsync sign-appimage; do
+    if out=$(as_tester "./SAM.AppImage cli dev $tool --help" 2>&1); then
+        echo "FAIL: the shipped sam-jail offers dev $tool"; exit 1
+    fi
+    echo "$out" | grep -q "unrecognized subcommand" || { echo "FAIL: dev $tool: unexpected answer: $out"; exit 1; }
+done
 step "a test app gets a sandbox"
-as_tester "./SAM.AppImage cli dev make-fixture Hello-1.0.AppImage"
+install -o tester -m 755 /shipped/Hello-1.0.AppImage /home/tester/Hello-1.0.AppImage
 as_tester "./SAM.AppImage cli add Hello-1.0.AppImage --no-launcher"
 id=$(as_tester "./SAM.AppImage cli --json list" | grep -o '"id":"appimage-hello-[0-9a-f]*"' | head -n1 | cut -d'"' -f4)
 [ -n "$id" ] || { echo "FAIL: no sandbox was created"; exit 1; }
@@ -69,4 +81,11 @@ dir=$(mktemp -d)
 missing=$(ldd "$dir/squashfs-root/usr/bin/sam-jail-gui" | grep "not found" || true)
 [ -z "$missing" ] || { echo "FAIL: libraries missing for the window: $missing"; exit 1; }
 "$dir/squashfs-root/usr/bin/sam-jail-gui" --version
+step "the shipped window program has no screenshot options"
+# Each of them takes a value, so a program that reads one would take the
+# following --version as that value and not print its version.
+for opt in --screenshot --size --delay; do
+    out=$(timeout 60 "$dir/squashfs-root/usr/bin/sam-jail-gui" "$opt" --version 2>&1 || true)
+    echo "$out" | grep -q "^sam-jail-gui [0-9]" || { echo "FAIL: the shipped sam-jail-gui reads $opt: $out"; exit 1; }
+done
 echo "PASS: $PRETTY_NAME"

@@ -13,6 +13,7 @@ use clap::{Parser, Subcommand};
 use sam_core::error::InFunctionExt;
 use sam_core::util::{format_ts, human_size, tildify};
 use sam_core::*;
+use sam_runner::gate;
 use sam_runner::launch::{prepare, run, LaunchOptions};
 use sam_runner::ops::{AddOptions, Sam};
 use sam_storage::{
@@ -21,9 +22,14 @@ use sam_storage::{
 use serde::Serialize;
 use serde_json::{json, Value};
 
+// The test and release tools (dev_tools.rs): in development builds and
+// with the dev-tools feature only, never in release builds or packages.
+#[cfg(any(debug_assertions, feature = "dev-tools"))]
 mod bench;
 mod cli;
 mod config_cmd;
+#[cfg(any(debug_assertions, feature = "dev-tools"))]
+mod dev_tools;
 mod man;
 mod output;
 mod presets;
@@ -1109,7 +1115,13 @@ fn real_main(cli: Cli) -> Result<()> {
             let cur = app.resolve(&q)?.profile.permissions;
             let mut new = cur.clone();
             new.set_key(&key, &value)?;
-            confirm_risks(&sam_core::risk::new_risks(&cur, &new), yes)?;
+            gate::confirm(
+                &gate::Change::Settings {
+                    before: &cur,
+                    after: &new,
+                },
+                yes,
+            )?;
             let e = app.set_permission(&q, &key, &value)?;
             let v = e.profile.permissions.get_key(&key)?;
             let eval = app.evaluate(&e.profile.permissions, Some(&e), &app.host());
@@ -1156,7 +1168,13 @@ fn real_main(cli: Cli) -> Result<()> {
                 let perms: PermissionSet = serde_json::from_str(&read_stdin()?)
                     .context(tr("expected a PermissionSet as JSON on stdin"))?;
                 let cur = app.resolve(&q)?.profile.permissions;
-                confirm_risks(&sam_core::risk::new_risks(&cur, &perms), yes)?;
+                gate::confirm(
+                    &gate::Change::Settings {
+                        before: &cur,
+                        after: &perms,
+                    },
+                    yes,
+                )?;
                 let e = app.set_permissions(&q, perms)?;
                 out.emit(&AppSummary::from_entry(&e), || {
                     outln!(
@@ -1174,8 +1192,11 @@ fn real_main(cli: Cli) -> Result<()> {
                         "expected {\"from\": …, \"to\": …} with two PermissionSets as JSON on stdin",
                     ))?;
                 let (cur, merged) = app.plan_change(&q, &change)?;
-                confirm_risks(
-                    &sam_core::risk::new_risks(&cur.profile.permissions, &merged),
+                gate::confirm(
+                    &gate::Change::Settings {
+                        before: &cur.profile.permissions,
+                        after: &merged,
+                    },
                     yes,
                 )?;
                 let e = app.change_permissions(&cur.id, merged)?;
@@ -1607,180 +1628,27 @@ fn real_main(cli: Cli) -> Result<()> {
                 return Err(e);
             }
         }
+        // Test and release tools: development builds and the dev-tools
+        // feature only (dev_tools.rs).
+        #[cfg(any(debug_assertions, feature = "dev-tools"))]
         Cmd::Dev {
-            cmd: DevCmd::Bench { apps },
-        } => {
-            let r = bench::bench(apps)?;
-            out.emit(&r, || {
-                for m in &r {
-                    let ms = serde_json::to_value(m)
-                        .ok()
-                        .and_then(|v| v["best_ms"].as_f64());
-                    let v = serde_json::to_value(m).unwrap_or_default();
-                    match ms {
-                        Some(ms) => outln!(
-                            "{:<16} {:>10.3} ms  {}",
-                            v["key"].as_str().unwrap_or(""),
-                            ms,
-                            v["what"].as_str().unwrap_or("")
-                        ),
-                        None => outln!(
-                            "{:<16} {:>13}  {}",
-                            v["key"].as_str().unwrap_or(""),
-                            "not here",
-                            v["what"].as_str().unwrap_or("")
-                        ),
-                    }
-                }
-            });
-        }
-        Cmd::Dev {
-            cmd: DevCmd::SetUpdateInfo { runtime, info },
-        } => {
-            sam_detect::update_info::write(&runtime, &info)?;
-            out.emit(&json!({"runtime": runtime, "info": info}), || {
-                outln!(
-                    "{}",
-                    trf(
-                        "Update information written to {file}.",
-                        &[("file", &runtime.display())]
-                    )
-                )
-            });
-        }
-        Cmd::Dev {
-            cmd:
-                DevCmd::MakeZsync {
-                    file,
-                    url,
-                    out: dest,
-                },
-        } => {
-            let name = file
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .context(sam_core::i18n::tr("no file name"))?;
-            let modified = std::fs::metadata(&file)?
-                .modified()?
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs() as i64)
-                .unwrap_or(0);
-            let mtime = sam_core::util::format_utc_date(modified);
-            let data =
-                sam_runner::zsync::make(&file, &name, url.as_deref().unwrap_or(&name), &mtime)?;
-            let dest = dest.unwrap_or_else(|| file.with_file_name(format!("{name}.zsync")));
-            std::fs::write(&dest, data)?;
-            out.emit(&json!({"zsync": dest}), || {
-                outln!(
-                    "{}",
-                    sam_core::i18n::trf("Wrote {path}", &[("path", &dest.display())])
-                )
-            });
-        }
-        Cmd::Dev {
-            cmd: DevCmd::SignAppimage { file, key },
-        } => {
-            sam_detect::signature::sign_embedded(&file, None, &key)?;
-            // SAM's own file, just signed here: GnuPG reads only our key.
-            let sig = sam_detect::signature::check(&file, &sam_detect::signature::GnuPg::Direct);
-            let fp = sig.fingerprint.clone().unwrap_or_default();
-            if sig.state != sam_core::model::SignatureState::Valid || !fp.eq_ignore_ascii_case(&key)
-            {
-                bail!(
-                    "{}",
-                    sam_core::i18n::trf(
-                        "the signature in {file} does not check out: {detail}",
-                        &[("file", &file.display()), ("detail", &sig.detail)]
-                    )
-                );
-            }
-            out.emit(&json!({"path": file, "fingerprint": fp}), || {
-                outln!(
-                    "{}",
-                    sam_core::i18n::trf(
-                        "Signed {path} with {key}",
-                        &[("path", &file.display()), ("key", &fp)]
-                    )
-                )
-            });
-        }
-        Cmd::Dev {
-            cmd:
-                DevCmd::MakeFixture {
-                    path,
-                    name,
-                    categories,
-                    apprun,
-                    terminal,
-                },
-        } => {
-            let mut spec = sam_intake::testkit::FixtureSpec::hello(&name);
-            spec.categories = categories;
-            spec.terminal = terminal;
-            if let Some(a) = apprun {
-                spec.apprun = std::fs::read_to_string(a)?;
-            }
-            sam_intake::testkit::build(&path, &spec)?;
-            out.emit(&json!({"path": path}), || {
-                outln!(
-                    "{}",
-                    sam_core::i18n::trf("Wrote {path}", &[("path", &path.display())])
-                )
-            });
-        }
+            cmd: DevCmd::Tools(cmd),
+        } => dev_tools::run(cmd, &out)?,
     }
     Ok(())
 }
 
-/// A change that adds something rated Think twice or Dangerous is made
-/// only with `--yes`, as the window asks before it (audit D-M9, G-F2,
-/// G-F11: `set` applied raw Bubblewrap arguments silently).
-pub(crate) fn confirm_risks(added: &[sam_core::risk::RiskItem], yes: bool) -> anyhow::Result<()> {
-    if added.is_empty() || yes {
-        return Ok(());
-    }
-    let list: Vec<String> = added
-        .iter()
-        .map(|i| format!("{} ({})", i.title, i.level.words()))
-        .collect();
-    Err(sam_core::error::CodedError::new(
-        "change-needs-yes",
-        sam_core::i18n::trf(
-            "This change adds {items}. Look at it, then repeat it with --yes, or make it in SAM's window, which asks.",
-            &[("items", &list.join(", "))],
-        ),
-    )
-    .into())
-}
-
-/// Compatibility mode is turned on only with `--yes`: the whole session bus
-/// in it is a way out (audit D-H5), as the window says before it asks.
+/// Compatibility mode is turned on only with `--yes`, by SAM's one gate:
+/// the whole session bus in it is a way out (audit D-H5).
 fn compat_allowed(on: bool, yes: bool) -> anyhow::Result<()> {
-    if on && !yes {
-        return Err(sam_core::error::CodedError::new(
-            "compat-needs-yes",
-            sam_core::i18n::tr("Compatibility mode gives the app the network, all of /usr, X11, the GPU, sound and the whole session bus. Through the whole session bus it can ask desktop services to run programs outside its sandbox, so this is a way out. Turn it on only for apps you trust: add --yes."),
-        )
-        .into());
-    }
-    Ok(())
+    gate::confirm(&gate::Change::Compat { on }, yes)
 }
 
 /// A repair step suggested by what the app printed is applied only with
-/// `--yes`: the app controls that text, and could ask for the keyring or a
-/// service this way (audit U-M2; the window asks, and so must this).
+/// `--yes`, by SAM's one gate (audit U-M2): refused here before anything
+/// else is looked up, and judged again on the record it changes.
 fn may_apply(sug: &sam_core::model::Suggestion, yes: bool) -> anyhow::Result<()> {
-    if sug.from_app_output && !yes {
-        return Err(sam_core::error::CodedError::new(
-            "repair-needs-yes",
-            sam_core::i18n::trf(
-                "\"{title}\" comes from what the app printed, which the app controls: {explanation} Look at it, then apply it with --yes, or in SAM's window.",
-                &[("title", &sug.title), ("explanation", &sug.explanation)],
-            ),
-        )
-        .into());
-    }
-    Ok(())
+    gate::confirm(&gate::Change::Found(sug), yes)
 }
 
 /// What `selftest` says about one start that `seconds` long: status, the

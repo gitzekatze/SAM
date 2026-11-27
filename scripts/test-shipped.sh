@@ -10,12 +10,24 @@
 # podman is missing. The containers are privileged because SAM's sandboxes
 # need user namespaces inside them; on Ubuntu hosts AppArmor must allow
 # unprivileged user namespaces (CI lifts the restriction first).
+#
+# The test app is a synthetic AppImage made here, before the containers
+# start, by a release build of sam-jail with the dev-tools feature (needs
+# cargo):
+# the shipped AppImage has no test tools, and the containers no Rust.
 set -eu
 here=$(cd "$(dirname "$0")/.." && pwd)
 appimage=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
 shift
 [ -f "$appimage" ] || { echo "no such AppImage: $appimage" >&2; exit 2; }
 engine=$(command -v podman || command -v docker) || { echo "podman or docker is needed" >&2; exit 2; }
+command -v cargo >/dev/null || { echo "cargo is needed to make the test app" >&2; exit 2; }
+work=$(mktemp -d "${TMPDIR:-/tmp}/sam-shipped.XXXXXX")
+trap 'rm -rf "$work"' EXIT
+fixture="$work/Hello-1.0.AppImage"
+cargo build -q --release --locked --manifest-path "$here/Cargo.toml" --target-dir "$here/target/shipped-tools" \
+    -p sam-jail-cli --features dev-tools
+"$here/target/shipped-tools/release/sam-jail" dev make-fixture "$fixture" >/dev/null
 
 if [ $# -eq 0 ]; then
     set -- \
@@ -34,6 +46,7 @@ for pair in "$@"; do
     expect=${pair##*=}
     if "$engine" run --rm --privileged -e EXPECT="$expect" \
         -v "$appimage:/shipped/SAM.AppImage:ro" \
+        -v "$fixture:/shipped/Hello-1.0.AppImage:ro" \
         -v "$here/tests/shipped/in-container.sh:/shipped/in-container.sh:ro" \
         "$image" sh /shipped/in-container.sh; then
         :

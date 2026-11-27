@@ -227,18 +227,14 @@ pub(crate) fn group_cmd(app: &Sam, out: &Out, cmd: GroupCmd) -> Result<()> {
                 // What the change adds to any of the apps, asked before
                 // anything is changed.
                 let preview = app.group_change(&key, &value, &apps, true)?;
-                let mut added: Vec<sam_core::risk::RiskItem> = Vec::new();
+                let mut pairs = Vec::new();
                 for a in preview.apps.iter().filter(|a| a.changed) {
-                    let e = app.resolve(&a.id)?;
-                    let mut new = e.profile.permissions.clone();
-                    new.set_key(&key, &value)?;
-                    for i in sam_core::risk::new_risks(&e.profile.permissions, &new) {
-                        if !added.iter().any(|x| x.title == i.title) {
-                            added.push(i);
-                        }
-                    }
+                    let before = app.resolve(&a.id)?.profile.permissions;
+                    let mut after = before.clone();
+                    after.set_key(&key, &value)?;
+                    pairs.push((before, after));
                 }
-                crate::confirm_risks(&added, yes)?;
+                gate::confirm(&gate::Change::Group(&pairs), yes)?;
             }
             let r = app.group_change(&key, &value, &apps, dry_run)?;
             out.emit(&r, || {
@@ -287,7 +283,7 @@ pub(crate) fn group_cmd(app: &Sam, out: &Out, cmd: GroupCmd) -> Result<()> {
             let undo = serde_json::from_str(&read_stdin()?).context(sam_core::i18n::tr(
                 "expected the \"undo\" object of `group set` as JSON on stdin",
             ))?;
-            let n = app.group_restore(undo, |added| crate::confirm_risks(added, yes))?;
+            let n = app.group_restore(undo, |change| gate::confirm(change, yes))?;
             out.emit(&json!({"restored": n}), || {
                 outln!(
                     "{}",

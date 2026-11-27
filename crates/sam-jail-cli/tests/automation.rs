@@ -319,7 +319,9 @@ impl Draft {
             repo.join("scripts/sign-release.sh"),
         )
         .unwrap();
-        write_exec(&repo.join("target/debug/sam-jail"), SAM);
+        // The signing tool: a release build with the release tools on
+        // (sign-release.sh, owner decision of 2026-11-27).
+        write_exec(&repo.join("target/sign-tools/release/sam-jail"), SAM);
         write_exec(&t.join("bin/gh"), GH);
         write_exec(&t.join("bin/gpg"), GPG);
         let draft = t.join("draft");
@@ -444,6 +446,30 @@ fn an_appimage_built_for_an_older_release_is_not_signed() {
     d.attest(SBOM, &format!("refs/tags/{TAG}"));
     let out = d.sign();
     d.assert_nothing_signed(&out);
+}
+
+/// Only the signing tool signs: a release build with SAM's release tools
+/// on (owner decision of 2026-11-27), so signing runs like the shipped
+/// program, with developer variables off. With only a developer build or
+/// a plain release build present, the script stops before it uses the
+/// release key and says how to build the tool; it used to fall back to
+/// them.
+#[test]
+fn only_the_signing_tool_signs_a_release() {
+    for other in ["target/debug/sam-jail", "target/release/sam-jail"] {
+        let d = Draft::new();
+        d.attest_all();
+        let dest = d.path("repo").join(other);
+        fs::create_dir_all(dest.parent().unwrap()).unwrap();
+        fs::rename(d.path("repo/target/sign-tools/release/sam-jail"), &dest).unwrap();
+        let out = d.sign();
+        d.assert_nothing_signed(&out);
+        assert!(
+            text(&out.stderr).contains("build the signing tool first"),
+            "{other}: {}",
+            text(&out.stderr)
+        );
+    }
 }
 
 /// A file someone added to the draft stops the signing: the release key

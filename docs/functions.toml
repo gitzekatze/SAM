@@ -168,9 +168,11 @@ tests = ["the_strictest_window_profile_is_low_risk", "full_home_is_dangerous", "
 id = 8
 area = "B"
 promise = "You can change permissions per app, for several apps at once, or through your own presets."
-code = ["sam-core/src/permissions.rs", "sam-profile/src/lib.rs", "sam-runner/src/ops/profiles.rs", "sam-storage/src/lib.rs"]
+code = ["sam-core/src/permissions.rs", "sam-profile/src/lib.rs", "sam-runner/src/ops/profiles.rs", "sam-runner/src/gate.rs", "sam-storage/src/lib.rs"]
 tests = ["set_and_get_keys", "an_empty_list_left_out_of_the_saved_form_takes_comma_separated_input", "change_check_flags_removals_and_additions", "folders_are_not_breakage_but_lost_local_network_and_bus_are", "lost_sound_is_named_sound", "preset_template_is_strict", "only_a_damaged_preset_is_moved_aside", "user_changes_survive_better_recommendation", "a_dry_run_changes_nothing_and_names_what_would_stop_working", "only_changed_apps_are_saved_and_one_undo_restores_all_of_them", "an_invalid_value_or_unknown_app_changes_no_app", "sam_ships_no_presets_and_old_built_in_names_are_free_for_the_user", "saving_an_apps_settings_as_a_preset_keeps_them_exactly", "reset_to_recommendation_brings_back_the_recommended_settings", "preset_names_cannot_place_files_outside_the_presets_folder", "a_saved_preset_loads_back_unchanged", "group_list_set_and_restore_round_trip", "group_set_refuses_bad_input_without_changing_anything", "presets_are_the_users_own_only", "each_permission_adds_exactly_its_part_to_the_command",
   "only_new_or_higher_serious_risks_ask",
+  "a_change_waits_for_a_yes_by_one_rule",
+  "one_gate_refuses_each_change_that_waits_with_its_own_code",
   "a_change_from_an_old_copy_keeps_what_changed_meanwhile",
   "a_change_from_the_window_keeps_changes_made_elsewhere",
   "undo_takes_back_only_its_own_change",
@@ -296,6 +298,7 @@ tests = [
   "without_nested_sandboxes_clone_cannot_make_a_user_namespace",
   "a_32_bit_app_gets_its_calls_filtered_not_switched_off",
   "every_blocked_call_is_blocked_for_32_bit_apps_too",
+  "each_call_number_is_in_one_row",
   "a_32_bit_start_program_gets_the_filters_32_bit_part",
   "links_to_other_programs_ask_first",
   "the_link_portal_check_finds_the_ask_option",
@@ -317,6 +320,7 @@ tests = [
   "a_socket_pair_opens_only_the_listed_families_too",
   "the_filter_reads_arguments_as_wide_as_the_kernel_does",
   "the_filter_reaches_bubblewrap_as_whole_instructions",
+  "the_filter_decides_every_call_as_recorded",
   "an_app_cannot_open_the_kernels_rarely_used_doors",
   "own_names_that_are_refused",
   "wildcards_and_versions_of_dangerous_services_are_dangerous",
@@ -746,7 +750,7 @@ about = "When an app fails, SAM says why and offers fixes from mild to strong, e
 id = 23
 area = "E"
 promise = "After a failed start, SAM says what went wrong and offers a fix with one click."
-code = ["sam-runner/src/repair.rs", "sam-runner/src/launch.rs", "sam-gtk/src/app_page/render.rs"]
+code = ["sam-runner/src/repair.rs", "sam-runner/src/gate.rs", "sam-runner/src/launch.rs", "sam-gtk/src/app_page/render.rs"]
 tests = [
   "a_step_from_the_apps_output_needs_yes",
   "the_apps_own_words_never_give_it_a_bus_name",
@@ -762,7 +766,9 @@ tests = [
   "a_risky_hint_needs_yes_and_says_what_it_allows",
   "a_risky_repair_step_is_applied_only_with_yes",
   "a_risky_repair_step_needs_yes_and_says_what_it_changes",
+  "one_gate_judges_an_applied_step_in_one_order",
   "a_hint_is_never_rated_below_what_it_grants",
+  "a_repair_steps_label_is_never_below_what_applying_it_adds",
   "the_window_confirms_a_hint_exactly_when_it_asked",
   "the_window_confirms_a_repair_step_exactly_when_it_asked",
   "a_quick_failure_gets_a_notice_with_the_fix_button",
@@ -1105,12 +1111,13 @@ tests = ["times_are_shown_without_a_date_library", "the_permission_model_depends
 id = 42
 area = "I"
 internal = true
-promise = "SAM is checked and released as it says: the release key signs only files the release build of that very tag made, source files that match the package recipe and checksum lists the signing script writes itself; a failed release build leaves no tag; the owner's approval counts only for the version the owner saw and is judged by the base branch's checker; the CI scripts fail when the tests could not run; and every workflow keeps pinned actions, least rights and checked downloads."
-code = ["scripts/sign-release.sh", "scripts/release.sh", "scripts/workflow-check.py", ".github/workflows/approval.yml", ".github/workflows/release.yml", ".github/workflows/pages.yml", "tests/gui/desktop-sandbox.sh", "Cargo.toml"]
+promise = "SAM is checked and released as it says: the release key signs only files the release build of that very tag made, source files that match the package recipe and checksum lists the signing script writes itself; a failed release build leaves no tag; the owner's approval counts only for the version the owner saw and is judged by the base branch's checker; the CI scripts fail when the tests could not run; the programs SAM ships contain none of its test and release tools; and every workflow keeps pinned actions, least rights and checked downloads."
+code = ["scripts/sign-release.sh", "scripts/release.sh", "scripts/workflow-check.py", ".github/workflows/approval.yml", ".github/workflows/release.yml", ".github/workflows/pages.yml", "tests/gui/desktop-sandbox.sh", "Cargo.toml", "scripts/make-appimage.sh", "tests/shipped/in-container.sh"]
 tests = [
   "the_release_key_signs_no_appimage_the_release_build_did_not_make",
   "an_appimage_built_for_an_older_release_is_not_signed",
   "a_file_added_to_a_draft_release_stops_the_signing",
+  "only_the_signing_tool_signs_a_release",
   "source_files_that_differ_from_the_package_recipe_are_not_signed",
   "a_checked_draft_is_signed_with_its_checksum_lists_written_again",
   "a_release_that_fails_to_build_leaves_no_tag",
@@ -1120,5 +1127,9 @@ tests = [
   "the_approval_check_runs_the_base_branchs_checker",
   "a_desktop_test_run_that_does_not_build_fails",
   "the_website_is_not_built_with_a_changed_diagram_script",
+  "the_test_and_release_commands_are_left_out_of_release_builds",
+  "the_window_screenshot_options_are_left_out_of_release_builds",
+  "the_test_helpers_of_the_libraries_are_left_out_of_release_builds",
+  "release_builds_never_turn_the_tools_on",
 ]
-checks = ["scripts/workflow-check.py"]
+checks = ["scripts/workflow-check.py", "tests/shipped/in-container.sh"]

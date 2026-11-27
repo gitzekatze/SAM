@@ -431,7 +431,9 @@ fn trim_zeros(b: &[u8]) -> &[u8] {
 }
 
 /// Writes a signature into an AppImage whose runtime has empty signature
-/// sections; for tests.
+/// sections; for tests (development builds and the `dev-tools` feature
+/// only, like the other `*_for_test` functions).
+#[cfg(any(debug_assertions, feature = "dev-tools"))]
 #[doc(hidden)]
 pub fn sign_for_test(path: &Path, gpg_home: &Path, key_id: &str) -> Result<()> {
     sign_embedded(path, Some(gpg_home), key_id)
@@ -440,6 +442,7 @@ pub fn sign_for_test(path: &Path, gpg_home: &Path, key_id: &str) -> Result<()> {
 /// Like `sign_for_test`, but writes `key_block` (any armoured keys) into
 /// the key section instead of the signer's own key; for the tests of files
 /// that carry other keys than their signer's.
+#[cfg(any(debug_assertions, feature = "dev-tools"))]
 #[doc(hidden)]
 pub fn sign_with_key_block_for_test(
     path: &Path,
@@ -462,6 +465,7 @@ pub fn sign_embedded(path: &Path, gpg_home: Option<&Path>, key_id: &str) -> Resu
 /// Like `sign_for_test`, but the signature says it was made at `when`
 /// (GnuPG's `--faked-system-time`, e.g. "20200101T000000"); for the tests of
 /// updates that are older versions.
+#[cfg(any(debug_assertions, feature = "dev-tools"))]
 #[doc(hidden)]
 pub fn sign_at_for_test(path: &Path, gpg_home: &Path, key_id: &str, when: &str) -> Result<()> {
     let faked = format!("{when}!");
