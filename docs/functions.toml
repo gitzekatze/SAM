@@ -195,6 +195,7 @@ tests = ["app_output_cannot_buy_dangerous_grants",
   "an_app_nobody_has_confirmed_does_not_start",
   "a_folder_or_password_store_from_the_apps_words_is_judged_where_it_leads",
   "the_apps_own_words_never_give_it_a_terminal_to_talk_to",
+  "a_step_the_apps_output_raised_stays_its_request_under_a_hints_name",
 ]
 
 [[area]]

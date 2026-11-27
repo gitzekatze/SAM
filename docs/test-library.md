@@ -950,7 +950,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-jail-cli: The command line and its JSON interface
 
-137 tests.
+138 tests.
 
 | Promise | Test |
 |---|---|
@@ -1001,22 +1001,23 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `hints APP --apply ID` applies exactly the hint asked for: "files" grants Downloads and leaves the network off, although the game is also offered the network; an id that is not offered changes nothing. | [`a_hint_applies_only_what_was_asked_for`](../crates/sam-jail-cli/tests/commands.rs#L215) |
 | `hints APP --apply ID` applies a hint rated Think twice or Dangerous only with --yes, as `set` does: without it the network hint is refused with `hint-needs-yes`, names the hint and changes nothing; with it the network is on. | [`a_risky_hint_is_applied_only_with_yes`](../crates/sam-jail-cli/tests/commands.rs#L249) |
 | A risky first-run hint needs --yes through `repair --apply` as well: `repair APP --apply network` found the hint and applied it unasked (review of owner decision 13 of 2026-11-23). | [`a_risky_hint_needs_yes_through_repair_too`](../crates/sam-jail-cli/tests/commands.rs#L290) |
-| `repair APP --apply ID` applies a repair step rated Think twice or Dangerous only with --yes, as `set` and risky hints do: without it turning off the syscall filter is refused with `step-needs-yes`, names the step and changes nothing; with it the filter is off. | [`a_risky_repair_step_is_applied_only_with_yes`](../crates/sam-jail-cli/tests/commands.rs#L312) |
-| `menu list` on the terminal names an unsandboxed menu entry that starts the app, and after `menu hide` the hidden one; it says that no other entry starts the app only when there is none. | [`the_menu_command_names_every_entry_that_starts_the_app_outside`](../crates/sam-jail-cli/tests/commands.rs#L367) |
-| `list` finds apps by name or by id alone, by badge and by category, and sorts by the last start or by when they were added. | [`list_filters_and_sorts_the_apps`](../crates/sam-jail-cli/tests/commands.rs#L404) |
-| `info` names what compatibility mode turns on, and still names it while the mode is on (computed from the settings before it). | [`info_names_what_compatibility_mode_turns_on_while_it_is_on`](../crates/sam-jail-cli/tests/commands.rs#L457) |
-| `set` on the terminal shows the warnings about the setting just changed, and only those. | [`set_shows_the_warnings_about_the_changed_setting`](../crates/sam-jail-cli/tests/commands.rs#L470) |
-| `add` on the terminal reminds to confirm the settings of an app that is not confirmed yet (it does not start before), and not of one added with --accept. | [`add_reminds_to_confirm_unconfirmed_settings`](../crates/sam-jail-cli/tests/commands.rs#L499) |
-| `add --progress` prints the progress for the window as JSON lines on standard error: the first step and the end always. | [`add_with_progress_reports_from_the_first_step_to_the_end`](../crates/sam-jail-cli/tests/commands.rs#L513) |
-| `uninstall` without --yes only says what it would remove; with --yes it removes the sandboxes, and the AppImage files stay. | [`uninstall_removes_only_with_yes`](../crates/sam-jail-cli/tests/commands.rs#L550) |
-| `command APP -- ARGS` shows the command that `run` would start, with the arguments given at its end. | [`the_command_preview_ends_with_the_arguments_given`](../crates/sam-jail-cli/tests/commands.rs#L570) |
-| `logs APP --file F` shows exactly that log of the app, and refuses a file that is not one of its logs. | [`logs_shows_the_log_asked_for_and_nothing_else`](../crates/sam-jail-cli/tests/commands.rs#L586) |
-| `verify --permissions-stdin` is for AppImages without a sandbox: for a sandboxed app it is refused instead of checking other settings than the ones given. | [`verify_with_given_settings_is_refused_for_a_sandboxed_app`](../crates/sam-jail-cli/tests/commands.rs#L612) |
-| `desktop APP install` and `remove` put the app's launcher in the menu and take it out; `desktop all refresh` renews every launcher; other actions are refused. | [`desktop_installs_removes_and_refreshes_launchers`](../crates/sam-jail-cli/tests/commands.rs#L624) |
-| `onboarding` answers whether the first-start tour is done without changing it; `done` and `reset` change it. | [`onboarding_is_changed_only_by_done_and_reset`](../crates/sam-jail-cli/tests/commands.rs#L643) |
-| `update APP --decline-key-change` (the window's answer "no" to an update signed differently) deletes the download that waited for that answer, and only that one; the app stays as it was. | [`declining_an_update_deletes_the_download_that_waited`](../crates/sam-jail-cli/tests/commands.rs#L659) |
-| `config set` turns Landlock or the syscall filter off for every app only with --yes, as the window asks first: without it the change is refused with `config-needs-yes`, names what goes off and nothing is saved. | [`turning_a_protection_off_for_every_app_needs_yes`](../crates/sam-jail-cli/tests/commands.rs#L694) |
-| `config put` saves a configuration that turns the syscall filter off for every app only with --yes (code `config-needs-yes`, nothing saved); one that changes something else needs none. | [`putting_a_configuration_that_turns_a_protection_off_needs_yes`](../crates/sam-jail-cli/tests/commands.rs#L727) |
+| A step the app's own output raised stays the app's request when SAM has a first-run hint of the same name. | [`a_step_the_apps_output_raised_stays_its_request_under_a_hints_name`](../crates/sam-jail-cli/tests/commands.rs#L318) |
+| `repair APP --apply ID` applies a repair step rated Think twice or Dangerous only with --yes, as `set` and risky hints do: without it turning off the syscall filter is refused with `step-needs-yes`, names the step and changes nothing; with it the filter is off. | [`a_risky_repair_step_is_applied_only_with_yes`](../crates/sam-jail-cli/tests/commands.rs#L383) |
+| `menu list` on the terminal names an unsandboxed menu entry that starts the app, and after `menu hide` the hidden one; it says that no other entry starts the app only when there is none. | [`the_menu_command_names_every_entry_that_starts_the_app_outside`](../crates/sam-jail-cli/tests/commands.rs#L438) |
+| `list` finds apps by name or by id alone, by badge and by category, and sorts by the last start or by when they were added. | [`list_filters_and_sorts_the_apps`](../crates/sam-jail-cli/tests/commands.rs#L475) |
+| `info` names what compatibility mode turns on, and still names it while the mode is on (computed from the settings before it). | [`info_names_what_compatibility_mode_turns_on_while_it_is_on`](../crates/sam-jail-cli/tests/commands.rs#L528) |
+| `set` on the terminal shows the warnings about the setting just changed, and only those. | [`set_shows_the_warnings_about_the_changed_setting`](../crates/sam-jail-cli/tests/commands.rs#L541) |
+| `add` on the terminal reminds to confirm the settings of an app that is not confirmed yet (it does not start before), and not of one added with --accept. | [`add_reminds_to_confirm_unconfirmed_settings`](../crates/sam-jail-cli/tests/commands.rs#L570) |
+| `add --progress` prints the progress for the window as JSON lines on standard error: the first step and the end always. | [`add_with_progress_reports_from_the_first_step_to_the_end`](../crates/sam-jail-cli/tests/commands.rs#L584) |
+| `uninstall` without --yes only says what it would remove; with --yes it removes the sandboxes, and the AppImage files stay. | [`uninstall_removes_only_with_yes`](../crates/sam-jail-cli/tests/commands.rs#L621) |
+| `command APP -- ARGS` shows the command that `run` would start, with the arguments given at its end. | [`the_command_preview_ends_with_the_arguments_given`](../crates/sam-jail-cli/tests/commands.rs#L641) |
+| `logs APP --file F` shows exactly that log of the app, and refuses a file that is not one of its logs. | [`logs_shows_the_log_asked_for_and_nothing_else`](../crates/sam-jail-cli/tests/commands.rs#L657) |
+| `verify --permissions-stdin` is for AppImages without a sandbox: for a sandboxed app it is refused instead of checking other settings than the ones given. | [`verify_with_given_settings_is_refused_for_a_sandboxed_app`](../crates/sam-jail-cli/tests/commands.rs#L683) |
+| `desktop APP install` and `remove` put the app's launcher in the menu and take it out; `desktop all refresh` renews every launcher; other actions are refused. | [`desktop_installs_removes_and_refreshes_launchers`](../crates/sam-jail-cli/tests/commands.rs#L695) |
+| `onboarding` answers whether the first-start tour is done without changing it; `done` and `reset` change it. | [`onboarding_is_changed_only_by_done_and_reset`](../crates/sam-jail-cli/tests/commands.rs#L714) |
+| `update APP --decline-key-change` (the window's answer "no" to an update signed differently) deletes the download that waited for that answer, and only that one; the app stays as it was. | [`declining_an_update_deletes_the_download_that_waited`](../crates/sam-jail-cli/tests/commands.rs#L730) |
+| `config set` turns Landlock or the syscall filter off for every app only with --yes, as the window asks first: without it the change is refused with `config-needs-yes`, names what goes off and nothing is saved. | [`turning_a_protection_off_for_every_app_needs_yes`](../crates/sam-jail-cli/tests/commands.rs#L765) |
+| `config put` saves a configuration that turns the syscall filter off for every app only with --yes (code `config-needs-yes`, nothing saved); one that changes something else needs none. | [`putting_a_configuration_that_turns_a_protection_off_needs_yes`](../crates/sam-jail-cli/tests/commands.rs#L798) |
 | The quick checks notice a broken or missing tool. | [`the_quick_checks_notice_a_broken_or_missing_tool`](../crates/sam-jail-cli/tests/contracts.rs#L48) |
 | A full disk in the unpack sandbox stops unpacking. | [`a_full_disk_in_the_unpack_sandbox_stops_unpacking`](../crates/sam-jail-cli/tests/disk_full.rs#L46) |
 | `compat` takes on and off in any case and refuses anything else. | [`compat_takes_on_and_off_in_any_case_and_nothing_else`](../crates/sam-jail-cli/tests/exit_codes.rs#L100) |
@@ -1142,4 +1143,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 1055 automated Rust tests plus 8 scripted checks.
+Total: 1056 automated Rust tests plus 8 scripted checks.
