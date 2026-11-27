@@ -561,12 +561,16 @@ fn the_release_stand_in_answers_like_the_real_program() {
 /// Cargo also takes profile settings and compiler flags from outside the
 /// repository (the builder's environment, Cargo configuration files in
 /// CARGO_HOME or above the source), which no test of the source can read.
-/// So every release build path asks the program it built, with
-/// scripts/check-release-build.sh, after building it and before the
-/// program is shipped, installed or used: the AppImage build (its release
-/// tools and the shipped sam-jail), the signing script (before the release
-/// key is used), the release script, the Makefile's `cli` target and the
-/// test steps of the Arch and Fedora recipes.
+/// So every path that builds or uses a program SAM ships or signs asks that
+/// program, with scripts/check-release-build.sh, after building it and
+/// before the program is shipped, installed or used: the AppImage build (its
+/// release tools and the shipped sam-jail), which CI's release workflow runs
+/// through `make appimage`, the signing script (before the release key is
+/// used), the release script and the test steps of the Arch and Fedora
+/// recipes. Exactly these: the check starts sam-jail, and SAM's own programs
+/// never run on the owner's desktop, so no target or script a developer runs
+/// there to build for local use (the Makefile's `cli` target above all) runs
+/// it.
 #[test]
 fn release_build_paths_check_the_programs_they_build() {
     const CHECK: &str = "scripts/check-release-build.sh";
@@ -596,12 +600,6 @@ fn release_build_paths_check_the_programs_they_build() {
             "target/release/sam-jail",
             "cargo build --release --locked -p sam-jail-cli",
             "target/release/sam-jail man",
-        ),
-        (
-            "Makefile",
-            "target/release/sam-jail",
-            "$(CARGO) build --release --locked -p sam-jail-cli",
-            "gui: mo",
         ),
         (
             PKGBUILD,
@@ -764,6 +762,71 @@ fn package_test_steps_build_at_optimisation_level_zero() {
     let pkgbuild: Vec<&str> = pkgbuild.lines().collect();
     let function = |name: &str| code(&pkgbuild[pkgbuild_function(&pkgbuild, name)]);
     assert_eq!(
+
+    // Exactly these files run the check, none other: not the Makefile (its
+    // `cli` target is what a developer runs on the desktop), not a test or
+    // developer script, not a CI workflow of its own.
+    let mut files = vec![root().join("Makefile")];
+    for dir in ["scripts", "packaging", "tests", ".github"] {
+        files_below(&root().join(dir), &mut files);
+    }
+    let mut running: Vec<String> = files
+        .iter()
+        .filter(|f| **f != root().join(CHECK))
+        .filter(|f| {
+            text(&fs::read(f).unwrap())
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.starts_with('#') && !l.starts_with("@#") && !l.starts_with("//"))
+                .any(|l| l.contains("check-release-build"))
+        })
+        .map(|f| f.strip_prefix(root()).unwrap().display().to_string())
+        .collect();
+    running.sort();
+    assert!(
+        !running.iter().any(|f| f == "Makefile"),
+        "the Makefile runs {CHECK}: `make cli` and the other targets a developer runs \
+         on the desktop must not start SAM's programs; only the paths that build a \
+         shipped or signed program run the check"
+    );
+    assert_eq!(
+        running,
+        [
+            PKGBUILD,
+            SPEC,
+            "scripts/make-appimage.sh",
+            "scripts/release.sh",
+            "scripts/sign-release.sh"
+        ],
+        "the files that run {CHECK} are not exactly the paths that build a shipped or \
+         signed program"
+    );
+
+    // CI's release workflow builds the shipped AppImages through `make
+    // appimage`, which is scripts/make-appimage.sh: the check above covers it.
+    let workflow = fs::read_to_string(root().join(".github/workflows/release.yml")).unwrap();
+    assert!(
+        workflow
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.starts_with('#'))
+            .any(|l| l.contains("make appimage")),
+        "the release workflow no longer builds the AppImages with `make appimage`: \
+         check that it still runs {CHECK} on the programs it ships"
+    );
+    let makefile = fs::read_to_string(root().join("Makefile")).unwrap();
+    let recipe: Vec<&str> = makefile
+        .lines()
+        .skip_while(|l| !l.starts_with("appimage:"))
+        .skip(1)
+        .take_while(|l| l.starts_with('\t'))
+        .map(str::trim)
+        .collect();
+    assert_eq!(
+        recipe,
+        ["scripts/make-appimage.sh dist"],
+        "`make appimage` must be scripts/make-appimage.sh alone, which runs {CHECK}"
+    );
         flags_before_test(&function("check"), "PKGBUILD"),
         ["_rustflags -C opt-level=0"],
         "check() in {PKGBUILD} must build the tests with \
