@@ -154,12 +154,12 @@ msgid "User namespaces are available."
 msgstr "Los espacios de nombres de usuario están disponibles."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/host.rs:497
+#: crates/sam-core/src/host.rs:550
 msgid "Install it: {command}"
 msgstr "Instálalo: {command}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/host.rs:498
+#: crates/sam-core/src/host.rs:551
 msgid ""
 "Install the package \"{package}\" with your distribution's package manager."
 msgstr ""
@@ -7004,13 +7004,13 @@ msgstr "Carpeta de la aplicación con escritura no disponible"
 
 #: crates/sam-runner/src/launch.rs:530
 msgid ""
-"The writable app folder needs Bubblewrap 0.11 or newer; the installed one is "
-"older, so the app folder stays read-only. Update Bubblewrap to use this "
-"setting."
+"The writable app folder needs overlays, which the installed Bubblewrap does "
+"not offer (they came with Bubblewrap 0.11), so the app folder stays read-"
+"only. Update Bubblewrap to use this setting."
 msgstr ""
-"La carpeta de la aplicación con escritura necesita Bubblewrap 0.11 o "
-"posterior; el instalado es más antiguo, así que la carpeta sigue en solo "
-"lectura. Actualiza Bubblewrap para usar este ajuste."
+"La carpeta de la aplicación con escritura necesita overlays, que el "
+"Bubblewrap instalado no ofrece (llegaron con Bubblewrap 0.11), así que la "
+"carpeta sigue en solo lectura. Actualiza Bubblewrap para usar este ajuste."
 
 #. Keep the {placeholders}; their order may change.
 #: crates/sam-runner/src/launch.rs:558
