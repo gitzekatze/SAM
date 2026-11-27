@@ -640,11 +640,14 @@ impl AppPage {
 
 /// Whether the window asks before applying a hint or repair step that is
 /// not from the app's own output: rated Think twice or Dangerous, or
-/// turning on compatibility mode. The command line refuses such a hint
-/// without --yes by the same rule (owner decision 13 of 2026-11-23).
+/// turning on compatibility mode. By SAM's one rule
+/// (`sam_core::risk::waits_for_yes`), by which the command line refuses
+/// such a hint without --yes (owner decision 13 of 2026-11-23).
 pub(super) fn asks_first(sug: &Value) -> bool {
-    let risk = util::str_of(sug, "risk");
-    risk == "high" || risk == "dangerous" || util::str_of(sug, "action.kind") == "compat"
+    // The level as the command line lists it; an unknown one is Harmless.
+    let level = serde_json::from_value(sug["risk"].clone()).unwrap_or_default();
+    let compat = util::str_of(sug, "action.kind") == "compat";
+    sam_core::risk::waits_for_yes(level, compat, false)
 }
 
 /// Whether the window asks before applying a hint or repair step, and so

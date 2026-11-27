@@ -17,6 +17,7 @@ pub mod dbus_proxy;
 pub mod device_watch;
 pub mod diagnose;
 pub mod doctor;
+pub mod gate;
 pub mod home_live;
 pub mod home_shared;
 pub mod kernel;

@@ -137,13 +137,26 @@ pub fn new_risks(before: &PermissionSet, after: &PermissionSet) -> Vec<RiskItem>
         .items
         .into_iter()
         .filter(|i| {
-            i.level >= RiskLevel::High
+            waits_for_yes(i.level, false, false)
                 && ((i.key == "advanced.extra_bwrap_args" && !same_args)
                     || !had
                         .iter()
                         .any(|b| b.key == i.key && b.title == i.title && b.level >= i.level))
         })
         .collect()
+}
+
+/// Whether a change waits for a yes: one rated Think twice or Dangerous
+/// (`level`: the highest of its label and what it adds, as
+/// [`new_risks`] finds it), one that turns on compatibility mode, whose
+/// whole session bus is a way out (audit D-H5), or one suggested by what
+/// the app printed, which the app controls (audit U-M2). The rule behind
+/// the gate's refusals of settings, compatibility mode, hints and repair
+/// steps (`sam_runner::gate`) and the window's questions before them;
+/// turning a protection off for every app is judged by
+/// `Config::protections_turned_off` instead.
+pub fn waits_for_yes(level: RiskLevel, turns_on_compat: bool, from_app_output: bool) -> bool {
+    level >= RiskLevel::High || turns_on_compat || from_app_output
 }
 
 /// Whether a passed-through variable usually holds a secret or a way in
@@ -1034,6 +1047,36 @@ mod tests {
             new_risks(&bind, &before).is_empty(),
             "taking all away does not"
         );
+    }
+
+    /// The one rule for a yes: Think twice and Dangerous wait for one,
+    /// Some access and Harmless do not; compatibility mode and a change
+    /// from what the app printed wait for one whatever their level (audit
+    /// D-H5, U-M2). `new_risks` names exactly what waits by this rule.
+    #[test]
+    fn a_change_waits_for_a_yes_by_one_rule() {
+        use RiskLevel::*;
+        for (level, waits) in [
+            (Low, false),
+            (Medium, false),
+            (High, true),
+            (Dangerous, true),
+        ] {
+            assert_eq!(waits_for_yes(level, false, false), waits, "{level:?}");
+            assert!(waits_for_yes(level, true, false), "compat at {level:?}");
+            assert!(waits_for_yes(level, false, true), "app output at {level:?}");
+        }
+        let before = PermissionSet::strict_gui();
+        let mut after = before.clone();
+        after.devices.gpu = true;
+        after.devices.webcam = true;
+        after.display.x11 = true;
+        let added = new_risks(&before, &after);
+        assert!(!added.is_empty());
+        for i in &added {
+            assert!(waits_for_yes(i.level, false, false), "{i:?}");
+        }
+        assert!(added.iter().all(|i| i.key != "devices.gpu"), "{added:?}");
     }
 
     /// Settings that take a protection away count in the risk word, and a

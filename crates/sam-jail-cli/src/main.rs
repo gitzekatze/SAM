@@ -13,6 +13,7 @@ use clap::{Parser, Subcommand};
 use sam_core::error::InFunctionExt;
 use sam_core::util::{format_ts, human_size, tildify};
 use sam_core::*;
+use sam_runner::gate;
 use sam_runner::launch::{prepare, run, LaunchOptions};
 use sam_runner::ops::{AddOptions, Sam};
 use sam_storage::{
@@ -1114,7 +1115,13 @@ fn real_main(cli: Cli) -> Result<()> {
             let cur = app.resolve(&q)?.profile.permissions;
             let mut new = cur.clone();
             new.set_key(&key, &value)?;
-            confirm_risks(&sam_core::risk::new_risks(&cur, &new), yes)?;
+            gate::confirm(
+                &gate::Change::Settings {
+                    before: &cur,
+                    after: &new,
+                },
+                yes,
+            )?;
             let e = app.set_permission(&q, &key, &value)?;
             let v = e.profile.permissions.get_key(&key)?;
             let eval = app.evaluate(&e.profile.permissions, Some(&e), &app.host());
@@ -1161,7 +1168,13 @@ fn real_main(cli: Cli) -> Result<()> {
                 let perms: PermissionSet = serde_json::from_str(&read_stdin()?)
                     .context(tr("expected a PermissionSet as JSON on stdin"))?;
                 let cur = app.resolve(&q)?.profile.permissions;
-                confirm_risks(&sam_core::risk::new_risks(&cur, &perms), yes)?;
+                gate::confirm(
+                    &gate::Change::Settings {
+                        before: &cur,
+                        after: &perms,
+                    },
+                    yes,
+                )?;
                 let e = app.set_permissions(&q, perms)?;
                 out.emit(&AppSummary::from_entry(&e), || {
                     outln!(
@@ -1179,8 +1192,11 @@ fn real_main(cli: Cli) -> Result<()> {
                         "expected {\"from\": …, \"to\": …} with two PermissionSets as JSON on stdin",
                     ))?;
                 let (cur, merged) = app.plan_change(&q, &change)?;
-                confirm_risks(
-                    &sam_core::risk::new_risks(&cur.profile.permissions, &merged),
+                gate::confirm(
+                    &gate::Change::Settings {
+                        before: &cur.profile.permissions,
+                        after: &merged,
+                    },
                     yes,
                 )?;
                 let e = app.change_permissions(&cur.id, merged)?;
@@ -1622,55 +1638,17 @@ fn real_main(cli: Cli) -> Result<()> {
     Ok(())
 }
 
-/// A change that adds something rated Think twice or Dangerous is made
-/// only with `--yes`, as the window asks before it (audit D-M9, G-F2,
-/// G-F11: `set` applied raw Bubblewrap arguments silently).
-pub(crate) fn confirm_risks(added: &[sam_core::risk::RiskItem], yes: bool) -> anyhow::Result<()> {
-    if added.is_empty() || yes {
-        return Ok(());
-    }
-    let list: Vec<String> = added
-        .iter()
-        .map(|i| format!("{} ({})", i.title, i.level.words()))
-        .collect();
-    Err(sam_core::error::CodedError::new(
-        "change-needs-yes",
-        sam_core::i18n::trf(
-            "This change adds {items}. Look at it, then repeat it with --yes, or make it in SAM's window, which asks.",
-            &[("items", &list.join(", "))],
-        ),
-    )
-    .into())
-}
-
-/// Compatibility mode is turned on only with `--yes`: the whole session bus
-/// in it is a way out (audit D-H5), as the window says before it asks.
+/// Compatibility mode is turned on only with `--yes`, by SAM's one gate:
+/// the whole session bus in it is a way out (audit D-H5).
 fn compat_allowed(on: bool, yes: bool) -> anyhow::Result<()> {
-    if on && !yes {
-        return Err(sam_core::error::CodedError::new(
-            "compat-needs-yes",
-            sam_core::i18n::tr("Compatibility mode gives the app the network, all of /usr, X11, the GPU, sound and the whole session bus. Through the whole session bus it can ask desktop services to run programs outside its sandbox, so this is a way out. Turn it on only for apps you trust: add --yes."),
-        )
-        .into());
-    }
-    Ok(())
+    gate::confirm(&gate::Change::Compat { on }, yes)
 }
 
 /// A repair step suggested by what the app printed is applied only with
-/// `--yes`: the app controls that text, and could ask for the keyring or a
-/// service this way (audit U-M2; the window asks, and so must this).
+/// `--yes`, by SAM's one gate (audit U-M2): refused here before anything
+/// else is looked up, and judged again on the record it changes.
 fn may_apply(sug: &sam_core::model::Suggestion, yes: bool) -> anyhow::Result<()> {
-    if sug.from_app_output && !yes {
-        return Err(sam_core::error::CodedError::new(
-            "repair-needs-yes",
-            sam_core::i18n::trf(
-                "\"{title}\" comes from what the app printed, which the app controls: {explanation} Look at it, then apply it with --yes, or in SAM's window.",
-                &[("title", &sug.title), ("explanation", &sug.explanation)],
-            ),
-        )
-        .into());
-    }
-    Ok(())
+    gate::confirm(&gate::Change::Found(sug), yes)
 }
 
 /// What `selftest` says about one start that `seconds` long: status, the
