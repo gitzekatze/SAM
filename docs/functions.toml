@@ -911,6 +911,13 @@ tests = ["both_forms_of_update_information_are_understood", "update_wildcards_ma
   "declining_an_update_deletes_the_download_that_waited",
   "a_download_never_answered_is_deleted_after_a_week",
   "only_an_https_release_page_is_opened",
+  "the_note_names_new_needs_the_settings_lack",
+  "a_switch_change_unrelated_to_the_note_keeps_it",
+  "a_group_change_from_the_permissions_page_keeps_the_note",
+  "granting_exactly_the_requested_need_removes_it_from_the_note",
+  "a_folder_need_is_granted_only_at_the_level_asked",
+  "a_note_kept_through_a_change_goes_with_got_it",
+  "reading_the_app_again_keeps_an_unseen_need",
 ]
 
 [[function]]
