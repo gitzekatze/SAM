@@ -49,12 +49,14 @@
 - For a writable extra or user folder left out this way, the launch log
   says that SAM leaves it out as a writable folder: with a read-only home
   the app may still read the place it leads to.
-- The launch log no longer says that a place left out this way is one the
-  app is not shown otherwise, nor that SAM does not show it. It says that
-  SAM leaves out the extra or user folder, or does not bind the fonts or
-  theme place on its own, that the home and the user folders do not show
-  the place it leads to, and that the app still sees what its other
-  folders show there. If you list the place a link in your fonts or theme files leads
+- The launch log no longer says that a place left out by these rules (a
+  link the app may have planted, a link to where programs outside the
+  sandbox listen, or fonts and theme files that lead to your home or your
+  keys) is one the app is not shown otherwise, nor that SAM does not show
+  it. It says that SAM leaves out the extra or user folder, or does not
+  bind the fonts or theme place on its own, why (for a planted link: that
+  the home and the user folders do not show the place it leads to), and
+  that the app still sees what its other folders show there. If you list the place a link in your fonts or theme files leads
   to as an extra folder, SAM still leaves out the fonts or theme place
   itself, and the app reaches that place through the link wherever its
   other folders show the link.

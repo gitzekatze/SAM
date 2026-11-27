@@ -781,9 +781,10 @@ How these stay protected with the home writable:
 
   SAM does not bind such a place itself, and the launch log says so: that
   SAM leaves out the extra or user folder, or does not bind the place on
-  its own, and what the rule weighs (what the home and the user folders
-  show, for a user folder the home alone), never that the place is hidden
-  or that SAM does not show it, since the folders around it may still
+  its own, and why (for a planted link, what the rule weighs: what the
+  home and the user folders show, for a user folder the home alone; for
+  the other two rules, where the link leads), never that the place is
+  hidden or that SAM does not show it, since the folders around it may still
   show the link, and other extra folders, opened folders and the system's
   own places the place it leads to; the app still sees what its other
   folders show there. Your fonts or theme files

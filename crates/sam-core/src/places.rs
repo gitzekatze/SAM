@@ -1030,15 +1030,21 @@ pub enum LeftOutPlace {
 /// says the bind was a writable one: for it a link is followed only into
 /// what the home and the user folders show writable, so the place it
 /// leads to may still be shown read-only (a read-only home), and the note
-/// must not say it is hidden. No note says the place is hidden, nor that
-/// SAM does not show `shown`: SAM only leaves out this one bind (for a
-/// place it shows on its own, it does not bind it on its own), while the
-/// rule weighs only what the home and the user folders show (for a user
-/// folder the home alone), and other extra folders, opened folders and the
-/// system's own places may still show the place and the link itself. A place of the home SAM shows
-/// on its own (`kind` [`LeftOutPlace::Own`]) stays left out even once its
-/// target is listed as an extra folder; the app then reaches that place
-/// through the link wherever its other folders show the link.
+/// must not say it is hidden. No note, for a link the app may have planted
+/// ([`LeftOut::Link`]), one to where programs outside the sandbox listen
+/// ([`LeftOut::HostServices`]) or a guarded place ([`LeftOut::Guarded`]),
+/// says the place is hidden, nor that SAM does not show `shown`: SAM only
+/// leaves out this one bind (for a place it shows on its own, it does not
+/// bind it on its own), while the folders around it may still show the
+/// link, and other extra folders, opened folders and the system's own
+/// places the place it leads to (a read-only home shows `~/.fonts`, a link
+/// to `/tmp/myfonts`, and `/tmp/myfonts` listed by its real place is shown
+/// as written). For a planted link the rule weighs only what the home and
+/// the user folders show (for a user folder the home alone). A place of
+/// the home SAM shows on its own (`kind` [`LeftOutPlace::Own`]) stays left
+/// out even once its target is listed as an extra folder; the app then
+/// reaches that place through the link wherever its other folders show
+/// the link.
 pub fn left_out_note(shown: &str, why: &LeftOut, kind: LeftOutPlace, write: bool) -> String {
     let t = crate::util::tildify;
     match why {
@@ -1067,14 +1073,46 @@ pub fn left_out_note(shown: &str, why: &LeftOut, kind: LeftOutPlace, write: bool
                 ),
             }
         }
-        LeftOut::HostServices(place) => crate::i18n::trf(
-            "SAM does not show {path} to this app because it leads through a link to {place}, where programs outside the sandbox listen: through them the app could run commands outside the sandbox.",
-            &[("path", &shown), ("place", &t(place))],
-        ),
-        LeftOut::Guarded(place) => crate::i18n::trf(
-            "SAM does not show {path} to this app because it leads to {place}, which is or holds your home folder, your keys or passwords, a place SAM protects or SAM's own files.",
-            &[("path", &shown), ("place", &t(place))],
-        ),
+        LeftOut::HostServices(place) => {
+            let args: &[(&str, &dyn std::fmt::Display)] = &[("path", &shown), ("place", &t(place))];
+            match kind {
+                LeftOutPlace::Extra if write => crate::i18n::trf(
+                    "SAM leaves out the writable folder {path} for this app because it leads through a link to {place}, where programs outside the sandbox listen: through them the app could run commands outside the sandbox. The app still sees what its other folders show there.",
+                    args,
+                ),
+                LeftOutPlace::UserFolder if write => crate::i18n::trf(
+                    "SAM leaves out the writable user folder {path} for this app because it leads through a link to {place}, where programs outside the sandbox listen: through them the app could run commands outside the sandbox. The app still sees what its other folders show there.",
+                    args,
+                ),
+                LeftOutPlace::Own => crate::i18n::trf(
+                    "SAM does not bind {path} for this app on its own because it leads through a link to {place}, where programs outside the sandbox listen: through them the app could run commands outside the sandbox. The app still sees what its other folders show there.",
+                    args,
+                ),
+                LeftOutPlace::Extra => crate::i18n::trf(
+                    "SAM leaves out the extra folder {path} for this app because it leads through a link to {place}, where programs outside the sandbox listen: through them the app could run commands outside the sandbox. The app still sees what its other folders show there.",
+                    args,
+                ),
+                LeftOutPlace::UserFolder => crate::i18n::trf(
+                    "SAM leaves out the user folder {path} for this app because it leads through a link to {place}, where programs outside the sandbox listen: through them the app could run commands outside the sandbox. The app still sees what its other folders show there.",
+                    args,
+                ),
+            }
+        }
+        // Only a place SAM shows on its own is guarded this way
+        // ([`own_place_left_out`]); any other kind gets plain words too.
+        LeftOut::Guarded(place) => {
+            let args: &[(&str, &dyn std::fmt::Display)] = &[("path", &shown), ("place", &t(place))];
+            match kind {
+                LeftOutPlace::Own => crate::i18n::trf(
+                    "SAM does not bind {path} for this app on its own because it leads to {place}, which is or holds your home folder, your keys or passwords, a place SAM protects or SAM's own files. The app still sees what its other folders show there.",
+                    args,
+                ),
+                LeftOutPlace::Extra | LeftOutPlace::UserFolder => crate::i18n::trf(
+                    "SAM leaves out {path} for this app because it leads to {place}, which is or holds your home folder, your keys or passwords, a place SAM protects or SAM's own files. The app still sees what its other folders show there.",
+                    args,
+                ),
+            }
+        }
     }
 }
 
@@ -1763,9 +1801,12 @@ mod tests {
         );
     }
 
-    /// A left-out note never says the place is hidden, since the rule
-    /// weighs only what the home and the user folders show (for a user
-    /// folder the home alone). With Documents writable in a private home,
+    /// A left-out note, for a planted link, a link to where programs
+    /// outside the sandbox listen or a guarded place, never says the place
+    /// is hidden, since other grants may still show it, and for a planted
+    /// link the rule weighs only what the home and the user folders show
+    /// (for a user folder the home alone). With Documents writable in a
+    /// private home,
     /// `~/Documents/Data3` a link to `data3` and `data3` listed too, the
     /// link is left out while `data3` is shown read-only; `~/.fonts` in a
     /// writable home stays left out after its target is listed as the note
@@ -1775,7 +1816,12 @@ mod tests {
     /// did with that one bind (it leaves out the extra or user folder, or
     /// does not bind the place on its own), never that SAM does not show
     /// it, and says what the rule weighs and that the app still sees what
-    /// its other folders show.
+    /// its other folders show. So do the notes for a link to where programs
+    /// outside the sandbox listen and for a guarded place: with the home
+    /// read-only, `~/.config/fontconfig` a link to a folder in `/tmp` that
+    /// is listed by its real place too, and `~/.local/share/fonts` a link
+    /// to the home, the home shows both links and the app reaches what
+    /// they lead to.
     #[test]
     fn a_left_out_note_never_says_the_place_is_hidden() {
         use crate::permissions::Access;
@@ -1877,6 +1923,111 @@ mod tests {
             "~/Sync/Documents",
             "SAM leaves out the user folder ~/Sync/Documents for this app because",
             "to a place the home does not show",
+        );
+        // Nor do the notes for a link to where programs outside the sandbox
+        // listen, or to a guarded place: other grants may still show it.
+        let plain = |note: &str, shown: &str, opens: &str, says: &str| {
+            assert!(
+                note.starts_with(opens)
+                    && note.contains(says)
+                    && note.contains("The app still sees what its other folders show there.")
+                    && !note.contains(&format!("does not show {shown}"))
+                    && !note.contains("not show ~"),
+                "{note}"
+            );
+        };
+        let listen = "where programs outside the sandbox listen";
+        let guards = "which is or holds your home folder";
+        // A read-only home shows the link `~/.config/fontconfig` to a
+        // folder in `/tmp`, and that folder listed by its real place is
+        // shown as written: the app reaches it through the link.
+        let in_tmp = tempfile::Builder::new()
+            .prefix("myfonts-")
+            .tempdir_in("/tmp")
+            .unwrap();
+        let myfonts = std::fs::canonicalize(in_tmp.path()).unwrap();
+        std::fs::create_dir_all(home.join(".config")).unwrap();
+        let fontconfig = home.join(".config/fontconfig");
+        std::os::unix::fs::symlink(&myfonts, &fontconfig).unwrap();
+        let mut ro_home = PermissionSet::strict_gui();
+        ro_home.filesystem.home = true;
+        ro_home.filesystem.home_access = Access::Ro;
+        ro_home.filesystem.custom_read = vec![st(&myfonts)];
+        assert_eq!(
+            linked_place_left_out(&ro_home, &host, &myfonts, false, &none()),
+            None
+        );
+        let why = own_place_left_out(&ro_home, &host, &fontconfig, &guarded, &none());
+        assert_eq!(why, Some(LeftOut::HostServices(myfonts.clone())));
+        let note = left_out_note(
+            "~/.config/fontconfig",
+            why.as_ref().unwrap(),
+            LeftOutPlace::Own,
+            false,
+        );
+        plain(
+            &note,
+            "~/.config/fontconfig",
+            "SAM does not bind ~/.config/fontconfig for this app on its own because",
+            listen,
+        );
+        // An extra or user folder, read-only or writable, behind such a
+        // link.
+        let sockets = LeftOut::HostServices(myfonts.clone());
+        for (kind, write, opens) in [
+            (
+                LeftOutPlace::Extra,
+                false,
+                "SAM leaves out the extra folder ~/x for this app because",
+            ),
+            (
+                LeftOutPlace::Extra,
+                true,
+                "SAM leaves out the writable folder ~/x for this app because",
+            ),
+            (
+                LeftOutPlace::UserFolder,
+                false,
+                "SAM leaves out the user folder ~/x for this app because",
+            ),
+            (
+                LeftOutPlace::UserFolder,
+                true,
+                "SAM leaves out the writable user folder ~/x for this app because",
+            ),
+        ] {
+            plain(
+                &left_out_note("~/x", &sockets, kind, write),
+                "~/x",
+                opens,
+                listen,
+            );
+        }
+        // `~/.local/share/fonts` a link to the home while the whole home is
+        // shown: the home shows that link and the home it leads to.
+        std::fs::create_dir_all(home.join(".local/share")).unwrap();
+        let local_fonts = home.join(".local/share/fonts");
+        std::os::unix::fs::symlink(&home, &local_fonts).unwrap();
+        let why = own_place_left_out(&ro_home, &host, &local_fonts, &guarded, &none());
+        assert_eq!(why, Some(LeftOut::Guarded(home.clone())));
+        let note = left_out_note(
+            "~/.local/share/fonts",
+            why.as_ref().unwrap(),
+            LeftOutPlace::Own,
+            false,
+        );
+        plain(
+            &note,
+            "~/.local/share/fonts",
+            "SAM does not bind ~/.local/share/fonts for this app on its own because",
+            guards,
+        );
+        let note = left_out_note("~/x", why.as_ref().unwrap(), LeftOutPlace::Extra, false);
+        plain(
+            &note,
+            "~/x",
+            "SAM leaves out ~/x for this app because",
+            guards,
         );
     }
 
