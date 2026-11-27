@@ -76,6 +76,10 @@ impl Sam {
         let entry = self.resolve(query)?;
         let (_change, mut entry) =
             self.lock_for_change(&entry, &sam_core::i18n::tr("unpack it again"))?;
+        // Unpacking takes a while: only what it changes is saved onto the
+        // record as it is then, so a switch changed in the window meanwhile
+        // stays.
+        let read = entry.clone();
         if !entry.source_path.exists() {
             bail!(
                 "{}",
@@ -155,18 +159,19 @@ impl Sam {
                 entry.last_error = Some(format!("{e:#}"));
                 log.extend(format!("[extract] FAILED: {e:#}\n").bytes());
                 self.write_log(&entry.id, LogKind::Extract, &log);
-                self.registry().save(&mut entry)?;
+                self.registry().save_changes(&read, &mut entry)?;
                 return Err(e);
             }
         }
-        self.registry().save(&mut entry)?;
+        self.registry().save_changes(&read, &mut entry)?;
         Ok(entry)
     }
 
     pub fn redetect(&self, query: &str) -> Result<AppEntry> {
         let mut entry = self.resolve(query)?;
+        let read = entry.clone();
         self.detect(&mut entry, &ProgressSink::default())?;
-        self.registry().save(&mut entry)?;
+        self.registry().save_changes(&read, &mut entry)?;
         Ok(entry)
     }
 
@@ -179,6 +184,9 @@ impl Sam {
         };
         let mut out = Vec::new();
         for mut a in apps {
+            // A deep refresh reads the whole file: only what it finds is
+            // saved onto the record as it is then.
+            let read = a.clone();
             let known = a
                 .extraction
                 .as_ref()
@@ -222,7 +230,7 @@ impl Sam {
                     )
                 }
             };
-            reg.save(&mut a)?;
+            reg.save_changes(&read, &mut a)?;
             out.push(RefreshItem {
                 id: a.id.clone(),
                 name: a.display_name().into(),
@@ -1235,7 +1243,7 @@ impl Sam {
         );
         let mut done = way_back;
         done.placing = None;
-        let mut e = match unpacked {
+        let e = match unpacked {
             Ok(e) => e,
             Err(err) => {
                 // A failure, not a stop: the way back stays, nothing is
@@ -1253,8 +1261,7 @@ impl Sam {
                 return Err(err);
             }
         };
-        e.update_backup = Some(done);
-        e.update = Some(UpdateStatus {
+        let status = UpdateStatus {
             state: sam_core::model::UpdateState::Current,
             latest: p.filename.or(p.release),
             download_page: p.page,
@@ -1269,8 +1276,11 @@ impl Sam {
                 ),
             },
             checked_at: now(),
-        });
-        self.registry().save(&mut e)?;
+        };
+        let e = self.update_record(&e.id, |f| {
+            f.update_backup = Some(done);
+            f.update = Some(status);
+        })?;
         let _ = fs::remove_file(&new_copy);
         Ok(e)
     }
@@ -1535,7 +1545,7 @@ impl Sam {
         };
         let mut done = way_forward;
         done.placing = None;
-        let mut e = match unpacked {
+        let e = match unpacked {
             Ok(e) => e,
             Err(err) => {
                 // A failure, not a stop: nothing is left to finish. The
@@ -1552,9 +1562,10 @@ impl Sam {
                 return Err(err);
             }
         };
-        e.update_backup = Some(done);
-        e.update = None;
-        self.registry().save(&mut e)?;
+        let e = self.update_record(&e.id, |f| {
+            f.update_backup = Some(done);
+            f.update = None;
+        })?;
         forget_earlier_backups(&root, &fresh);
         Ok(e)
     }
@@ -1662,7 +1673,7 @@ impl Sam {
                 forget_earlier_backups(&root, &keep);
             }
         };
-        let mut e = match unpacked {
+        let e = match unpacked {
             Ok(e) => e,
             Err(err) => {
                 clear()?;
@@ -1670,11 +1681,12 @@ impl Sam {
                 return Err(err);
             }
         };
-        if let Some(b) = e.update_backup.as_mut() {
-            b.placing = None;
-        }
-        e.update = None;
-        self.registry().save(&mut e)?;
+        let e = self.update_record(&e.id, |f| {
+            if let Some(b) = f.update_backup.as_mut() {
+                b.placing = None;
+            }
+            f.update = None;
+        })?;
         tidy();
         Ok(Some(e))
     }

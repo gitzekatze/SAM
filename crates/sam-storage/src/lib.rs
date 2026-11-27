@@ -3,6 +3,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Result};
 use sam_core::util::{atomic_write, now, slugify};
@@ -12,6 +13,85 @@ use serde::{Deserialize, Serialize};
 /// The app registry.
 pub struct Registry {
     paths: Paths,
+    /// How long a save waits for the record lock ([`RECORD_LOCK_WAIT`]).
+    lock_wait: Duration,
+    hooks: Hooks,
+}
+
+// The record lock. Several SAM processes change the
+// same app records: the window, `sam-jail` commands, a start that stores
+// its result, an update check. Each change reads a record, changes it and
+// writes it back; two of them at once lost one of the two changes, a
+// "look at it first" mark included. So every write of a record happens
+// under one short lock:
+// - Where: the file `.records.lock` in the apps folder, taken with flock.
+//   The kernel releases it when its process ends, also a killed one, so a
+//   crash never leaves it held. One lock for all records: it is held for
+//   milliseconds, so apps rarely wait for each other, and no lock files
+//   stay behind for removed apps.
+// - How long: only around reading the record on disk, changing it and
+//   writing it back. Never around unpacking, a download or a check: those
+//   work on a copy and then save only the fields they changed
+//   ([`Registry::save_changes`], [`Registry::update`]). Two saves that
+//   change the same field (a list such as the granted folders counts as
+//   one field) still follow each other: the later one wins.
+// - When another process holds it: a save waits up to `lock_wait`, then
+//   stops with an error that says so. Nothing is ever saved without it.
+// - Within one process it is not re-entrant: a change passed to `update`
+//   must not save a record itself (it would wait for its own lock).
+// - Older SAM versions do not take it. Their records read as before (the
+//   format is unchanged), but a save by an older SAM running at the same
+//   time can still overwrite one of this SAM.
+// Reading needs no lock: a record is replaced in one step (`atomic_write`).
+
+/// How long a save of an app record waits for another SAM process to
+/// finish its own save before it gives up with an error.
+pub const RECORD_LOCK_WAIT: Duration = Duration::from_secs(10);
+
+/// The record lock, held until dropped (closing the file releases it).
+struct RecordLock {
+    _file: fs::File,
+}
+
+/// Points in a save where a test makes another writer act.
+#[cfg(test)]
+#[derive(Default)]
+struct Hooks {
+    /// The record on disk has been read; it is written next.
+    read: Option<Box<dyn Fn() + Send>>,
+    /// The record lock is held by someone else; this save waits.
+    waiting: Option<Box<dyn Fn() + Send>>,
+}
+
+#[cfg(test)]
+impl Hooks {
+    fn none() -> Self {
+        Hooks::default()
+    }
+    fn at_read(&self) {
+        if let Some(h) = &self.read {
+            h();
+        }
+    }
+    fn at_waiting(&self) {
+        if let Some(h) = &self.waiting {
+            h();
+        }
+    }
+}
+
+/// Outside tests nothing happens at these points (and the hooks take no
+/// room).
+#[cfg(not(test))]
+struct Hooks;
+
+#[cfg(not(test))]
+impl Hooks {
+    fn none() -> Self {
+        Hooks
+    }
+    fn at_read(&self) {}
+    fn at_waiting(&self) {}
 }
 
 /// Migrates an app record (JSON) from format `from` to the current one.
@@ -52,6 +132,76 @@ impl Registry {
     pub fn new(paths: &Paths) -> Self {
         Registry {
             paths: paths.clone(),
+            lock_wait: RECORD_LOCK_WAIT,
+            hooks: Hooks::none(),
+        }
+    }
+
+    /// The name of the app `id` for a message to a person: its name as its
+    /// record on disk gives it, made safe to show, or its id when the
+    /// record has none or cannot be read. Reads the file only: no
+    /// migration, no moving aside, as a message must change nothing.
+    fn name_for_message(&self, id: &str) -> String {
+        let name = valid_id(id)
+            .then(|| fs::read_to_string(self.paths.app_file(id)).ok())
+            .flatten()
+            .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+            .and_then(|v| v.get("name")?.as_str().map(str::to_string))
+            .filter(|n| !n.trim().is_empty())
+            .unwrap_or_else(|| id.to_string());
+        sam_core::util::display_safe(&name, 80)
+    }
+
+    /// Takes the record lock (see the comment at [`RECORD_LOCK_WAIT`]):
+    /// waits while another SAM process holds it, up to `lock_wait`, then
+    /// fails with an error that says so; it names the app `id` by its name.
+    fn lock(&self, id: &str) -> Result<RecordLock> {
+        use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+        let dir = self.paths.apps_dir();
+        fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(&dir)
+            .with_context(|| format!("creating {}", dir.display()))?;
+        let p = dir.join(".records.lock");
+        // Never through a link someone placed there.
+        let file = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+            .open(&p)
+            .with_context(|| format!("opening {}", p.display()))?;
+        let until = Instant::now() + self.lock_wait;
+        let mut told = false;
+        loop {
+            match file.try_lock() {
+                Ok(()) => return Ok(RecordLock { _file: file }),
+                Err(fs::TryLockError::WouldBlock) if Instant::now() < until => {
+                    if !told {
+                        told = true;
+                        self.hooks.at_waiting();
+                    }
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                // Says only what is known: this save did not happen. Work
+                // done before it (an unpacked copy) is not undone, so the
+                // message promises nothing about it.
+                Err(fs::TryLockError::WouldBlock) => bail!(
+                    "{}",
+                    sam_core::i18n::trf(
+                        "SAM could not save the record of {app}: another SAM process kept the app records locked for more than {seconds} seconds. Try again.",
+                        &[
+                            ("app", &self.name_for_message(id)),
+                            ("seconds", &self.lock_wait.as_secs().max(1))
+                        ]
+                    )
+                ),
+                Err(fs::TryLockError::Error(e)) => {
+                    return Err(e).with_context(|| format!("locking {}", p.display()))
+                }
+            }
         }
     }
 
@@ -238,15 +388,20 @@ impl Registry {
         }
     }
 
-    /// Saves `entry`. The marks that ask the person to look at the app
-    /// first (`changed_outside`, `content_changed_outside`) stay set when
-    /// the record on disk has them, also when `entry` is a copy read before
+    /// Saves `entry` as a whole, under the record lock: for a new record,
+    /// or a copy just read. A copy read a while ago goes through
+    /// [`Registry::save_changes`] or [`Registry::update`] instead, so only
+    /// the fields it changed are written.
+    ///
+    /// The marks that ask the person to look at the app first
+    /// (`changed_outside`, `content_changed_outside`) stay set when the
+    /// record on disk has them, also when `entry` is a copy read before
     /// they were set: saving such a copy (a refresh, a profile change that
-    /// overlapped an "unpack again") must not undo them (review L3). The
+    /// overlapped an "unpack again") must not undo them. The
     /// same holds for a change made to the record outside SAM since it was
-    /// read. A mark set between this read and the write below can still be
-    /// lost: this narrows the window to that moment (a record lock would
-    /// close it). Only [`Registry::save_confirmed`] clears the marks.
+    /// read. The record lock keeps another SAM process from setting a mark
+    /// between that read and the write. Only a confirming save
+    /// ([`Registry::update_confirmed`]) clears the marks.
     ///
     /// When the record on disk cannot be read, nothing it says is known,
     /// so nothing is dropped silently: a newer SAM's record is left
@@ -254,6 +409,12 @@ impl Registry {
     /// damaged or foreign record the copy is saved marked as changed
     /// outside SAM, so the person looks first.
     pub fn save(&self, entry: &mut AppEntry) -> Result<()> {
+        let _held = self.lock(&entry.id)?;
+        self.write_keeping_marks(entry)
+    }
+
+    /// [`Registry::save`] with the record lock already held.
+    fn write_keeping_marks(&self, entry: &mut AppEntry) -> Result<()> {
         let p = self.paths.app_file(&entry.id);
         if valid_id(&entry.id) && p.exists() {
             match self.load_file(&p) {
@@ -270,13 +431,20 @@ impl Registry {
                 Err(_) => entry.changed_outside = true,
             }
         }
-        self.save_confirmed(entry)
+        self.hooks.at_read();
+        self.write(entry)
     }
 
-    /// Saves `entry` exactly as it is, marks included: the person has
-    /// looked at the app (`Sam::mark_reviewed`, the one caller outside
-    /// tests). Every other save goes through [`Registry::save`].
+    /// Saves `entry` exactly as it is, marks included, under the record
+    /// lock. Every save by SAM itself goes through the other ways; the
+    /// person's confirmation through [`Registry::update_confirmed`].
     pub fn save_confirmed(&self, entry: &mut AppEntry) -> Result<()> {
+        let _held = self.lock(&entry.id)?;
+        self.write(entry)
+    }
+
+    /// Writes `entry` as it is, with its checksum; the record lock is held.
+    fn write(&self, entry: &mut AppEntry) -> Result<()> {
         if !valid_id(&entry.id) {
             bail!(
                 "{}",
@@ -290,25 +458,103 @@ impl Registry {
         atomic_write(&self.paths.app_file(&entry.id), s.as_bytes())
     }
 
-    /// Changes the record of `id` as it is on disk now: reads it again,
-    /// applies `change` and saves it. For work that takes a while (an update
-    /// check, a start): saving the copy read at the beginning would undo a
-    /// change made meanwhile, for example a switch turned off in the window
-    /// (regression: the update check turned it on again). `None` when the
+    /// Changes the record of `id` as it is on disk now: under the record
+    /// lock, reads it again, applies `change` and saves it. For work that
+    /// takes a while (an update check, a start): saving the copy read at
+    /// the beginning would undo a change made meanwhile, for example a
+    /// switch turned off in the window (regression: the update check
+    /// turned it on again). `change` runs while the lock is held: it only
+    /// sets fields, it never waits or saves records. `None` when the
     /// record is gone.
     pub fn update(&self, id: &str, change: impl FnOnce(&mut AppEntry)) -> Result<Option<AppEntry>> {
+        self.try_update(id, |e| {
+            change(e);
+            Ok(())
+        })
+    }
+
+    /// [`Registry::update`] with a change that can fail: then nothing is
+    /// saved and the error is returned.
+    pub fn try_update(
+        &self,
+        id: &str,
+        change: impl FnOnce(&mut AppEntry) -> Result<()>,
+    ) -> Result<Option<AppEntry>> {
+        let _held = self.lock(id)?;
         let Some(mut fresh) = self.get(id)? else {
             return Ok(None);
         };
-        change(&mut fresh);
-        self.save(&mut fresh)?;
+        change(&mut fresh)?;
+        self.write_keeping_marks(&mut fresh)?;
         Ok(Some(fresh))
+    }
+
+    /// The person's confirmation that they looked at the app
+    /// (`Sam::mark_reviewed`, the one caller outside tests): like
+    /// [`Registry::try_update`], but the record is saved exactly as
+    /// `change` leaves it, so it may clear the "look at it first" marks.
+    /// `change` sees the record as it is under the lock, so it checks
+    /// there that the person saw what it confirms: a mark set just before
+    /// is never cleared unseen.
+    pub fn update_confirmed(
+        &self,
+        id: &str,
+        change: impl FnOnce(&mut AppEntry) -> Result<()>,
+    ) -> Result<Option<AppEntry>> {
+        let _held = self.lock(id)?;
+        let Some(mut fresh) = self.get(id)? else {
+            return Ok(None);
+        };
+        change(&mut fresh)?;
+        self.write(&mut fresh)?;
+        Ok(Some(fresh))
+    }
+
+    /// Saves what a writer changed on its copy `changed` of a record it
+    /// read as `read`: under the record lock, only the fields that differ
+    /// between the two are written onto the record as it is on disk now
+    /// ([`apply_changes`]); every other field keeps what others saved
+    /// meanwhile (before, a refresh or a profile change that
+    /// overlapped an "unpack again" or an update wrote back the whole copy
+    /// it had read and undid what that step saved). `changed` becomes the
+    /// record as saved. Nothing is saved when the record is gone (an app
+    /// removed meanwhile stays removed). Over a record that cannot be read,
+    /// as [`Registry::save`]. A "look at it first" mark set on `changed` is
+    /// always saved, also when `read` had it set already.
+    pub fn save_changes(&self, read: &AppEntry, changed: &mut AppEntry) -> Result<()> {
+        let _held = self.lock(&changed.id)?;
+        let p = self.paths.app_file(&changed.id);
+        if !valid_id(&changed.id) || !p.exists() {
+            return Ok(());
+        }
+        match self.load_file(&p) {
+            Ok(mut on_disk) => {
+                apply_changes(&mut on_disk, read, changed)?;
+                // A "look at it first" mark the writer's copy carries is
+                // saved even when the writer read it already set: an
+                // "unpack again" that sets it again for new content keeps
+                // it, also when the person confirmed the older content
+                // meanwhile (the same value in `read` and `changed` counts
+                // as unchanged, so that confirmation would otherwise clear
+                // the mark of content nobody saw). At worst SAM asks once
+                // more, as the save of the whole copy did before.
+                on_disk.changed_outside |= changed.changed_outside;
+                on_disk.content_changed_outside |= changed.content_changed_outside;
+                self.write_keeping_marks(&mut on_disk)?;
+                *changed = on_disk;
+                Ok(())
+            }
+            Err(_) => self.write_keeping_marks(changed),
+        }
     }
 
     pub fn remove(&self, id: &str) -> Result<bool> {
         if !valid_id(id) {
             return Ok(false);
         }
+        // Under the record lock: a change that read the record before
+        // would otherwise write it back after it is gone.
+        let _held = self.lock(id)?;
         let p = self.paths.app_file(id);
         match fs::remove_file(&p) {
             Ok(()) => Ok(true),
@@ -332,6 +578,49 @@ pub fn integrity_of(e: &AppEntry) -> Result<String> {
     }
     let digest = Sha256::digest(serde_json::to_vec(&v)?);
     Ok(digest.iter().map(|b| format!("{b:02x}")).collect())
+}
+
+/// Writes onto `on_disk` (a record as it is on disk) what a writer changed on
+/// its copy `changed` of the record it read as `read`, and nothing else:
+/// a field that is the same in `read` and `changed` keeps the value in
+/// `on_disk`. Fields inside a group (the settings, the unpacked copy) count one
+/// by one, so a switch changed in the window and the unpacked copy's
+/// details saved by an "unpack again" both stay; a list counts as one
+/// value. A group whose `kind` differs is one value too, so two kinds are
+/// never mixed. When the writer and another save both changed the same
+/// field or list, the writer's value wins. Used by
+/// [`Registry::save_changes`].
+pub fn apply_changes(on_disk: &mut AppEntry, read: &AppEntry, changed: &AppEntry) -> Result<()> {
+    fn merge(now: &mut serde_json::Value, read: &serde_json::Value, changed: &serde_json::Value) {
+        use serde_json::Value::Object;
+        match (now, read, changed) {
+            (Object(n), Object(r), Object(c)) if r.get("kind") == c.get("kind") => {
+                for (k, cv) in c {
+                    let rv = r.get(k);
+                    if rv == Some(cv) {
+                        continue;
+                    }
+                    if let (Some(rv), Some(nv)) = (rv, n.get_mut(k)) {
+                        merge(nv, rv, cv);
+                        continue;
+                    }
+                    n.insert(k.clone(), cv.clone());
+                }
+                for k in r.keys().filter(|k| !c.contains_key(*k)) {
+                    n.remove(k);
+                }
+            }
+            (n, _, c) => *n = c.clone(),
+        }
+    }
+    let mut v = serde_json::to_value(&*on_disk)?;
+    merge(
+        &mut v,
+        &serde_json::to_value(read)?,
+        &serde_json::to_value(changed)?,
+    );
+    *on_disk = serde_json::from_value(v)?;
+    Ok(())
 }
 
 /// Fields of an app's record that change by themselves, without anything
@@ -945,7 +1234,7 @@ mod tests {
 
     /// A copy of a record read before one of its "look at it first" marks
     /// was set, saved later, keeps the mark: a refresh or a profile change
-    /// that overlapped an "unpack again" no longer undoes it (review L3).
+    /// that overlapped an "unpack again" no longer undoes it.
     /// The same holds for a change made outside SAM after the copy was
     /// read. Only a confirming save clears the marks.
     #[test]
@@ -1133,6 +1422,320 @@ mod tests {
         );
         assert!(!back.changed_outside);
         assert!(reg.update("appimage-gone", |_| {}).unwrap().is_none());
+    }
+
+    /// Two SAM processes save the same app at once (here two threads with
+    /// their own handles, so each takes the record lock as a process
+    /// does): one sets a "look at it first" mark while the other saves a
+    /// copy it read before. The other has already read the record on disk
+    /// when the mark is set; the mark survives, because setting it waits
+    /// for the record lock until that save is written.
+    #[test]
+    fn a_mark_set_during_another_save_survives() {
+        use std::sync::mpsc;
+        let limit = Duration::from_secs(30);
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = Paths::rooted(tmp.path());
+        let id = "appimage-x-6";
+        let mut e = AppEntry {
+            id: id.into(),
+            name: "X".into(),
+            ..Default::default()
+        };
+        Registry::new(&paths).save(&mut e).unwrap();
+        let older = Registry::new(&paths).get(id).unwrap().unwrap();
+        // Once the first writer has read the record on disk, the second
+        // starts; the first goes on when the second waits or is done.
+        let (go, start) = mpsc::channel::<()>();
+        let (said, heard) = mpsc::channel::<&str>();
+        let mut first = Registry::new(&paths);
+        first.hooks.read = Some(Box::new(move || {
+            go.send(()).unwrap();
+            heard
+                .recv_timeout(limit)
+                .expect("the second writer neither waited nor finished");
+        }));
+        let mut second = Registry::new(&paths);
+        let waits = said.clone();
+        second.hooks.waiting = Some(Box::new(move || {
+            let _ = waits.send("waits");
+        }));
+        let marker = std::thread::spawn(move || {
+            start
+                .recv_timeout(limit)
+                .expect("the first writer never read the record");
+            second
+                .update(id, |e| e.content_changed_outside = true)
+                .unwrap();
+            let _ = said.send("done");
+        });
+        let mut late = AppEntry {
+            name: "Y".into(),
+            ..older
+        };
+        first.save(&mut late).unwrap();
+        marker.join().unwrap();
+        let back = Registry::new(&paths).get(id).unwrap().unwrap();
+        assert!(
+            back.content_changed_outside,
+            "the mark set during the other save was lost"
+        );
+        assert_eq!(back.name, "Y", "and the other save's change was kept");
+    }
+
+    /// A save while another SAM process holds the record lock waits, then
+    /// succeeds once it is released; nothing is written meanwhile.
+    #[test]
+    fn a_save_waits_while_the_record_lock_is_held_and_then_succeeds() {
+        use std::sync::mpsc;
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = Paths::rooted(tmp.path());
+        let id = "appimage-x-7";
+        let mut e = AppEntry {
+            id: id.into(),
+            name: "X".into(),
+            ..Default::default()
+        };
+        Registry::new(&paths).save(&mut e).unwrap();
+        let held = Registry::new(&paths).lock(id).unwrap();
+        let (said, heard) = mpsc::channel::<()>();
+        let mut waiting = Registry::new(&paths);
+        waiting.hooks.waiting = Some(Box::new(move || {
+            let _ = said.send(());
+        }));
+        let saver = std::thread::spawn(move || waiting.update(id, |e| e.name = "Y".into()));
+        heard
+            .recv_timeout(Duration::from_secs(30))
+            .expect("the save did not wait for the record lock");
+        assert_eq!(
+            Registry::new(&paths).get(id).unwrap().unwrap().name,
+            "X",
+            "nothing is written while the lock is held"
+        );
+        drop(held);
+        let saved = saver.join().unwrap().unwrap().unwrap();
+        assert_eq!(saved.name, "Y");
+        assert_eq!(Registry::new(&paths).get(id).unwrap().unwrap().name, "Y");
+    }
+
+    /// Confirming that the person looked at an app checks what the page
+    /// showed on the record as it is under the record lock: a "look at it
+    /// first" mark that another SAM process saves while the confirmation
+    /// waits for the lock makes the confirmation fail, and the mark stays.
+    /// Checked before the lock was taken, the confirmation would clear a
+    /// mark nobody saw.
+    #[test]
+    fn a_confirmation_never_clears_a_mark_saved_while_it_waits() {
+        use std::sync::mpsc;
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = Paths::rooted(tmp.path());
+        let id = "appimage-x-11";
+        let mut e = AppEntry {
+            id: id.into(),
+            name: "X".into(),
+            ..Default::default()
+        };
+        Registry::new(&paths).save(&mut e).unwrap();
+        // What the person saw: the record without the mark.
+        let seen = review_fingerprint(&Registry::new(&paths).get(id).unwrap().unwrap()).unwrap();
+        let held = Registry::new(&paths).lock(id).unwrap();
+        let (said, heard) = mpsc::channel::<()>();
+        let mut confirming = Registry::new(&paths);
+        confirming.hooks.waiting = Some(Box::new(move || {
+            let _ = said.send(());
+        }));
+        let confirm = std::thread::spawn(move || {
+            confirming.update_confirmed(id, |f| {
+                if review_fingerprint(f)? != seen {
+                    bail!("the page is out of date");
+                }
+                f.content_changed_outside = false;
+                f.changed_outside = false;
+                Ok(())
+            })
+        });
+        heard
+            .recv_timeout(Duration::from_secs(30))
+            .expect("the confirmation did not wait for the record lock");
+        // Another process, holding the lock, saves the mark.
+        let mut marked = Registry::new(&paths).get(id).unwrap().unwrap();
+        marked.content_changed_outside = true;
+        Registry::new(&paths).write(&mut marked).unwrap();
+        drop(held);
+        let r = confirm.join().unwrap();
+        assert!(r.is_err(), "a confirmation of an older page went ahead");
+        assert!(
+            Registry::new(&paths)
+                .get(id)
+                .unwrap()
+                .unwrap()
+                .content_changed_outside,
+            "the mark saved meanwhile was cleared unseen"
+        );
+    }
+
+    /// When the record lock stays held longer than a save waits, every way
+    /// of writing a record stops with an error that says so and names the
+    /// app by its name, and the record stays as it was: no save ever goes
+    /// ahead without the lock.
+    #[test]
+    fn a_record_lock_held_too_long_stops_the_save_with_an_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = Paths::rooted(tmp.path());
+        let id = "appimage-x-8";
+        let mut e = AppEntry {
+            id: id.into(),
+            name: "Lock Tester".into(),
+            ..Default::default()
+        };
+        Registry::new(&paths).save(&mut e).unwrap();
+        let read = Registry::new(&paths).get(id).unwrap().unwrap();
+        let held = Registry::new(&paths).lock(id).unwrap();
+        let mut reg = Registry::new(&paths);
+        reg.lock_wait = Duration::from_millis(200);
+        let mut changed = AppEntry {
+            name: "Y".into(),
+            ..read.clone()
+        };
+        let results = [
+            reg.update(id, |e| e.name = "Y".into()).map(|_| ()),
+            reg.try_update(id, |_| Ok(())).map(|_| ()),
+            reg.update_confirmed(id, |_| Ok(())).map(|_| ()),
+            reg.save(&mut changed.clone()),
+            reg.save_confirmed(&mut changed.clone()),
+            reg.save_changes(&read, &mut changed),
+            reg.remove(id).map(|_| ()),
+        ];
+        for (n, r) in results.into_iter().enumerate() {
+            let Err(err) = r else {
+                panic!("way {n} saved without the lock");
+            };
+            let err = format!("{err:#}");
+            // It names the app by its name, as every message to a person
+            // does, and promises nothing about work done before the save.
+            assert!(
+                err.contains("SAM could not save the record of Lock Tester")
+                    && err.contains("another SAM process"),
+                "way {n}: {err}"
+            );
+            assert!(!err.contains(id), "way {n} names the internal id: {err}");
+            assert!(!err.contains("changed"), "way {n}: {err}");
+        }
+        let back = Registry::new(&paths).get(id).unwrap().unwrap();
+        assert_eq!(back.name, "Lock Tester", "the record stayed as it was");
+        drop(held);
+        reg.update(id, |e| e.name = "Y".into()).unwrap();
+        assert_eq!(Registry::new(&paths).get(id).unwrap().unwrap().name, "Y");
+    }
+
+    /// A writer that worked on a copy read a while ago saves only what it
+    /// changed: what others saved meanwhile stays, an "unpack again"'s new
+    /// unpacked copy, its marks and notices and a switch changed in the
+    /// window included (before, the whole copy was written back). An
+    /// app removed meanwhile stays removed.
+    #[test]
+    fn a_save_of_changes_keeps_what_others_saved_meanwhile() {
+        use sam_core::permissions::NetworkMode;
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = Paths::rooted(tmp.path());
+        let reg = Registry::new(&paths);
+        let id = "appimage-x-9";
+        let mut e = AppEntry {
+            id: id.into(),
+            name: "X".into(),
+            extraction: Some(Default::default()),
+            ..Default::default()
+        };
+        e.profile.permissions.network.mode = NetworkMode::Full;
+        reg.save(&mut e).unwrap();
+        let read = reg.get(id).unwrap().unwrap();
+        // Saved by others while this writer worked on its copy.
+        reg.update(id, |f| {
+            f.content_changed_outside = true;
+            f.signing_key_changed = Some("old key".into());
+            f.extraction.as_mut().unwrap().appdir = "/unpacked/again".into();
+            f.profile.permissions.network.mode = NetworkMode::None;
+        })
+        .unwrap();
+        let mut mine = read.clone();
+        mine.profile.args = vec!["--mine".into()];
+        mine.last_error = Some("checked".into());
+        reg.save_changes(&read, &mut mine).unwrap();
+        let back = reg.get(id).unwrap().unwrap();
+        assert!(back.content_changed_outside, "the mark stays");
+        assert_eq!(
+            back.signing_key_changed.as_deref(),
+            Some("old key"),
+            "the notice of a changed signing key stays"
+        );
+        assert_eq!(
+            back.extraction.as_ref().unwrap().appdir,
+            Path::new("/unpacked/again"),
+            "the new unpacked copy stays"
+        );
+        assert_eq!(
+            back.profile.permissions.network.mode,
+            NetworkMode::None,
+            "the switch changed meanwhile stays"
+        );
+        assert_eq!(back.profile.args, ["--mine"], "the writer's own change");
+        assert_eq!(back.last_error.as_deref(), Some("checked"));
+        assert_eq!(mine.signing_key_changed, back.signing_key_changed);
+        assert!(!back.changed_outside, "nothing looks changed outside SAM");
+        // Removed meanwhile: not written back.
+        reg.remove(id).unwrap();
+        reg.save_changes(&read, &mut mine).unwrap();
+        assert!(!reg.exists(id), "a removed app stays removed");
+    }
+
+    /// An "unpack again" of new content that read the record with the
+    /// "look at it first" marks already set, and sets them again, keeps
+    /// them when the person confirms the older content while it unpacks:
+    /// the record never names content nobody looked at without the marks.
+    #[test]
+    fn a_mark_set_again_for_new_content_survives_a_confirmation_meanwhile() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = Paths::rooted(tmp.path());
+        let reg = Registry::new(&paths);
+        let id = "appimage-x-10";
+        let mut e = AppEntry {
+            id: id.into(),
+            name: "X".into(),
+            extraction: Some(Default::default()),
+            ..Default::default()
+        };
+        e.source.sha256 = "first swapped file".into();
+        e.content_changed_outside = true;
+        e.changed_outside = true;
+        reg.save_confirmed(&mut e).unwrap();
+        let read = reg.get(id).unwrap().unwrap();
+        assert!(read.content_changed_outside && read.changed_outside);
+        // The unpack of a second swapped file sets both marks again.
+        let mut mine = read.clone();
+        mine.source.sha256 = "second swapped file".into();
+        mine.extraction.as_mut().unwrap().appdir = "/unpacked/second".into();
+        mine.content_changed_outside = true;
+        mine.changed_outside = true;
+        // Meanwhile the person confirms the page of the first file.
+        reg.update_confirmed(id, |f| {
+            f.content_changed_outside = false;
+            f.changed_outside = false;
+            Ok(())
+        })
+        .unwrap();
+        reg.save_changes(&read, &mut mine).unwrap();
+        let back = reg.get(id).unwrap().unwrap();
+        assert_eq!(back.source.sha256, "second swapped file");
+        assert_eq!(
+            back.extraction.as_ref().unwrap().appdir,
+            Path::new("/unpacked/second")
+        );
+        assert!(
+            back.content_changed_outside,
+            "the new content still asks to be looked at first"
+        );
+        assert!(back.changed_outside, "the settings mark stays too");
+        assert!(mine.content_changed_outside && mine.changed_outside);
     }
 
     /// A preset is always stored inside the presets folder, whatever its name:

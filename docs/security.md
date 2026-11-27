@@ -1815,6 +1815,25 @@ was easily misread.
   `network.app_ports` to restrict it further.
 - **Hostname:** the sandbox keeps the computer's hostname, because changing
   it is blocked on some hardened systems.
+- **App records and an older SAM.** SAM's processes (the window, the
+  `sam-jail` commands, a start that stores its result) save an app's
+  record under one short record lock. Unpacking again, a refresh, a new
+  detection, an update step and a change of the settings save only the
+  fields they changed: a save keeps what others saved in other fields; for
+  the same field the later save wins (a list, such as the granted folders,
+  counts as one field). A change that replaces the whole set of settings
+  (a preset, a reset, the compatibility mode, an undo of the repair steps,
+  a whole set you confirm) saves that set as one value. A "look at it
+  first" mark is never cleared by such a save. A start that stores its
+  result writes the app's state and last error as the start read or set
+  them, so a notice another process saved there while the app ran can be
+  replaced. When a save waits more than 10 seconds for the lock, it stops
+  with an error and saves nothing; work done before it stays (after an
+  "unpack again", the newly unpacked copy, which the record then does not
+  describe). A SAM version from before this lock does not take it: while
+  it runs at the same time as this one (an old window left open after an
+  update), one of its saves can still undo a change this SAM saved. Close
+  old SAM windows after updating SAM.
 
 ---
 
