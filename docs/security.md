@@ -779,7 +779,15 @@ How these stay protected with the home writable:
   - a place SAM shows on its own never leads to the home or a folder above
     it, a key or credential store, a protected place or SAM's own folders.
 
-  Such a place is not shown, and the launch log says why. The link itself
+  Such a place is not shown, and the launch log says why: what the rule
+  weighs (what the home and the user folders show, for a user folder the
+  home alone), never that the place is hidden, since other extra folders,
+  opened folders and the system's own places may still show it; the app
+  still sees what its other folders show there. Your fonts or theme files
+  stay left out after you list the place their link leads to as an extra
+  folder; the app then reaches that place through the link wherever its
+  other folders show the link
+  (`a_left_out_note_never_says_the_place_is_hidden`). The link itself
   may still be visible through the home or a user folder, so the sandbox
   check expects an extra or user folder left out this way as the other
   grants show the place the link leads to: not at all where none of them

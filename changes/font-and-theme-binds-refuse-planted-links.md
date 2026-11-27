@@ -49,6 +49,13 @@
 - For a writable extra or user folder left out this way, the launch log
   says that SAM leaves it out as a writable folder: with a read-only home
   the app may still read the place it leads to.
+- The launch log no longer says that a place left out this way is one the
+  app is not shown otherwise. It says that the home and the user folders
+  do not show it, and that the app still sees what its other folders show
+  there. If you list the place a link in your fonts or theme files leads
+  to as an extra folder, SAM still leaves out the fonts or theme place
+  itself, and the app reaches that place through the link wherever its
+  other folders show the link.
 - SAM judges such a link by the permissions of the start at hand. A link
   the app made in an earlier start, while it had more write access (the
   whole home or a folder writable), is still followed after you narrow

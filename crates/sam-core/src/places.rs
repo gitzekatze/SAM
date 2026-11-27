@@ -1030,7 +1030,13 @@ pub enum LeftOutPlace {
 /// says the bind was a writable one: for it a link is followed only into
 /// what the home and the user folders show writable, so the place it
 /// leads to may still be shown read-only (a read-only home), and the note
-/// must not say it is hidden.
+/// must not say it is hidden. No note says the place is hidden: the rule
+/// weighs only what the home and the user folders show (for a user folder
+/// the home alone), while other extra folders, opened folders and the
+/// system's own places may still show it. A place of the home SAM shows
+/// on its own (`kind` [`LeftOutPlace::Own`]) stays left out even once its
+/// target is listed as an extra folder; the app then reaches that place
+/// through the link wherever its other folders show the link.
 pub fn left_out_note(shown: &str, why: &LeftOut, kind: LeftOutPlace, write: bool) -> String {
     let t = crate::util::tildify;
     match why {
@@ -1046,15 +1052,15 @@ pub fn left_out_note(shown: &str, why: &LeftOut, kind: LeftOutPlace, write: bool
                     args,
                 ),
                 LeftOutPlace::Own => crate::i18n::trf(
-                    "SAM does not show {path} to this app because the way there leads through the link {link}, which lies in a folder the app can change, to a place the app is not shown otherwise: the app may have made that link. If you made it yourself, add the place it leads to as an extra folder.",
+                    "SAM does not show {path} to this app because the way there leads through the link {link}, which lies in a folder the app can change, to a place the home and the user folders do not show: the app may have made that link. The app still sees what its other folders show there. If you made the link yourself, add the place it leads to as an extra folder: SAM still leaves out {path} then, but where the app's other folders show the link, the app reaches that place through it.",
                     args,
                 ),
                 LeftOutPlace::Extra => crate::i18n::trf(
-                    "SAM does not show {path} to this app because the way there leads through the link {link}, which lies in a folder the app can change, to a place the app is not shown otherwise: the app may have made that link. If you made it yourself, list the place it leads to as an extra folder instead of this one.",
+                    "SAM does not show {path} to this app because the way there leads through the link {link}, which lies in a folder the app can change, to a place the home and the user folders do not show: the app may have made that link. The app still sees what its other folders show there. If you made the link yourself, list the place it leads to as an extra folder instead of this one.",
                     args,
                 ),
                 LeftOutPlace::UserFolder => crate::i18n::trf(
-                    "SAM does not show {path} to this app because the way there leads through the link {link}, which lies in a folder the app can change, to a place the app is not shown otherwise: the app may have made that link. If you made it yourself, set this user folder to the place it leads to in ~/.config/user-dirs.dirs.",
+                    "SAM does not show {path} to this app because the way there leads through the link {link}, which lies in a folder the app can change, to a place the home does not show: the app may have made that link. The app still sees what its other folders show there. If you made the link yourself, set this user folder to the place it leads to in ~/.config/user-dirs.dirs.",
                     args,
                 ),
             }
@@ -1753,6 +1759,105 @@ mod tests {
                 && note.contains("where programs outside the sandbox listen"),
             "{note}"
         );
+    }
+
+    /// A left-out note never says the place is hidden, since the rule
+    /// weighs only what the home and the user folders show (for a user
+    /// folder the home alone). With Documents writable in a private home,
+    /// `~/Documents/Data3` a link to `data3` and `data3` listed too, the
+    /// link is left out while `data3` is shown read-only; `~/.fonts` in a
+    /// writable home stays left out after its target is listed as the note
+    /// advises, and the app reaches that place through the home's link; a
+    /// read-only user folder behind a link in a writable folder is left
+    /// out while its place may be listed. Each note says what the rule
+    /// weighs and that the app still sees what its other folders show.
+    #[test]
+    fn a_left_out_note_never_says_the_place_is_hidden() {
+        use crate::permissions::Access;
+        let t = scratch();
+        let base = std::fs::canonicalize(t.path()).unwrap();
+        let home = base.join("home/u");
+        let data3 = base.join("data3");
+        let fonts_dir = base.join("fonts");
+        for d in [
+            home.join("Documents"),
+            home.join("Sync"),
+            data3.clone(),
+            fonts_dir.clone(),
+        ] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        let mut host = HostInfo {
+            home: home.clone(),
+            ..Default::default()
+        };
+        host.xdg_dirs
+            .insert("documents".into(), home.join("Documents"));
+        let st = |p: &Path| p.display().to_string();
+        let told = |note: &str, says: &str| {
+            assert!(
+                note.contains(says)
+                    && note.contains("may have made that link")
+                    && note.contains("The app still sees what its other folders show there.")
+                    && !note.contains("not shown otherwise"),
+                "{note}"
+            );
+        };
+        // An extra folder whose place is listed as well.
+        let link = home.join("Documents/Data3");
+        std::os::unix::fs::symlink(&data3, &link).unwrap();
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.documents = Access::Rw;
+        p.filesystem.custom_read = vec![st(&link), st(&data3)];
+        let why = linked_place_left_out(&p, &host, &link, false, &none());
+        assert_eq!(why, Some(LeftOut::Link(link.clone())));
+        let note = left_out_note(
+            "~/Documents/Data3",
+            why.as_ref().unwrap(),
+            LeftOutPlace::Extra,
+            false,
+        );
+        told(
+            &note,
+            "to a place the home and the user folders do not show",
+        );
+        // A place SAM shows on its own, its target listed as advised.
+        let fonts = home.join(".fonts");
+        std::os::unix::fs::symlink(&fonts_dir, &fonts).unwrap();
+        let mut whole = PermissionSet::strict_gui();
+        whole.filesystem.home = true;
+        whole.filesystem.home_access = Access::Rw;
+        whole.filesystem.custom_read = vec![st(&fonts_dir)];
+        let guarded = guarded_places_everywhere(&home, &[]);
+        let why = own_place_left_out(&whole, &host, &fonts, &guarded, &none());
+        assert_eq!(why, Some(LeftOut::Link(fonts.clone())));
+        let note = left_out_note("~/.fonts", why.as_ref().unwrap(), LeftOutPlace::Own, false);
+        told(
+            &note,
+            "to a place the home and the user folders do not show",
+        );
+        assert!(
+            note.contains("SAM still leaves out ~/.fonts then")
+                && note.contains("the app reaches that place through it"),
+            "{note}"
+        );
+        // A read-only user folder behind a link in a writable folder.
+        let docs = home.join("Sync/Documents");
+        std::os::unix::fs::symlink(&data3, &docs).unwrap();
+        let mut synced = host.clone();
+        synced.xdg_dirs.insert("documents".into(), docs.clone());
+        let mut q = PermissionSet::strict_gui();
+        q.filesystem.documents = Access::Ro;
+        q.filesystem.custom_write = vec![st(&home.join("Sync"))];
+        let why = user_folder_left_out(&q, &synced, "documents", &none());
+        assert_eq!(why, Some(LeftOut::Link(docs.clone())));
+        let note = left_out_note(
+            "~/Sync/Documents",
+            why.as_ref().unwrap(),
+            LeftOutPlace::UserFolder,
+            false,
+        );
+        told(&note, "to a place the home does not show");
     }
 
     /// Where the way ends is not all: a link in `/tmp` made outside the
