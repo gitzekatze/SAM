@@ -42,14 +42,17 @@ build() {
   export RUSTUP_TOOLCHAIN=stable CARGO_TARGET_DIR=target
   _rustflags
   cargo build --frozen --offline --release -p sam-jail-cli -p sam-gtk
+  # The programs just built must ignore SAM's developer variables: Cargo
+  # settings from outside the source could have turned them on. This runs
+  # here and not in check(), because builders often skip check()
+  # (makepkg --nocheck, BUILDENV=(!check)); it needs none of the test
+  # dependencies.
+  sh scripts/check-release-build.sh target/release/sam-jail
   make mo
 }
 
 check() {
   cd "sam-$pkgver"
-  # The programs build() made must ignore SAM's developer variables: Cargo
-  # settings from outside the source could have turned them on.
-  sh scripts/check-release-build.sh target/release/sam-jail
   export RUSTUP_TOOLCHAIN=stable CARGO_TARGET_DIR=target
   # SAM's tests need a developer build, which rustc makes only at
   # optimisation level 0 unless debug assertions are set explicitly. If

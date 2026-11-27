@@ -12,8 +12,9 @@
   `sam-jail` ignores these variables, and stops if it follows them: the
   AppImage build (`scripts/make-appimage.sh`, which the release workflow
   runs through `make appimage`), `scripts/release.sh`,
-  `scripts/sign-release.sh` before the release key is used, and the test
-  steps of the Arch and Fedora recipes. Cargo settings in the builder's
+  `scripts/sign-release.sh` before the release key is used, and the build
+  steps of the Arch and Fedora recipes (`build()` and `%build`, not their
+  test steps, which builders often skip). Cargo settings in the builder's
   environment or in a Cargo configuration file outside the source could
   otherwise turn SAM's developer variables on in a release build. The
   check starts the program with an empty environment and every folder in

@@ -695,8 +695,9 @@ fn the_release_stand_in_answers_like_the_real_program() {
 /// before the program is shipped, installed or used: the AppImage build (its
 /// release tools and the shipped sam-jail), which CI's release workflow runs
 /// through `make appimage`, the signing script (before the release key is
-/// used), the release script and the test steps of the Arch and Fedora
-/// recipes. Exactly these: the check starts sam-jail, and SAM's own programs
+/// used), the release script and the build steps of the Arch and Fedora
+/// recipes (build() and %build, not their test steps, which builders often
+/// skip). Exactly these: the check starts sam-jail, and SAM's own programs
 /// never run on the owner's desktop, so no target or script a developer runs
 /// there to build for local use (the Makefile's `cli` target above all) runs
 /// it.
@@ -730,13 +731,21 @@ fn release_build_paths_check_the_programs_they_build() {
             "cargo build --release --locked -p sam-jail-cli",
             "target/release/sam-jail man",
         ),
+        // The build steps, right after the release build: builders often
+        // skip the test steps (makepkg --nocheck, rpmbuild --nocheck), and
+        // the check would be skipped with them.
         (
             PKGBUILD,
             "target/release/sam-jail",
+            "cargo build --frozen --offline --release ",
             "check() {",
-            "cargo test ",
         ),
-        (SPEC, "target/release/sam-jail", "%check", "cargo test "),
+        (
+            SPEC,
+            "target/release/sam-jail",
+            "cargo build --frozen --offline --release ",
+            "%install",
+        ),
     ];
     for (file, program, after, before) in cases {
         let raw = fs::read_to_string(root().join(file)).unwrap_or_else(|e| panic!("{file}: {e}"));

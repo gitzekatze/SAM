@@ -120,8 +120,8 @@ assertions turned on by Cargo settings from outside the repository);
 `scripts/make-appimage.sh` (which the release workflow runs through
 `make appimage`) runs the same check on its release tools and on the
 `sam-jail` that goes into the AppImage, `scripts/release.sh` on the
-`sam-jail` it builds for the man pages, and the package recipes' test steps
-on the programs they build. The Makefile's `cli` target does not run it,
+`sam-jail` it builds for the man pages, and the package recipes' build steps
+(not their test steps, which builders can skip) on the programs they build. The Makefile's `cli` target does not run it,
 because a developer builds with it for local use and the check starts the
 built program ([Packaging](packaging.md)).
 

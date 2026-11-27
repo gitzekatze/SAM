@@ -36,8 +36,12 @@ variables, and `release_builds_never_turn_on_debug_assertions` in
 Makefile, a release script or a recipe sets it outside these test steps.
 Cargo also takes profile settings from the builder's environment and from
 Cargo configuration files outside the source, which no test of the source
-can see. So the test steps of both recipes first run
-`scripts/check-release-build.sh target/release/sam-jail`: it starts the
+can see. So the build steps of both recipes (`build()` and `%build`) run
+`scripts/check-release-build.sh target/release/sam-jail` right after the
+release build. They run it there and not in the test steps, because
+builders often skip those (`makepkg --nocheck`, `BUILDENV=(!check)`,
+`rpmbuild --nocheck`, `mock --nocheck`) and the check would be skipped with
+them; it needs none of the test dependencies. It starts the
 built `sam-jail` with SAM's folder variables pointing at a temporary folder
 and fails the package build if the program follows them. The program
 starts with an empty environment inside that folder, with `HOME`, every XDG
