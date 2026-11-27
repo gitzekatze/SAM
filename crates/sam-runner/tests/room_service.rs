@@ -131,6 +131,20 @@ say cwd_not_shown "$(cd "$HOME" && rv room -- /usr/bin/sh -c 'pwd -P')"
 say fds_most "$(rv python3 -c "$KEEP_FDS" 253 bwrap --ro-bind /usr /usr $SYS -- /usr/bin/echo ok)"
 # shellcheck disable=SC2086
 say fds_over "$(rv python3 -c "$KEEP_FDS" 254 bwrap --ro-bind /usr /usr $SYS -- /usr/bin/echo ok)"
+# A connection numbered at or above the limit (1024, room_rules::FD_NUMBER_LIMIT)
+# is refused, and the stand-in's error names the number and the limit
+# (its error alone is kept here). A computer whose hard limit leaves no
+# room for number 1500 gives "no-room-for-1500", which fails the test.
+# shellcheck disable=SC2086
+say fd_high "$(python3 -c 'import os, resource, sys
+soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+if hard != resource.RLIM_INFINITY and hard <= 1500:
+    print("no-room-for-1500", file=sys.stderr)
+    sys.exit(1)
+if soft != resource.RLIM_INFINITY and soft <= 1500:
+    resource.setrlimit(resource.RLIMIT_NOFILE, (1501, hard))
+os.dup2(os.open("/dev/null", os.O_RDONLY), 1500)
+os.execvp(sys.argv[1], sys.argv[1:])' bwrap --ro-bind /usr /usr $SYS -- /usr/bin/echo ok 2>&1 >/dev/null)"
 # A name found on PATH (the default /bin:/usr/bin without one).
 say on_path "$(rv room --setenv PATH /usr/bin -- echo ok)"
 say default_path "$(rv room --clearenv -- echo ok)"
@@ -185,6 +199,18 @@ say loader_layout done
 say trap_link "$(rv bwrap --symlink ../.sam-room /usr/lib --ro-bind / / -- /usr/bin/echo ok)"
 say trap_link_later "$(rv bwrap --symlink /tmp /usr --ro-bind / / -- /usr/bin/echo ok)"
 say trap_link_name "$(rv bwrap --symlink .sam-room /usr --ro-bind / / -- /usr/bin/echo ok)"
+# A link of the app's that a room asking for everything has too (a system
+# folder that is a link here, as SAM copies it from the computer): nothing
+# of the room's own is made through it; beside it, it is.
+L=""
+for d in /lib /lib64 /bin /sbin; do if [ -L "$d" ]; then L="$d"; break; fi; done
+say app_link_dir "$(if [ -n "$L" ]; then rv bwrap --ro-bind / / --dir "$L/sam-room-through-link" -- /usr/bin/echo ok; else echo no-system-link; fi)"
+say app_link_beside "$(rv bwrap --ro-bind / / --dir /sam-room-beside-link -- /usr/bin/echo ok)"
+# The room's own /proc is mounted while Bubblewrap builds the room: its
+# /proc/self/root leads to the build stage, where the computer's root is
+# at /oldroot. Nothing of the room is made through it (this folder would
+# be made in the computer's home, outside the app).
+say proc_link_dir "$(rv room --proc /proc --dir "/proc/self/root/oldroot$HOME/sam-room-through-proc" -- /usr/bin/echo ok)"
 say moved_folder "$(rv room --ro-bind /usr /elsewhere -- /usr/bin/echo ok)"
 exec 7<"$HOME"
 say folder_by_handle "$(rv room --bind-fd 7 "$HOME" -- /usr/bin/echo ok)"
@@ -1223,6 +1249,17 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
             "works: the program held {program_fds} open connections, not at least 12"
         ));
     }
+    // The refusal of a high-numbered connection names the number and the
+    // limit, not a reason that names nothing.
+    let fd_high = c.get("fd_high").map_or("", String::as_str);
+    if !(fd_high.contains("passes connection 1500")
+        && fd_high.contains("numbered below 1024")
+        && fd_high.contains("SAM's Room service"))
+    {
+        failures.push(format!(
+            "works: fd_high: the refusal of connection 1500 does not name the number and the limit ({fd_high:?})"
+        ));
+    }
     if c.get("standin_is_helper").map(String::as_str) != Some("helper") {
         failures.push(format!(
             "works: bwrap on the app's PATH is not SAM's helper itself ({:?})",
@@ -1333,6 +1370,9 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
             ("trap_link", "refused"),
             ("trap_link_later", "refused"),
             ("trap_link_name", "refused"),
+            ("app_link_dir", "refused"),
+            ("app_link_beside", "ok"),
+            ("proc_link_dir", "refused"),
         ];
         if abstract_scoped {
             want.push(("abstract_room", "blocked"));
@@ -1405,6 +1445,34 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
                     "{name}: {trap}: a link of the room's own as a trap was not refused by Room service's rule ({words:?})"
                 ));
             }
+        }
+        // Nothing of the room's own through a link of the app's it has too:
+        // refused by Room service's rule, not left to Bubblewrap (which
+        // fails here only because the link leads into a read-only place).
+        if !log.lines().any(|l| {
+            l.contains("sam-room: refused")
+                && l.contains("sam-room-through-link")
+                && l.contains("a link of the app's that the room has too")
+        }) {
+            failures.push(format!(
+                "{name}: app_link_dir: a new folder behind a link of the app's in the room was not refused by Room service's rule"
+            ));
+        }
+        // Nothing of the room's own through the links of its own /proc:
+        // refused by Room service's rule, and nothing made on the computer.
+        if !log.lines().any(|l| {
+            l.contains("sam-room: refused")
+                && l.contains("sam-room-through-proc")
+                && l.contains("a /proc or message queue file system of the room's own")
+        }) {
+            failures.push(format!(
+                "{name}: proc_link_dir: a new folder through the room's own /proc was not refused by Room service's rule"
+            ));
+        }
+        if w.home.join("sam-room-through-proc").exists() {
+            failures.push(format!(
+                "{name}: proc_link_dir: a room made a folder in the computer's home through its own /proc"
+            ));
         }
         // The room whose own filter refuses every write was built and
         // confirmed: SAM's helper reports before loading that filter.

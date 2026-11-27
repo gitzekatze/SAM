@@ -12,8 +12,11 @@
 //!   are named by their floor-plan entry, never by a path at room time; a
 //!   path the request names below one is opened without following links.
 //! - The room's own new places (folders, links, file systems) only in its
-//!   own space, never inside a place shown from the app; SAM's own mounts
-//!   come first, at a place no request may touch.
+//!   own space, never inside a place shown from the app, nor at or behind a
+//!   link of the room's or one of the app's it has too, nor inside a /proc
+//!   (or message queue file system) of the room's own, whose links lead
+//!   out of the room while Bubblewrap builds it; SAM's own mounts come
+//!   first, at a place no request may touch.
 //! - Every restriction the request asks for (its Bubblewrap arguments) is
 //!   kept; filters the program put on itself do not follow it into a room
 //!   built from outside, which gets SAM's layers instead. An option the rules do
@@ -35,6 +38,11 @@ pub const MAX_OPS: usize = 256;
 /// message (SCM_MAX_FD). Real Bubblewrap passes on every open connection,
 /// and programs started from large apps (Electron) hold many.
 pub const MAX_FDS: usize = 253;
+/// The numbers a passed connection may have: below this one (the usual
+/// first limit of open connections a program gets). No program is known
+/// that hands a room one numbered higher; a refusal names the number and
+/// this limit, so one that does is easy to tell.
+pub const FD_NUMBER_LIMIT: i32 = 1024;
 pub const MAX_ARGS: usize = 256;
 pub const MAX_TEXT: usize = 4096;
 
@@ -235,13 +243,7 @@ pub fn read_request(body: &[u8]) -> Result<Request, String> {
     if r.command.is_empty() || r.command.len() > MAX_ARGS {
         return Err("the request has no command, or too long a one".into());
     }
-    let mut seen = std::collections::BTreeSet::new();
-    if r.fds
-        .iter()
-        .any(|f| !(0..1024).contains(f) || !seen.insert(*f))
-    {
-        return Err("the request's connection numbers are not valid".into());
-    }
+    check_fd_numbers(&r.fds)?;
     let texts = r
         .ops
         .iter()
@@ -269,6 +271,33 @@ pub fn read_request(body: &[u8]) -> Result<Request, String> {
         return Err("the request's folder is not a plain absolute path".into());
     }
     Ok(r)
+}
+
+/// The numbers of the passed connections: each below `FD_NUMBER_LIMIT`,
+/// none negative, none twice. The refusal says which number is wrong and
+/// why (the stand-in prints it as Bubblewrap's error), so a program that
+/// holds a high-numbered connection learns what to change instead of
+/// getting a reason that names nothing.
+fn check_fd_numbers(fds: &[i32]) -> Result<(), String> {
+    let mut seen = std::collections::BTreeSet::new();
+    for &f in fds {
+        if f < 0 {
+            return Err(format!(
+                "the request names connection {f}, and a connection number is never negative"
+            ));
+        }
+        if f >= FD_NUMBER_LIMIT {
+            return Err(format!(
+                "the program passes connection {f}, but SAM's Room service accepts only \
+                 connections numbered below {FD_NUMBER_LIMIT}; close it or move it to a \
+                 lower number before starting bwrap"
+            ));
+        }
+        if !seen.insert(f) {
+            return Err(format!("the request names connection {f} twice"));
+        }
+    }
+    Ok(())
 }
 
 /// An absolute path made only of plain names: no `.`, `..`, empty parts or
@@ -609,6 +638,29 @@ pub struct AppFacts {
 /// the app has such a /dev.
 const DEVFS_NODES: &[&str] = &["null", "zero", "full", "random", "urandom", "tty"];
 
+/// The links every /dev has (scripts use /dev/stdout), each with its
+/// target: SAM makes them itself in a /dev asked for without devices.
+const DEVFS_LINKS: &[(&str, &str)] = &[
+    ("fd", "/proc/self/fd"),
+    ("stdin", "/proc/self/fd/0"),
+    ("stdout", "/proc/self/fd/1"),
+    ("stderr", "/proc/self/fd/2"),
+];
+
+/// The links Bubblewrap's own `--dev` makes besides those above.
+const BWRAP_DEV_MORE_LINKS: &[(&str, &str)] = &[("core", "/proc/kcore"), ("ptmx", "pts/ptmx")];
+
+/// The links Bubblewrap's `--dev` makes in a /dev at `at`, each with its
+/// target: a room that asks for the app's /dev with working devices gets
+/// them although no `--symlink` of the room names them.
+fn bwrap_dev_links(at: &Path) -> Vec<(PathBuf, String)> {
+    DEVFS_LINKS
+        .iter()
+        .chain(BWRAP_DEV_MORE_LINKS)
+        .map(|(name, target)| (at.join(name), (*target).to_string()))
+        .collect()
+}
+
 fn under(p: &Path, top: &Path) -> bool {
     p.starts_with(top)
 }
@@ -676,12 +728,7 @@ fn devfs_steps(at: &Path, asked: DeviceAccess) -> Vec<Step> {
         access: asked,
     }));
     // The links and the folder every /dev has (scripts use /dev/stdout).
-    for (name, target) in [
-        ("fd", "/proc/self/fd"),
-        ("stdin", "/proc/self/fd/0"),
-        ("stdout", "/proc/self/fd/1"),
-        ("stderr", "/proc/self/fd/2"),
-    ] {
+    for &(name, target) in DEVFS_LINKS {
         steps.push(Step::Args(vec![
             "--symlink".into(),
             target.into(),
@@ -709,6 +756,13 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
     // nothing is shown through the second.
     let mut shown: Vec<PathBuf> = Vec::new();
     let mut own_links: Vec<PathBuf> = Vec::new();
+    // The app's links the room has too: place() copies the links of the
+    // app's view of a place (SAM's links, the links of the app's /dev, also
+    // those Bubblewrap's `--dev` makes for one with working devices), and
+    // Bubblewrap follows them like the room's own. Each with its target:
+    // the same link again at its place changes nothing (a program that
+    // asks for `/` and makes the system's links as this system has them).
+    let mut app_links: Vec<(PathBuf, String)> = Vec::new();
     let mut late_links: Vec<Step> = Vec::new();
     let mut late_remounts: Vec<Step> = Vec::new();
     // The room's own file systems (--tmpfs): writable; the room's root is
@@ -721,11 +775,30 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
         .map(|f| vec![f.clone()])
         .chain(req.ops.iter().cloned())
         .collect();
+    // The room's own /proc and message queue file systems, wherever the
+    // request names them: nothing of the room lies inside one, in whatever
+    // order. Bubblewrap mounts them while it builds the room, and the links
+    // of a /proc (/proc/self/root, /proc/N/cwd, /proc/self/fd/N) lead out
+    // of the room: to Bubblewrap's build stage, where the computer's root
+    // is at /oldroot, and to the folders SAM hands Bubblewrap. A path
+    // through them would make, change or show things on the computer.
+    let own_procfs: Vec<PathBuf> = ops
+        .iter()
+        .filter(|o| o.len() == 2 && matches!(o[0].as_str(), "--proc" | "--mqueue"))
+        .filter_map(|o| clean(&o[1]).ok())
+        .collect();
     // A path the room makes something new at: never in SAM's reserved
     // place, never inside a place shown from the app (Bubblewrap would make
     // it on the computer, through any link the app left there), never
-    // through one of the room's own links.
-    let own_place = |at: &Path, shown: &[PathBuf], own_links: &[PathBuf]| -> Result<(), String> {
+    // through one of the room's own links or one of the app's it has too
+    // (only the same link again may stand at one: `link` is the target of
+    // a link the room makes at `at`), never inside a /proc of its own.
+    let own_place = |at: &Path,
+                     link: Option<&str>,
+                     shown: &[PathBuf],
+                     own_links: &[PathBuf],
+                     app_links: &[(PathBuf, String)]|
+     -> Result<(), String> {
         if reserved(at) || covers_reserved(at) {
             return Err(format!("{} is SAM's own place in a room", at.display()));
         }
@@ -740,6 +813,12 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
                 "{} is at or behind a link of the room",
                 at.display()
             ));
+        }
+        if let Some(l) = behind_app_link(at, link, app_links) {
+            return Err(l);
+        }
+        if let Some(e) = inside_own_procfs(at, &own_procfs) {
+            return Err(e);
         }
         Ok(())
     };
@@ -772,6 +851,12 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
                     if reserved(&at) {
                         return Err(format!("{} is SAM's own place in a room", at.display()));
                     }
+                    if let Some(e) = inside_own_procfs(&at, &own_procfs) {
+                        return Err(e);
+                    }
+                    // (Not at or behind a link of the room's own, nor of
+                    // the app's the room has too: checked once every link
+                    // is known.)
                     // After the room's own links, as Bubblewrap would make
                     // them before a later remount (it only takes rights away).
                     late_remounts.push(Step::Args(vec![name.into(), path_arg(&at)]));
@@ -814,7 +899,7 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
                 "--hostname" => room.steps.push(Step::Args(op.clone())),
                 "--proc" | "--dev" | "--tmpfs" | "--mqueue" | "--dir" => {
                     let at = clean(&op[1])?;
-                    own_place(&at, &shown, &own_links)?;
+                    own_place(&at, None, &shown, &own_links, &app_links)?;
                     if name == "--tmpfs" {
                         own_tmpfs.push(at.clone());
                     }
@@ -826,7 +911,7 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
                 }
                 "--symlink" => {
                     let at = clean(&op[2])?;
-                    own_place(&at, &shown, &own_links)?;
+                    own_place(&at, Some(&op[1]), &shown, &own_links, &app_links)?;
                     // While Bubblewrap builds the room, /newroot is the room
                     // and /oldroot the computer: a link may not name them.
                     let target = Path::new(&op[1]);
@@ -870,7 +955,7 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
                 }
                 "--chmod" => {
                     let at = clean(&op[2])?;
-                    own_place(&at, &shown, &own_links)?;
+                    own_place(&at, None, &shown, &own_links, &app_links)?;
                     if !room.own.iter().any(|o| under(&at, o)) {
                         return Err("--chmod only on the room's own new places".into());
                     }
@@ -896,6 +981,12 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
                 }
                 if own_links.iter().any(|l| under(&src, l)) {
                     return Err(format!("{} lies behind a link of the room", src.display()));
+                }
+                if let Some(e) = behind_app_link(&src, None, &app_links) {
+                    return Err(e);
+                }
+                if let Some(e) = inside_own_procfs(&src, &own_procfs) {
+                    return Err(e);
                 }
                 let optional = name.ends_with("-try");
                 let asked = if name.starts_with("--ro-bind") {
@@ -926,6 +1017,19 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
                 // What is now mounted from the app (not the asked path: for
                 // `/` that is the app's places inside it, not the root).
                 for step in &room.steps[before..] {
+                    if let Step::Args(a) = step {
+                        match &a[..] {
+                            [o, target, at] if o == "--symlink" => {
+                                app_links.push((PathBuf::from(at), target.clone()));
+                            }
+                            // The app's /dev with working devices: Bubblewrap
+                            // makes its links itself.
+                            [o, at] if o == "--dev" => {
+                                app_links.extend(bwrap_dev_links(Path::new(at)));
+                            }
+                            _ => {}
+                        }
+                    }
                     let at = match step {
                         Step::Show { dst, .. } | Step::Device { dst, .. } => Some(dst),
                         Step::Mask(at) => Some(at),
@@ -938,6 +1042,13 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
                                 at.display()
                             ));
                         }
+                    }
+                    // Nor inside a /proc of the room's own (a place of the
+                    // app below the one asked for, a link copied with it).
+                    if let Some(e) =
+                        step_place(step).and_then(|at| inside_own_procfs(at, &own_procfs))
+                    {
+                        return Err(e);
                     }
                     if let Step::Show { dst, .. } | Step::Device { dst, .. } = step {
                         shown.push(dst.clone());
@@ -960,8 +1071,42 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
             l.display()
         ));
     }
+    // Nor is anything remounted at or behind one of the room's own links,
+    // in whatever order they were named: Bubblewrap makes the links first
+    // and follows them, so the remount would reach wherever a link leads
+    // (into a /proc of the room's own, behind a link of the app's).
+    for step in &late_remounts {
+        if let Step::Args(a) = step {
+            let at = Path::new(&a[1]);
+            if own_links.iter().any(|l| under(at, l)) {
+                return Err(format!(
+                    "{} is at or behind a link of the room",
+                    at.display()
+                ));
+            }
+        }
+    }
     room.steps.extend(late_links);
     room.steps.extend(late_remounts);
+    // Nothing of the room lies at or behind a link of the app's it has
+    // too, in whatever order it was named (a link copied with a later
+    // place): Bubblewrap would make, show or change it wherever the link
+    // leads. Only the same link may stand at one (the copied link itself).
+    for step in &room.steps {
+        let (at, link) = match step {
+            Step::Args(a) if a.len() == 2 && a[0] == "--remount-ro" => (Path::new(&a[1]), None),
+            Step::Args(a) if a.len() == 3 && a[0] == "--symlink" => {
+                (Path::new(&a[2]), Some(a[1].as_str()))
+            }
+            _ => match step_place(step) {
+                Some(at) => (at, None),
+                None => continue,
+            },
+        };
+        if let Some(e) = behind_app_link(at, link, &app_links) {
+            return Err(e);
+        }
+    }
     nothing_inside_writable_places(plan, &room.steps)?;
     // SAM's own place stays as SAM laid it out: nothing of the room lands
     // in it or over it.
@@ -1014,6 +1159,43 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
         }
     };
     Ok(room)
+}
+
+/// Why `at` is refused when it lies at or behind one of the app's links the
+/// room has too (`app_links`, each with its target), or `None`. `link` is
+/// the target of a link made at `at`: the same link at the same place is
+/// no change (Bubblewrap keeps a link that is already there as asked).
+fn behind_app_link(
+    at: &Path,
+    link: Option<&str>,
+    app_links: &[(PathBuf, String)],
+) -> Option<String> {
+    app_links
+        .iter()
+        .find(|(l, t)| under(at, l) && !(at == l && link == Some(t.as_str())))
+        .map(|(l, _)| {
+            format!(
+                "{} is at or behind {}, a link of the app's that the room has too: a room makes, changes and shows nothing through such a link",
+                at.display(),
+                l.display()
+            )
+        })
+}
+
+/// Why `at` is refused when it lies inside one of the room's own /proc or
+/// message queue file systems (`own_procfs`), or `None`. At one's own
+/// place is fine (another file system over it, the same one again).
+fn inside_own_procfs(at: &Path, own_procfs: &[PathBuf]) -> Option<String> {
+    own_procfs
+        .iter()
+        .find(|p| at != p.as_path() && under(at, p))
+        .map(|p| {
+            format!(
+                "{} lies inside {}, a /proc or message queue file system of the room's own: a room makes, changes and shows nothing inside one, since the links of a /proc lead out of the room while Bubblewrap builds it",
+                at.display(),
+                p.display()
+            )
+        })
 }
 
 /// Where a step puts or changes something in the room (`--remount-ro` only
@@ -1583,6 +1765,44 @@ mod tests {
         );
         assert!(read_request(r.as_bytes()).is_err());
         assert!(read_request(&vec![b' '; MAX_MESSAGE + 1]).is_err());
+    }
+
+    /// A wrong connection number is refused with a reason that names it:
+    /// one at or above the limit (with the limit and what the program can
+    /// do), a negative one, one given twice. Numbers below the limit, each
+    /// once, pass.
+    #[test]
+    fn a_wrong_connection_number_is_named_in_the_refusal() {
+        let read = |fds: Vec<i32>| {
+            let body = serde_json::to_vec(&Request {
+                fds,
+                ..req(&[], &["x"])
+            })
+            .unwrap();
+            read_request(&body)
+        };
+        assert_eq!(FD_NUMBER_LIMIT, 1024);
+        // Control: up to the last number below the limit, each once.
+        assert_eq!(read(vec![0, 1, 2, 1023]).unwrap().fds, vec![0, 1, 2, 1023]);
+        for high in [1024, 1500] {
+            let e = read(vec![0, 1, high]).unwrap_err();
+            assert_eq!(
+                e,
+                format!(
+                    "the program passes connection {high}, but SAM's Room service accepts \
+                     only connections numbered below 1024; close it or move it to a lower \
+                     number before starting bwrap"
+                )
+            );
+        }
+        assert_eq!(
+            read(vec![0, -1]).unwrap_err(),
+            "the request names connection -1, and a connection number is never negative"
+        );
+        assert_eq!(
+            read(vec![3, 5, 3]).unwrap_err(),
+            "the request names connection 3 twice"
+        );
     }
 
     #[test]
@@ -2961,5 +3181,316 @@ mod tests {
         ] {
             assert_eq!(fewer(&[as_asked]), Vec::<String>::new(), "{as_asked:?}");
         }
+    }
+
+    /// The app's links that a room has too (copied with the app's view of a
+    /// place that holds them: SAM's `/usr/lib64` link here, the links of
+    /// the app's /dev) count like the room's own: nothing is made, changed
+    /// or shown at or behind one, in whatever order it was named, since
+    /// Bubblewrap would follow the link wherever it leads. The same option
+    /// beside the link, or where the room has no such link, is fine.
+    #[test]
+    fn nothing_of_the_room_lies_at_or_behind_a_link_copied_from_the_app() {
+        const SAID: &str = "a link of the app's that the room has too";
+        let usr = &["--ro-bind", "/usr", "/usr"][..];
+        // The room has the app's link, as a link.
+        let room = ok(&[usr]);
+        assert!(
+            room.steps.iter().any(|s| matches!(s, Step::Args(a)
+                if a == &["--symlink", "lib", "/usr/lib64"])),
+            "{:?}",
+            room.steps
+        );
+        // Asked twice, the link comes twice: still a room.
+        ok(&[usr, usr]);
+        let through: &[&[&str]] = &[
+            &["--dir", "/usr/lib64/x"],
+            &["--dir", "/usr/lib64"],
+            &["--tmpfs", "/usr/lib64/x"],
+            &["--proc", "/usr/lib64/x"],
+            &["--dev", "/usr/lib64/x"],
+            &["--mqueue", "/usr/lib64/x"],
+            &["--symlink", "/x", "/usr/lib64/y"],
+            &["--symlink", "lib64", "/usr/lib64"],
+            &["--chmod", "0700", "/usr/lib64/x"],
+            &["--remount-ro", "/usr/lib64"],
+            &["--remount-ro", "/usr/lib64/x"],
+            &["--ro-bind", "/usr/lib64/x", "/usr/lib64/x"],
+            &["--ro-bind-try", "/usr/lib64/x", "/usr/lib64/x"],
+            &["--bind-try", "/usr/lib64", "/usr/lib64"],
+            &["--dev-bind-try", "/usr/lib64/x", "/usr/lib64/x"],
+        ];
+        for &op in through {
+            let e = why(&[usr, op]);
+            assert!(e.contains(SAID), "{op:?} after the link: {e}");
+        }
+        // Named before the place that brings the link: refused all the
+        // same (Bubblewrap would make it first and the link then fail, or
+        // make it through the link). A mode change named first has no own
+        // place yet and is refused for that; a place of the app named
+        // first finds nothing there.
+        for &op in through
+            .iter()
+            .filter(|o| o[0] != "--chmod" && !o[0].contains("bind"))
+        {
+            let e = why(&[op, usr]);
+            assert!(e.contains(SAID), "{op:?} before the link: {e}");
+        }
+        // The app's /dev, asked for without devices, has its links too.
+        let dev = &["--ro-bind", "/dev", "/dev"][..];
+        for op in [
+            &["--dir", "/dev/fd/x"][..],
+            &["--symlink", "/x", "/dev/stdout"],
+        ] {
+            let e = why(&[dev, op]);
+            assert!(e.contains(SAID), "{op:?}: {e}");
+            let e = why(&[op, dev]);
+            assert!(e.contains(SAID), "{op:?} first: {e}");
+        }
+        // Asked for with working devices, the app's /dev is Bubblewrap's
+        // own `--dev`, which makes these links itself: they count all the
+        // same, whether the room asks for /dev or for everything.
+        let mut all = plan();
+        all.entries
+            .retain(|e| !e.at().starts_with("/home/me/") || e.at() == Path::new("/home/me"));
+        let why_all =
+            |ops: &[&[&str]]| plan_room(&all, &req(ops, &["x"]), AppFacts::default()).unwrap_err();
+        let dev_bind = &["--dev-bind", "/dev", "/dev"][..];
+        let root_bind = &["--dev-bind", "/", "/"][..];
+        for op in [
+            &["--dir", "/dev/fd/x"][..],
+            &["--symlink", "/x", "/dev/stdout"],
+            &["--tmpfs", "/dev/stderr/x"],
+            &["--remount-ro", "/dev/fd"],
+            &["--dir", "/dev/ptmx/x"],
+            &["--dir", "/dev/core/x"],
+        ] {
+            for ops in [
+                [dev_bind, op],
+                [op, dev_bind],
+                [root_bind, op],
+                [op, root_bind],
+            ] {
+                let e = why_all(&ops);
+                assert!(e.contains(SAID), "{ops:?}: {e}");
+            }
+        }
+        // Controls: Bubblewrap's own links again as they are, and places
+        // beside them.
+        plan_room(
+            &all,
+            &req(
+                &[
+                    root_bind,
+                    &["--symlink", "/proc/self/fd", "/dev/fd"],
+                    &["--symlink", "pts/ptmx", "/dev/ptmx"],
+                    &["--dir", "/dev/fdx"],
+                ],
+                &["x"],
+            ),
+            AppFacts::default(),
+        )
+        .unwrap();
+        ok(&[dev_bind, &["--dir", "/dev/stdoutx"]]);
+        // Controls: beside the link, and without the link in the room.
+        ok(&[
+            usr,
+            &["--perms", "0700"],
+            &["--tmpfs", "/usr/lib64-own"],
+            &["--chmod", "0700", "/usr/lib64-own"],
+            &["--dir", "/usr/lib64-own/x"],
+            &["--symlink", "lib", "/usr/lib32"],
+            &["--remount-ro", "/usr/lib"],
+        ]);
+        ok(&[dev, &["--dir", "/dev/shm/x"], &["--dir", "/dev/fdx"]]);
+        // A /dev asked for without devices is SAM's own: only its four
+        // links count, not those of Bubblewrap's `--dev` (no core, no ptmx,
+        // nothing in its shm), in whatever order.
+        for op in [
+            &["--dir", "/dev/ptmx"][..],
+            &["--dir", "/dev/core/x"],
+            &["--dir", "/dev/shm/fd"],
+            &["--symlink", "/x", "/dev/shm/stdout"],
+        ] {
+            ok(&[dev, op]);
+            ok(&[op, dev]);
+        }
+        ok(&[&["--bind", "/dev", "/dev"][..], &["--dir", "/dev/shm/fd"]]);
+        // A host name is text, not a place, even when it reads like a path
+        // behind a link of the app's that the room has too.
+        let host = &["--hostname", "/usr/lib64/x"][..];
+        for ops in [[usr, host], [host, usr]] {
+            let room = ok(&ops);
+            assert!(
+                room.steps
+                    .contains(&Step::Args(s(&["--hostname", "/usr/lib64/x"]))),
+                "{:?}",
+                room.steps
+            );
+        }
+        // A mode change at a link of the app's is a change through it, even
+        // when the mode reads like the link's target; beside it, it is fine.
+        let mut moded = plan();
+        let i = index_of("/usr/lib64");
+        moded.entries.insert(
+            i + 1,
+            Entry::Link {
+                target: "700".into(),
+                at: "/usr/l".into(),
+            },
+        );
+        let in_moded = |at: &str| {
+            plan_room(
+                &moded,
+                &req(
+                    &[
+                        &["--tmpfs", "/usr"],
+                        &["--chmod", "700", at],
+                        &["--ro-bind", "/usr", "/usr"],
+                    ],
+                    &["x"],
+                ),
+                AppFacts::default(),
+            )
+        };
+        let e = in_moded("/usr/l").unwrap_err();
+        assert!(e.contains(SAID), "{e}");
+        in_moded("/usr/l2").unwrap();
+        // Nor through a link of the room's own that leads to one of the
+        // app's: a remount there, in whatever order (Bubblewrap makes the
+        // link first and follows both). The link itself is fine.
+        let link = &["--symlink", "usr/lib64", "/q"][..];
+        for remount in [&["--remount-ro", "/q/x"][..], &["--remount-ro", "/q"]] {
+            for ops in [
+                [usr, link, remount],
+                [remount, usr, link],
+                [link, remount, usr],
+            ] {
+                let e = why(&ops);
+                assert!(
+                    e.contains("is at or behind a link of the room"),
+                    "{ops:?}: {e}"
+                );
+            }
+        }
+        ok(&[usr, link, &["--remount-ro", "/usr/lib"]]);
+        // The same link again at its place changes nothing (a program that
+        // asks for everything and makes the system's links as it finds
+        // them), in either order.
+        let same = &["--symlink", "lib", "/usr/lib64"][..];
+        ok(&[usr, same]);
+        ok(&[same, usr]);
+        ok(&[&["--tmpfs", "/usr"], &["--dir", "/usr/lib64/x"]]);
+        ok(&[
+            &["--ro-bind", "/usr/lib", "/usr/lib"],
+            &["--symlink", "lib", "/usr/lib64"],
+        ]);
+    }
+
+    /// A /proc of the room's own is mounted while Bubblewrap builds the
+    /// room, and its links (/proc/self/root, /proc/N/root, /proc/self/fd/N)
+    /// lead out of the room: to the build stage, where the computer's root
+    /// is at /oldroot, and to the folders SAM hands Bubblewrap. Nothing of
+    /// the room is made, changed or shown inside one (nor inside its own
+    /// message queue file system), in whatever order it was named.
+    #[test]
+    fn nothing_of_the_room_lies_inside_a_proc_of_its_own() {
+        const SAID: &str = "a /proc or message queue file system of the room's own";
+        let proc = &["--proc", "/proc"][..];
+        for op in [
+            &["--dir", "/proc/self/root/oldroot/home/me/.config/autostart"][..],
+            &["--dir", "/proc/self/root/x"],
+            &["--symlink", "/x", "/proc/1/root/y"],
+            &["--tmpfs", "/proc/self/fd/3/x"],
+            &["--dev", "/proc/self/root/x"],
+            &["--proc", "/proc/self/root/x"],
+            &["--mqueue", "/proc/self/cwd/x"],
+            &["--remount-ro", "/proc/self/root/x"],
+            &["--ro-bind-try", "/proc/self/x", "/proc/self/x"],
+            &[
+                "--bind-try",
+                "/proc/self/root/home/me",
+                "/proc/self/root/home/me",
+            ],
+        ] {
+            let e = why(&[proc, op]);
+            assert!(e.contains(SAID), "{op:?} after the /proc: {e}");
+            let e = why(&[op, proc]);
+            assert!(e.contains(SAID), "{op:?} before the /proc: {e}");
+        }
+        // A mode change on the computer: a folder made there first, then
+        // its mode.
+        let e = why(&[
+            proc,
+            &["--dir", "/proc/self/root/oldroot/home/me"],
+            &["--chmod", "0777", "/proc/self/root/oldroot/home/me"],
+        ]);
+        assert!(e.contains(SAID), "{e}");
+        // The mode change alone: a /proc inside a room's own tmpfs, so the
+        // mode change lies below the room's own new place and only the
+        // rule for the room's /proc refuses it. The control beside it, a
+        // mode change of the tmpfs itself, is allowed.
+        let e = why(&[
+            &["--tmpfs", "/a"],
+            &["--proc", "/a/p"],
+            &["--chmod", "0777", "/a/p/self/root/oldroot/home/me"],
+        ]);
+        assert!(e.contains(SAID), "{e}");
+        ok(&[
+            &["--tmpfs", "/a"],
+            &["--proc", "/a/p"],
+            &["--chmod", "0700", "/a"],
+        ]);
+        // The room's own message queue file system counts the same way.
+        let mq = &["--mqueue", "/mq"][..];
+        for ops in [[mq, &["--dir", "/mq/x"]], [&["--dir", "/mq/x"], mq]] {
+            let e = why(&ops);
+            assert!(e.contains(SAID), "{ops:?}: {e}");
+        }
+        // Places of the app laid out below the one asked for, and the
+        // links copied with them, count too, in either order.
+        let usr = &["--ro-bind", "/usr", "/usr"][..];
+        for own in [&["--proc", "/usr"][..], &["--mqueue", "/usr"]] {
+            for ops in [[own, usr], [usr, own]] {
+                let e = why(&ops);
+                assert!(e.contains(SAID), "{ops:?}: {e}");
+            }
+        }
+        // Nor through a link of the room's own that leads into its /proc:
+        // a remount there, in whatever order (Bubblewrap makes the link
+        // first, then follows it into its build stage). The link itself
+        // is fine.
+        let link = &["--symlink", "proc/self/root", "/q"][..];
+        for remount in [
+            &["--remount-ro", "/q/oldroot/home/me"][..],
+            &["--remount-ro", "/q"],
+        ] {
+            for ops in [
+                [proc, link, remount],
+                [remount, proc, link],
+                [link, remount, proc],
+            ] {
+                let e = why(&ops);
+                assert!(
+                    e.contains("is at or behind a link of the room"),
+                    "{ops:?}: {e}"
+                );
+            }
+        }
+        ok(&[proc, link, &["--remount-ro", "/proc"]]);
+        // Controls: a room with its own /proc, beside it and at its place.
+        ok(&[
+            usr,
+            proc,
+            &["--dev", "/dev"],
+            &["--dir", "/procx/y"],
+            &["--symlink", "/proc/self/fd", "/fd"],
+            &["--remount-ro", "/proc"],
+            &["--tmpfs", "/proc"],
+            &["--proc", "/proc"],
+            mq,
+            &["--dir", "/mqx"],
+        ]);
+        ok(&[proc, &["--ro-bind-try", "/proc", "/proc"]]);
     }
 }

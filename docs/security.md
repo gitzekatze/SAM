@@ -226,7 +226,10 @@ rule: **no more than the app, no less than asked.**
   beside it). It reads Bubblewrap's arguments
   inside the app's sandbox and sends a small fixed form, with the program's
   open connections (up to 253, as Bubblewrap passes them all), to SAM's
-  launcher. Programs need no change.
+  launcher. Programs need no change. Each passed connection must be
+  numbered below 1024 and named once; a request with a higher number, a
+  negative one or one given twice is refused, and the refusal names that
+  number (and the limit of 1024), where Bubblewrap's error would be.
 - **The service** runs in SAM's launcher, which stays for the whole start.
   It trusts nothing the stand-in checked: every rule is enforced there.
   - A room shows only places of the app's own view (SAM's *floor plan* of
@@ -303,8 +306,26 @@ rule: **no more than the app, no less than asked.**
     in its own space, never inside a place shown from the app: Bubblewrap
     makes them before any protection applies and would follow a link the
     app left there onto the computer. The room's own links come last, after
-    every mount, and nothing is made or shown at or behind one; a link may
+    every mount, and nothing is made, remounted or shown at or behind one
+    (also a remount named before the link); a link may
     not name Bubblewrap's build stage (`/oldroot`, `/newroot`, `..`).
+  - The app's own links that a room gets with a place it asked for (a
+    system folder such as `/lib` that is a link on this computer, the links
+    of the app's `/dev`, also those Bubblewrap makes itself when the room
+    asks for working devices) count the same way: nothing of the room (a
+    folder, a link, a file system, a mode change, a remount, a place of the
+    app) is made, changed or shown at or behind one, whether it was named
+    before or after the place that brings the link. Bubblewrap would follow
+    the link to wherever it leads. Only the same link again, with the same target,
+    may stand at its place, since it changes nothing.
+  - A room's own `/proc` (and its own message queue file system) counts the
+    same way: nothing of the room is made, changed or shown inside one,
+    whether it was named before or after the `/proc`. Bubblewrap mounts it
+    while it builds the room, and its links (`/proc/self/root`,
+    `/proc/self/fd/N`) lead out of the room: to Bubblewrap's build stage,
+    where the computer's root is at `/oldroot`, and to the folders SAM
+    hands Bubblewrap. A folder or link made through one would land on the
+    computer. A room may still have its own `/proc` and make things beside it.
   - A place the app can write, and any device place, is shown only as a
     whole: nothing of the room (another place, a device, a hiding mount, a
     thing of its own) may lie below it, in any order. Such a request is

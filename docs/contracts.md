@@ -22,6 +22,7 @@ where to look.
 | [bwrap-disable-userns](#bwrap-disable-userns) | Bubblewrap | Refuses | fully |
 | [bwrap-status-mount-namespace](#bwrap-status-mount-namespace) | Bubblewrap | Loses a feature | fully |
 | [bwrap-rooms](#bwrap-rooms) | Bubblewrap | Loses a feature | partly |
+| [bwrap-dev-links](#bwrap-dev-links) | Bubblewrap | Nothing breaks | partly |
 | [bwrap-overlay](#bwrap-overlay) | Bubblewrap | Loses a feature | fully |
 | [pasta-splice-only](#pasta-splice-only) | passt / pasta | Falls back to less | fully |
 | [dbus-proxy-filter](#dbus-proxy-filter) | xdg-dbus-proxy | Falls back to less | fully |
@@ -58,7 +59,7 @@ where to look.
 | [printing-ssh-drives](#printing-ssh-drives) | freedesktop.org conventions (XDG folders, menus) | Loses a feature | partly |
 | [xdg-folders](#xdg-folders) | freedesktop.org conventions (XDG folders, menus) | Loses a feature | partly |
 
-17 of 39 contracts are tested fully; for the others the entry says what is not tested, mostly because CI machines have no sound, GPU, Wayland session or desktop services. The quick checks and the early-warning runs cover part of that.
+17 of 40 contracts are tested fully; for the others the entry says what is not tested, mostly because CI machines have no sound, GPU, Wayland session or desktop services. The quick checks and the early-warning runs cover part of that.
 
 ## bwrap-core
 
@@ -109,6 +110,18 @@ Bubblewrap shows a folder or file SAM opened (--bind-fd, --ro-bind-fd) as exactl
 - **Checked first by:** `room_service.rs`, `room_service_compare.rs`, `room_service_fd_limit.rs`, `room_service_fd_wait.rs`, `room_service_glycin.rs`, `room_service_identity.rs`, `room_service_local.rs`, `room_teardown.rs` (a broken contract stops these tests with its name)
 - **Covers:** `option:--bind-fd`, `option:--ro-bind-fd`, `option:--ro-bind-data`, `option:--share-net`, `option:--size`, `option:--unsetenv`, `option:--chmod`, `option:--mqueue`, `option:--level-prefix`, `option:--unshare-cgroup`, `option:--unshare-user-try`, `option:--block-fd`, `option:--cap-add`, `option:--exec-label`, `option:--file`, `option:--file-label`, `option:--info-fd`, `option:--lock-file`, `option:--not-a-security-boundary`, `option:--pidns`, `option:--ro-overlay`, `option:--sync-fd`, `option:--tmp-overlay`, `option:--userns`, `option:--userns-block-fd`, `option:--userns2`, `option:--add-seccomp-fd`, `option:--args`, `option:--argv0`, `option:--as-pid-1`, `option:--assert-userns-disabled`, `option:--bind-data`
 - **If it breaks:** A Bubblewrap without these options builds no room: a program that asks fails as it would without Room service, and the app itself is unaffected. A new Bubblewrap option is refused in rooms until it is reviewed and added to option() in room_rules.rs; a changed meaning shows in the Room service tests (the mount comparison names the place).
+
+## bwrap-dev-links
+
+Bubblewrap's --dev makes exactly these links in the new /dev: fd (to /proc/self/fd), stdin, stdout and stderr (to /proc/self/fd/0, 1 and 2), core (to /proc/kcore) and ptmx (to pts/ptmx). Room service counts them as links of the app's that a room has too when the room asks for the app's /dev with working devices, and refuses anything of the room at or behind one.
+
+- **Component:** Bubblewrap ([releases](https://github.com/containers/bubblewrap/releases))
+- **When it breaks:** nothing breaks: the assumption only ever narrows access.
+- **SAM functions that rely on it:** [41](functions.md#41)
+- **Quick check:** none (only the tests below)
+- **Tests:** `nothing_of_the_room_lies_at_or_behind_a_link_copied_from_the_app` (partly: The list is taken from Bubblewrap's source (the /dev setup in bubblewrap.c); no test reads the links a real --dev makes, so a link a later Bubblewrap adds is not counted until it is added to bwrap_dev_links() in room_rules.rs.)
+- **Covers:** `path:/proc/kcore`
+- **If it breaks:** The list only ever narrows what a room may ask for: a link Bubblewrap no longer makes just stays refused. A link a later Bubblewrap adds would not be counted; its target then decides, as for every link of the app's: an absolute target does not exist while Bubblewrap builds the room. Add the new link to BWRAP_DEV_MORE_LINKS in room_rules.rs and a case to the test.
 
 ## bwrap-overlay
 

@@ -635,6 +635,7 @@ tests = [
   "options_a_room_never_gets_are_refused_by_name",
   "missing_values_and_commands_are_refused",
   "a_request_message_is_read_strictly",
+  "a_wrong_connection_number_is_named_in_the_refusal",
   "paths_must_be_plain_and_absolute",
   "a_place_is_shown_only_at_the_same_place",
   "a_place_comes_from_its_floor_plan_entry_not_a_name",
@@ -656,6 +657,8 @@ tests = [
   "sams_own_place_is_out_of_reach_through_the_apps_places_too",
   "a_mode_change_named_first_never_lies_inside_a_place_the_app_can_write",
   "only_places_given_with_fewer_rights_than_asked_are_recorded",
+  "nothing_of_the_room_lies_inside_a_proc_of_its_own",
+  "nothing_of_the_room_lies_at_or_behind_a_link_copied_from_the_app",
 ]
 
 [[area]]
