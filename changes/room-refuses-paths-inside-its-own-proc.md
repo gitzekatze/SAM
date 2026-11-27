@@ -10,4 +10,7 @@
   (such as `/proc/self/root`) lead out of the room while Bubblewrap builds
   it, so a program could make a folder or a link on the computer, for
   example an autostart entry outside the sandbox.
+- A remount through one of the room's own links is refused too, in
+  either order, since Bubblewrap would follow the link (for example a
+  link to `proc/self/root`, or one to the app's `/lib64`).
 - A room may still have its own `/proc` and make things beside it.

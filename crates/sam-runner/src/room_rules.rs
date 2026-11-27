@@ -854,8 +854,9 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
                     if let Some(e) = inside_own_procfs(&at, &own_procfs) {
                         return Err(e);
                     }
-                    // (Not at or behind a link of the app's the room has
-                    // too: checked once every place is laid out.)
+                    // (Not at or behind a link of the room's own, nor of
+                    // the app's the room has too: checked once every link
+                    // is known.)
                     // After the room's own links, as Bubblewrap would make
                     // them before a later remount (it only takes rights away).
                     late_remounts.push(Step::Args(vec![name.into(), path_arg(&at)]));
@@ -1069,6 +1070,21 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
             "{} is inside a place shown from the app: a room makes new things only in its own space",
             l.display()
         ));
+    }
+    // Nor is anything remounted at or behind one of the room's own links,
+    // in whatever order they were named: Bubblewrap makes the links first
+    // and follows them, so the remount would reach wherever a link leads
+    // (into a /proc of the room's own, behind a link of the app's).
+    for step in &late_remounts {
+        if let Step::Args(a) = step {
+            let at = Path::new(&a[1]);
+            if own_links.iter().any(|l| under(at, l)) {
+                return Err(format!(
+                    "{} is at or behind a link of the room",
+                    at.display()
+                ));
+            }
+        }
     }
     room.steps.extend(late_links);
     room.steps.extend(late_remounts);
@@ -3287,6 +3303,24 @@ mod tests {
             &["--remount-ro", "/usr/lib"],
         ]);
         ok(&[dev, &["--dir", "/dev/shm/x"], &["--dir", "/dev/fdx"]]);
+        // Nor through a link of the room's own that leads to one of the
+        // app's: a remount there, in whatever order (Bubblewrap makes the
+        // link first and follows both). The link itself is fine.
+        let link = &["--symlink", "usr/lib64", "/q"][..];
+        for remount in [&["--remount-ro", "/q/x"][..], &["--remount-ro", "/q"]] {
+            for ops in [
+                [usr, link, remount],
+                [remount, usr, link],
+                [link, remount, usr],
+            ] {
+                let e = why(&ops);
+                assert!(
+                    e.contains("is at or behind a link of the room"),
+                    "{ops:?}: {e}"
+                );
+            }
+        }
+        ok(&[usr, link, &["--remount-ro", "/usr/lib"]]);
         // The same link again at its place changes nothing (a program that
         // asks for everything and makes the system's links as it finds
         // them), in either order.
@@ -3354,6 +3388,28 @@ mod tests {
                 assert!(e.contains(SAID), "{ops:?}: {e}");
             }
         }
+        // Nor through a link of the room's own that leads into its /proc:
+        // a remount there, in whatever order (Bubblewrap makes the link
+        // first, then follows it into its build stage). The link itself
+        // is fine.
+        let link = &["--symlink", "proc/self/root", "/q"][..];
+        for remount in [
+            &["--remount-ro", "/q/oldroot/home/me"][..],
+            &["--remount-ro", "/q"],
+        ] {
+            for ops in [
+                [proc, link, remount],
+                [remount, proc, link],
+                [link, remount, proc],
+            ] {
+                let e = why(&ops);
+                assert!(
+                    e.contains("is at or behind a link of the room"),
+                    "{ops:?}: {e}"
+                );
+            }
+        }
+        ok(&[proc, link, &["--remount-ro", "/proc"]]);
         // Controls: a room with its own /proc, beside it and at its place.
         ok(&[
             usr,

@@ -306,7 +306,8 @@ rule: **no more than the app, no less than asked.**
     in its own space, never inside a place shown from the app: Bubblewrap
     makes them before any protection applies and would follow a link the
     app left there onto the computer. The room's own links come last, after
-    every mount, and nothing is made or shown at or behind one; a link may
+    every mount, and nothing is made, remounted or shown at or behind one
+    (also a remount named before the link); a link may
     not name Bubblewrap's build stage (`/oldroot`, `/newroot`, `..`).
   - The app's own links that a room gets with a place it asked for (a
     system folder such as `/lib` that is a link on this computer, the links
