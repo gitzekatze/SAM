@@ -45,3 +45,7 @@
   below a theme folder SAM shows. Below one kept as a link, the empty
   stand-in followed the link and could leave an empty file in an app's
   private home kept on disk.
+- Not covered: a program running alongside (also a running copy of the
+  app) can still swap a part of the way for a link between SAM's look
+  and the mount, and that link is then followed. This stays open until
+  SAM binds these places by open handle.
