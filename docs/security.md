@@ -226,7 +226,10 @@ rule: **no more than the app, no less than asked.**
   beside it). It reads Bubblewrap's arguments
   inside the app's sandbox and sends a small fixed form, with the program's
   open connections (up to 253, as Bubblewrap passes them all), to SAM's
-  launcher. Programs need no change.
+  launcher. Programs need no change. Each passed connection must be
+  numbered below 1024 and named once; a request with a higher number, a
+  negative one or one given twice is refused, and the refusal names that
+  number (and the limit of 1024), where Bubblewrap's error would be.
 - **The service** runs in SAM's launcher, which stays for the whole start.
   It trusts nothing the stand-in checked: every rule is enforced there.
   - A room shows only places of the app's own view (SAM's *floor plan* of
