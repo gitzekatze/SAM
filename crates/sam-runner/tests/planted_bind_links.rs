@@ -559,11 +559,14 @@ fn a_link_the_app_planted_never_makes_a_read_only_home_writable() {
     );
 }
 
-/// With the whole home writable and Downloads set read-only, the sandbox
-/// shows Downloads through the home, writable: the app makes an extra
-/// read-only folder in it, not made yet, a link to a folder outside the
-/// home in one start, and in the next start it reads nothing there,
-/// neither where the link leads nor through the link.
+/// With the whole home writable and Downloads set read-only, the app
+/// cannot plant anything in Downloads: SAM mounts it read-only at its own
+/// access over the writable home. But in an earlier start, while Downloads
+/// was still set to read and write, the app made an extra read-only folder
+/// in it, not made yet, a link to a folder outside the home. In the next
+/// start with Downloads read-only it reads nothing there, neither where the
+/// link leads nor through the link: the folder Downloads lies in counts as
+/// one the app can change, whatever its own switch says now.
 #[test]
 fn a_link_planted_in_a_user_folder_of_a_writable_home_is_not_followed() {
     let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
@@ -582,14 +585,20 @@ fn a_link_planted_in_a_user_folder_of_a_writable_home_is_not_followed() {
     let mut p = whole_home_writable();
     p.filesystem.downloads = Access::Ro;
     p.filesystem.custom_read = vec![s(&place)];
-    let (r, text) = rig.start(
-        &p,
-        &[
-            ("SAM_TEST_STEP", "plant".into()),
-            ("SAM_TEST_LINK", s(&place)),
-            ("SAM_TEST_TARGET", s(&outside)),
-        ],
+    let plant = [
+        ("SAM_TEST_STEP", "plant".to_string()),
+        ("SAM_TEST_LINK", s(&place)),
+        ("SAM_TEST_TARGET", s(&outside)),
+    ];
+    let (r, text) = rig.start(&p, &plant);
+    assert_ne!(
+        r["PLANTED"], "yes",
+        "Downloads is mounted read-only over the writable home: {text}"
     );
+    assert!(fs::symlink_metadata(&place).is_err(), "{text}");
+    let mut earlier = p.clone();
+    earlier.filesystem.downloads = Access::Rw;
+    let (r, text) = rig.start(&earlier, &plant);
     assert_eq!(
         r["PLANTED"], "yes",
         "the home shows Downloads writable: {text}"

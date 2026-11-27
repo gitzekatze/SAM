@@ -790,7 +790,14 @@ How these stay protected with the home writable:
   Nor is one whose link the app could have planted, also in a folder only
   this start shows writable, or one that leads to where programs outside
   the sandbox listen (see *Links never take a bind where it must not
-  lead*). A user folder is shown at its own access also with the whole home
+  lead*). Each of the two rules refuses on its own, so a user folder is
+  shown only where both allow it. Where both refuse it, the launch log
+  gives the note of the second rule, which names the danger or says the
+  link leads out of what the home shows, and how to show the folder if
+  you made the link yourself; the shorter note that names only the link
+  is left for a link only the first rule refuses (one in a folder the
+  app can change that leads to a place the home shows anyway)
+  (`a_user_folder_never_follows_a_planted_link`). A user folder is shown at its own access also with the whole home
   granted, inside the home or outside it, unless SAM refuses it as above
   (set to the home, a folder above it, a system folder, a protected place
   such as `~/.local/share/Documents`, or inside SAM's own folders): such a

@@ -1158,8 +1158,6 @@ mod tests {
         h
     }
 
-    /// SAM's own folders where no test grants anything; a case that needs
-    /// them somewhere sets its own.
     /// A scratch folder outside `/tmp` and `/var/tmp`, beside the test
     /// program: there a link's target is an ordinary folder, while
     /// anything in `/tmp` counts as a place where programs outside the
@@ -1179,6 +1177,8 @@ mod tests {
         t
     }
 
+    /// SAM's own folders where no test grants anything; a case that needs
+    /// them somewhere sets its own.
     fn sam_paths() -> Paths {
         Paths {
             config_dir: PathBuf::from("/nonexistent/sam-test/config"),
@@ -1415,9 +1415,12 @@ mod tests {
     /// set to `/tmp`, where programs outside the sandbox listen, is
     /// expected not shown, not writable through the home. The same link
     /// in a read-only home is followed and expected at its own access.
+    /// Built outside `/tmp`: a link there to a folder in `/tmp` leads to
+    /// where programs outside the sandbox listen, so the sandbox leaves
+    /// it out also in a read-only home, and the check expects it so.
     #[test]
     fn the_check_expects_a_refused_user_folder_as_not_shown() {
-        let t = tempfile::tempdir().unwrap();
+        let t = scratch();
         let mut h = host_in(t.path());
         let elsewhere = t.path().join("data/elsewhere");
         fs::create_dir_all(&elsewhere).unwrap();
@@ -1441,6 +1444,18 @@ mod tests {
             Access::ReadWrite,
             "a link the app cannot change is followed"
         );
+        let in_tmp = tempfile::tempdir().unwrap();
+        let tmp_target = fs::canonicalize(in_tmp.path()).unwrap();
+        let tmp_link = h.home.join("TmpDownloads");
+        std::os::unix::fs::symlink(&tmp_target, &tmp_link).unwrap();
+        h.xdg_dirs.insert("downloads".into(), tmp_link);
+        for home in [Perm::Rw, Perm::Ro] {
+            assert_eq!(
+                folder(&plan_with(&h, home), "Downloads"),
+                Access::Hidden,
+                "{home:?} home: a link to a folder in /tmp is not followed"
+            );
+        }
         h.xdg_dirs.insert("downloads".into(), PathBuf::from("/tmp"));
         assert_eq!(
             folder(&plan_with(&h, Perm::Rw), "Downloads"),
