@@ -21,11 +21,19 @@ Packages build SAM with `cargo build --release` and no features: the
 tools into the packaged programs ([Testing](testing.md)). SAM's tests run
 only in a developer build (`cargo test` without `--release`): a test build
 in release mode stops with a message, because a release build ignores the
-variables that keep the tests away from the real folders and tools. An
-optimisation level above 0 in `RUSTFLAGS` (for example makepkg's or
-Fedora's `-C opt-level=3`) makes such a build too, so the test steps of the
-Arch and Fedora recipes add `-C opt-level=0` after the distribution's
-flags.
+variables that keep the tests away from the real folders and tools. Unless
+debug assertions are set explicitly, rustc turns them off at every
+optimisation level above 0, so a level above 0 in `RUSTFLAGS` (for example
+Fedora's `-Copt-level=3`) makes such a build too. The test steps of the
+Arch and Fedora recipes therefore add `-C opt-level=0` after the
+distribution's flags; on Arch this is a safety net, because the build step
+already unsets makepkg's `RUSTFLAGS` before the test step runs. So package
+test steps run SAM's tests unoptimised, and they take longer than an
+optimised test build would. The build steps never set level 0: a release
+build at level 0 has debug assertions and would follow SAM's developer
+variables, and `release_builds_never_turn_on_debug_assertions` in
+`crates/sam-jail-cli/tests/automation.rs` fails if a build step, the
+Makefile, a release script or a recipe sets it outside these test steps.
 
 ## Arch / CachyOS (AUR)
 
