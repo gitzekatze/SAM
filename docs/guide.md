@@ -113,7 +113,7 @@ The SSH agent, printing, **extra sockets** (only real socket files are passed in
 
 ### Advanced
 
-How much of the system is visible (*Minimal* or *All of /usr*), whether the app keeps its private settings, a writable app folder for portable apps, theme settings, nested sandboxes for Chromium and Electron, Landlock, the syscall filters and raw Bubblewrap arguments. Change these only if an app does not work.
+How much of the system is visible (*Minimal* or *All of /usr*), whether the app keeps its private settings, a writable app folder for portable apps, theme settings, nested sandboxes for Chromium and Electron, Landlock, the syscall filters and raw Bubblewrap arguments. Change these only if an app does not work. SAM shows your fonts read-only, and in a private home with host theme settings on your theme settings too, but it does not bind them on its own when they, or a folder on their way in your home, are links (for example from GNU Stow); the app page and the launch log name them.
 
 ### Terminal programs
 
