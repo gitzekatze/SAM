@@ -1,12 +1,12 @@
-### The writable app folder asks for Bubblewrap 0.11
+### The writable app folder follows Bubblewrap's overlay option
 
-- SAM counted overlays, which the writable app folder needs, as available
-  from Bubblewrap 0.10, but Bubblewrap added them in 0.11.0. SAM now asks
-  for 0.11 or newer, and `doctor` and the warning at start name 0.11. With
-  Bubblewrap 0.10 the app folder stays read-only, with the same
-  explanation as on older versions.
-- SAM now decides by whether Bubblewrap lists the `--overlay-src` option
-  in its help, not by its version number, as Room service and the contract
-  check already do. A distribution's Bubblewrap with overlays backported
-  therefore gets the writable app folder, and an unusual version text no
-  longer hides it.
+- SAM decides whether the writable app folder can work by whether the
+  installed Bubblewrap lists the `--overlay-src` option in its help, not
+  by its version number. Upstream Bubblewrap added overlays in 0.11, so
+  with a plain Bubblewrap 0.10 or older the app folder stays read-only,
+  and `doctor` and the warning at start say so; a distribution's
+  Bubblewrap that offers the option gets the writable app folder.
+- Room service, the contract check and the writable app folder now ask
+  one shared test for Bubblewrap's options: it runs `bwrap --help`, needs
+  a successful answer and counts an option only as a word of its own, so
+  a look-alike such as `--overlay-srcs` never counts as `--overlay-src`.
