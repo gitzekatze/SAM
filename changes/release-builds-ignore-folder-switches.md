@@ -17,16 +17,23 @@
   shows the apps recorded there, not the ones in your old folders. If you
   had set `SAM_DATA_DIR`, the menu entries SAM made start apps it no longer
   knows.
-- To keep using the apps you added with the old folders, remove each app
-  and add its AppImage again (its settings and permissions are then set up
-  anew). Moving the old folders to the standard ones is not enough on its
-  own: an app record keeps the full paths of its unpacked copy, its icon
-  and its menu entry in the old folders, so after a move SAM refuses to
-  start the app until it is unpacked again (Unpack Again, or `sam-jail
-  reextract`), and until then the window shows a generic icon for it.
+- To keep using the apps you added with the old folders, together with
+  their own files, move the contents of the old folders into the standard
+  ones. The window and `sam-jail list` then show those apps again. Each
+  app's private home (`homes/` in the data folder), where the app keeps its
+  own files, moves with them. Then unpack each app again (Unpack Again, or
+  `sam-jail reextract`): an app record keeps the full paths of its unpacked
+  copy, its icon and its menu entry in the old folders, so until then SAM
+  refuses to start the app and the window shows a generic icon for it.
+- Adding an app's AppImage again instead, without moving the old folders,
+  suits only apps whose own files you do not need: the new record starts
+  with an empty private home and sets up its settings and permissions
+  anew, and the old home stays in the old folder. The app gets the same id
+  again, so its new menu entry replaces the old one in
+  `~/.local/share/applications` instead of adding a second one.
 - `XDG_CONFIG_HOME` and `XDG_DATA_HOME` are no replacement for the old
   variables: they move the folders of every program started with them,
   not only SAM's, and SAM then uses `sam/` below each of them and
   `applications/` below `XDG_DATA_HOME`. Old folders used with them must
-  be renamed or moved there, and, as after any move, each app must then be
-  unpacked again.
+  be moved there in the same way, and, as after any move, each app must
+  then be unpacked again.
