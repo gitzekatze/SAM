@@ -689,7 +689,25 @@ How these stay protected with the home writable:
   user folder that holds one of SAM's folders is shown, with SAM's folder
   hidden inside it). A user folder
   that is a link is shown where it leads, with the link where the app looks
-  for it.
+  for it. A user folder is shown at its own access also with the whole home
+  granted, inside the home or outside it: Documents set to read-only is
+  read-only under a writable home, so a start file kept as a link into it
+  (`~/.bashrc` to `~/Documents/dotfiles/bashrc`) cannot be changed either,
+  and one outside the home (`XDG_DOCUMENTS_DIR=/data/Documents`) is shown
+  read-only or writable as set, where before it was not shown at all. The
+  protections inside still come after it, so a start file in a writable
+  user folder inside a read-only Documents stays locked
+  (`a_read_only_user_folder_under_a_writable_home_is_read_only`,
+  `a_start_file_linked_into_a_read_only_user_folder_stays_locked_with_a_writable_home`,
+  `a_read_only_user_folder_outside_the_home_is_shown_with_the_whole_home`).
+  An extra folder granted read and write inside a read-only user folder
+  lies below the writable home, so it is not bound a second time (see
+  *Extra folders inside a start place stay read-only*) and stays
+  read-only there, as inside a read-only extra folder. Not covered: a home
+  kept behind a link (`/home/ann` a link to `/data/home/ann`). There SAM
+  binds a user folder with an access of its own at its real place, as it
+  binds extra folders, while the app still reaches it through the home at
+  the home's access, and the sandbox check reports this.
 - **Files named on the command line** are checked where they really lead:
   never a key or credential store, a start place (also through a link: a
   dotfiles folder holding the real `.bashrc` is not shared), or anything
