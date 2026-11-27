@@ -114,7 +114,7 @@ impl fmt::Display for Mismatch {
             Mismatch::NotReached(e) if e.raw_os_error() == Some(ELOOP) => {
                 write!(f, "a link lies on its way")
             }
-            Mismatch::NotReached(e) => write!(f, "it cannot be reached without links: {e}"),
+            Mismatch::NotReached(e) => write!(f, "it cannot be opened: {e}"),
             Mismatch::Other { .. } => write!(f, "another file, folder or device is there"),
             Mismatch::NotAMount => write!(
                 f,
@@ -184,8 +184,14 @@ fn mount_root(fd: &OwnedFd) -> io::Result<Option<bool>> {
     if r != 0 {
         return Err(io::Error::last_os_error());
     }
-    Ok((st.attributes_mask & STATX_ATTR_MOUNT_ROOT != 0)
-        .then_some(st.attributes & STATX_ATTR_MOUNT_ROOT != 0))
+    Ok(mount_root_answer(st.attributes_mask, st.attributes))
+}
+
+/// The answer of `statx` on the mount root: `None` when the kernel does
+/// not report the attribute (its bit is missing from `mask`), otherwise
+/// whether the attribute is set. Other bits of either value never count.
+fn mount_root_answer(mask: u64, attributes: u64) -> Option<bool> {
+    (mask & STATX_ATTR_MOUNT_ROOT != 0).then_some(attributes & STATX_ATTR_MOUNT_ROOT != 0)
 }
 
 /// Opens `p` (`O_PATH`, close-on-exec) and follows every link, as
@@ -376,6 +382,63 @@ mod tests {
             verdict(found, Some(false), &expect),
             Err(Mismatch::NotAMount)
         ));
+    }
+
+    /// The kernel's answer on the mount root: without the attribute's bit
+    /// in the mask there is no answer (the check fails closed, as
+    /// `MountUnknown`); with it, the attribute decides. Every other bit,
+    /// in the mask or in the attributes, never changes the answer.
+    #[test]
+    fn the_mount_root_answer_reads_only_the_mount_root_bit() {
+        let bit = STATX_ATTR_MOUNT_ROOT;
+        let others = !bit;
+        for noise in [0, others, 0x1, 0x4, 0x1000, 0x4000, 0x10_0000] {
+            let noise = noise & others;
+            assert_eq!(mount_root_answer(noise, noise), None, "{noise:#x}");
+            assert_eq!(mount_root_answer(noise, noise | bit), None, "{noise:#x}");
+            assert_eq!(
+                mount_root_answer(noise | bit, noise | bit),
+                Some(true),
+                "{noise:#x}"
+            );
+            assert_eq!(
+                mount_root_answer(noise | bit, noise),
+                Some(false),
+                "{noise:#x}"
+            );
+            assert_eq!(
+                mount_root_answer(bit, noise | bit),
+                Some(true),
+                "{noise:#x}"
+            );
+            assert_eq!(mount_root_answer(bit, noise), Some(false), "{noise:#x}");
+        }
+        let found = of(Path::new("/"));
+        let expect = Expect::MountOf {
+            dev: found.0,
+            ino: found.1,
+        };
+        assert!(matches!(
+            verdict(found, mount_root_answer(others, others), &expect),
+            Err(Mismatch::MountUnknown)
+        ));
+    }
+
+    /// Only a link on the way is reported as a link: a place that is
+    /// missing or may not be opened says it cannot be opened and names
+    /// the error.
+    #[test]
+    fn only_a_link_is_reported_as_a_link() {
+        let eloop = Mismatch::NotReached(io::Error::from_raw_os_error(ELOOP)).to_string();
+        assert!(eloop.contains("a link lies on its way"), "{eloop}");
+        for code in [libc::ENOENT, libc::EACCES] {
+            let error = io::Error::from_raw_os_error(code);
+            let named = error.to_string();
+            let text = Mismatch::NotReached(error).to_string();
+            assert!(!text.contains("link"), "{code}: {text}");
+            assert!(text.contains("cannot be opened"), "{code}: {text}");
+            assert!(text.contains(&named), "{code}: {text}");
+        }
     }
 
     /// A path that is not absolute is never opened without links (it
