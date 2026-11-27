@@ -673,8 +673,15 @@ How these stay protected with the home writable:
   link, so a start place could be bound writable. This is a known gap,
   older than this rule (SAM had the same race before); such a program can
   also write there when a start place holds a link into a folder it can
-  write, which SAM does not lock yet. Binding each grant through an open
-  handle, which closes the race, is planned.
+  write, which SAM does not lock yet. The same race reaches every other
+  folder SAM binds by its path inside a folder such a program can write:
+  a read-only extra folder, and a user folder bound at its own access
+  inside the writable whole home (Documents read-only under a writable
+  home): swapped for a link between SAM's look and the mount, it is bound
+  where that link leads, and nothing checks it before the app runs.
+  Checking each bound place inside the finished sandbox before the app
+  starts, and binding through an open handle, which close the race, are
+  planned.
   An extra folder inside SAM's own folders is not shown at all, also inside
   the folders named like them (`~/.config/sam`, `~/.local/share/sam`) while
   SAM keeps its own elsewhere, wherever they lead; inside one that SAM only
@@ -684,12 +691,27 @@ How these stay protected with the home writable:
   as the sandbox.
 - **User folders are only what they are.** `user-dirs.dirs` says where
   Documents, Downloads and the others are. A folder set there to the home,
-  a folder above it, a system folder, a key folder, a start place or a
-  place inside SAM's folders is not shown, and the launch log says why (a
+  a folder above it, a system folder, a key folder, a start place, a
+  place inside SAM's folders, or `/tmp` and the folders in it where
+  programs outside the sandbox listen (`/tmp/tmux-1000`, `/tmp/ssh-…`,
+  `/tmp/.X11-unix`: connecting to a socket needs no write access, so even
+  a read-only Downloads there handed them over) is not shown, and the
+  launch log says why (a
   user folder that holds one of SAM's folders is shown, with SAM's folder
   hidden inside it). A user folder
   that is a link is shown where it leads, with the link where the app looks
-  for it. A user folder is shown at its own access also with the whole home
+  for it, unless a link on its way lies in a folder the app may change in
+  this start (the writable whole home, a writable user or extra folder):
+  the app could have put it there itself (`mv ~/Downloads ~/D; ln -s /tmp
+  ~/Downloads`), and `user-dirs.dirs` stays locked, but the folder it names
+  did not. Such a folder is not shown where the link leads, the start names
+  the link, and the sandbox check expects it not shown; SAM cannot tell
+  such a link from one the person made, so a Documents kept as a link out
+  of a writable home is not shown either: set `XDG_DOCUMENTS_DIR` to the
+  real place instead
+  (`a_user_folder_behind_a_link_the_app_could_plant_is_not_shown`,
+  `a_user_folder_link_the_app_planted_never_shows_where_it_leads`,
+  `a_user_folder_where_outside_programs_listen_is_not_shown`). A user folder is shown at its own access also with the whole home
   granted, inside the home or outside it: Documents set to read-only is
   read-only under a writable home, so a start file kept as a link into it
   (`~/.bashrc` to `~/Documents/dotfiles/bashrc`) cannot be changed either,
@@ -701,9 +723,13 @@ How these stay protected with the home writable:
   `a_start_file_linked_into_a_read_only_user_folder_stays_locked_with_a_writable_home`,
   `a_read_only_user_folder_outside_the_home_is_shown_with_the_whole_home`).
   An extra folder granted read and write inside a read-only user folder
-  lies below the writable home, so it is not bound a second time (see
-  *Extra folders inside a start place stay read-only*) and stays
-  read-only there, as inside a read-only extra folder. Not covered: a home
+  (`~/Documents/proj` with Documents read-only) is bound writable after
+  it, as inside a read-only extra folder: SAM judges whether the app can
+  already change it on the folder right above it, and the read-only
+  folder around it is a mount of its own the app cannot rename
+  (`a_write_grant_inside_a_read_only_user_folder_stays_writable`,
+  `a_writable_extra_folder_inside_a_read_only_user_folder_stays_writable`).
+  Not covered: a home
   kept behind a link (`/home/ann` a link to `/data/home/ann`). There SAM
   binds a user folder with an access of its own at its real place, as it
   binds extra folders, while the app still reaches it through the home at
