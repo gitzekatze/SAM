@@ -657,6 +657,7 @@ tests = [
   "sams_own_place_is_out_of_reach_through_the_apps_places_too",
   "a_mode_change_named_first_never_lies_inside_a_place_the_app_can_write",
   "only_places_given_with_fewer_rights_than_asked_are_recorded",
+  "nothing_of_the_room_lies_inside_a_proc_of_its_own",
   "nothing_of_the_room_lies_at_or_behind_a_link_copied_from_the_app",
 ]
 

@@ -13,8 +13,10 @@
 //!   path the request names below one is opened without following links.
 //! - The room's own new places (folders, links, file systems) only in its
 //!   own space, never inside a place shown from the app, nor at or behind a
-//!   link of the room's or one of the app's it has too; SAM's own mounts
-//!   come first, at a place no request may touch.
+//!   link of the room's or one of the app's it has too, nor inside a /proc
+//!   (or message queue file system) of the room's own, whose links lead
+//!   out of the room while Bubblewrap builds it; SAM's own mounts come
+//!   first, at a place no request may touch.
 //! - Every restriction the request asks for (its Bubblewrap arguments) is
 //!   kept; filters the program put on itself do not follow it into a room
 //!   built from outside, which gets SAM's layers instead. An option the rules do
@@ -773,12 +775,24 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
         .map(|f| vec![f.clone()])
         .chain(req.ops.iter().cloned())
         .collect();
+    // The room's own /proc and message queue file systems, wherever the
+    // request names them: nothing of the room lies inside one, in whatever
+    // order. Bubblewrap mounts them while it builds the room, and the links
+    // of a /proc (/proc/self/root, /proc/N/cwd, /proc/self/fd/N) lead out
+    // of the room: to Bubblewrap's build stage, where the computer's root
+    // is at /oldroot, and to the folders SAM hands Bubblewrap. A path
+    // through them would make, change or show things on the computer.
+    let own_procfs: Vec<PathBuf> = ops
+        .iter()
+        .filter(|o| o.len() == 2 && matches!(o[0].as_str(), "--proc" | "--mqueue"))
+        .filter_map(|o| clean(&o[1]).ok())
+        .collect();
     // A path the room makes something new at: never in SAM's reserved
     // place, never inside a place shown from the app (Bubblewrap would make
     // it on the computer, through any link the app left there), never
     // through one of the room's own links or one of the app's it has too
     // (only the same link again may stand at one: `link` is the target of
-    // a link the room makes at `at`).
+    // a link the room makes at `at`), never inside a /proc of its own.
     let own_place = |at: &Path,
                      link: Option<&str>,
                      shown: &[PathBuf],
@@ -802,6 +816,9 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
         }
         if let Some(l) = behind_app_link(at, link, app_links) {
             return Err(l);
+        }
+        if let Some(e) = inside_own_procfs(at, &own_procfs) {
+            return Err(e);
         }
         Ok(())
     };
@@ -833,6 +850,9 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
                     let at = clean(&op[1])?;
                     if reserved(&at) {
                         return Err(format!("{} is SAM's own place in a room", at.display()));
+                    }
+                    if let Some(e) = inside_own_procfs(&at, &own_procfs) {
+                        return Err(e);
                     }
                     // (Not at or behind a link of the app's the room has
                     // too: checked once every place is laid out.)
@@ -964,6 +984,9 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
                 if let Some(e) = behind_app_link(&src, None, &app_links) {
                     return Err(e);
                 }
+                if let Some(e) = inside_own_procfs(&src, &own_procfs) {
+                    return Err(e);
+                }
                 let optional = name.ends_with("-try");
                 let asked = if name.starts_with("--ro-bind") {
                     DeviceAccess::ReadOnly
@@ -1018,6 +1041,13 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
                                 at.display()
                             ));
                         }
+                    }
+                    // Nor inside a /proc of the room's own (a place of the
+                    // app below the one asked for, a link copied with it).
+                    if let Some(e) =
+                        step_place(step).and_then(|at| inside_own_procfs(at, &own_procfs))
+                    {
+                        return Err(e);
                     }
                     if let Step::Show { dst, .. } | Step::Device { dst, .. } = step {
                         shown.push(dst.clone());
@@ -1132,6 +1162,22 @@ fn behind_app_link(
                 "{} is at or behind {}, a link of the app's that the room has too: a room makes, changes and shows nothing through such a link",
                 at.display(),
                 l.display()
+            )
+        })
+}
+
+/// Why `at` is refused when it lies inside one of the room's own /proc or
+/// message queue file systems (`own_procfs`), or `None`. At one's own
+/// place is fine (another file system over it, the same one again).
+fn inside_own_procfs(at: &Path, own_procfs: &[PathBuf]) -> Option<String> {
+    own_procfs
+        .iter()
+        .find(|p| at != p.as_path() && under(at, p))
+        .map(|p| {
+            format!(
+                "{} lies inside {}, a /proc or message queue file system of the room's own: a room makes, changes and shows nothing inside one, since the links of a /proc lead out of the room while Bubblewrap builds it",
+                at.display(),
+                p.display()
             )
         })
 }
@@ -3252,5 +3298,75 @@ mod tests {
             &["--ro-bind", "/usr/lib", "/usr/lib"],
             &["--symlink", "lib", "/usr/lib64"],
         ]);
+    }
+
+    /// A /proc of the room's own is mounted while Bubblewrap builds the
+    /// room, and its links (/proc/self/root, /proc/N/root, /proc/self/fd/N)
+    /// lead out of the room: to the build stage, where the computer's root
+    /// is at /oldroot, and to the folders SAM hands Bubblewrap. Nothing of
+    /// the room is made, changed or shown inside one (nor inside its own
+    /// message queue file system), in whatever order it was named.
+    #[test]
+    fn nothing_of_the_room_lies_inside_a_proc_of_its_own() {
+        const SAID: &str = "a /proc or message queue file system of the room's own";
+        let proc = &["--proc", "/proc"][..];
+        for op in [
+            &["--dir", "/proc/self/root/oldroot/home/me/.config/autostart"][..],
+            &["--dir", "/proc/self/root/x"],
+            &["--symlink", "/x", "/proc/1/root/y"],
+            &["--tmpfs", "/proc/self/fd/3/x"],
+            &["--dev", "/proc/self/root/x"],
+            &["--proc", "/proc/self/root/x"],
+            &["--mqueue", "/proc/self/cwd/x"],
+            &["--remount-ro", "/proc/self/root/x"],
+            &["--ro-bind-try", "/proc/self/x", "/proc/self/x"],
+            &[
+                "--bind-try",
+                "/proc/self/root/home/me",
+                "/proc/self/root/home/me",
+            ],
+        ] {
+            let e = why(&[proc, op]);
+            assert!(e.contains(SAID), "{op:?} after the /proc: {e}");
+            let e = why(&[op, proc]);
+            assert!(e.contains(SAID), "{op:?} before the /proc: {e}");
+        }
+        // A mode change on the computer: a folder made there first, then
+        // its mode.
+        let e = why(&[
+            proc,
+            &["--dir", "/proc/self/root/oldroot/home/me"],
+            &["--chmod", "0777", "/proc/self/root/oldroot/home/me"],
+        ]);
+        assert!(e.contains(SAID), "{e}");
+        // The room's own message queue file system counts the same way.
+        let mq = &["--mqueue", "/mq"][..];
+        for ops in [[mq, &["--dir", "/mq/x"]], [&["--dir", "/mq/x"], mq]] {
+            let e = why(&ops);
+            assert!(e.contains(SAID), "{ops:?}: {e}");
+        }
+        // Places of the app laid out below the one asked for, and the
+        // links copied with them, count too, in either order.
+        let usr = &["--ro-bind", "/usr", "/usr"][..];
+        for own in [&["--proc", "/usr"][..], &["--mqueue", "/usr"]] {
+            for ops in [[own, usr], [usr, own]] {
+                let e = why(&ops);
+                assert!(e.contains(SAID), "{ops:?}: {e}");
+            }
+        }
+        // Controls: a room with its own /proc, beside it and at its place.
+        ok(&[
+            usr,
+            proc,
+            &["--dev", "/dev"],
+            &["--dir", "/procx/y"],
+            &["--symlink", "/proc/self/fd", "/fd"],
+            &["--remount-ro", "/proc"],
+            &["--tmpfs", "/proc"],
+            &["--proc", "/proc"],
+            mq,
+            &["--dir", "/mqx"],
+        ]);
+        ok(&[proc, &["--ro-bind-try", "/proc", "/proc"]]);
     }
 }

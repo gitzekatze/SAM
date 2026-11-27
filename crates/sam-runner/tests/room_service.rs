@@ -206,6 +206,11 @@ L=""
 for d in /lib /lib64 /bin /sbin; do if [ -L "$d" ]; then L="$d"; break; fi; done
 say app_link_dir "$(if [ -n "$L" ]; then rv bwrap --ro-bind / / --dir "$L/sam-room-through-link" -- /usr/bin/echo ok; else echo no-system-link; fi)"
 say app_link_beside "$(rv bwrap --ro-bind / / --dir /sam-room-beside-link -- /usr/bin/echo ok)"
+# The room's own /proc is mounted while Bubblewrap builds the room: its
+# /proc/self/root leads to the build stage, where the computer's root is
+# at /oldroot. Nothing of the room is made through it (this folder would
+# be made in the computer's home, outside the app).
+say proc_link_dir "$(rv room --proc /proc --dir "/proc/self/root/oldroot$HOME/sam-room-through-proc" -- /usr/bin/echo ok)"
 say moved_folder "$(rv room --ro-bind /usr /elsewhere -- /usr/bin/echo ok)"
 exec 7<"$HOME"
 say folder_by_handle "$(rv room --bind-fd 7 "$HOME" -- /usr/bin/echo ok)"
@@ -1367,6 +1372,7 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
             ("trap_link_name", "refused"),
             ("app_link_dir", "refused"),
             ("app_link_beside", "ok"),
+            ("proc_link_dir", "refused"),
         ];
         if abstract_scoped {
             want.push(("abstract_room", "blocked"));
@@ -1450,6 +1456,22 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
         }) {
             failures.push(format!(
                 "{name}: app_link_dir: a new folder behind a link of the app's in the room was not refused by Room service's rule"
+            ));
+        }
+        // Nothing of the room's own through the links of its own /proc:
+        // refused by Room service's rule, and nothing made on the computer.
+        if !log.lines().any(|l| {
+            l.contains("sam-room: refused")
+                && l.contains("sam-room-through-proc")
+                && l.contains("a /proc or message queue file system of the room's own")
+        }) {
+            failures.push(format!(
+                "{name}: proc_link_dir: a new folder through the room's own /proc was not refused by Room service's rule"
+            ));
+        }
+        if w.home.join("sam-room-through-proc").exists() {
+            failures.push(format!(
+                "{name}: proc_link_dir: a room made a folder in the computer's home through its own /proc"
             ));
         }
         // The room whose own filter refuses every write was built and
