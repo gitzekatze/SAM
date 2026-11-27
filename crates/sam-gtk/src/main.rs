@@ -153,14 +153,14 @@ fn main() -> glib::ExitCode {
     // One window per set of SAM data: starting SAM again brings the open
     // window forward (and hands over AppImages given on the command line),
     // so two windows never write the same configuration. Screenshot runs and
-    // runs with their own data folders (tests) stay separate.
+    // runs whose folders a developer switch moves (tests) stay separate; a
+    // release build ignores those switches, so it never stays separate on
+    // the normal folders.
     #[cfg(any(debug_assertions, feature = "dev-tools"))]
     let screenshot_run = opts.shot.file.is_some();
     #[cfg(not(any(debug_assertions, feature = "dev-tools")))]
     let screenshot_run = false;
-    let separate = screenshot_run
-        || std::env::var_os("SAM_CONFIG_DIR").is_some()
-        || std::env::var_os("SAM_DATA_DIR").is_some();
+    let separate = screenshot_run || sam_core::paths::folders_moved_by_a_developer_switch();
     let flags = if separate {
         gio::ApplicationFlags::NON_UNIQUE
     } else {
@@ -327,7 +327,9 @@ fn install_icon(file: &std::path::Path, theme_root: &std::path::Path, svg: &[u8]
 }
 
 fn desktop_identity() {
-    if std::env::var_os("SAM_CONFIG_DIR").is_some() || std::env::var_os("SAM_DATA_DIR").is_some() {
+    // A run whose folders a developer switch moves (tests) leaves the
+    // desktop's entry for SAM alone.
+    if sam_core::paths::folders_moved_by_a_developer_switch() {
         return;
     }
     let home = std::env::var_os("HOME")
