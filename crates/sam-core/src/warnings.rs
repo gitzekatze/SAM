@@ -1207,7 +1207,6 @@ mod tests {
         assert!(!codes(&evaluate(&p, &ctx)).contains(&"start-place-read-only"));
     }
 
-    /// The X11 warning disappears when the user turns it off in the preferences.
     /// A granted user folder the sandbox does not show is named on the app
     /// page and in `sam-jail info` before the start, with the launch note's
     /// words and the way out: Downloads set to `/tmp` (so downloads clear
@@ -1268,6 +1267,7 @@ mod tests {
         );
     }
 
+    /// The X11 warning disappears when the user turns it off in the preferences.
     #[test]
     fn x11_warning_can_be_disabled() {
         let mut p = PermissionSet::strict_gui();
