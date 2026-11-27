@@ -1458,6 +1458,60 @@ mod tests {
         );
     }
 
+    /// SAM's runtime folder holds the sockets of SAM's helpers for every
+    /// running app (the D-Bus proxy, the sound relay), also where it lies
+    /// outside the host's runtime folder (`XDG_RUNTIME_DIR` unset, or
+    /// `SAM_RUNTIME_DIR`): a user folder that is a link there is left out
+    /// by the sandbox, so the check expects it not shown, read-only or
+    /// writable, in a private home where no link counts as planted. Taken
+    /// as shown, the check failed a sandbox that did the right thing. The
+    /// same link to an ordinary folder is expected at its own access.
+    /// Built outside `/tmp`, where the temp rule would leave it out anyway.
+    #[test]
+    fn the_check_expects_a_user_folder_linked_to_sams_runtime_folder_as_not_shown() {
+        let t = scratch();
+        let base = fs::canonicalize(t.path()).unwrap();
+        let mut h = host_in(&base);
+        let samrun = base.join("sam-run");
+        let elsewhere = base.join("data/elsewhere");
+        for d in [samrun.join("app"), elsewhere.clone()] {
+            fs::create_dir_all(d).unwrap();
+        }
+        let paths = Paths {
+            runtime_root: Some(samrun.clone()),
+            ..sam_paths()
+        };
+        assert!(
+            !h.runtime_dir
+                .as_ref()
+                .is_some_and(|r| samrun.starts_with(r)),
+            "SAM's runtime folder lies outside the host's"
+        );
+        let downloads = h.home.join("Downloads");
+        h.xdg_dirs.insert("downloads".into(), downloads.clone());
+        let to = |target: &Path| {
+            let _ = fs::remove_file(&downloads);
+            std::os::unix::fs::symlink(target, &downloads).unwrap();
+        };
+        let cfg = Config::default();
+        for (access, shown) in [(Perm::Rw, Access::ReadWrite), (Perm::Ro, Access::ReadOnly)] {
+            let mut p = PermissionSet::strict_gui();
+            p.filesystem.downloads = access;
+            to(&samrun.join("app"));
+            assert_eq!(
+                folder(&plan(&p, &cfg, &paths, &h), "Downloads"),
+                Access::Hidden,
+                "{access:?}: a link to SAM's runtime folder"
+            );
+            to(&elsewhere);
+            assert_eq!(
+                folder(&plan(&p, &cfg, &paths, &h), "Downloads"),
+                shown,
+                "{access:?}: a link to an ordinary folder"
+            );
+        }
+    }
+
     /// An extra folder inside SAM's own folders kept in a place of the
     /// person's choosing (SAM's data in `~/Games/sam`) is expected hidden,
     /// read-only or writable, with or without the whole home: the sandbox
@@ -1725,6 +1779,50 @@ mod tests {
         assert_eq!(folder(&pl, &title(&tmux)), Access::Hidden);
     }
 
+    /// The check judges a writable extra folder reached through a link as
+    /// the sandbox does, by what is shown writable, and a read-only one by
+    /// what is shown at all. With the whole home writable and Documents
+    /// read-only, `~/w` a link to `~/Documents/sub` and listed writable is
+    /// left out (the home shows `sub` only read-only, through Documents),
+    /// so the check expects it read-only, as Documents shows it; expected
+    /// writable, the check passed a sandbox that bound it writable inside
+    /// the read-only Documents. The same link listed read-only is shown,
+    /// at the home's access.
+    #[test]
+    fn the_check_judges_a_writable_extra_folder_by_what_is_shown_writable() {
+        let t = scratch();
+        let base = fs::canonicalize(t.path()).unwrap();
+        let h = host_in(&base);
+        let cfg = Config::default();
+        let s = |p: &Path| p.to_string_lossy().into_owned();
+        let title = |p: &Path| format!("Extra folder {}", sam_core::util::tildify(p));
+        fs::create_dir_all(h.home.join("Documents/sub")).unwrap();
+        let (w, r) = (h.home.join("w"), h.home.join("r"));
+        for link in [&w, &r] {
+            std::os::unix::fs::symlink(h.home.join("Documents/sub"), link).unwrap();
+        }
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.home = true;
+        p.filesystem.home_access = Perm::Rw;
+        p.filesystem.documents = Perm::Ro;
+        p.filesystem.custom_write = vec![s(&w)];
+        let pl = plan(&p, &cfg, &sam_paths(), &h);
+        assert_eq!(folder(&pl, "Documents"), Access::ReadOnly);
+        assert_eq!(
+            folder(&pl, &title(&w)),
+            Access::ReadOnly,
+            "a writable extra folder linked into the read-only Documents"
+        );
+        p.filesystem.custom_write = Vec::new();
+        p.filesystem.custom_read = vec![s(&r)];
+        let pl = plan(&p, &cfg, &sam_paths(), &h);
+        assert_eq!(
+            folder(&pl, &title(&r)),
+            Access::ReadWrite,
+            "a read-only extra folder the writable home shows"
+        );
+    }
+
     /// An extra folder the sandbox leaves out because of a link the app
     /// could have planted is expected as the other grants show the place
     /// the link leads to: the link itself stays visible through the home
@@ -1774,6 +1872,41 @@ mod tests {
         p.filesystem.custom_read = vec![s(&docs), s(&data3)];
         let pl = plan(&p, &cfg, &sam_paths(), &h);
         assert_eq!(folder(&pl, &title(&docs)), Access::ReadOnly);
+    }
+
+    /// With the whole home, a user folder without a setting gets no bind of
+    /// its own, so the check counts nothing for it where the folder really
+    /// is: an extra folder left out for a planted link that leads into such
+    /// a user folder outside the home (Documents set to `/data/Docs`, not
+    /// granted) is expected as the extra read-only folder `/data` around it
+    /// shows it, read-only. Counted as hidden there, the check expected the
+    /// place hidden and failed a sandbox that showed it as it should.
+    #[test]
+    fn the_check_expects_a_left_out_extra_folder_inside_an_ungranted_user_folder_as_the_grant_around_it_shows_it(
+    ) {
+        let t = scratch();
+        let base = fs::canonicalize(t.path()).unwrap();
+        let mut h = host_in(&base);
+        let cfg = Config::default();
+        let s = |p: &Path| p.to_string_lossy().into_owned();
+        let title = |p: &Path| format!("Extra folder {}", sam_core::util::tildify(p));
+        let (data, docs) = (base.join("data"), base.join("data/Docs"));
+        fs::create_dir_all(&docs).unwrap();
+        h.xdg_dirs.insert("documents".into(), docs.clone());
+        let link = h.home.join("docs-link");
+        std::os::unix::fs::symlink(&docs, &link).unwrap();
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.home = true;
+        p.filesystem.home_access = Perm::Rw;
+        p.filesystem.documents = Perm::None;
+        p.filesystem.custom_read = vec![s(&data), s(&link)];
+        let pl = plan(&p, &cfg, &sam_paths(), &h);
+        assert_eq!(folder(&pl, &title(&data)), Access::ReadOnly);
+        assert_eq!(
+            folder(&pl, &title(&link)),
+            Access::ReadOnly,
+            "left out, and shown read-only by the extra folder around its place"
+        );
     }
 
     /// A user folder the sandbox leaves out because the way there leads
