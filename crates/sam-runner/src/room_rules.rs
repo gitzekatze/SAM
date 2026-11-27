@@ -3373,6 +3373,21 @@ mod tests {
             &["--chmod", "0777", "/proc/self/root/oldroot/home/me"],
         ]);
         assert!(e.contains(SAID), "{e}");
+        // The mode change alone: a /proc inside a room's own tmpfs, so the
+        // mode change lies below the room's own new place and only the
+        // rule for the room's /proc refuses it. The control beside it, a
+        // mode change of the tmpfs itself, is allowed.
+        let e = why(&[
+            &["--tmpfs", "/a"],
+            &["--proc", "/a/p"],
+            &["--chmod", "0777", "/a/p/self/root/oldroot/home/me"],
+        ]);
+        assert!(e.contains(SAID), "{e}");
+        ok(&[
+            &["--tmpfs", "/a"],
+            &["--proc", "/a/p"],
+            &["--chmod", "0700", "/a"],
+        ]);
         // The room's own message queue file system counts the same way.
         let mq = &["--mqueue", "/mq"][..];
         for ops in [[mq, &["--dir", "/mq/x"]], [&["--dir", "/mq/x"], mq]] {
