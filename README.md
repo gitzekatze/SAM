@@ -287,10 +287,13 @@ folders. Only its window looks like Flatseal, so it feels familiar.
 testing, `SAM_CONFIG_DIR`, `SAM_DATA_DIR`, `SAM_APPLICATIONS_DIR` and
 `SAM_RUNTIME_DIR` move them elsewhere too, but only in developer builds; an
 installed SAM ignores them. It still hides the folders that `SAM_CONFIG_DIR`
-and `SAM_DATA_DIR` name from every app while they are set, and no app can
+and `SAM_DATA_DIR` name from every app while they are set in the
+environment SAM starts the app with (the desktop session's for a menu
+entry, not only a shell's startup file), and no app can
 rename the folders above them, so a folder it once kept there stays out of
 the apps' reach (unless it is your home folder or a folder above it, or a
-link to a folder of which the app is shown only some folders inside).
+link to a folder of which the app is shown only some folders inside). Move
+or delete such a folder before you remove the variable.
 
 ### Updates
 

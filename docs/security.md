@@ -614,8 +614,12 @@ the app read it (`git_credentials_under_config_git_stay_hidden`). Where
 there as well (`~/cfg/git/credentials`, `~/cfg/keepassxc`), as the start
 places are locked there, and none of them is shared as a file named on the
 command line (`credential_stores_follow_other_config_and_data_folders`).
-Such a folder outside the home is shown only when you grant it, and SAM
-does not hide the stores in it then.
+Where one of them names the home itself, the stores sit at the top of the
+home (`~/git/credentials`, `~/gh`, `~/keyrings`) and are hidden there in
+the same way. Not covered: the start places are not locked at the top of
+the home then (`~/autostart`), so an app with the whole home writable can
+change them there. Such a folder outside the home is shown only when you
+grant it, and SAM does not hide the stores in it then.
 
 **Hidden whenever anything would show them:** SAM's own folders
 (configuration, data and unpacked apps, wherever they are, and the folders
@@ -646,7 +650,16 @@ same way, also by an installed SAM, which ignores these developer variables
 and never keeps anything there. An installed SAM that once kept its data
 through `SAM_DATA_DIR=~/Games/sam` left its app records and the other apps'
 private homes there; with `~/Games` or the whole home granted, the app does
-not see them. Such a folder counts by the rules for the names above,
+not see them while the variable is set. SAM keeps no record of such a
+folder: it reads the variables from the environment of each start, so it
+hides the folder only in starts whose environment has the variable set,
+also starts from a menu entry. A start after you removed the variable, or
+from a menu entry while the variable is set only in a shell's startup file,
+shows the old folder like any other, and an app granted `~/Games` can then
+read and change the other apps' private homes and app records there. So
+set the variable in the desktop session's environment, not only in a
+shell's startup file, and move or delete the old folder before you remove
+the variable. Such a folder counts by the rules for the names above,
 whatever its own name: it is not hidden where it really is the home or a
 folder above it (`/` too), nor where it leads elsewhere through a link and
 the app is shown only folders inside the place it leads to, so a variable
@@ -851,7 +864,14 @@ How these stay protected with the home writable:
   such as `~/.local/share/Documents`, or inside SAM's own folders): such a
   folder gets no place of its own, so a read-only Documents at
   `~/.local/share/Documents` is writable through a writable home, and no
-  note names it. Otherwise, apart from a home kept behind a link (see
+  note names it. The same holds for a user folder refused because a link
+  on its way lies in a folder the app may change (above): SAM binds
+  nothing for it, so where that link leads into the part of the home the
+  start shows, the app reaches the place through the home at the home's
+  access (a read-only Documents kept as a link to `~/Sync/Docs` is
+  writable through a writable home); the launch log and the app page name
+  the link, and the way out is to set `XDG_DOCUMENTS_DIR` to the real
+  place. Otherwise, apart from a home kept behind a link (see
   *Not covered* below), Documents set to read-only is
   read-only under a writable home, also where the app made an extra
   writable folder a link into it
@@ -868,7 +888,11 @@ How these stay protected with the home writable:
   Two user folders set to one place at different access (Music read and
   write, Pictures read-only, both `~/Media`) are shown at one access, the
   stricter one, whatever their order: `~/Media` is read-only, as
-  "read-only means read-only" (owner decision of 2026-11-27). The mounts,
+  "read-only means read-only" (owner decision of 2026-11-27). A user
+  folder SAM refuses (above, also for a link on its way the app may
+  change) does not count here: with Pictures read-only at `~/PicLink`, a
+  link to `~/Media` in a writable home, and Music read and write at
+  `~/Media`, `~/Media` stays writable. The mounts,
   the views, Landlock, the sandbox check and the start take this one
   answer, and the start, the app page and `sam-jail info` name the
   folders and the rule, with the way out: set each to read and write, or
@@ -950,8 +974,8 @@ How these stay protected with the home writable:
     fonts). For a user folder, its own grant does not count, and only the
     home counts as showing, for a writable one only where no other user
     folder or extra folder set read-only holds the place;
-  - a link that leads to where programs outside the sandbox listen is
-    never followed, whoever made it: the whole computer; anything in
+  - a link that leads to one of these places where programs outside the
+    sandbox listen is never followed, whoever made it: the whole computer; anything in
     `/tmp` and `/var/tmp`, a socket directly there (`/tmp/.s.PGSQL.5432`)
     or a socket folder by any name (`/tmp/tmux-1000`, `/tmp/tmate-1000`),
     and a folder holding one, though not a place in your home when your
@@ -966,7 +990,13 @@ How these stay protected with the home writable:
     `/run` are the system's own and are followed (NixOS's
     `/run/current-system`). Not covered: a program running alongside
     (also a running copy of the app) that swaps a part of the way between
-    SAM's look and the mount;
+    SAM's look and the mount; and a socket folder kept anywhere else, which
+    SAM does not know and treats like any folder (WSLg's
+    `/mnt/wslg/.X11-unix` reached directly rather than through
+    `/tmp/.X11-unix`, LXD's under `/var/snap/lxd`, Incus's under
+    `/var/lib/incus`): a link to it is judged by the other rules only,
+    so it is followed where you made it, and where the app made it in an
+    earlier start with more write access (below);
   - a place SAM shows on its own never leads to the home or a folder above
     it, a key or credential store, a protected place or SAM's own folders,
     also the credential stores and protected places under a moved
@@ -1037,7 +1067,17 @@ How these stay protected with the home writable:
     home grant (read-only or read and write) or with host theme settings
     off, so an extra writable `~/.config` shows the theme files in it
     (`~/.config/gtk-3.0`, `~/.config/kdeglobals`, `~/.config/qt5ct`, …)
-    writable. After giving an app such a folder writable,
+    writable. With the home kept behind a link (`/home/u` a link to
+    `/data/u`) and the whole home writable, a font place whose way passes
+    a link you made that names the home's real place (`~/.config` a link
+    to `/data/u/dots/config`) is bound read-only only at that real place
+    (`/data/u/dots/config/fontconfig`), beside the home, where the app
+    does not reach it: the writable home still shows the same folder as
+    `/home/u/dots/config/fontconfig`, writable, and programs outside the
+    sandbox load the font settings the app puts there. A link that names
+    the home by its usual name (`/home/u/dots/config`) or a relative one
+    (`dots/config`) is bound read-only where the app reaches it. After
+    giving an app such a folder writable,
     check that the fonts and theme files in it are yours.
 
   SAM does not bind such a place itself, and the launch log says so: that
@@ -1087,9 +1127,14 @@ How these stay protected with the home writable:
   somewhere the second and third rule allow: with a private home,
   `~/.fonts` made a link to `/mnt/data/private` in a start with the whole
   home writable shows that folder, which no start gave the app. A link
-  to where programs outside the sandbox listen stays refused in every
-  start, except where a program running alongside (also a running copy
-  of the app) swaps a part of the way between SAM's look and the mount.
+  to one of the places listed above where programs outside the sandbox
+  listen stays refused in every start, except where a program running
+  alongside (also a running copy of the app) swaps a part of the way
+  between SAM's look and the mount. SAM knows only those places: a link
+  the app made in such a start to a socket folder kept elsewhere (WSLg's
+  `/mnt/wslg/.X11-unix`, LXD's under `/var/snap/lxd`, Incus's under
+  `/var/lib/incus`) is followed once the planted-link rule no longer
+  refuses it, and connecting to a socket there needs no write access.
   After narrowing an app's permissions, check that `~/.fonts`,
   `~/.config/fontconfig` and the extra folders are not links you did
   not make
@@ -1170,7 +1215,10 @@ How these stay protected with the home writable:
   stays read-only. With the home itself kept behind a link (`/home/u` a
   link to `/data/u`), a link that names the home's real path
   (`/data/u/dots/config`) is covered where the app reaches that place:
-  under the home's own name.
+  under the home's own name. Not covered there: the read-only fonts and
+  fonts settings SAM binds on its own with the whole home writable, which
+  such a link leaves writable under the home's own name (see *Links
+  never take a bind where it must not lead*).
 
 **What full home access does not cover.** With read and write access to the
 home, an app can still change other files that programs outside the sandbox

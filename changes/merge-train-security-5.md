@@ -80,9 +80,16 @@
   app can change (`~/.fonts` your own link to `~/.local/share/fonts` with
   the whole home writable) is bound read-only only where the link leads,
   never at the link itself: the app can replace the link with a folder
-  of its own, as it can create a missing place. After giving an app such
-  a folder writable, check that the fonts and theme files in it are
-  yours.
+  of its own, as it can create a missing place. With your home kept
+  behind a link (`/home/u` a link to `/data/u`) and the whole home
+  writable, a font place whose way passes a link you made that names the
+  home's real place (`~/.config` a link to `/data/u/dots/config`) is
+  bound read-only only at that real place, beside the home, so the app
+  can still change the font settings through
+  `/home/u/dots/config/fontconfig`; write such a link as
+  `/home/u/dots/config` or as a relative one (`dots/config`) instead.
+  After giving an app such a folder writable, check that the fonts and
+  theme files in it are yours.
 
 ### The app page names every user folder SAM leaves out for a link
 

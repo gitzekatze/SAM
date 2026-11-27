@@ -14,6 +14,11 @@
   home (for example `~/cfg`), SAM now hides Git's file and the other
   password and login stores there too (`~/cfg/git/credentials`,
   `~/cfg/keepassxc`), and never shares one of them as a file you open
-  with the app.
+  with the app. Set to your home itself, the stores sit at the top of
+  your home (`~/git/credentials`, `~/gh`, `~/keyrings`), and SAM hides
+  them there in the same way.
+- With `XDG_CONFIG_HOME` set to a folder outside your home, the app sees
+  that folder only when you grant it, and SAM does not hide Git's file
+  there then.
 - A test starts a real app that tries to read the file in each of these
   ways.

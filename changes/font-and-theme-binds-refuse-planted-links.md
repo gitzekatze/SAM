@@ -11,10 +11,13 @@
   files, every extra folder, read-only or writable, and a user folder
   such as Documents that SAM shows on its own: a link in a folder the app
   can change is not followed out of what the app is shown, and a link to
-  where programs outside the sandbox listen is never followed, whoever
-  made it. Not covered: a program running alongside (also a running copy
-  of the app) that swaps a part of the way between SAM's look and the
-  mount. A user folder inside a writable home counts as writable, and a
+  one of the places below where programs outside the sandbox listen is
+  never followed, whoever made it. Not covered: a program running
+  alongside (also a running copy of the app) that swaps a part of the way
+  between SAM's look and the mount; and a socket folder kept anywhere
+  else, which SAM does not know and treats like any folder (WSLg's
+  `/mnt/wslg/.X11-unix` reached directly, LXD's under `/var/snap/lxd`,
+  Incus's under `/var/lib/incus`). A user folder inside a writable home counts as writable, and a
   writable extra folder follows such a link only where the app may write
   anyway, so a planted link can no longer make a read-only home writable.
   Your fonts and theme files are also never shown through a link to your
@@ -68,8 +71,11 @@
   the app made in an earlier start, while it had more write access (the
   whole home or a folder writable), is still followed after you narrow
   its permissions, for example `~/.fonts` made a link to another drive.
-  A link to where programs outside the sandbox listen stays refused in
-  every start (with the limit above), and your fonts and theme files
+  A link to one of the places where programs outside the sandbox listen
+  that SAM knows stays refused in every start (with the limits above: a
+  link the app made to a socket folder SAM does not know, such as WSLg's
+  `/mnt/wslg/.X11-unix`, is followed once the narrower permissions no
+  longer count it as planted), and your fonts and theme files
   never lead to your home, your keys or SAM's own files. After you narrow
   an app's permissions, check that `~/.fonts`, `~/.config/fontconfig` and
   the extra folders are not links you did not make.

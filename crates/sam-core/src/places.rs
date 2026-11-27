@@ -171,7 +171,7 @@ pub fn protected_places_with(
     config: Option<PathBuf>,
     data: Option<PathBuf>,
 ) -> Vec<String> {
-    places_following(PROTECTED_RO, home, config, data)
+    places_following(PROTECTED_RO, home, config, data, false)
 }
 
 /// The credential stores relative to the home: `SENSITIVE_DOTFILES`, and
@@ -181,8 +181,15 @@ pub fn protected_places_with(
 /// `XDG_CONFIG_HOME=~/cfg`, git-credential-store keeps its passwords in
 /// `~/cfg/git/credentials`, and only the fixed `~/.config/git/credentials`
 /// was hidden, so an app with the whole home could read them (`~/cfg/git`
-/// is only locked read-only). Shared by the sandbox, which hides them,
-/// and the files opened for a start, which never share them.
+/// is only locked read-only). Unlike the start places, the stores also
+/// follow a variable that names the home itself: with
+/// `XDG_CONFIG_HOME=$HOME`, Git keeps its passwords in `~/git/credentials`
+/// and the GitHub tool its token in `~/gh`, which an app with the whole
+/// home read while only the usual places were hidden. Hiding more is the
+/// safe side; locking the start places at the top of the home too would
+/// lock folders such as `~/autostart` that the person may use otherwise.
+/// Shared by the sandbox, which hides them, and the files opened for a
+/// start, which never share them.
 pub fn sensitive_places(home: &Path) -> Vec<String> {
     let var = |v: &str| std::env::var_os(v).map(PathBuf::from);
     sensitive_places_with(home, var("XDG_CONFIG_HOME"), var("XDG_DATA_HOME"))
@@ -194,17 +201,19 @@ pub fn sensitive_places_with(
     config: Option<PathBuf>,
     data: Option<PathBuf>,
 ) -> Vec<String> {
-    places_following(SENSITIVE_DOTFILES, home, config, data)
+    places_following(SENSITIVE_DOTFILES, home, config, data, true)
 }
 
 /// `list`, and each of its places under `.config/` or `.local/share/`
 /// again under `config` and `data` where those are other folders inside
-/// the home.
+/// the home, and with `home_itself` also where they are the home itself
+/// (the places then sit at the top of the home: `git/credentials`).
 fn places_following(
     list: &[&str],
     home: &Path,
     config: Option<PathBuf>,
     data: Option<PathBuf>,
+    home_itself: bool,
 ) -> Vec<String> {
     let mut out: Vec<String> = list.iter().map(|p| p.to_string()).collect();
     // Compared as written and by where they lead: the variable may name
@@ -230,7 +239,10 @@ fn places_following(
                     continue;
                 };
                 let r = r.trim_end_matches('/').to_string();
-                if !r.is_empty() && format!("{r}/") != default && !rels.contains(&r) {
+                if (home_itself || !r.is_empty())
+                    && format!("{r}/") != default
+                    && !rels.contains(&r)
+                {
                     rels.push(r);
                 }
             }
@@ -238,7 +250,11 @@ fn places_following(
         for rel in rels {
             for p in list {
                 if let Some(rest) = p.strip_prefix(default) {
-                    let alt = format!("{rel}/{rest}");
+                    let alt = if rel.is_empty() {
+                        rest.to_string()
+                    } else {
+                        format!("{rel}/{rest}")
+                    };
                     if !out.contains(&alt) {
                         out.push(alt);
                     }
@@ -1881,9 +1897,11 @@ mod tests {
     /// The credential stores follow `XDG_CONFIG_HOME` and `XDG_DATA_HOME`
     /// inside the home as the start places do: with `~/cfg`, Git's
     /// passwords are kept in `~/cfg/git/credentials`, which was only locked
-    /// read-only, so an app with the whole home could read them. A folder
-    /// outside the home or one written with `..` above it adds nothing, and
-    /// the usual places always stay.
+    /// read-only, so an app with the whole home could read them. A
+    /// variable that names the home itself puts them at the top of the
+    /// home (`~/git/credentials`, `~/gh`, `~/keyrings`), which were not
+    /// hidden at all. A folder outside the home or one written with `..`
+    /// above it adds nothing, and the usual places always stay.
     #[test]
     fn credential_stores_follow_other_config_and_data_folders() {
         let t = tempfile::tempdir().unwrap();
@@ -1900,6 +1918,24 @@ mod tests {
         }
         for wrong in ["cfg/keyrings", "dat/git/credentials", "cfg/.aws"] {
             assert!(!places.iter().any(|p| p == wrong), "{wrong}: {places:?}");
+        }
+        // The home itself, as named and with a trailing `/`.
+        for at_home in [home.clone(), PathBuf::from(format!("{}/", home.display()))] {
+            let places = sensitive_places_with(&home, Some(at_home.clone()), Some(at_home));
+            for want in [
+                ".config/git/credentials",
+                ".git-credentials",
+                ".local/share/keyrings",
+                "git/credentials",
+                "keepassxc",
+                "gh",
+                "keyrings",
+            ] {
+                assert!(places.iter().any(|p| p == want), "{want}: {places:?}");
+            }
+            for wrong in ["", "/", ".aws/.aws", "git", "keyrings/keyrings"] {
+                assert!(!places.iter().any(|p| p == wrong), "{wrong}: {places:?}");
+            }
         }
         for outside in [home.join("../elsewhere"), PathBuf::from("/elsewhere")] {
             assert_eq!(

@@ -30,8 +30,12 @@
   the folder above one of them (`~/Games` for `SAM_DATA_DIR=~/Games/sam`)
   cannot read the other apps' private homes there or change their app
   records, nor rename the folders above it to carry the old folder out of
-  SAM's sight. SAM hides such a folder only while the variable is still set,
-  and not where hiding it would cover too much: where the folder is your
+  SAM's sight. SAM hides such a folder only while the variable is still set
+  in the environment it starts the app with: it reads the variable at each
+  start and keeps no record of the folder, so a start from a menu entry
+  does not hide it while the variable is set only in a shell's startup
+  file; set it in the desktop session's environment. SAM also does not hide
+  it where hiding it would cover too much: where the folder is your
   home folder or a folder above it, or where it is a link and the app is
   shown only folders inside the place it leads to. So move the old folders
   as described below, or delete them, before you remove the variable.
@@ -56,7 +60,8 @@
   suits only apps whose own files you do not need: the new record starts
   with an empty private home and sets up its settings and permissions
   anew. The old home stays in the old folder, which SAM hides only while
-  the variable is still set: delete it, or move it out of every folder an
+  the variable is still set in the environment it starts the app with:
+  delete it, or move it out of every folder an
   app may see, before you remove the variable. If it is the same
   AppImage file, the app gets the same id again, so its new menu entry
   replaces the old one in `~/.local/share/applications` instead of adding a
