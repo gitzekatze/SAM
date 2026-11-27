@@ -1206,10 +1206,16 @@ How these stay protected with the home writable:
   leaves in a place that several launches watch is normally moved aside and
   reported once, in the record of the launch whose look found it: that may
   be the other app's record, since SAM cannot tell which app made it. A
-  launch waits at most about a second for another launch's look, then looks
-  anyway; in that case, and while a launch of an older SAM still runs, the
-  second look may also report a link of yours that the first look had just
-  put back.
+  look waits at most about a second for its turn, while another launch
+  looks, then looks anyway; in that case, and while a launch of an older
+  SAM still runs, the second look may also report a link of yours that the
+  first look had just put back. A known limit: a start, and the look for a
+  launcher that was ended (from the window, `sam-jail stop` or a start),
+  first wait to read the records of the running apps, one launch at a time,
+  and that wait has no time limit yet. A launcher stopped while it starts
+  an app (Ctrl+Z) holds the records, so later starts wait until it goes on
+  or ends; the watches of apps that already run keep moving files aside
+  meanwhile.
 - **Key folders that are links** (dotfiles managed with `stow`, for example)
   are hidden where they point, also when only the folder they point into is
   granted (`~/.gnupg` a link to `~/Sync/gnupg`, and `~/Sync` granted);
