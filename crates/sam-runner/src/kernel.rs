@@ -1497,9 +1497,11 @@ mod tests {
     }
 
     /// No call is named twice and no call number is in two rows, neither
-    /// this processor's nor a 32-bit one: the filter answers a call by the
-    /// first row with its number, so two rows for one number would leave
-    /// the second unread, and the order of the rows would matter.
+    /// this processor's nor a 32-bit one, so one row says everything a call
+    /// gets. With two rows for one number the order of the rows would
+    /// matter: a row that refuses every use answers the call, and a later
+    /// row for it is never read; a row that refuses only some uses lets the
+    /// others go on, and a later row for the same number then answers them.
     #[test]
     fn each_call_number_is_in_one_row() {
         let mut names = std::collections::BTreeSet::new();

@@ -6,6 +6,9 @@
   without a filter). Now one table names every refused call with its
   numbers for this processor and for 32-bit x86, and one short piece of
   code turns it into the filter.
-- What the filter refuses is unchanged: a new test records its answer
-  for every call, argument and setting, and the new code gives the same
-  answers.
+- What the filter refuses is unchanged. A new test records the filter's
+  answers under all 16 settings, for call numbers 0 to 1023 (also with
+  the x32 bit set) and four extreme numbers, with each argument the filter
+  reads varied alone over a fixed list of values. The record was made
+  from the code before the change on x86_64, and the new code gives the
+  same answers there.

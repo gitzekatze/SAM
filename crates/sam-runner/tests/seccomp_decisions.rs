@@ -1,11 +1,17 @@
 //! What the syscall filter decides, recorded once and compared on every run
-//! (a characterization test). The filter program is run here, by a small
-//! interpreter of the kernel's filter language, for every call number of
-//! every architecture a call can come from, with arguments that touch every
-//! check, under each of the 16 filter settings. The answers are written as
-//! text and compared with `seccomp_decisions/<processor>.txt`: any change in
-//! what the filter refuses, with which error, for which argument, shows up
-//! as a difference there, however the program is put together.
+//! (a characterization test). The filter program built on this processor is
+//! run here, by a small interpreter of the kernel's filter language, under
+//! each of the 16 filter settings, for calls named as x86_64, i386, aarch64
+//! and 32-bit ARM calls. It asks about call numbers 0 to 1023, the same
+//! numbers with the x32 bit set, and four extreme numbers. Where the
+//! program reads an argument, each argument in turn takes each value of a
+//! fixed list (every socket family up to 47, the terminal requests, the
+//! user-namespace flag, values with a high half, the extremes) while the
+//! others stay 0; combinations of arguments are not tried. The answers are
+//! written as text and compared with `seccomp_decisions/<processor>.txt`,
+//! one record per processor SAM builds for: a change within these calls,
+//! arguments and settings in what the filter refuses, or with which error,
+//! shows up as a difference there, however the program is put together.
 //!
 //! A deliberate change to the filter changes the record too: the test then
 //! writes what it found to the target folder's `tmp/` and names the file;
@@ -257,9 +263,13 @@ fn fixture(arch: &str) -> PathBuf {
         .join(format!("{arch}.txt"))
 }
 
-/// The filter answers every call of every architecture, with every argument
-/// it checks, under every setting, exactly as recorded: a change to how the
-/// filter is written cannot change what it refuses unnoticed.
+/// The filter built on this processor answers as recorded for it, under all
+/// 16 settings: for call numbers 0 to 1023 of x86_64, i386, aarch64 and
+/// 32-bit ARM, the same numbers with the x32 bit set and four extreme
+/// numbers, each argument the filter reads varied alone over a fixed list
+/// of values. A change to how the filter is written cannot change these
+/// answers unnoticed. On x86_64 and aarch64, the processors SAM builds for,
+/// a missing record is a failure.
 #[test]
 fn the_filter_decides_every_call_as_recorded() {
     let arch = std::env::consts::ARCH;
@@ -267,14 +277,17 @@ fn the_filter_decides_every_call_as_recorded() {
     let got = record();
     let out = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("seccomp_decisions-{arch}.txt"));
     let Ok(want) = std::fs::read_to_string(&path) else {
-        // Another processor: its numbers differ, and its record is made
-        // on it (from the code before a change to the filter).
+        // Each processor has its own numbers, so its record is made on it,
+        // from the code before a change to the filter.
         std::fs::write(&out, &got).unwrap();
-        sam_runner::contracts::not_here(&format!(
+        let reason = format!(
             "no recorded filter decisions for {arch} ({}); this run's are in {}",
             path.display(),
             out.display()
-        ));
+        );
+        // SAM builds for these two: without a record nothing is compared.
+        assert!(!matches!(arch, "x86_64" | "aarch64"), "{reason}");
+        sam_runner::contracts::not_here(&reason);
         return;
     };
     if got != want {
