@@ -5481,6 +5481,34 @@ mod guard_tests {
         );
     }
 
+    /// The folders above each credential store are pinned with the whole
+    /// home writable also when hidden files are granted and the stores are
+    /// shown (`~/.var` above `~/.var/app`, `~/.cargo` above
+    /// `~/.cargo/credentials`): nothing else guards them then, so without
+    /// the pin the app could rename them away. With hidden files off, the
+    /// hidden store pins them as well.
+    #[test]
+    fn the_folders_above_a_shown_credential_store_are_pinned() {
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap().join("home");
+        for d in [".var/app", ".cargo"] {
+            fs::create_dir_all(home.join(d)).unwrap();
+        }
+        let s = |p: &str| home.join(p).to_string_lossy().into_owned();
+        for hidden_files in [true, false] {
+            let mut p = full_rw();
+            p.filesystem.hidden_files = hidden_files;
+            let a = args_of(&ctx_for(&p, &home));
+            for d in [".var", ".cargo"] {
+                assert!(
+                    has_seq(&a, &["--bind", &s(d), &s(d)]),
+                    "{d} is pinned, hidden files {hidden_files}: {a:?}"
+                );
+            }
+            assert!(!a.contains(&s("xyzzy")), "no pin where no folder is: {a:?}");
+        }
+    }
+
     /// The app's way to a host path is followed link by link as Linux
     /// reads it inside the sandbox: a relative link or one with a whole
     /// path, also behind another link and with `..`, ends where the
@@ -8975,6 +9003,42 @@ mod guard_tests {
         }
     }
 
+    /// The file chooser's bookmarks and servers in the theme folders are
+    /// hidden (an empty read-only file in their place) only where SAM shows
+    /// the theme settings on its own, with no home shown. Without the
+    /// theme settings, an empty read-only file there kept the app from
+    /// saving bookmarks of its own and told it that the host has such a
+    /// file. Built in a real home, where the files exist.
+    #[test]
+    fn theme_private_files_are_hidden_only_when_the_theme_settings_are_shown() {
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap().join("home");
+        fs::create_dir_all(home.join(".config/gtk-3.0")).unwrap();
+        let files = [".config/gtk-3.0/bookmarks", ".config/gtk-3.0/servers"];
+        for f in files {
+            fs::write(home.join(f), "file:///x\n").unwrap();
+        }
+        let st = |p: &Path| p.to_string_lossy().into_owned();
+        for (themes, whole_home) in [(false, false), (true, false), (true, true), (false, true)] {
+            let mut p = PermissionSet::strict_gui();
+            p.advanced.host_themes = themes;
+            p.filesystem.home = whole_home;
+            p.filesystem.home_access = Access::Ro;
+            let a = args_of(&ctx_for(&p, &home));
+            for f in files {
+                let at = st(&home.join(f));
+                assert_eq!(
+                    has_seq(&a, &["--ro-bind", "/dev/null", &at]),
+                    themes && !whole_home,
+                    "{f}: themes {themes}, home {whole_home}: {a:?}"
+                );
+                if !themes && !whole_home {
+                    assert!(!a.contains(&at), "{f} is not named at all: {a:?}");
+                }
+            }
+        }
+    }
+
     /// A bundled library is replaced only by a plain file of the system's
     /// own (the copy found is checked by
     /// `system_copies_replace_only_bundled_libraries_by_plain_name`):
@@ -9815,6 +9879,50 @@ mod guard_tests {
                 && n.contains("where programs outside the sandbox listen")),
             "{:?}",
             cmd.notes
+        );
+    }
+
+    /// SAM's runtime folders are this start's folder and the two above it,
+    /// never a folder at the top of the computer: with the runtime base
+    /// there (`XDG_RUNTIME_DIR=/` gives `/sam`, `SAM_RUNTIME_DIR=/srv`),
+    /// counting `/usr` as one left out every extra folder that leads
+    /// anywhere in it (`/usr/share`) as a place where programs outside the
+    /// sandbox listen. Nor a folder that holds the home: the home is no
+    /// such place.
+    #[test]
+    fn a_runtime_base_at_the_top_of_the_computer_never_counts_as_sams_runtime_folder() {
+        let t = scratch();
+        let base = fs::canonicalize(t.path()).unwrap();
+        let home = base.join("home");
+        fs::create_dir_all(&home).unwrap();
+        let link = base.join("share-link");
+        std::os::unix::fs::symlink("/usr/share", &link).unwrap();
+        let link = link.to_string_lossy().into_owned();
+        let mut c = ctx_for(&PermissionSet::strict_gui(), &home);
+        c.runtime_dir = PathBuf::from("/usr/sam-app/l1");
+        c.permissions.filesystem.custom_read = vec![link.clone()];
+        assert_eq!(
+            this_start(&c).sam_runtime,
+            vec![
+                PathBuf::from("/usr/sam-app/l1"),
+                PathBuf::from("/usr/sam-app")
+            ]
+        );
+        assert_eq!(read_grant_left_out(&c, &link), None);
+        let cmd = Bubblewrap.build(&c).unwrap();
+        assert!(
+            !cmd.notes
+                .iter()
+                .any(|n| n.contains("where programs outside the sandbox listen")),
+            "{:?}",
+            cmd.notes
+        );
+        // The folders above this start's that hold the home are none either.
+        let mut c = ctx_for(&PermissionSet::strict_gui(), "/srv/sam-run/app/h");
+        c.runtime_dir = PathBuf::from("/srv/sam-run/app/l1");
+        assert_eq!(
+            this_start(&c).sam_runtime,
+            vec![PathBuf::from("/srv/sam-run/app/l1")]
         );
     }
 }

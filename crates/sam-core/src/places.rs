@@ -2536,6 +2536,62 @@ mod tests {
         );
     }
 
+    /// A home kept behind a link (Fedora Silverblue's `/home` a link to
+    /// `/var/home`, or `~` a link to `/data/u`) shows everything in its
+    /// real place: with the whole home writable, `~/.fonts` a link to a
+    /// folder in the real home is followed and bound, as in a plain home.
+    /// Taken for a place outside the home, the fonts were left out with a
+    /// note on such a computer, although the home shows them anyway. A link
+    /// out of the real home is still left out: the app may have planted it.
+    #[test]
+    fn a_link_within_a_linked_home_is_followed_like_one_in_a_plain_home() {
+        let t = scratch();
+        let base = std::fs::canonicalize(t.path()).unwrap();
+        let real_home = base.join("data/u");
+        let outside = base.join("outside");
+        for d in [
+            real_home.join("myfonts"),
+            base.join("home"),
+            outside.clone(),
+        ] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        std::os::unix::fs::symlink(&real_home, base.join("home/u")).unwrap();
+        let host = HostInfo {
+            home: base.join("home/u"),
+            ..Default::default()
+        };
+        assert_eq!(resolve(&host.home), real_home, "the home is behind a link");
+        let mut whole = PermissionSet::strict_gui();
+        whole.filesystem.home = true;
+        whole.filesystem.home_access = crate::permissions::Access::Rw;
+        let fonts = host.home.join(".fonts");
+        let to = |target: &Path| {
+            let _ = std::fs::remove_file(&fonts);
+            std::os::unix::fs::symlink(target, &fonts).unwrap();
+        };
+        to(&real_home.join("myfonts"));
+        assert_eq!(
+            follow(&fonts).leads,
+            real_home.join("myfonts"),
+            "the way leads into the real home"
+        );
+        assert_eq!(
+            linked_place_left_out(&whole, &host, &fonts, false, &none()),
+            None
+        );
+        assert_eq!(
+            own_place_left_out(&whole, &host, &fonts, &[], &none()),
+            None
+        );
+        // Out of the real home: a link the app could have planted, left out.
+        to(&outside);
+        assert_eq!(
+            linked_place_left_out(&whole, &host, &fonts, false, &none()),
+            Some(LeftOut::Link(real_home.join(".fonts")))
+        );
+    }
+
     /// A left-out note, for a planted link, a link to where programs
     /// outside the sandbox listen or a guarded place, never says the place
     /// is hidden, since other grants may still show it, and for a planted
