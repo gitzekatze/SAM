@@ -1163,7 +1163,10 @@ impl Views {
         v
     }
 
-    /// The home, the user folders and the extra read-only folders.
+    /// The home, the user folders and the extra read-only folders. Each
+    /// user folder at the access the start shows it at
+    /// ([`sam_core::places::user_folder_access`]): two set to one place at
+    /// different access are both read-only, as mounted.
     fn without_writes(ctx: &LaunchContext) -> Views {
         let fsp = &ctx.permissions.filesystem;
         let mut grants = Vec::new();
@@ -1171,7 +1174,7 @@ impl Views {
             grants.push((ctx.host.home.clone(), fsp.home_access == Access::Rw));
         }
         for key in XDG_DIR_KEYS {
-            let acc = fsp.xdg_access(key);
+            let acc = sam_core::places::user_folder_access(&ctx.permissions, &ctx.host, key);
             if acc.is_granted() {
                 if let Ok(d) = user_dir(ctx, key) {
                     grants.push((d, acc == Access::Rw));
@@ -2295,6 +2298,16 @@ impl Section<'_> {
         // mounted, never what the views record (a writable user folder the
         // whole home already shows gets no mount of its own).
         let mut writable_mounts: Vec<PathBuf> = Vec::new();
+        // User folders set to one place at different access are all shown
+        // read-only there ([`sam_core::places::user_folder_access`]); the
+        // start says which and why, as the app page does.
+        for (place, keys) in sam_core::places::user_folders_at_one_place(p, h) {
+            if !inside_sam(ctx, &place) {
+                notes.push(sam_core::places::user_folders_at_one_place_note(
+                    &keys, &place,
+                ));
+            }
+        }
         let mut mounts: Vec<(usize, Args)> = Vec::new();
         let mut mount = |at: &Path, f: &dyn Fn(&mut Args)| {
             let mut m = Args::default();
@@ -2321,7 +2334,7 @@ impl Section<'_> {
             // (`XDG_DOCUMENTS_DIR=/data/Documents` was not shown). The
             // protections inside come after it (`guard_home`).
             for key in XDG_DIR_KEYS {
-                let acc = fsp.xdg_access(key);
+                let acc = sam_core::places::user_folder_access(p, h, key);
                 if !acc.is_granted() {
                     continue;
                 }
@@ -2335,11 +2348,11 @@ impl Section<'_> {
                         continue;
                     }
                 };
-                // Two user folders at one place (Music and Videos both set
-                // to `~/Media`): the one listed last decides, as the views
-                // decide it ([`Views::grant_of`]: the later grant of equal
-                // depth) and the sandbox check expects it
-                // ([`sam_core::places::user_folder_access`]). Judged one by
+                // Two user folders at one place (Music read and write,
+                // Pictures read-only, both `~/Media`) take the stricter
+                // access, as the views record it and the sandbox check
+                // expects it ([`sam_core::places::user_folder_access`]),
+                // and are mounted once, for the last of them. Judged one by
                 // one against the home, the read-only one was mounted and
                 // the writable one left to the home, so the folder was
                 // read-only while the views said writable.
@@ -2391,7 +2404,8 @@ impl Section<'_> {
                 });
             }
             for key in XDG_DIR_KEYS {
-                let acc = fsp.xdg_access(key);
+                // Two at one place both at the stricter access, as above.
+                let acc = sam_core::places::user_folder_access(p, h, key);
                 if !acc.is_granted() {
                     continue;
                 }
@@ -7304,14 +7318,26 @@ mod guard_tests {
     }
 
     /// Two user folders set to one place with different access (Music
-    /// read and write, Pictures read-only, both `~/Media`) take one
-    /// access: the one listed last in `XDG_DIR_KEYS` decides, in the
-    /// mounts as in the views, with the whole home writable, read-only or
-    /// not granted. Judged one by one against the home, the read-only one
-    /// was mounted and the writable one left to the writable home, so
-    /// `~/Media` was read-only while the views said writable.
+    /// read and write, Pictures read-only, both `~/Media`) take the
+    /// stricter one, whatever their order in `XDG_DIR_KEYS`: `~/Media` is
+    /// read-only, in the mounts as in the views, with the whole home
+    /// writable, read-only or not granted, and the start names the folders
+    /// and the rule (owner decision of 2026-11-27). The folder listed last
+    /// decided before, so Pictures read-only and Videos read and write at
+    /// one place showed it writable. All at one access, nothing changes.
     #[test]
-    fn user_folders_at_one_place_take_one_access() {
+    fn user_folders_at_one_place_take_the_stricter_access() {
+        fn user_folder_switch<'a>(f: &'a mut FilesystemPerms, key: &str) -> &'a mut Access {
+            match key {
+                "documents" => &mut f.documents,
+                "downloads" => &mut f.downloads,
+                "music" => &mut f.music,
+                "pictures" => &mut f.pictures,
+                "videos" => &mut f.videos,
+                "desktop" => &mut f.desktop,
+                _ => unreachable!("{key}"),
+            }
+        }
         let t = tempfile::tempdir().unwrap();
         let home = fs::canonicalize(t.path()).unwrap().join("home");
         let media = home.join("Media");
@@ -7329,40 +7355,52 @@ mod guard_tests {
                 (Some(w), Some(r)) => w > r,
             }
         };
-        let (rw, ro, no) = (Access::Rw, Access::Ro, Access::None);
+        let (rw, ro) = (Access::Rw, Access::Ro);
+        // Every ordered pair of user folders, one read and write and one
+        // read-only, and two at one access for the control.
+        let mut cases: Vec<(Vec<(&str, Access)>, bool)> = Vec::new();
+        for a in XDG_DIR_KEYS {
+            for b in XDG_DIR_KEYS.iter().filter(|b| **b != a) {
+                cases.push((vec![(a, rw), (b, ro)], false));
+            }
+        }
+        cases.push((vec![("music", rw), ("videos", rw)], true));
+        cases.push((vec![("music", ro), ("videos", ro)], false));
+        // Every case checked, so each order and each part shows when it
+        // goes wrong.
+        let mut wrong = Vec::new();
         for home_access in [Some(rw), Some(ro), None] {
-            for (music, pictures, videos, want) in [
-                (rw, ro, rw, true),
-                (rw, ro, no, false),
-                (ro, rw, no, true),
-                (ro, no, ro, false),
-            ] {
+            for (set, want) in &cases {
                 let mut p = PermissionSet::strict_gui();
                 if let Some(acc) = home_access {
                     p.filesystem.home = true;
                     p.filesystem.home_access = acc;
                 }
-                p.filesystem.music = music;
-                p.filesystem.pictures = pictures;
-                p.filesystem.videos = videos;
                 let mut ctx = ctx_for(&p, &home);
-                for key in ["music", "pictures", "videos"] {
-                    ctx.host.xdg_dirs.insert(key.into(), media.clone());
+                for (key, acc) in set {
+                    *user_folder_switch(&mut ctx.permissions.filesystem, key) = *acc;
+                    ctx.host.xdg_dirs.insert((*key).into(), media.clone());
                 }
-                let a = args_of(&ctx);
-                let case = format!("{home_access:?} home, {music:?} {pictures:?} {videos:?}");
-                assert_eq!(
-                    mounted_rw(&a, home_access == Some(rw)),
-                    want,
-                    "{case}: {a:?}"
-                );
-                assert_eq!(
-                    Views::base(&ctx).writable(&media.join("x")),
-                    want,
-                    "{case}: the views agree"
-                );
+                let cmd = Bubblewrap.build(&ctx).unwrap();
+                let a = cmd.args.clone();
+                let case = format!("{home_access:?} home, {set:?}");
+                if mounted_rw(&a, home_access == Some(rw)) != *want {
+                    wrong.push(format!("{case}: mounted writable is not {want}"));
+                }
+                if Views::base(&ctx).writable(&media.join("x")) != *want {
+                    wrong.push(format!("{case}: the views say writable is not {want}"));
+                }
+                let named = cmd
+                    .notes
+                    .iter()
+                    .any(|n| n.contains("/Media") && n.contains("stricter setting wins"));
+                let mixed = set.iter().any(|(_, a)| *a == rw) && set.iter().any(|(_, a)| *a == ro);
+                if named != mixed {
+                    wrong.push(format!("{case}: named {named}: {:?}", cmd.notes));
+                }
             }
         }
+        assert!(wrong.is_empty(), "{wrong:#?}");
     }
 
     /// The folders SAM always binds read-only (the fonts and the font

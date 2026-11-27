@@ -459,27 +459,75 @@ pub fn user_folder_link_the_app_can_change(
 }
 
 /// The access at which a start shows the user folder `key`: its own,
-/// unless another granted user folder listed after it in [`XDG_DIR_KEYS`]
-/// is shown at the same place ([`user_folder_shown`]; Music and Videos
-/// both set to `~/Media`). Then that one's access decides, as the views
-/// and the mounts decide it: the later mount of one place covers the
-/// earlier one. The sandbox check takes this answer, so it never expects
-/// one folder at two accesses.
+/// unless another granted user folder is shown at the same place
+/// ([`user_folder_shown`]; Music read and write, Pictures read-only, both
+/// set to `~/Media`) at a stricter one. Then the stricter one decides for
+/// all of them, whatever their order: read-only wins (owner decision of
+/// 2026-11-27, as "read-only means read-only"). The sandbox's mounts and
+/// views, its check, a terminal app's start line and the app page take
+/// this one answer, so none expects one folder at two accesses.
 pub fn user_folder_access(p: &PermissionSet, host: &HostInfo, key: &str) -> Access {
-    let fs = &p.filesystem;
-    let own = fs.xdg_access(key);
-    let shown = |k: &str| {
-        host.xdg_dir(k)
-            .filter(|_| fs.xdg_access(k).is_granted())
-            .and_then(|d| user_folder_shown(p, host, d))
-    };
-    let Some(real) = shown(key) else {
+    let own = p.filesystem.xdg_access(key);
+    let Some(real) = shown_user_folder(p, host, key) else {
         return own;
     };
-    XDG_DIR_KEYS
-        .iter()
-        .rfind(|k| shown(k).as_ref() == Some(&real))
-        .map_or(own, |k| fs.xdg_access(k))
+    let stricter_at_same_place = XDG_DIR_KEYS.iter().any(|k| {
+        p.filesystem.xdg_access(k) == Access::Ro
+            && shown_user_folder(p, host, k).as_ref() == Some(&real)
+    });
+    if stricter_at_same_place {
+        Access::Ro
+    } else {
+        own
+    }
+}
+
+/// Where the granted user folder `key` is shown ([`user_folder_shown`]),
+/// if it is granted and shown.
+fn shown_user_folder(p: &PermissionSet, host: &HostInfo, key: &str) -> Option<PathBuf> {
+    host.xdg_dir(key)
+        .filter(|_| p.filesystem.xdg_access(key).is_granted())
+        .and_then(|d| user_folder_shown(p, host, d))
+}
+
+/// Every place where granted user folders set to it differ in access
+/// (Music read and write, Pictures read-only, both `~/Media`), with those
+/// folders in the order of [`XDG_DIR_KEYS`]: all of them are shown
+/// read-only there ([`user_folder_access`]), and the start, the app page
+/// and `sam-jail info` say so ([`user_folders_at_one_place_note`]).
+pub fn user_folders_at_one_place(
+    p: &PermissionSet,
+    host: &HostInfo,
+) -> Vec<(PathBuf, Vec<&'static str>)> {
+    let mut out: Vec<(PathBuf, Vec<&'static str>)> = Vec::new();
+    for key in XDG_DIR_KEYS {
+        let Some(real) = shown_user_folder(p, host, key) else {
+            continue;
+        };
+        match out.iter_mut().find(|(r, _)| *r == real) {
+            Some((_, keys)) => keys.push(key),
+            None => out.push((real, vec![key])),
+        }
+    }
+    out.retain(|(_, keys)| {
+        let acc = |k: &&str| p.filesystem.xdg_access(k);
+        keys.iter().map(acc).any(|a| a == Access::Rw)
+            && keys.iter().map(acc).any(|a| a == Access::Ro)
+    });
+    out
+}
+
+/// What a start, the app page and `sam-jail info` say about the user
+/// folders `keys` set to the one place `place` with different access
+/// ([`user_folders_at_one_place`]): the folders, the rule and the way out.
+pub fn user_folders_at_one_place_note(keys: &[&str], place: &Path) -> String {
+    crate::i18n::trf(
+        "The {keys} folders are all set to {path}, some read and write, some read-only. The stricter setting wins: the app sees {path} read-only. To let it write there, set each of these folders to read and write, or give them places of their own.",
+        &[
+            ("keys", &keys.join(", ")),
+            ("path", &crate::util::tildify(place)),
+        ],
+    )
 }
 
 /// What a start says about the user folder `key` set to `dir`, a folder in

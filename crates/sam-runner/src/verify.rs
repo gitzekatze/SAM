@@ -140,8 +140,9 @@ pub fn plan(p: &PermissionSet, cfg: &Config, paths: &Paths, host: &HostInfo) -> 
         let want = if sam_core::places::inside_sams_folders(&real, &sam_dirs) {
             Access::Hidden
         } else if a.is_granted() && sam_core::places::user_folder_shown(p, host, path).is_some() {
-            // Two user folders at one place: the one the sandbox mounts
-            // last decides for both (Music and Videos set to `~/Media`).
+            // Two user folders at one place at different access (Music
+            // read and write, Pictures read-only, both `~/Media`): the
+            // stricter one decides for both, as in the sandbox.
             level(sam_core::places::user_folder_access(p, host, key))
         } else if through_home {
             home_level
@@ -1214,11 +1215,13 @@ mod tests {
     }
 
     /// The check expects user folders set to one place at one access, the
-    /// one the sandbox takes: the folder listed last in `XDG_DIR_KEYS`
-    /// decides (Music, Pictures and Videos all `~/Media`), with the whole
-    /// home writable, read-only or not granted. Each at its own access,
-    /// the check expected one folder writable and read-only at once and
-    /// failed whatever the sandbox did.
+    /// one the sandbox takes: the stricter one, whatever their order
+    /// (Music, Pictures and Videos all `~/Media`; owner decision of
+    /// 2026-11-27), with the whole home writable, read-only or not
+    /// granted. Each at its own access, the check expected one folder
+    /// writable and read-only at once and failed whatever the sandbox did;
+    /// with the folder listed last deciding, it expected Pictures
+    /// read-only and Videos writable at one place writable.
     #[test]
     fn the_check_expects_user_folders_at_one_place_at_one_access() {
         let t = tempfile::tempdir().unwrap();
@@ -1231,9 +1234,12 @@ mod tests {
         let cfg = Config::default();
         for home in [Some(Perm::Rw), Some(Perm::Ro), None] {
             for (music, pictures, videos, want) in [
-                (Perm::Rw, Perm::Ro, Perm::Rw, Access::ReadWrite),
+                (Perm::Rw, Perm::Ro, Perm::Rw, Access::ReadOnly),
                 (Perm::Rw, Perm::Ro, Perm::None, Access::ReadOnly),
-                (Perm::Ro, Perm::Rw, Perm::None, Access::ReadWrite),
+                (Perm::Ro, Perm::Rw, Perm::None, Access::ReadOnly),
+                (Perm::None, Perm::Ro, Perm::Rw, Access::ReadOnly),
+                (Perm::Rw, Perm::None, Perm::Rw, Access::ReadWrite),
+                (Perm::Ro, Perm::None, Perm::Ro, Access::ReadOnly),
             ] {
                 let mut p = PermissionSet::strict_gui();
                 if let Some(acc) = home {

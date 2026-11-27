@@ -202,6 +202,33 @@ fn refused_user_folders(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning>
         .collect()
 }
 
+/// Granted user folders set to one place at different access (Music read
+/// and write, Pictures read-only, both `~/Media`): the stricter setting
+/// wins, so the app sees the place read-only
+/// ([`crate::places::user_folder_access`], owner decision of 2026-11-27).
+/// The window and `sam-jail info` name the folders and the rule before
+/// the start, with the words of the launch note, at the first of them set
+/// to read and write, the one that does not get what its switch says.
+fn user_folders_at_one_place(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
+    let Some(host) = ctx.host else {
+        return Vec::new();
+    };
+    crate::places::user_folders_at_one_place(p, host)
+        .into_iter()
+        .map(|(place, keys)| {
+            let note = crate::places::user_folders_at_one_place_note(&keys, &place);
+            let w = Warning::warn("user-folders-one-place", "Shown read-only", note);
+            match keys
+                .iter()
+                .find(|k| p.filesystem.xdg_access(k) == Access::Rw)
+            {
+                Some(k) => w.with_key(&format!("filesystem.{k}")),
+                None => w,
+            }
+        })
+        .collect()
+}
+
 pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
     let mut w = Vec::new();
     let ignored = crate::permissions::blocked_wildcards(&p.dbus.session);
@@ -263,6 +290,7 @@ pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
     }
     w.extend(read_only_grants(p, ctx));
     w.extend(refused_user_folders(p, ctx));
+    w.extend(user_folders_at_one_place(p, ctx));
     for path in p
         .filesystem
         .custom_write
@@ -1265,6 +1293,75 @@ mod tests {
             warned(&p, &home.join("Downloads")).is_none(),
             "without the home"
         );
+    }
+
+    /// Two granted user folders set to one place at different access
+    /// (Music read and write, Pictures read-only, both `~/Media`) are named
+    /// on the app page and in `sam-jail info` before the start, with the
+    /// place, the rule (the stricter setting wins, so the app sees it
+    /// read-only) and the way out, at the switch of the writable one,
+    /// whatever their order. Folders at one place at one access, at
+    /// places of their own, or not granted give no such warning.
+    #[test]
+    fn user_folders_at_one_place_with_different_access_are_named() {
+        let t = tempfile::tempdir().unwrap();
+        let home = std::fs::canonicalize(t.path()).unwrap().join("home");
+        let media = home.join("Media");
+        std::fs::create_dir_all(&media).unwrap();
+        std::fs::create_dir_all(home.join("Pictures")).unwrap();
+        let mut host = HostInfo {
+            home: home.clone(),
+            ..Default::default()
+        };
+        host.xdg_dirs.insert("music".into(), media.clone());
+        host.xdg_dirs.insert("videos".into(), media.clone());
+        host.xdg_dirs
+            .insert("pictures".into(), home.join("Pictures"));
+        let warned = |p: &PermissionSet, host: &HostInfo| {
+            let ctx = WarningContext {
+                host: Some(host),
+                ..Default::default()
+            };
+            evaluate(p, &ctx)
+                .into_iter()
+                .filter(|w| w.code == "user-folders-one-place")
+                .collect::<Vec<_>>()
+        };
+        for (music, videos, key) in [
+            (Access::Rw, Access::Ro, "filesystem.music"),
+            (Access::Ro, Access::Rw, "filesystem.videos"),
+        ] {
+            let mut p = PermissionSet::strict_gui();
+            p.filesystem.music = music;
+            p.filesystem.videos = videos;
+            let hits = warned(&p, &host);
+            assert_eq!(hits.len(), 1, "{music:?} {videos:?}: {hits:?}");
+            let hit = &hits[0];
+            assert_eq!(hit.key.as_deref(), Some(key));
+            assert!(
+                hit.message.contains("music, videos")
+                    && hit.message.contains("/Media")
+                    && hit.message.contains("The stricter setting wins")
+                    && hit.message.contains("read-only")
+                    && hit.message.contains("places of their own"),
+                "{}",
+                hit.message
+            );
+        }
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.music = Access::Rw;
+        p.filesystem.videos = Access::Rw;
+        p.filesystem.pictures = Access::Ro;
+        assert!(warned(&p, &host).is_empty(), "one access at one place");
+        let mut apart = host.clone();
+        apart
+            .xdg_dirs
+            .insert("videos".into(), home.join("Pictures"));
+        p.filesystem.pictures = Access::None;
+        p.filesystem.videos = Access::Ro;
+        assert!(warned(&p, &apart).is_empty(), "places of their own");
+        p.filesystem.music = Access::None;
+        assert!(warned(&p, &host).is_empty(), "one not granted");
     }
 
     /// The X11 warning disappears when the user turns it off in the preferences.
