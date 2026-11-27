@@ -1509,6 +1509,14 @@ was easily misread.
   `network.app_ports` to restrict it further.
 - **Hostname:** the sandbox keeps the computer's hostname, because changing
   it is blocked on some hardened systems.
+- **App records and an older SAM.** SAM's processes (the window, the
+  `sam-jail` commands, a start that stores its result) save an app's
+  record under one short record lock, and each saves only the fields it
+  changed, so two saves at once never undo each other or a "look at it
+  first" mark. A SAM version from before this lock does not take it: while
+  it runs at the same time as this one (an old window left open after an
+  update), one of its saves can still undo a change this SAM saved. Close
+  old SAM windows after updating SAM.
 
 ---
 

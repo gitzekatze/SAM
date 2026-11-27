@@ -391,8 +391,7 @@ impl Sam {
     pub fn hide_duplicates(&self, query: &str) -> Result<AppEntry> {
         let mut e = self.resolve(query)?;
         self.hide_menu_entries(&mut e);
-        self.registry().save(&mut e)?;
-        Ok(e)
+        self.update_record(&e.id, |f| f.hidden_entries = e.hidden_entries.clone())
     }
 
     /// Put back the menu entries SAM hid for this app.
@@ -401,8 +400,7 @@ impl Sam {
         for h in std::mem::take(&mut e.hidden_entries) {
             menu::restore(&h, &e.id)?;
         }
-        self.registry().save(&mut e)?;
-        Ok(e)
+        self.update_record(&e.id, |f| f.hidden_entries.clear())
     }
 
     pub fn scan(&self, dirs: Option<Vec<PathBuf>>) -> Result<Vec<ScanItem>> {

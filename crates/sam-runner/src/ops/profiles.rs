@@ -6,28 +6,42 @@ use super::*;
 impl Sam {
     // ---------------------------------------------------------- profiles
 
-    pub(super) fn save_profile(&self, entry: &mut AppEntry) -> Result<()> {
-        entry.profile.user_modified = entry.profile.permissions != entry.recommended;
-        // The note of an update's needs keeps what is not granted yet: a
-        // changed switch is not the person seeing it (review L5).
-        settle_update_note(entry, NoteEvent::SettingsChanged);
-        // A changed switch is no confirmation that the person looked at a
-        // record or file changed outside SAM: only `mark_reviewed` clears
-        // those marks. Nor that they looked at the settings SAM chose from
-        // what the app says about itself (`reviewed`): one switch changed
-        // on the command line, in the window or for a group of apps leaves
-        // the others unconfirmed (review F5). Only flows that set the whole
-        // set confirm it: `mark_reviewed`, a preset, `set_permissions`.
-        entry.clear_launch_failure();
-        self.registry().save(entry)
+    /// Saves the change of an app's settings that `entry` holds, made on
+    /// the copy `read`: under the record lock, only what the change
+    /// changed is written onto the record as it is now, so what another
+    /// SAM process saved meanwhile (an "unpack again", an update and their
+    /// "look at it first" marks and notices) stays (review L3). `entry`
+    /// becomes the record as saved.
+    pub(super) fn save_profile(&self, read: &AppEntry, entry: &mut AppEntry) -> Result<()> {
+        let saved = self.registry().try_update(&entry.id, |now| {
+            sam_storage::apply_changes(now, read, entry)?;
+            now.profile.user_modified = now.profile.permissions != now.recommended;
+            // The note of an update's needs keeps what is not granted yet: a
+            // changed switch is not the person seeing it (review L5).
+            settle_update_note(now, NoteEvent::SettingsChanged);
+            // A changed switch is no confirmation that the person looked at a
+            // record or file changed outside SAM: only `mark_reviewed` clears
+            // those marks. Nor that they looked at the settings SAM chose from
+            // what the app says about itself (`reviewed`): one switch changed
+            // on the command line, in the window or for a group of apps leaves
+            // the others unconfirmed (review F5). Only flows that set the whole
+            // set confirm it: `mark_reviewed`, a preset, `set_permissions`.
+            now.clear_launch_failure();
+            Ok(())
+        })?;
+        *entry = saved.with_context(|| {
+            sam_core::i18n::trf("no registered app '{id}'", &[("id", &entry.id)])
+        })?;
+        Ok(())
     }
 
     /// Changes one setting. Leaves the app unconfirmed when it was.
     pub fn set_permission(&self, query: &str, key: &str, value: &str) -> Result<AppEntry> {
         let mut e = self.resolve(query)?;
+        let read = e.clone();
         e.profile.permissions.set_key(key, value)?;
         e.profile.preset = None;
-        self.save_profile(&mut e)?;
+        self.save_profile(&read, &mut e)?;
         Ok(e)
     }
 
@@ -51,10 +65,11 @@ impl Sam {
         confirms: bool,
     ) -> Result<AppEntry> {
         let mut e = self.resolve(query)?;
+        let read = e.clone();
         e.profile.permissions = perms;
         e.profile.preset = None;
         e.reviewed |= confirms;
-        self.save_profile(&mut e)?;
+        self.save_profile(&read, &mut e)?;
         Ok(e)
     }
 
@@ -87,13 +102,14 @@ impl Sam {
 
     pub fn reset_profile(&self, query: &str) -> Result<AppEntry> {
         let mut e = self.resolve(query)?;
+        let read = e.clone();
         e.profile.permissions = e.recommended.clone();
         e.profile.compatibility_mode = false;
         e.repairs_applied.clear();
         e.applied_repairs.clear();
         e.repair_backup = None;
         e.profile.preset = None;
-        self.save_profile(&mut e)?;
+        self.save_profile(&read, &mut e)?;
         Ok(e)
     }
 
@@ -110,6 +126,7 @@ impl Sam {
         if on == e.profile.compatibility_mode {
             return Ok(e);
         }
+        let read = e.clone();
         if on {
             e.profile.before_compat = Some(e.profile.permissions.clone());
             e.profile.permissions = compatibility_profile(&e.profile.permissions);
@@ -122,7 +139,7 @@ impl Sam {
                 .unwrap_or_else(|| e.recommended.clone());
         }
         e.profile.compatibility_mode = on;
-        self.save_profile(&mut e)?;
+        self.save_profile(&read, &mut e)?;
         Ok(e)
     }
 
@@ -138,11 +155,8 @@ impl Sam {
     /// unpacking under its own start lock would wait for itself.
     fn verify_unpacked(&self, e: &AppEntry) -> Result<crate::verify::Outcome> {
         let out = crate::verify::verify(e, &self.config, &self.paths, &self.host())?;
-        let reg = self.registry();
-        if let Some(mut fresh) = reg.get(&e.id)? {
-            fresh.last_check = Some(out.record.clone());
-            reg.save(&mut fresh)?;
-        }
+        self.registry()
+            .update(&e.id, |fresh| fresh.last_check = Some(out.record.clone()))?;
         Ok(out)
     }
 
@@ -269,7 +283,7 @@ impl Sam {
 
     /// Replaces the extra arguments always passed to the app.
     pub fn set_args(&self, query: &str, args: Vec<String>) -> Result<AppEntry> {
-        let mut e = self.resolve(query)?;
+        let e = self.resolve(query)?;
         let args: Vec<String> = args
             .into_iter()
             .map(|a| a.trim().to_string())
@@ -280,9 +294,7 @@ impl Sam {
                 bail!("invalid argument {a:?}");
             }
         }
-        e.profile.args = args;
-        self.registry().save(&mut e)?;
-        Ok(e)
+        self.update_record(&e.id, |f| f.profile.args = args)
     }
 
     // ------------------------------------------------------------ repair
@@ -302,6 +314,7 @@ impl Sam {
         confirmed: bool,
     ) -> Result<AppEntry> {
         let mut e = self.resolve(query)?;
+        let read = e.clone();
         let change = crate::gate::Change::Apply {
             e: &e,
             cfg: &self.config,
@@ -323,7 +336,7 @@ impl Sam {
             e.repairs_applied.push(sug.id.clone());
             e.applied_repairs.push(undo);
         }
-        self.save_profile(&mut e)?;
+        self.save_profile(&read, &mut e)?;
         Ok(e)
     }
 
@@ -355,6 +368,7 @@ impl Sam {
     /// step changed and keeps the other steps.
     pub fn undo_repair_step(&self, query: &str, step_id: &str) -> Result<AppEntry> {
         let mut e = self.resolve(query)?;
+        let read = e.clone();
         let i = e
             .applied_repairs
             .iter()
@@ -367,7 +381,7 @@ impl Sam {
             })?;
         let r = e.applied_repairs.remove(i);
         crate::repair::revert_step(&mut e, &r)?;
-        self.save_profile(&mut e)?;
+        self.save_profile(&read, &mut e)?;
         Ok(e)
     }
 
@@ -377,6 +391,7 @@ impl Sam {
     /// without the steps' own records fall back to that copy.
     pub fn undo_repairs(&self, query: &str) -> Result<AppEntry> {
         let mut e = self.resolve(query)?;
+        let read = e.clone();
         if !e.applied_repairs.is_empty() {
             for r in e.applied_repairs.clone().iter().rev() {
                 crate::repair::revert_step(&mut e, r)?;
@@ -396,7 +411,7 @@ impl Sam {
         e.repairs_applied.clear();
         e.applied_repairs.clear();
         e.tried_repairs.clear();
-        self.save_profile(&mut e)?;
+        self.save_profile(&read, &mut e)?;
         Ok(e)
     }
 
@@ -412,26 +427,31 @@ impl Sam {
     /// showed (review L4). Without `seen` (a person at the terminal), what
     /// is there now is confirmed.
     pub fn mark_reviewed_as_shown(&self, query: &str, seen: Option<&str>) -> Result<AppEntry> {
-        let mut e = self.resolve(query)?;
-        if let Some(seen) = seen {
-            if sam_storage::review_fingerprint(&e)? != seen {
-                return Err(sam_core::error::CodedError::new(
-                    "review-out-of-date",
-                    sam_core::i18n::trf(
-                        "{app} changed since this page showed it. Look at it again, then confirm.",
-                        &[("app", &sam_core::util::display_safe(e.display_name(), 80))],
-                    ),
-                )
-                .into());
+        let id = self.resolve(query)?.id;
+        // Checked and confirmed on the record as it is under the record
+        // lock: a mark or notice another SAM process saved after the check
+        // is never cleared unseen (review L3).
+        let saved = self.registry().update_confirmed(&id, |e| {
+            if let Some(seen) = seen {
+                if sam_storage::review_fingerprint(e)? != seen {
+                    return Err(sam_core::error::CodedError::new(
+                        "review-out-of-date",
+                        sam_core::i18n::trf(
+                            "{app} changed since this page showed it. Look at it again, then confirm.",
+                            &[("app", &sam_core::util::display_safe(e.display_name(), 80))],
+                        ),
+                    )
+                    .into());
+                }
             }
-        }
-        e.reviewed = true;
-        settle_update_note(&mut e, NoteEvent::Seen);
-        // The one place that confirms changes made outside SAM.
-        e.changed_outside = false;
-        e.content_changed_outside = false;
-        self.registry().save_confirmed(&mut e)?;
-        Ok(e)
+            e.reviewed = true;
+            settle_update_note(e, NoteEvent::Seen);
+            // The one place that confirms changes made outside SAM.
+            e.changed_outside = false;
+            e.content_changed_outside = false;
+            Ok(())
+        })?;
+        saved.with_context(|| sam_core::i18n::trf("no registered app '{id}'", &[("id", &id)]))
     }
 
     /// Applies a preset; asks (returns it not applied) when it removes
@@ -447,6 +467,7 @@ impl Sam {
         expect: Option<&str>,
     ) -> Result<PresetApply> {
         let mut e = self.resolve(query)?;
+        let read = e.clone();
         let preset = find_preset(&self.paths, preset_name)?
             .with_context(|| format!("unknown preset '{preset_name}'"))?;
         let fingerprint = sam_storage::fingerprint(&preset.permissions)?;
@@ -472,7 +493,7 @@ impl Sam {
         e.profile.preset = Some(preset.name.clone());
         // The whole set is the preset the person picked.
         e.reviewed = true;
-        self.save_profile(&mut e)?;
+        self.save_profile(&read, &mut e)?;
         Ok(PresetApply {
             preset: preset.name,
             check,
@@ -569,12 +590,13 @@ impl Sam {
                         to: e.profile.permissions.clone(),
                     },
                 );
+                let read = e.clone();
                 out.previous.insert(
                     e.id.clone(),
                     std::mem::replace(&mut e.profile.permissions, new),
                 );
                 e.profile.preset = None;
-                self.save_profile(&mut e)?;
+                self.save_profile(&read, &mut e)?;
             }
         }
         Ok(out)
@@ -805,5 +827,57 @@ mod update_note_tests {
             !changed(&sam),
             "back on the recommendation is no longer changed"
         );
+    }
+}
+
+#[cfg(test)]
+mod record_lock_tests {
+    use super::*;
+
+    /// A change of the settings made on a copy read before an "unpack
+    /// again" or an update saved its result saves only the change: the
+    /// new unpacked copy, the notice of a changed signing key and the
+    /// "look at it first" mark that step saved stay (review L3: the whole
+    /// copy was written back, and the next start ran the new content
+    /// without the notice).
+    #[test]
+    fn a_settings_change_keeps_what_an_unpack_saved_meanwhile() {
+        let t = tempfile::tempdir().unwrap();
+        let sam = Sam::with_paths(Paths::rooted(t.path())).unwrap();
+        let mut e = AppEntry {
+            id: "appimage-overlap-1a2b".into(),
+            extraction: Some(Default::default()),
+            ..Default::default()
+        };
+        e.profile.permissions.devices.gpu = false;
+        sam.registry().save(&mut e).unwrap();
+        let read = sam.resolve(&e.id).unwrap();
+        // Saved by an "unpack again" while the settings change was made.
+        sam.update_record(&e.id, |f| {
+            f.content_changed_outside = true;
+            f.signing_key_changed = Some("the earlier key".into());
+            f.source.sha256 = "1".repeat(64);
+            f.extraction.as_mut().unwrap().appdir = "/unpacked/again".into();
+        })
+        .unwrap();
+        let mut changed = read.clone();
+        changed.profile.permissions.devices.gpu = true;
+        sam.save_profile(&read, &mut changed).unwrap();
+        let back = sam.registry().get(&e.id).unwrap().unwrap();
+        assert!(back.profile.permissions.devices.gpu, "the change is saved");
+        assert!(back.profile.user_modified);
+        assert_eq!(
+            back.signing_key_changed.as_deref(),
+            Some("the earlier key"),
+            "the notice of a changed signing key stays"
+        );
+        assert_eq!(back.source.sha256, "1".repeat(64), "the new file stays");
+        assert_eq!(
+            back.extraction.unwrap().appdir,
+            Path::new("/unpacked/again"),
+            "the new unpacked copy stays"
+        );
+        assert!(back.content_changed_outside, "the mark stays");
+        assert_eq!(changed.signing_key_changed, back.signing_key_changed);
     }
 }

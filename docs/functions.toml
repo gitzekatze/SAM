@@ -864,6 +864,11 @@ code = ["sam-storage/src/lib.rs", "sam-runner/src/launch.rs", "sam-runner/src/op
 tests = ["records_changed_outside_sam_are_recognized", "a_save_of_an_older_copy_keeps_the_marks_set_meanwhile", "a_save_over_an_unreadable_record_drops_nothing_silently", "the_review_fingerprint_covers_what_a_review_confirms", "a_review_from_an_out_of_date_page_confirms_nothing", "a_review_confirms_only_what_was_shown", "the_question_names_the_update_note_that_confirming_accepts", "a_review_from_the_page_names_what_it_showed", "only_the_review_clears_look_at_it_first", "an_app_changed_outside_sam_starts_only_after_confirmation", "a_changed_record_stays_blocked_until_it_is_confirmed", "a_late_save_keeps_a_change_made_meanwhile",
   "add_reminds_to_confirm_unconfirmed_settings",
   "confirming_changed_settings_names_what_they_allow",
+  "a_mark_set_during_another_save_survives",
+  "a_save_waits_while_the_record_lock_is_held_and_then_succeeds",
+  "a_record_lock_held_too_long_stops_the_save_with_an_error",
+  "a_save_of_changes_keeps_what_others_saved_meanwhile",
+  "a_settings_change_keeps_what_an_unpack_saved_meanwhile",
 ]
 checks = ["tests/gui/app-page-atspi.sh"]
 
