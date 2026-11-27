@@ -21,4 +21,5 @@
   that folder only when you grant it, and SAM does not hide Git's file
   there then.
 - A test starts a real app that tries to read the file in each of these
-  ways.
+  ways, except with a settings folder set to your home itself; there a
+  test checks the list of places SAM hides.
