@@ -868,6 +868,7 @@ tests = ["records_changed_outside_sam_are_recognized", "a_save_of_an_older_copy_
   "a_save_waits_while_the_record_lock_is_held_and_then_succeeds",
   "a_record_lock_held_too_long_stops_the_save_with_an_error",
   "a_save_of_changes_keeps_what_others_saved_meanwhile",
+  "a_mark_set_again_for_new_content_survives_a_confirmation_meanwhile",
   "a_settings_change_keeps_what_an_unpack_saved_meanwhile",
 ]
 checks = ["tests/gui/app-page-atspi.sh"]

@@ -15,6 +15,9 @@
 - Confirming that you looked at an app checks and clears the marks under
   the same lock, so it never clears a mark saved after the page was
   checked.
+- When you confirm an app while SAM unpacks a newly changed AppImage of
+  it again, the "look at it first" mark of the new content stays, so SAM
+  still asks before that new content starts.
 - If another SAM process keeps the lock for more than 10 seconds, the save
   stops with a message that says so and changes nothing; try again.
 - Records written by older SAM versions read as before. An older SAM that

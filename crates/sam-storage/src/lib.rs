@@ -496,7 +496,8 @@ impl Registry {
     /// it had read and undid what that step saved). `changed` becomes the
     /// record as saved. Nothing is saved when the record is gone (an app
     /// removed meanwhile stays removed). Over a record that cannot be read,
-    /// as [`Registry::save`].
+    /// as [`Registry::save`]. A "look at it first" mark set on `changed` is
+    /// always saved, also when `read` had it set already.
     pub fn save_changes(&self, read: &AppEntry, changed: &mut AppEntry) -> Result<()> {
         let _held = self.lock(&changed.id)?;
         let p = self.paths.app_file(&changed.id);
@@ -506,6 +507,16 @@ impl Registry {
         match self.load_file(&p) {
             Ok(mut on_disk) => {
                 apply_changes(&mut on_disk, read, changed)?;
+                // A "look at it first" mark the writer's copy carries is
+                // saved even when the writer read it already set: an
+                // "unpack again" that sets it again for new content keeps
+                // it, also when the person confirmed the older content
+                // meanwhile (the same value in `read` and `changed` counts
+                // as unchanged, so that confirmation would otherwise clear
+                // the mark of content nobody saw). At worst SAM asks once
+                // more, as the save of the whole copy did before.
+                on_disk.changed_outside |= changed.changed_outside;
+                on_disk.content_changed_outside |= changed.content_changed_outside;
                 self.write_keeping_marks(&mut on_disk)?;
                 *changed = on_disk;
                 Ok(())
@@ -1588,6 +1599,56 @@ mod tests {
         reg.remove(id).unwrap();
         reg.save_changes(&read, &mut mine).unwrap();
         assert!(!reg.exists(id), "a removed app stays removed");
+    }
+
+    /// An "unpack again" of new content that read the record with the
+    /// "look at it first" marks already set, and sets them again, keeps
+    /// them when the person confirms the older content while it unpacks:
+    /// the record never names content nobody looked at without the marks.
+    #[test]
+    fn a_mark_set_again_for_new_content_survives_a_confirmation_meanwhile() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = Paths::rooted(tmp.path());
+        let reg = Registry::new(&paths);
+        let id = "appimage-x-10";
+        let mut e = AppEntry {
+            id: id.into(),
+            name: "X".into(),
+            extraction: Some(Default::default()),
+            ..Default::default()
+        };
+        e.source.sha256 = "first swapped file".into();
+        e.content_changed_outside = true;
+        e.changed_outside = true;
+        reg.save_confirmed(&mut e).unwrap();
+        let read = reg.get(id).unwrap().unwrap();
+        assert!(read.content_changed_outside && read.changed_outside);
+        // The unpack of a second swapped file sets both marks again.
+        let mut mine = read.clone();
+        mine.source.sha256 = "second swapped file".into();
+        mine.extraction.as_mut().unwrap().appdir = "/unpacked/second".into();
+        mine.content_changed_outside = true;
+        mine.changed_outside = true;
+        // Meanwhile the person confirms the page of the first file.
+        reg.update_confirmed(id, |f| {
+            f.content_changed_outside = false;
+            f.changed_outside = false;
+            Ok(())
+        })
+        .unwrap();
+        reg.save_changes(&read, &mut mine).unwrap();
+        let back = reg.get(id).unwrap().unwrap();
+        assert_eq!(back.source.sha256, "second swapped file");
+        assert_eq!(
+            back.extraction.as_ref().unwrap().appdir,
+            Path::new("/unpacked/second")
+        );
+        assert!(
+            back.content_changed_outside,
+            "the new content still asks to be looked at first"
+        );
+        assert!(back.changed_outside, "the settings mark stays too");
+        assert!(mine.content_changed_outside && mine.changed_outside);
     }
 
     /// A preset is always stored inside the presets folder, whatever its name:
