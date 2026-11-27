@@ -217,6 +217,19 @@ gaps = "The options a room uses (--bind-fd, --ro-bind-fd, --ro-bind-data with --
 playbook = "A Bubblewrap without these options builds no room: a program that asks fails as it would without Room service, and the app itself is unaffected. A new Bubblewrap option is refused in rooms until it is reviewed and added to option() in room_rules.rs; a changed meaning shows in the Room service tests (the mount comparison names the place)."
 
 [[contract]]
+id = "bwrap-dev-links"
+component = "bubblewrap"
+assumes = "Bubblewrap's --dev makes exactly these links in the new /dev: fd (to /proc/self/fd), stdin, stdout and stderr (to /proc/self/fd/0, 1 and 2), core (to /proc/kcore) and ptmx (to pts/ptmx). Room service counts them as links of the app's that a room has too when the room asks for the app's /dev with working devices, and refuses anything of the room at or behind one."
+covers = ["path:/proc/kcore"]
+functions = [41]
+probe = "none"
+tests = ["nothing_of_the_room_lies_at_or_behind_a_link_copied_from_the_app"]
+on_break = "none"
+coverage = "partial"
+gaps = "The list is taken from Bubblewrap's source (the /dev setup in bubblewrap.c); no test reads the links a real --dev makes, so a link a later Bubblewrap adds is not counted until it is added to bwrap_dev_links() in room_rules.rs."
+playbook = "The list only ever narrows what a room may ask for: a link Bubblewrap no longer makes just stays refused. A link a later Bubblewrap adds would not be counted; its target then decides, as for every link of the app's: an absolute target does not exist while Bubblewrap builds the room. Add the new link to BWRAP_DEV_MORE_LINKS in room_rules.rs and a case to the test."
+
+[[contract]]
 id = "bwrap-overlay"
 component = "bubblewrap"
 assumes = "Bubblewrap offers overlays (--overlay-src, --overlay; upstream since 0.11) for a writable app folder whose changes go to a separate layer."
