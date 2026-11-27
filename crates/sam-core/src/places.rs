@@ -1215,7 +1215,7 @@ mod tests {
     /// A user folder is refused by each of the rules on its own, also when
     /// the home is kept behind a link (`~` at `home/ann`, a link to
     /// `data/ann`), where the home as named and the home where it really
-    /// is answer differently (audit S-F11):
+    /// is answer differently:
     /// - the folder that holds the home's link (`home`) lies above the home
     ///   as named, not above the real home: shown, it handed the app the
     ///   link and every other home there;
