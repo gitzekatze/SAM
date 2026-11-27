@@ -1545,6 +1545,15 @@ fn grant_path(c: &str) -> PathBuf {
     resolve(&expand_home(c))
 }
 
+/// The places bound read-only that the views do not record (the fonts, the
+/// font settings, the theme files), and every place bound writable below
+/// the home, mounted after them where deeper: together they say where a
+/// read-only bind is still the topmost mount ([`pins`]).
+struct ReadOnlyBinds<'a> {
+    places: &'a [PathBuf],
+    writable_mounts: &'a [PathBuf],
+}
+
 /// Step 1 of the protections inside the shown parts of the real home: the
 /// folders above protected places, above SAM's own folders and above SAM's
 /// own programs that the sandbox shows writable. Each becomes a mount point
@@ -1565,33 +1574,41 @@ fn grant_path(c: &str) -> PathBuf {
 /// B2 S3, R50). A grant's own place is a mount point already.
 ///
 /// Never where a place bound read-only that the views do not record
-/// (`read_only`: the fonts, the font settings and the theme files, each
-/// only where no writable place is bound after it at its own place) is
-/// still the topmost mount: on it, or inside it with no writable grant
-/// between it and the folder. The app cannot rename anything there, and a
-/// pin, bound after the read-only bind at equal depth or deeper, made it
-/// writable (`~/.fonts` above an extra read-only folder `~/.fonts/licensed`
-/// with the whole home writable). Inside a writable grant within such a
-/// place (`~/.fonts/work`) the app can rename, so the folders there are
-/// pinned as everywhere: skipped on or inside the whole place, a start file
-/// kept as a link into `~/.fonts/work/dots` lost the pin of `dots`.
+/// (`read_only.places`: the fonts, the font settings and the theme files,
+/// each only where no writable place is bound after it at its own place)
+/// is still the topmost mount: on it, or inside it with no place bound
+/// writable (`read_only.writable_mounts`) between it and the folder. The
+/// app cannot rename anything there, and a pin, bound after the read-only
+/// bind at equal depth or deeper, made it writable (`~/.fonts` above an
+/// extra read-only folder `~/.fonts/licensed` with the whole home
+/// writable). Judged from what is mounted, not from the views: a writable
+/// user folder inside `~/.fonts` that the writable home already shows
+/// has no mount of its own, so the read-only bind still covers it. Inside
+/// a place bound writable within such a place (`~/.fonts/work`) the app
+/// can rename, so the folders there are pinned as everywhere: skipped on
+/// or inside the whole place, a start file kept as a link into
+/// `~/.fonts/work/dots` lost the pin of `dots`.
 fn pins(
     home: &Path,
     views: &Views,
     guarded: &[PathBuf],
     sam_dirs: &[PathBuf],
     programs: &[PathBuf],
-    read_only: &[PathBuf],
+    read_only: &ReadOnlyBinds,
 ) -> Vec<PathBuf> {
     // The read-only bind is the topmost mount at `c`: it shows `c`, and no
-    // writable grant deeper than it does (mounted after it, by depth).
+    // place bound writable deeper than it does (mounted after it, by
+    // depth). Judged from the mounts, never from the views: a writable
+    // user folder inside `~/.fonts` that the writable whole home already
+    // shows gets no mount of its own, so the read-only bind still covers
+    // it, and a pin there made the font folder writable.
     let read_only_on_top = |c: &Path| {
-        read_only.iter().any(|r| {
+        read_only.places.iter().any(|r| {
             c.starts_with(r)
-                && !views
-                    .grants
+                && !read_only
+                    .writable_mounts
                     .iter()
-                    .any(|(g, rw)| *rw && g != r && g.starts_with(r) && c.starts_with(g))
+                    .any(|g| g != r && g.starts_with(r) && c.starts_with(g))
         })
     };
     let mut pins: Vec<PathBuf> = Vec::new();
@@ -2274,6 +2291,10 @@ impl Section<'_> {
         let fsp = &p.filesystem;
         // The user folders bound at a place of their own, for the pins.
         let mut own_mounts: Vec<PathBuf> = Vec::new();
+        // Every place bound writable below the home, for the pins: what is
+        // mounted, never what the views record (a writable user folder the
+        // whole home already shows gets no mount of its own).
+        let mut writable_mounts: Vec<PathBuf> = Vec::new();
         let mut mounts: Vec<(usize, Args)> = Vec::new();
         let mut mount = |at: &Path, f: &dyn Fn(&mut Args)| {
             let mut m = Args::default();
@@ -2339,6 +2360,9 @@ impl Section<'_> {
                 let op = if rw { "--bind-try" } else { "--ro-bind-try" };
                 mount(&real, &|m| m.op2(op, &real, &real));
                 own_mounts.push(real.clone());
+                if rw {
+                    writable_mounts.push(real.clone());
+                }
                 // A link where the app looks for it when that is a link
                 // outside the home; one in the home is shown with it.
                 if let Some(dir) = h
@@ -2388,6 +2412,9 @@ impl Section<'_> {
                         // looks for it when that is a link on the host.
                         mount(&real, &|m| m.op2(op, &real, &real));
                         own_mounts.push(real.clone());
+                        if acc == Access::Rw {
+                            writable_mounts.push(real.clone());
+                        }
                         if let Some(dir) = h.xdg_dir(key).filter(|d| *d != real) {
                             mount(dir, &|m| m.op2("--symlink", &real, dir));
                         }
@@ -2530,6 +2557,27 @@ impl Section<'_> {
                 .filter(|g| g.how == WriteBind::Writable)
                 .map(|g| g.bound.clone()),
         );
+        // Bound writable after the places bound read-only below, by depth:
+        // the extra writable folders, the opened ones and SAM's own binds,
+        // besides the user folders above.
+        writable_mounts.extend(
+            self.writes
+                .iter()
+                .filter(|g| g.how == WriteBind::Writable)
+                .map(|g| g.bound.clone()),
+        );
+        writable_mounts.extend(
+            self.opened
+                .iter()
+                .filter(|(_, rw)| *rw)
+                .map(|(o, _)| o.clone()),
+        );
+        writable_mounts.extend(
+            ctx.extra_binds
+                .iter()
+                .filter(|(_, _, rw)| *rw)
+                .map(|(_, sb, _)| sb.clone()),
+        );
         // The folders above where this SAM keeps its own. Those above the
         // folders named like them are pinned as above every protected
         // place, which they are (`protected_ancestors`, and where a link
@@ -2540,7 +2588,10 @@ impl Section<'_> {
             &guarded,
             &ctx.sam_dirs,
             &ctx.sam_programs,
-            &read_only,
+            &ReadOnlyBinds {
+                places: &read_only,
+                writable_mounts: &writable_mounts,
+            },
         ) {
             mount(&p, &|m| m.op2("--bind", &p, &p));
         }
@@ -7315,8 +7366,9 @@ mod guard_tests {
     }
 
     /// The folders SAM always binds read-only (the fonts and the font
-    /// settings) are never pinned, on or inside: with the whole home
-    /// writable and an extra read-only folder inside a font folder
+    /// settings) are never pinned where their read-only bind is still the
+    /// topmost mount, on them or inside them: with the whole home writable
+    /// and an extra read-only folder inside a font folder
     /// (`~/.fonts/licensed`), a pin of `~/.fonts` was bound after its
     /// read-only bind (equal depth, stable order) and made the font folder
     /// writable, which the start never allowed before the pins of finding
@@ -7421,6 +7473,94 @@ mod guard_tests {
                     first(&["--bind", &ro, &ro]).is_none(),
                     "{ro} never pinned: {a:?}"
                 );
+            }
+        }
+        assert!(lost.is_empty(), "{lost:#?}");
+    }
+
+    /// A writable user folder inside a font folder under the writable
+    /// whole home (`XDG_MUSIC_DIR=~/.fonts/work`) gets no mount of its own,
+    /// since the home already shows it writable, so the read-only bind of
+    /// `~/.fonts` stays the topmost mount there. The folders above a start
+    /// file kept as a link into it (`~/.bashrc` to
+    /// `~/.fonts/work/dots/bashrc`) are then not pinned: judged from the
+    /// views, which record the user folder writable, `dots` was pinned
+    /// after the read-only bind and made writable inside the read-only font
+    /// folder. The font folder stays read-only, and nothing in it is bound
+    /// writable.
+    #[test]
+    fn a_writable_user_folder_the_home_shows_inside_a_font_folder_adds_no_pin() {
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap().join("home");
+        let work = home.join(".fonts/work");
+        let dots = work.join("dots");
+        fs::create_dir_all(&dots).unwrap();
+        fs::write(dots.join("bashrc"), "").unwrap();
+        std::os::unix::fs::symlink(dots.join("bashrc"), home.join(".bashrc")).unwrap();
+        let mut p = full_rw();
+        p.filesystem.music = Access::Rw;
+        let mut ctx = ctx_for(&p, &home);
+        ctx.host.xdg_dirs.insert("music".into(), work.clone());
+        let a = args_of(&ctx);
+        let st = |p: &Path| p.to_string_lossy().into_owned();
+        let fonts = st(&home.join(".fonts"));
+        assert!(
+            !at_seq(&a, &["--ro-bind-try", &fonts, &fonts]).is_empty(),
+            "{fonts} bound read-only: {a:?}"
+        );
+        let writable_inside: Vec<&[String]> = a
+            .windows(3)
+            .filter(|w| {
+                (w[0] == "--bind" || w[0] == "--bind-try")
+                    && w[1] == w[2]
+                    && Path::new(&w[1]).starts_with(&fonts)
+            })
+            .collect();
+        assert!(
+            writable_inside.is_empty(),
+            "nothing inside {fonts} bound writable: {writable_inside:?}"
+        );
+    }
+
+    /// A font folder opened with the app, or bound writable by SAM itself,
+    /// is bound writable after its read-only bind at its own place, so it
+    /// is writable and the folders inside it are pinned as everywhere: the
+    /// folder above an extra read-only folder inside it
+    /// (`~/.fonts/dots/licensed`) cannot be renamed away with that mount.
+    /// Counted as read-only on top, `~/.fonts/dots` lost its pin. Each
+    /// way of binding it writable is checked on its own, so each one shows
+    /// when it is no longer counted.
+    #[test]
+    fn a_font_folder_opened_or_bound_writable_keeps_the_pins_inside() {
+        let st = |p: &Path| p.to_string_lossy().into_owned();
+        let mut lost = Vec::new();
+        for way in ["opened", "SAM's bind"] {
+            let t = tempfile::tempdir().unwrap();
+            let home = fs::canonicalize(t.path()).unwrap().join("home");
+            let fonts = home.join(".fonts");
+            let dots = fonts.join("dots");
+            fs::create_dir_all(dots.join("licensed")).unwrap();
+            let shared = home.parent().unwrap().join("shared");
+            fs::create_dir_all(&shared).unwrap();
+            let mut p = PermissionSet::strict_gui();
+            p.filesystem.custom_read = vec![st(&dots.join("licensed"))];
+            let mut ctx = ctx_for(&p, &home);
+            if way == "opened" {
+                ctx.permissions.filesystem.opened_files = Access::Rw;
+                ctx.args = vec![st(&fonts)];
+                assert_eq!(opened_paths(&ctx), vec![(fonts.clone(), true)]);
+            } else {
+                ctx.extra_binds = vec![(shared.clone(), fonts.clone(), true)];
+            }
+            let a = args_of(&ctx);
+            let (fonts, dots) = (st(&fonts), st(&dots));
+            let first = |seq: &[&str]| at_seq(&a, seq).first().copied();
+            first(&["--ro-bind-try", &fonts, &fonts]).expect("bound read-only");
+            if way == "opened" {
+                first(&["--bind-try", &fonts, &fonts]).expect("opened writable");
+            }
+            if first(&["--bind", &dots, &dots]).is_none() {
+                lost.push(format!("{way}: {dots} not pinned: {a:?}"));
             }
         }
         assert!(lost.is_empty(), "{lost:#?}");
