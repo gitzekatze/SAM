@@ -16,7 +16,8 @@
   folders from every app, as it hides its own folders: an app that may see
   the folder above one of them (`~/Games` for `SAM_DATA_DIR=~/Games/sam`)
   cannot read the other apps' private homes there or change their app
-  records. SAM hides such a folder only while the variable is still set,
+  records, nor rename the folders above it to carry the old folder out of
+  SAM's sight. SAM hides such a folder only while the variable is still set,
   and not where hiding it would cover too much: where the folder is your
   home folder or a folder above it, or where it is a link and the app is
   shown only folders inside the place it leads to. So move the old folders
