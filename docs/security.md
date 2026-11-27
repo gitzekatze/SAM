@@ -673,15 +673,23 @@ How these stay protected with the home writable:
   link, so a start place could be bound writable. This is a known gap,
   older than this rule (SAM had the same race before); such a program can
   also write there when a start place holds a link into a folder it can
-  write, which SAM does not lock yet. The same race reaches every other
-  folder SAM binds by its path inside a folder such a program can write:
-  a read-only extra folder, and a user folder bound at its own access
-  inside the writable whole home (Documents read-only under a writable
-  home): swapped for a link between SAM's look and the mount, it is bound
-  where that link leads, and nothing checks it before the app runs.
-  Checking each bound place inside the finished sandbox before the app
-  starts, and binding through an open handle, which close the race, are
-  planned.
+  write, which SAM does not lock yet. Every other folder SAM binds by its
+  path at an access of its own inside a folder the app can change (a
+  read-only extra folder, a user folder bound at its own access such as
+  Documents read-only in `~/Sync` under a writable home, and an extra
+  writable folder inside a read-only one) has the folders above it pinned
+  as well: a second start of the same app with the same settings (starts
+  of one app may run side by side) cannot rename `~/Sync` away and put a
+  link in its place while SAM starts the app again
+  (`the_folders_above_a_folder_bound_at_its_own_access_are_pinned`,
+  `the_folders_above_a_read_only_user_folder_cannot_be_renamed`). The
+  same race stays open for a second program with other settings, as
+  above, and for a folder that did not exist yet when the running copy
+  started (it holds no mount there): swapped for a link between SAM's look
+  and the mount, such a folder is bound where that link leads, and nothing
+  checks it before the app runs. Checking each bound place inside the
+  finished sandbox before the app starts, and binding through an open
+  handle, which close the race, are planned.
   An extra folder inside SAM's own folders is not shown at all, also inside
   the folders named like them (`~/.config/sam`, `~/.local/share/sam`) while
   SAM keeps its own elsewhere, wherever they lead; inside one that SAM only
@@ -698,12 +706,25 @@ How these stay protected with the home writable:
   a read-only Downloads there handed them over) is not shown, and the
   launch log says why (a
   user folder that holds one of SAM's folders is shown, with SAM's folder
-  hidden inside it). A user folder
+  hidden inside it). The app page and `sam-jail info` name a granted
+  user folder that is not shown for listening programs or for a link
+  (below) before the start, with the way out: a Downloads set to `/tmp`
+  so that downloads clear themselves is not shown, the app saves into its
+  own empty `/tmp` and what it saved is gone when it quits; set it to a
+  folder of its own such as `/tmp/downloads`
+  (`a_user_folder_the_sandbox_does_not_show_is_named_before_the_start`).
+  A user folder
   that is a link is shown where it leads, with the link where the app looks
   for it, unless a link on its way lies in a folder the app may change in
-  this start (the writable whole home, a writable user or extra folder):
-  the app could have put it there itself (`mv ~/Downloads ~/D; ln -s /tmp
-  ~/Downloads`), and `user-dirs.dirs` stays locked, but the folder it names
+  this start (the writable whole home, a writable user or extra folder),
+  also inside a read-only folder there (Documents read-only under the
+  writable home): the app could have put it there itself (`mv ~/Downloads
+  ~/D; ln -s /tmp ~/Downloads`), also before that folder was set read-only,
+  and a read-only Documents that is itself such a link is not mounted at
+  all, so the home shows it writable
+  (`a_link_inside_a_read_only_folder_in_the_writable_home_is_not_followed`,
+  `a_link_planted_inside_a_refused_read_only_folder_is_never_followed`).
+  `user-dirs.dirs` stays locked, but the folder it names
   did not. Such a folder is not shown where the link leads, the start names
   the link, and the sandbox check expects it not shown; SAM cannot tell
   such a link from one the person made, so a Documents kept as a link out
@@ -722,12 +743,18 @@ How these stay protected with the home writable:
   (`a_read_only_user_folder_under_a_writable_home_is_read_only`,
   `a_start_file_linked_into_a_read_only_user_folder_stays_locked_with_a_writable_home`,
   `a_read_only_user_folder_outside_the_home_is_shown_with_the_whole_home`).
+  Two user folders set to one place (Music read and write, Pictures
+  read-only, both `~/Media`) are shown at one access, the one of the folder
+  listed last (Documents, Downloads, Music, Pictures, Videos, Desktop):
+  the mounts, the sandbox check and the views take this one answer
+  (`user_folders_at_one_place_take_one_access`,
+  `the_check_expects_user_folders_at_one_place_at_one_access`).
   An extra folder granted read and write inside a read-only user folder
   (`~/Documents/proj` with Documents read-only) is bound writable after
   it, as inside a read-only extra folder: SAM judges whether the app can
-  already change it on the folder right above it, and the read-only
-  folder around it is a mount of its own the app cannot rename
-  (`a_write_grant_inside_a_read_only_user_folder_stays_writable`,
+  already change it on the folder right above it, the read-only folder
+  around it is a mount of its own the app cannot rename, and the folders
+  above that are pinned (`a_write_grant_inside_a_read_only_user_folder_stays_writable`,
   `a_writable_extra_folder_inside_a_read_only_user_folder_stays_writable`).
   Not covered: a home
   kept behind a link (`/home/ann` a link to `/data/home/ann`). There SAM
