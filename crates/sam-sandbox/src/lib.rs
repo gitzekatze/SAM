@@ -1564,11 +1564,17 @@ fn grant_path(c: &str) -> PathBuf {
 /// at the next shell while the link `~/.bashrc` stayed as it was (review
 /// B2 S3, R50). A grant's own place is a mount point already.
 ///
-/// Never on or inside a place bound read-only that the views do not record
-/// (`read_only`: the fonts, the font settings and the theme files): the app
-/// cannot rename anything there, and a pin, bound after the read-only bind
-/// at equal depth or deeper, made it writable (`~/.fonts` above an extra
-/// read-only folder `~/.fonts/licensed` with the whole home writable).
+/// Never where a place bound read-only that the views do not record
+/// (`read_only`: the fonts, the font settings and the theme files, each
+/// only where no writable place is bound after it at its own place) is
+/// still the topmost mount: on it, or inside it with no writable grant
+/// between it and the folder. The app cannot rename anything there, and a
+/// pin, bound after the read-only bind at equal depth or deeper, made it
+/// writable (`~/.fonts` above an extra read-only folder `~/.fonts/licensed`
+/// with the whole home writable). Inside a writable grant within such a
+/// place (`~/.fonts/work`) the app can rename, so the folders there are
+/// pinned as everywhere: skipped on or inside the whole place, a start file
+/// kept as a link into `~/.fonts/work/dots` lost the pin of `dots`.
 fn pins(
     home: &Path,
     views: &Views,
@@ -1577,12 +1583,23 @@ fn pins(
     programs: &[PathBuf],
     read_only: &[PathBuf],
 ) -> Vec<PathBuf> {
+    // The read-only bind is the topmost mount at `c`: it shows `c`, and no
+    // writable grant deeper than it does (mounted after it, by depth).
+    let read_only_on_top = |c: &Path| {
+        read_only.iter().any(|r| {
+            c.starts_with(r)
+                && !views
+                    .grants
+                    .iter()
+                    .any(|(g, rw)| *rw && g != r && g.starts_with(r) && c.starts_with(g))
+        })
+    };
     let mut pins: Vec<PathBuf> = Vec::new();
     let mut pin = |p: &Path| {
         for c in views.mount_points(p) {
             // Never `/` or one folder below it: those are not renamed.
             if views.writable(&c)
-                && !read_only.iter().any(|r| c.starts_with(r))
+                && !read_only_on_top(&c)
                 && c.components().count() > 2
                 && fs::metadata(&c).is_ok_and(|m| m.is_dir())
                 && !pins.contains(&c)
@@ -2382,19 +2399,33 @@ impl Section<'_> {
         // The places bound read-only below, for the pins: the views do not
         // record them, so a pin on or inside one (`~/.fonts` above an extra
         // read-only folder `~/.fonts/licensed`) counted writable, landed
-        // after the read-only bind and made the place writable.
+        // after the read-only bind and made the place writable. Not one
+        // where a writable place is bound after it at its own place (an
+        // extra writable folder, an opened folder, a bind of SAM's): that
+        // bind covers it, and the place is writable.
         let mut read_only: Vec<PathBuf> = Vec::new();
+        let bound_writable_after = |at: &Path| {
+            self.writes
+                .iter()
+                .any(|g| g.how == WriteBind::Writable && g.bound == at)
+                || self.opened.iter().any(|(o, rw)| *rw && o == at)
+                || ctx.extra_binds.iter().any(|(_, sb, rw)| *rw && sb == at)
+        };
         // Safe read-only user resources.
         for r in [".local/share/fonts", ".fonts", ".config/fontconfig"] {
             let at = bind_place(&self.views, &home.join(r));
             mount(&at, &|m| m.ro(&at));
-            read_only.push(at);
+            if !bound_writable_after(&at) {
+                read_only.push(at);
+            }
         }
         if p.advanced.host_themes && !fsp.home {
             for t in THEME_FILES {
                 let at = bind_place(&self.views, &home.join(t));
                 mount(&at, &|m| m.ro(&at));
-                read_only.push(at);
+                if !bound_writable_after(&at) {
+                    read_only.push(at);
+                }
             }
             // Deeper than its folder, so mounted after it. Only a plain
             // file: a link inside leads where the sandbox shows nothing,
@@ -7332,6 +7363,67 @@ mod guard_tests {
             !at_seq(&a, &["--bind", &share, &share]).is_empty(),
             "the folder above is pinned: {a:?}"
         );
+    }
+
+    /// A writable extra folder inside a place SAM binds read-only for the
+    /// fonts or the themes, or at one, is bound after it and writable: a
+    /// start file kept as a link into it (`~/.bashrc` to
+    /// `~/.fonts/work/dots/bashrc`) keeps the pins of the folders above
+    /// where its guard lands (review B2 S3, R50), so the app cannot rename
+    /// `dots` away with the guard. Skipped on or inside the whole read-only
+    /// place, those pins were lost. The read-only place itself, where it
+    /// is still the topmost mount, stays unpinned.
+    #[test]
+    fn a_writable_folder_inside_a_read_only_font_or_theme_place_keeps_its_pins() {
+        let st = |p: &Path| p.to_string_lossy().into_owned();
+        // The read-only place, the writable extra folder, the permissions:
+        // the whole home writable with the font folder an extra read-only
+        // folder (so the writable one inside is bound on its own), no home
+        // with the writable folder at the font folder, and no home with the
+        // host themes shown.
+        let mut fonts = full_rw();
+        fonts.filesystem.custom_read = vec![".fonts".into()];
+        let mut themes = PermissionSet::strict_gui();
+        themes.advanced.host_themes = true;
+        let cases = [
+            (".fonts", ".fonts/work", fonts),
+            (".fonts", ".fonts", PermissionSet::strict_gui()),
+            (".config/gtk-3.0", ".config/gtk-3.0/work", themes),
+        ];
+        let mut lost = Vec::new();
+        for (ro, work, mut p) in cases {
+            let t = tempfile::tempdir().unwrap();
+            let home = fs::canonicalize(t.path()).unwrap().join("home");
+            let dots = home.join(work).join("dots");
+            fs::create_dir_all(&dots).unwrap();
+            fs::write(dots.join("bashrc"), "").unwrap();
+            std::os::unix::fs::symlink(dots.join("bashrc"), home.join(".bashrc")).unwrap();
+            let in_home = |v: &[String]| v.iter().map(|c| st(&home.join(c))).collect();
+            p.filesystem.custom_read = in_home(&p.filesystem.custom_read);
+            p.filesystem.custom_write = in_home(&[work.to_string()]);
+            let a = args_of(&ctx_for(&p, &home));
+            let (ro, work, dots) = (st(&home.join(ro)), st(&home.join(work)), st(&dots));
+            let bashrc = format!("{dots}/bashrc");
+            let first = |seq: &[&str]| at_seq(&a, seq).first().copied();
+            let ro_bind = first(&["--ro-bind-try", &ro, &ro]).expect("bound read-only");
+            let write = first(&["--bind-try", &work, &work]).expect("bound writable");
+            assert!(ro_bind < write, "{work} after {ro}: {a:?}");
+            let pin = first(&["--bind", &dots, &dots]);
+            let guard = first(&["--ro-bind-try", &bashrc, &bashrc]).expect("bashrc guarded");
+            // Every case checked, so each one shows when its pin is lost.
+            if !pin.is_some_and(|pin| write < pin && pin < guard) {
+                lost.push(format!(
+                    "{dots} pinned after {work} ({write}) and before the guard ({guard}): {pin:?}"
+                ));
+            }
+            if ro != work {
+                assert!(
+                    first(&["--bind", &ro, &ro]).is_none(),
+                    "{ro} never pinned: {a:?}"
+                );
+            }
+        }
+        assert!(lost.is_empty(), "{lost:#?}");
     }
 
     /// With the whole home granted, credential files are replaced by an

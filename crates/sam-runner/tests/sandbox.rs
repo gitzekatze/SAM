@@ -607,12 +607,15 @@ fn a_user_folder_link_the_app_planted_never_shows_where_it_leads() {
 }
 
 /// The probe of [`a_link_planted_inside_a_refused_read_only_folder_is_never_followed`],
-/// [`the_folders_above_a_read_only_user_folder_cannot_be_renamed`] and
-/// [`the_font_folders_stay_read_only_around_an_extra_folder_inside`]:
+/// [`the_folders_above_a_read_only_user_folder_cannot_be_renamed`],
+/// [`the_font_folders_stay_read_only_around_an_extra_folder_inside`] and
+/// [`a_linked_start_file_inside_a_writable_folder_in_the_fonts_stays_pinned`]:
 /// told to (`plant PLACE`), it turns Downloads, found as apps find it, into
 /// a link to `PLACE`; told to (`rename`), it tries to rename the folders
 /// above the read-only ones and writes inside them; told to (`fonts`), it
-/// writes into the font folders; otherwise it reads and writes through
+/// writes into the font folders; told to (`fontwork`), it tries to rename
+/// the folder in `~/.fonts/work` where a start file is kept and writes
+/// there and into `~/.fonts`; otherwise it reads and writes through
 /// Downloads.
 const FOLDER_PROBE: &str = r#"#!/bin/sh
 . "$HOME/.config/user-dirs.dirs"
@@ -630,6 +633,11 @@ if [ "$1" = fonts ]; then
   ( echo x > "$HOME/.fonts/new.txt" ) 2>/dev/null && echo FONTS_WRITE=yes || echo FONTS_WRITE=no
   ( echo x > "$HOME/.local/share/fonts/a/new.txt" ) 2>/dev/null && echo SHARE_FONTS_WRITE=yes || echo SHARE_FONTS_WRITE=no
   ( echo x > "$HOME/new.txt" ) 2>/dev/null && echo HOME_WRITE=yes || echo HOME_WRITE=no
+fi
+if [ "$1" = fontwork ]; then
+  mv "$HOME/.fonts/work/dots" "$HOME/.fonts/work/d2" 2>/dev/null && echo DOTS_MOVED=yes || echo DOTS_MOVED=no
+  ( echo x > "$HOME/.fonts/work/new.txt" ) 2>/dev/null && echo WORK_WRITE=yes || echo WORK_WRITE=no
+  ( echo x > "$HOME/.fonts/new.txt" ) 2>/dev/null && echo FONTS_WRITE=yes || echo FONTS_WRITE=no
 fi
 grep -q secret "$D/secret.txt" 2>/dev/null && echo READ=yes || echo READ=no
 ( echo x > "$D/new.txt" ) 2>/dev/null && echo WRITE=yes || echo WRITE=no
@@ -820,4 +828,42 @@ fn the_font_folders_stay_read_only_around_an_extra_folder_inside() {
     assert_eq!(r["HOME_WRITE"], "yes", "{r:?}");
     assert!(!home.join(".fonts/new.txt").exists());
     assert!(!home.join(".local/share/fonts/a/new.txt").exists());
+}
+
+/// With the whole home writable, `~/.fonts` an extra read-only folder, an
+/// extra writable folder inside it (`~/.fonts/work`) and `~/.bashrc` kept
+/// as a link to `~/.fonts/work/dots/bashrc`, the app cannot rename `dots`:
+/// it is a mount point of its own, so the guard of the start file stays
+/// where the link leads (review B2 S3, R50). Skipped on or inside the
+/// whole font folder, that pin was lost, and the app could rename `dots`
+/// away with the guard and put a start file of its own where the link
+/// leads. The writable folder stays writable, the font folder read-only.
+#[test]
+fn a_linked_start_file_inside_a_writable_folder_in_the_fonts_stays_pinned() {
+    let _one = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    if !bwrap_works() {
+        sam_runner::contracts::skip("bubblewrap is not functional here")
+            .unwrap_or_else(|e| panic!("{e}"));
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    let (app, id, home, host) = folder_probe_app(root, "FontWork", "");
+    let dots = home.join(".fonts/work/dots");
+    fs::create_dir_all(&dots).unwrap();
+    fs::write(dots.join("bashrc"), "").unwrap();
+    std::os::unix::fs::symlink(".fonts/work/dots/bashrc", home.join(".bashrc")).unwrap();
+    let st = |p: &Path| p.to_string_lossy().into_owned();
+    let mut p = PermissionSet::strict_gui();
+    p.filesystem.home = true;
+    p.filesystem.home_access = Access::Rw;
+    p.filesystem.custom_read = vec![st(&home.join(".fonts"))];
+    p.filesystem.custom_write = vec![st(&home.join(".fonts/work"))];
+    let r = start_probe(&app, &id, &p, &home, &host, &["fontwork"]);
+    assert_eq!(r["DOTS_MOVED"], "no", "{r:?}");
+    assert_eq!(r["WORK_WRITE"], "yes", "{r:?}");
+    assert_eq!(r["FONTS_WRITE"], "no", "{r:?}");
+    assert!(dots.join("bashrc").is_file() && !home.join(".fonts/work/d2").exists());
+    assert!(home.join(".fonts/work/new.txt").is_file());
+    assert!(!home.join(".fonts/new.txt").exists());
 }

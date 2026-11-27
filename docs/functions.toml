@@ -228,6 +228,8 @@ tests = [
   "the_folders_above_a_read_only_user_folder_cannot_be_renamed",
   "a_folder_bound_read_only_for_the_fonts_is_never_pinned",
   "the_font_folders_stay_read_only_around_an_extra_folder_inside",
+  "a_writable_folder_inside_a_read_only_font_or_theme_place_keeps_its_pins",
+  "a_linked_start_file_inside_a_writable_folder_in_the_fonts_stays_pinned",
   "user_folders_at_one_place_take_one_access",
   "a_user_folder_the_sandbox_does_not_show_is_named_before_the_start",
   "the_strictest_profile_shares_nothing_and_keeps_the_app_read_only",
