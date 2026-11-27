@@ -7823,7 +7823,7 @@ msgstr ""
 "version."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:1977
+#: crates/sam-runner/src/ops/maintain.rs:2012
 msgid ""
 "SAM unpacked {app} again but could not finish, so it removed what it "
 "unpacked. The app starts only after it has been unpacked again; unpack it "
@@ -7834,21 +7834,21 @@ msgstr ""
 "été décompressée à nouveau ; décompresse-la à nouveau pour terminer"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:1982
+#: crates/sam-runner/src/ops/maintain.rs:2017
 msgid ""
 "SAM unpacked the new content of {app} but could not finish, so it removed "
 "what it unpacked. Until it is unpacked again, the app starts with the copy "
 "SAM unpacked before in the earlier unpack folder, and only after you have "
 "looked at it; unpack it again to finish"
 msgstr ""
-"SAM a décompressé le nouveau contenu de {app}, mais n’a pas pu terminer et a"
-" donc supprimé ce qu’il avait décompressé. Tant qu’elle n’est pas "
+"SAM a décompressé le nouveau contenu de {app}, mais n’a pas pu terminer et a "
+"donc supprimé ce qu’il avait décompressé. Tant qu’elle n’est pas "
 "décompressée à nouveau, l’application démarre avec la copie que SAM a "
 "décompressée avant dans l’ancien dossier de décompression, et seulement "
 "après que tu l’as examinée ; décompresse-la à nouveau pour terminer"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:1987
+#: crates/sam-runner/src/ops/maintain.rs:2022
 msgid ""
 "SAM unpacked {app} again but could not finish, so it removed what it "
 "unpacked. Until it is unpacked again, the app starts with the copy SAM "
@@ -7862,7 +7862,7 @@ msgstr ""
 "décompresse-la à nouveau pour terminer"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:1993
+#: crates/sam-runner/src/ops/maintain.rs:2028
 msgid ""
 "SAM unpacked the new content of {app} but could not finish, and it could not "
 "remove what it unpacked either. SAM does not start the app until you have "
@@ -7873,7 +7873,7 @@ msgstr ""
 "ne l’as pas examinée ; décompresse-la à nouveau pour terminer"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:1998
+#: crates/sam-runner/src/ops/maintain.rs:2033
 msgid ""
 "SAM unpacked {app} again but could not finish, and it could not remove what "
 "it unpacked either. Until it is unpacked again, the app starts with the copy "
@@ -7883,11 +7883,11 @@ msgstr ""
 "SAM a décompressé {app} à nouveau, mais n’a pas pu terminer ni supprimer ce "
 "qu’il a décompressé. Tant qu’elle n’est pas décompressée à nouveau, "
 "l’application démarre avec la copie que SAM a décompressée avant dans "
-"l’ancien dossier de décompression et avec ses réglages d’avant ; "
-"décompresse-la à nouveau pour terminer"
+"l’ancien dossier de décompression et avec ses réglages d’avant ; décompresse-"
+"la à nouveau pour terminer"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:2003
+#: crates/sam-runner/src/ops/maintain.rs:2038
 msgid ""
 "SAM unpacked {app} again but could not finish, and it could not remove what "
 "it unpacked either. Until it is unpacked again, the app starts with what SAM "
@@ -7899,7 +7899,18 @@ msgstr ""
 "d’avant ; décompresse-la à nouveau pour terminer"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:2018
+#: crates/sam-runner/src/ops/maintain.rs:2043
+msgid ""
+"SAM unpacked {app} again but could not finish, and it could not remove what "
+"it unpacked either. The app starts only after it has been unpacked again; "
+"unpack it again to finish"
+msgstr ""
+"SAM a décompressé {app} à nouveau, mais n’a pas pu terminer ni supprimer ce "
+"qu’il a décompressé. L’application ne démarre qu’après avoir été "
+"décompressée à nouveau ; décompresse-la à nouveau pour terminer"
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-runner/src/ops/maintain.rs:2058
 msgid ""
 "{app} is being changed right now (unpacked again, updated or removed). Start "
 "it when that is done."
@@ -7908,7 +7919,7 @@ msgstr ""
 "supprimée). Démarre-la quand ce sera terminé."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:2035
+#: crates/sam-runner/src/ops/maintain.rs:2075
 msgid ""
 "The download was signed on {now}, before the installed version ({was}): it "
 "is an older version, which may have security holes that were fixed since. It "
@@ -7922,7 +7933,7 @@ msgstr ""
 "jour."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:2277
+#: crates/sam-runner/src/ops/maintain.rs:2317
 msgid ""
 "An earlier attempt to go back was interrupted: the earlier version is still "
 "at {earlier}, and {file} may hold the newer one. SAM changes nothing, so "

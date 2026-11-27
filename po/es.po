@@ -7741,7 +7741,7 @@ msgid "SAM was updated; {how}. Restart SAM to use the new version."
 msgstr "SAM se actualizó; {how}. Reinicia SAM para usar la nueva versión."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:1977
+#: crates/sam-runner/src/ops/maintain.rs:2012
 msgid ""
 "SAM unpacked {app} again but could not finish, so it removed what it "
 "unpacked. The app starts only after it has been unpacked again; unpack it "
@@ -7752,35 +7752,35 @@ msgstr ""
 "desempaquetarla; desempaquétala de nuevo para terminar"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:1982
+#: crates/sam-runner/src/ops/maintain.rs:2017
 msgid ""
 "SAM unpacked the new content of {app} but could not finish, so it removed "
 "what it unpacked. Until it is unpacked again, the app starts with the copy "
 "SAM unpacked before in the earlier unpack folder, and only after you have "
 "looked at it; unpack it again to finish"
 msgstr ""
-"SAM desempaquetó el contenido nuevo de {app}, pero no pudo terminar, así que"
-" quitó lo que había desempaquetado. Hasta que se desempaquete de nuevo, la "
+"SAM desempaquetó el contenido nuevo de {app}, pero no pudo terminar, así que "
+"quitó lo que había desempaquetado. Hasta que se desempaquete de nuevo, la "
 "aplicación se inicia con la copia que SAM desempaquetó antes en la carpeta "
 "de desempaquetado anterior, y solo después de que la hayas revisado; "
 "desempaquétala de nuevo para terminar"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:1987
+#: crates/sam-runner/src/ops/maintain.rs:2022
 msgid ""
 "SAM unpacked {app} again but could not finish, so it removed what it "
 "unpacked. Until it is unpacked again, the app starts with the copy SAM "
 "unpacked before in the earlier unpack folder, under the settings it had "
 "before; unpack it again to finish"
 msgstr ""
-"SAM desempaquetó {app} de nuevo, pero no pudo terminar, así que quitó lo que"
-" había desempaquetado. Hasta que se desempaquete de nuevo, la aplicación se "
+"SAM desempaquetó {app} de nuevo, pero no pudo terminar, así que quitó lo que "
+"había desempaquetado. Hasta que se desempaquete de nuevo, la aplicación se "
 "inicia con la copia que SAM desempaquetó antes en la carpeta de "
-"desempaquetado anterior y con los ajustes que tenía antes; desempaquétala de"
-" nuevo para terminar"
+"desempaquetado anterior y con los ajustes que tenía antes; desempaquétala de "
+"nuevo para terminar"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:1993
+#: crates/sam-runner/src/ops/maintain.rs:2028
 msgid ""
 "SAM unpacked the new content of {app} but could not finish, and it could not "
 "remove what it unpacked either. SAM does not start the app until you have "
@@ -7791,7 +7791,7 @@ msgstr ""
 "revisado; desempaquétala de nuevo para terminar"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:1998
+#: crates/sam-runner/src/ops/maintain.rs:2033
 msgid ""
 "SAM unpacked {app} again but could not finish, and it could not remove what "
 "it unpacked either. Until it is unpacked again, the app starts with the copy "
@@ -7805,7 +7805,7 @@ msgstr ""
 "terminar"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:2003
+#: crates/sam-runner/src/ops/maintain.rs:2038
 msgid ""
 "SAM unpacked {app} again but could not finish, and it could not remove what "
 "it unpacked either. Until it is unpacked again, the app starts with what SAM "
@@ -7817,7 +7817,18 @@ msgstr ""
 "desempaquétala de nuevo para terminar"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:2018
+#: crates/sam-runner/src/ops/maintain.rs:2043
+msgid ""
+"SAM unpacked {app} again but could not finish, and it could not remove what "
+"it unpacked either. The app starts only after it has been unpacked again; "
+"unpack it again to finish"
+msgstr ""
+"SAM desempaquetó {app} de nuevo, pero no pudo terminar ni quitar lo que "
+"desempaquetó. La aplicación solo se inicia después de volver a "
+"desempaquetarla; desempaquétala de nuevo para terminar"
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-runner/src/ops/maintain.rs:2058
 msgid ""
 "{app} is being changed right now (unpacked again, updated or removed). Start "
 "it when that is done."
@@ -7826,7 +7837,7 @@ msgstr ""
 "actualiza o se quita). Iníciala cuando termine."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:2035
+#: crates/sam-runner/src/ops/maintain.rs:2075
 msgid ""
 "The download was signed on {now}, before the installed version ({was}): it "
 "is an older version, which may have security holes that were fixed since. It "
@@ -7839,7 +7850,7 @@ msgstr ""
 "versión anterior, usa Deshacer después de una actualización."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/maintain.rs:2277
+#: crates/sam-runner/src/ops/maintain.rs:2317
 msgid ""
 "An earlier attempt to go back was interrupted: the earlier version is still "
 "at {earlier}, and {file} may hold the newer one. SAM changes nothing, so "

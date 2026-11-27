@@ -32,19 +32,27 @@
   stops with a message that says so and saves nothing; try again.
 - "Unpack Again" marks new content "look at it first" before it replaces
   the unpacked copy. If the record cannot be saved or the unpacking cannot
-  be finished, SAM removes what it unpacked, so the app never starts with
-  it: it starts only after it has been unpacked again or, if you moved the
-  unpack folder since the last unpacking, with its earlier copy in the
-  earlier folder, and the message says which; if the mark itself
-  cannot be saved, SAM unpacks nothing. If the
-  unpacking then fails, SAM asks once more before the app starts.
+  be finished and SAM reports an error, SAM removes what it unpacked, so
+  the app does not start with it: it starts only after it has been
+  unpacked again or, if you moved the unpack folder since the last
+  unpacking and the earlier copy there is still complete, with that copy,
+  and the message says which; if the mark itself cannot be saved, SAM
+  unpacks nothing. If the unpacking then fails, SAM asks once more before
+  the app starts.
 - If SAM cannot remove what it unpacked either (a disk that became
   read-only, for example), the message says so. New content that is not
   SAM's own update still waits until you have looked at it; otherwise
   (SAM's own update, going back, the same content again) the app starts
   with what was left in place (or, if you moved the unpack folder, with its
   earlier copy there), under its settings from before, until you unpack it
-  again.
+  again, when that copy is complete; if it is not, the app starts only
+  after it has been unpacked again.
+- If SAM itself is stopped between unpacking and saving (closed, killed,
+  a power loss), what it unpacked stays in place, as when it cannot be
+  removed: new content that is not SAM's own update still waits until you
+  have looked at it, and otherwise the app starts with it (or, if you
+  moved the unpack folder, with its earlier copy there) under its
+  settings from before until you unpack it again.
 - Records written by older SAM versions read as before. An older SAM that
   runs at the same time does not take the lock, so close old SAM windows
   after updating SAM.

@@ -1945,21 +1945,32 @@ impl Sam {
 /// describes the content unpacked before: the record names neither the
 /// new content nor, for SAM's own update, the note of its new needs.
 /// Before, the new content stayed in place and started with the old
-/// record. `before` is the unpacked copy the record still names. When it
-/// is the folder just removed, a start finds the unpacked app missing and
-/// needs a new unpacking. When the unpack folder was moved since the last
-/// unpacking (Preferences > Unpacking > Location), the record names the
-/// earlier copy in the earlier folder, which SAM never moves or deletes:
-/// a start runs that copy, under the record from before (and new content
-/// marked "look at it first" still asks first), and the message says so.
-/// Before, the message promised a new unpacking in that case too. The
-/// removal can fail as well (a disk remounted read-only after an
-/// input/output error), and the message then says so: `marked` (new
-/// content marked "look at it first" on the record before the unpacking)
-/// still holds that content until the person looked at it; otherwise
-/// (SAM's own update, going back, or the same content again) the copy the
-/// record names starts with the old record until it is unpacked again:
-/// what SAM left in place, or the earlier copy in the earlier folder.
+/// record. This covers failures that return an error; a SAM stopped
+/// between unpacking and saving (killed, a power loss) leaves the new
+/// content in place, as when the removal fails. `before` is the unpacked
+/// copy the record still names, and the message says what a start does
+/// with it, checked after the removal as `launch::preflight` checks it:
+/// - The record names the folder SAM unpacked into now, also under a
+///   second name such as a symlinked unpack location (the same folder by
+///   device and inode, not by path text). After the removal it is gone,
+///   or incomplete when the removal stopped part way, and a start needs a
+///   new unpacking; when nothing was removed and the copy is complete, a
+///   start runs what SAM left in place.
+/// - The unpack folder was moved since the last unpacking (Preferences >
+///   Unpacking > Location): the record names the earlier copy in the
+///   earlier folder, which SAM never moves or deletes. When it is
+///   complete, a start runs that copy under the record from before (and
+///   new content marked "look at it first" still asks first); when it is
+///   gone, a start needs a new unpacking.
+/// - The record names no copy (the app was added but never unpacked): a
+///   start needs a new unpacking.
+///
+/// When the removal fails (a disk remounted read-only after an
+/// input/output error), the message says so: `marked` (new content marked
+/// "look at it first" on the record before the unpacking) still holds
+/// that content until the person looked at it. Before, the messages
+/// promised a start whenever the removal failed or the earlier folder held
+/// the copy before the removal, also when that copy was the one removed.
 fn unfinished_unpack(
     appdir: &Path,
     before: Option<&ExtractionInfo>,
@@ -1967,12 +1978,36 @@ fn unfinished_unpack(
     marked: bool,
     err: anyhow::Error,
 ) -> anyhow::Error {
+    unfinished_unpack_by(remove_tree, appdir, before, entry, marked, err)
+}
+
+/// [`unfinished_unpack`] with the removal passed in, so a test can stand in
+/// for a disk on which nothing can be removed (a disk remounted read-only).
+fn unfinished_unpack_by(
+    remove: fn(&Path) -> Result<()>,
+    appdir: &Path,
+    before: Option<&ExtractionInfo>,
+    entry: &AppEntry,
+    marked: bool,
+    err: anyhow::Error,
+) -> anyhow::Error {
+    use std::os::unix::fs::MetadataExt;
     let name = sam_core::util::display_safe(entry.display_name(), 80);
+    // Whether the record names the folder SAM unpacked into now, by file
+    // identity taken before the removal: a second name of that folder (a
+    // symlinked unpack location) is not an earlier copy. When a folder
+    // cannot be read, its path decides.
+    let id = |p: &Path| fs::metadata(p).ok().map(|m| (m.dev(), m.ino()));
+    let same = before.is_some_and(|x| match (id(&x.appdir), id(appdir)) {
+        (Some(a), Some(b)) => a == b,
+        _ => x.appdir == appdir,
+    });
+    let removed = remove(appdir).is_ok();
     // The copy a start runs: the one the record names, when it is complete
-    // (the check of `launch::preflight`) and not the folder SAM unpacked
-    // into now.
-    let earlier = before.is_some_and(|x| x.appdir != appdir && x.appdir.join(&x.entry).exists());
-    let text = if remove_tree(appdir).is_ok() {
+    // after the removal (the check of `launch::preflight`).
+    let named = before.is_some_and(|x| x.appdir.join(&x.entry).exists());
+    let earlier = named && !same;
+    let text = if removed {
         if !earlier {
             sam_core::i18n::trf(
                 "SAM unpacked {app} again but could not finish, so it removed what it unpacked. The app starts only after it has been unpacked again; unpack it again to finish",
@@ -1999,9 +2034,14 @@ fn unfinished_unpack(
             "SAM unpacked {app} again but could not finish, and it could not remove what it unpacked either. Until it is unpacked again, the app starts with the copy SAM unpacked before in the earlier unpack folder, under the settings it had before; unpack it again to finish",
             &[("app", &name)],
         )
-    } else {
+    } else if named {
         sam_core::i18n::trf(
             "SAM unpacked {app} again but could not finish, and it could not remove what it unpacked either. Until it is unpacked again, the app starts with what SAM unpacked, under the settings it had before; unpack it again to finish",
+            &[("app", &name)],
+        )
+    } else {
+        sam_core::i18n::trf(
+            "SAM unpacked {app} again but could not finish, and it could not remove what it unpacked either. The app starts only after it has been unpacked again; unpack it again to finish",
             &[("app", &name)],
         )
     };
@@ -2460,10 +2500,13 @@ mod tests {
 
     /// An "unpack again" that could not finish and could not remove what it
     /// unpacked either (a disk remounted read-only; here a stand-in path
-    /// that cannot be removed, under a plain file) says that it removed
-    /// nothing, and what that means for a start. Before, the message said
-    /// only "could not finish", so a person could not tell that the
-    /// unpacked content had stayed in place.
+    /// that cannot be removed, under a plain file) says that it could not
+    /// remove what it unpacked, and what that means for a start. Before,
+    /// the message said only "could not finish", so a person could not
+    /// tell that the unpacked content had stayed in place. The record here
+    /// names no unpacked copy (an app added but never unpacked), so a start
+    /// needs a new unpacking; the message said that the app starts with
+    /// what SAM unpacked, which a start refuses.
     #[test]
     fn an_unpack_whose_copy_cannot_be_removed_says_so() {
         let t = tempfile::tempdir().unwrap();
@@ -2492,10 +2535,12 @@ mod tests {
             message(true).contains("until you have looked at it"),
             "marked new content still asks first"
         );
+        let err = message(false);
         assert!(
-            message(false).contains("the app starts with what SAM unpacked"),
-            "unmarked content starts as it was left, and the message says so"
+            err.contains("The app starts only after it has been unpacked again"),
+            "the record names no copy, so a start needs a new unpacking: {err}"
         );
+        assert!(!err.contains("the app starts with"), "{err}");
     }
 
     /// An unfinished "unpack again" after the unpack folder was moved
@@ -2571,13 +2616,149 @@ mod tests {
             entry: "AppRun".into(),
             ..Default::default()
         };
-        for before in [Some(&same), Some(&gone), None] {
+        // The same folder under a second name: the unpack location set to
+        // a symlink of the folder the record names (here `link` -> `new`).
+        // It is not an earlier copy; before, its path text and its entry,
+        // checked before the removal, made it one.
+        std::os::unix::fs::symlink(t.path().join("new"), t.path().join("link")).unwrap();
+        let linked = ExtractionInfo {
+            appdir: t.path().join("link").join("tool-1a2b").join("AppDir"),
+            entry: "AppRun".into(),
+            ..Default::default()
+        };
+        for before in [Some(&same), Some(&linked), Some(&gone), None] {
             let err = message(&removable, before, false);
             assert!(
                 err.contains("The app starts only after it has been unpacked again"),
                 "{err}"
             );
             assert!(!err.contains(names_earlier), "{err}");
+        }
+        // Nothing removed, and the record names no complete copy: the
+        // folder that could not be removed (its entry is not there), an
+        // earlier copy that is gone, or none. A start needs a new
+        // unpacking; before, the message said it starts with what SAM
+        // unpacked.
+        let stuck_same = ExtractionInfo {
+            appdir: stuck.clone(),
+            entry: "AppRun".into(),
+            ..Default::default()
+        };
+        for before in [Some(&stuck_same), Some(&gone), None] {
+            let err = message(&stuck, before, false);
+            assert!(err.contains("could not remove what it unpacked"), "{err}");
+            assert!(
+                err.contains("The app starts only after it has been unpacked again"),
+                "{err}"
+            );
+            assert!(!err.contains("the app starts with"), "{err}");
+        }
+    }
+
+    /// A removal that stops part way (here: the entry is deleted, then the
+    /// folder itself cannot be, because its parent is read-only) leaves the
+    /// folder without its entry, so a start refuses it as not unpacked,
+    /// also when the record names that folder through a symlinked unpack
+    /// location. The message says that a start needs a new unpacking;
+    /// before, it said that the app starts with what SAM unpacked, or with
+    /// the earlier copy in the earlier folder.
+    #[test]
+    fn an_unpack_removed_part_way_needs_a_new_unpacking() {
+        use std::os::unix::fs::PermissionsExt;
+        let t = tempfile::tempdir().unwrap();
+        let parent = t.path().join("apps").join("tool-1a2b");
+        let appdir = parent.join("AppDir");
+        fs::create_dir_all(&appdir).unwrap();
+        std::os::unix::fs::symlink(t.path().join("apps"), t.path().join("link")).unwrap();
+        let entry = AppEntry {
+            id: "tool-1a2b".into(),
+            ..Default::default()
+        };
+        let same = ExtractionInfo {
+            appdir: appdir.clone(),
+            entry: "AppRun".into(),
+            ..Default::default()
+        };
+        let linked = ExtractionInfo {
+            appdir: t.path().join("link").join("tool-1a2b").join("AppDir"),
+            entry: "AppRun".into(),
+            ..Default::default()
+        };
+        for before in [&same, &linked] {
+            fs::write(appdir.join("AppRun"), "").unwrap();
+            fs::set_permissions(&parent, fs::Permissions::from_mode(0o555)).unwrap();
+            let locked = fs::File::create(parent.join("probe")).is_err();
+            let err = format!(
+                "{:#}",
+                unfinished_unpack(
+                    &appdir,
+                    Some(before),
+                    &entry,
+                    false,
+                    anyhow::anyhow!("disk full")
+                )
+            );
+            fs::set_permissions(&parent, fs::Permissions::from_mode(0o755)).unwrap();
+            assert!(locked, "a read-only folder must lock: run as a normal user");
+            assert!(appdir.exists(), "the folder stays");
+            assert!(!appdir.join("AppRun").exists(), "its entry is removed");
+            assert!(err.contains("could not remove what it unpacked"), "{err}");
+            assert!(
+                err.contains("The app starts only after it has been unpacked again"),
+                "{err}"
+            );
+            assert!(!err.contains("the app starts with"), "{err}");
+        }
+    }
+
+    /// Nothing could be removed (a stand-in for a disk remounted
+    /// read-only), and the record names the complete folder SAM unpacked
+    /// into, also under a second name (the unpack location set to a
+    /// symlink of it): a start runs what SAM left in place, and the message
+    /// says so. Before, a second name of the folder counted as an earlier
+    /// copy, so the message named the copy in the earlier unpack folder,
+    /// which is the content SAM just unpacked.
+    #[test]
+    fn an_unpack_left_in_place_is_named_under_any_name_of_its_folder() {
+        let t = tempfile::tempdir().unwrap();
+        let appdir = t.path().join("apps").join("tool-1a2b").join("AppDir");
+        fs::create_dir_all(&appdir).unwrap();
+        fs::write(appdir.join("AppRun"), "").unwrap();
+        std::os::unix::fs::symlink(t.path().join("apps"), t.path().join("link")).unwrap();
+        let entry = AppEntry {
+            id: "tool-1a2b".into(),
+            ..Default::default()
+        };
+        let same = ExtractionInfo {
+            appdir: appdir.clone(),
+            entry: "AppRun".into(),
+            ..Default::default()
+        };
+        let linked = ExtractionInfo {
+            appdir: t.path().join("link").join("tool-1a2b").join("AppDir"),
+            entry: "AppRun".into(),
+            ..Default::default()
+        };
+        let stuck: fn(&Path) -> Result<()> = |_| anyhow::bail!("read-only file system");
+        for before in [&same, &linked] {
+            let err = format!(
+                "{:#}",
+                unfinished_unpack_by(
+                    stuck,
+                    &appdir,
+                    Some(before),
+                    &entry,
+                    false,
+                    anyhow::anyhow!("disk full")
+                )
+            );
+            assert!(appdir.join("AppRun").exists(), "nothing was removed");
+            assert!(err.contains("could not remove what it unpacked"), "{err}");
+            assert!(
+                err.contains("the app starts with what SAM unpacked"),
+                "{err}"
+            );
+            assert!(!err.contains("earlier unpack folder"), "{err}");
         }
     }
 
