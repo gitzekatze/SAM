@@ -85,7 +85,10 @@ for f in target/locale/*/LC_MESSAGES/sam.mo; do install -Dpm 0644 "$f" "%{buildr
 desktop-file-validate %{buildroot}%{_datadir}/applications/io.github.gitzekatze.SAM.desktop
 appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/io.github.gitzekatze.SAM.metainfo.xml
 export CARGO_HOME="$PWD/.cargo-home"
-%{?build_rustflags:export RUSTFLAGS="%{build_rustflags}"}
+# SAM's tests need a developer build, and rustc makes one only at
+# optimisation level 0. The distribution's flags set -Copt-level=3, and the
+# tests would then stop at SAM's test guard. The last level wins.
+export RUSTFLAGS="%{?build_rustflags} -C opt-level=0"
 cargo test --frozen --offline --workspace
 
 %files -f sam.lang

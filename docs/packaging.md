@@ -21,7 +21,11 @@ Packages build SAM with `cargo build --release` and no features: the
 tools into the packaged programs ([Testing](testing.md)). SAM's tests run
 only in a developer build (`cargo test` without `--release`): a test build
 in release mode stops with a message, because a release build ignores the
-variables that keep the tests away from the real folders and tools.
+variables that keep the tests away from the real folders and tools. An
+optimisation level above 0 in `RUSTFLAGS` (for example makepkg's or
+Fedora's `-C opt-level=3`) makes such a build too, so the test steps of the
+Arch and Fedora recipes add `-C opt-level=0` after the distribution's
+flags.
 
 ## Arch / CachyOS (AUR)
 

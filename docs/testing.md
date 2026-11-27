@@ -163,7 +163,9 @@ SAM's tests keep SAM away from your folders and tools with SAM's developer
 variables (the four folder variables and these five tool variables), which
 a release build ignores, so a test built in release mode would use your
 real SAM folders and real tools. SAM's tests therefore refuse to compile in
-a release build (a test run with `--release`): every crate lists one
+a release build (a test run with `--release`, or with an optimisation
+level above 0 in `RUSTFLAGS`, which rustc treats the same way): every
+crate lists one
 test-only crate, `crates/sam-test-guard`, under `[dev-dependencies]`, and
 that crate stops every build without debug assertions. Cargo compiles
 dev-dependencies only for tests, so `cargo build --release` of SAM's

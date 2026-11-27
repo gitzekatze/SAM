@@ -11,11 +11,11 @@
 //! Every other crate of SAM lists this crate under `[dev-dependencies]`,
 //! which Cargo compiles only for test, bench and example targets, never for
 //! a `cargo build` of the shipped programs. A test build without debug
-//! assertions (a test run with `--release`) stops here with the message
-//! below. `crates/sam-jail-cli/tests/automation.rs` checks that every crate
+//! assertions (a test run with `--release`, or with an optimisation level
+//! above 0 in `RUSTFLAGS`) stops here with the message below. `crates/sam-jail-cli/tests/automation.rs` checks that every crate
 //! lists it and that the guard stays in place.
 
 #[cfg(not(debug_assertions))]
 compile_error!(
-    "SAM's tests rely on variables only a developer build reads (folders and tools): run them without --release."
+    "SAM's tests rely on variables only a developer build reads (folders and tools): run them without --release and without an optimisation level above 0 in RUSTFLAGS (add -C opt-level=0 after the other flags)."
 );

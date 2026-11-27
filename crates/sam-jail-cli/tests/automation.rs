@@ -328,6 +328,85 @@ fn release_test_builds_stop_at_the_test_guard() {
     );
 }
 
+/// rustc builds without debug assertions at every optimisation level above
+/// 0, and the flags of makepkg and Fedora set `-C opt-level=3`. So the test
+/// steps of the Arch and Fedora recipes add `-C opt-level=0` after the
+/// distribution's flags (the last level wins); without it, every test build
+/// of a package stops at the test guard.
+#[test]
+fn package_test_steps_build_at_optimisation_level_zero() {
+    let read = |p: &str| fs::read_to_string(root().join(p)).unwrap_or_else(|e| panic!("{p}: {e}"));
+    let code = |lines: Vec<&str>| -> Vec<String> {
+        lines
+            .into_iter()
+            .map(str::trim)
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+            .map(String::from)
+            .collect()
+    };
+    // The flag lines of a test step, up to its `cargo test`.
+    let flags_before_test = |step: &[String], recipe: &str| -> Vec<String> {
+        let at = step
+            .iter()
+            .position(|l| l.starts_with("cargo test"))
+            .unwrap_or_else(|| panic!("the test step of {recipe} no longer runs cargo test"));
+        step[..at]
+            .iter()
+            .filter(|l| l.to_lowercase().contains("rustflags"))
+            .cloned()
+            .collect()
+    };
+
+    // Arch: check() hands the flag to _rustflags, which adds its arguments
+    // after makepkg's RUSTFLAGS.
+    let pkgbuild = read("packaging/arch/PKGBUILD");
+    let function = |name: &str| -> Vec<String> {
+        let start = format!("{name}() {{");
+        code(
+            pkgbuild
+                .lines()
+                .skip_while(|l| *l != start)
+                .skip(1)
+                .take_while(|l| *l != "}")
+                .collect(),
+        )
+    };
+    assert_eq!(
+        flags_before_test(&function("check"), "PKGBUILD"),
+        ["_rustflags -C opt-level=0"],
+        "check() in packaging/arch/PKGBUILD must build the tests with \
+         `_rustflags -C opt-level=0`: makepkg's RUSTFLAGS set -C opt-level=3"
+    );
+    let helper = function("_rustflags");
+    let inherited = helper.iter().position(|l| l.contains("${RUSTFLAGS"));
+    let added = helper
+        .iter()
+        .position(|l| l.starts_with("flags+=(") && l.ends_with("\"$@\")"));
+    assert!(
+        matches!((inherited, added), (Some(i), Some(a)) if i < a),
+        "_rustflags in packaging/arch/PKGBUILD no longer adds its arguments \
+         after makepkg's RUSTFLAGS:\n{}",
+        helper.join("\n")
+    );
+
+    // Fedora: %check sets RUSTFLAGS once, with the level after the
+    // distribution's flags.
+    let spec = read("packaging/fedora/sam-jail.spec");
+    let check = code(
+        spec.lines()
+            .skip_while(|l| *l != "%check")
+            .skip(1)
+            .take_while(|l| !l.starts_with('%') || l.starts_with("%{"))
+            .collect(),
+    );
+    assert_eq!(
+        flags_before_test(&check, "sam-jail.spec"),
+        [r#"export RUSTFLAGS="%{?build_rustflags} -C opt-level=0""#],
+        "%check in packaging/fedora/sam-jail.spec must build the tests with \
+         -C opt-level=0 after %{{build_rustflags}}, which set -Copt-level=3"
+    );
+}
+
 const TAG: &str = "v1.2.3";
 const WORKFLOW: &str = "gitzekatze/SAM/.github/workflows/release.yml";
 const APPIMAGE: &str = "SAM-1.2.3-x86_64.AppImage";
