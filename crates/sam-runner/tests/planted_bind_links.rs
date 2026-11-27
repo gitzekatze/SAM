@@ -18,7 +18,10 @@
 //!   is shown is not followed (the app may have made it);
 //! - a link that leads to a place where programs outside the sandbox
 //!   listen is not followed, whoever made it;
-//! - a link that leads from a fonts place to your keys is not followed.
+//! - a link that leads from a fonts place to your keys is not followed;
+//! - a user folder reached through a link the app planted is not bound;
+//! - a writable extra folder the app made a link to a read-only home does
+//!   not make the home writable.
 //!
 //! Controls: ordinary fonts folders and links that stay inside what the
 //! app is shown still work, and an extra folder you list by its real
@@ -46,8 +49,9 @@ static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
 
 /// `plant`: put a link at `SAM_TEST_LINK` to `SAM_TEST_TARGET`, as an app
 /// with the folder writable can. Then connect to every socket in
-/// `SAM_TEST_SOCKETS` and read every file in `SAM_TEST_FILES` (each list
-/// split by `|`), saying for each what happened.
+/// `SAM_TEST_SOCKETS`, read every file in `SAM_TEST_FILES` and create
+/// every file in `SAM_TEST_WRITES` (each list split by `|`), saying for
+/// each what happened.
 const PROBE_PY: &str = r#"
 import os, socket
 if os.environ.get("SAM_TEST_STEP") == "plant":
@@ -70,6 +74,13 @@ for i, path in enumerate(p for p in os.environ.get("SAM_TEST_FILES", "").split("
             print("READ%d=%s" % (i, f.read().strip()))
     except OSError as e:
         print("READ%d=%d" % (i, e.errno))
+for i, path in enumerate(p for p in os.environ.get("SAM_TEST_WRITES", "").split("|") if p):
+    try:
+        with open(path, "x") as f:
+            f.write("ESCAPED")
+        print("WRITE%d=ok" % i)
+    except OSError as e:
+        print("WRITE%d=%d" % (i, e.errno))
 print("END=1")
 "#;
 
@@ -453,4 +464,126 @@ fn ordinary_font_folders_and_links_inside_the_home_still_work() {
         &[("SAM_TEST_FILES", s(&h.join(".fonts/a.txt")))],
     );
     assert_eq!(r["READ0"], "FONT A", "{text}");
+}
+
+/// A user folder SAM binds on its own: in a private home with `~/Sync`
+/// writable and Documents set to `~/Sync/Documents` (not made yet), the
+/// app makes it a link to a stand-in for tmux's socket folder in one
+/// start; in the next start SAM leaves Documents out, and the app reaches
+/// the socket neither where the link leads nor through the link.
+#[test]
+fn a_user_folder_link_the_app_planted_never_reaches_host_sockets() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(mut rig) = Rig::new("UserFolder") else {
+        return;
+    };
+    fs::create_dir_all(rig.home.join("Sync")).unwrap();
+    let docs = rig.home.join("Sync/Documents");
+    rig.host.xdg_dirs.insert("documents".into(), docs.clone());
+    let mut p = PermissionSet::strict_gui();
+    p.filesystem.documents = Access::Ro;
+    p.filesystem.custom_write = vec![s(&rig.home.join("Sync"))];
+    planted_link_never_reaches_host_sockets(&rig, &docs, &p);
+}
+
+/// With the home read-only and Downloads writable, the app makes an
+/// extra writable folder in Downloads, not made yet, a link to the home
+/// in one start; in the next start it can write neither in the home nor
+/// through the link: the read-only home stays read-only.
+#[test]
+fn a_link_the_app_planted_never_makes_a_read_only_home_writable() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(mut rig) = Rig::new("ReadOnlyHome") else {
+        return;
+    };
+    fs::create_dir_all(rig.home.join("Downloads")).unwrap();
+    rig.host
+        .xdg_dirs
+        .insert("downloads".into(), rig.home.join("Downloads"));
+    let out = rig.home.join("Downloads/out");
+    let mut p = PermissionSet::strict_gui();
+    p.filesystem.home = true;
+    p.filesystem.home_access = Access::Ro;
+    p.filesystem.downloads = Access::Rw;
+    p.filesystem.custom_write = vec![s(&out)];
+    let (r, text) = rig.start(
+        &p,
+        &[
+            ("SAM_TEST_STEP", "plant".into()),
+            ("SAM_TEST_LINK", s(&out)),
+            ("SAM_TEST_TARGET", s(&rig.home)),
+        ],
+    );
+    assert_eq!(r["PLANTED"], "yes", "Downloads is writable: {text}");
+    let (in_home, through_link) = (rig.home.join("escaped.txt"), out.join("escaped2.txt"));
+    let (r, text) = rig.start(
+        &p,
+        &[(
+            "SAM_TEST_WRITES",
+            format!("{}|{}", s(&in_home), s(&through_link)),
+        )],
+    );
+    assert_ne!(
+        r["WRITE0"], "ok",
+        "the app wrote in the read-only home: {text}"
+    );
+    assert_ne!(r["WRITE1"], "ok", "the app wrote through its link: {text}");
+    assert!(!in_home.exists() && !rig.home.join("escaped2.txt").exists());
+    assert!(
+        text.contains("may have made that link"),
+        "the start says why: {text}"
+    );
+}
+
+/// With the whole home writable and Downloads set read-only, the sandbox
+/// shows Downloads through the home, writable: the app makes an extra
+/// read-only folder in it, not made yet, a link to a folder outside the
+/// home in one start, and in the next start it reads nothing there,
+/// neither where the link leads nor through the link.
+#[test]
+fn a_link_planted_in_a_user_folder_of_a_writable_home_is_not_followed() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(mut rig) = Rig::new("UserFolderInHome") else {
+        return;
+    };
+    fs::create_dir_all(rig.home.join("Downloads")).unwrap();
+    rig.host
+        .xdg_dirs
+        .insert("downloads".into(), rig.home.join("Downloads"));
+    let outside = rig.root.join("outside");
+    fs::create_dir_all(&outside).unwrap();
+    fs::write(outside.join("secret.txt"), "SECRET").unwrap();
+    let place = rig.home.join("Downloads/x");
+    let mut p = whole_home_writable();
+    p.filesystem.downloads = Access::Ro;
+    p.filesystem.custom_read = vec![s(&place)];
+    let (r, text) = rig.start(
+        &p,
+        &[
+            ("SAM_TEST_STEP", "plant".into()),
+            ("SAM_TEST_LINK", s(&place)),
+            ("SAM_TEST_TARGET", s(&outside)),
+        ],
+    );
+    assert_eq!(
+        r["PLANTED"], "yes",
+        "the home shows Downloads writable: {text}"
+    );
+    let (r, text) = rig.start(
+        &p,
+        &[(
+            "SAM_TEST_FILES",
+            format!(
+                "{}|{}",
+                s(&outside.join("secret.txt")),
+                s(&place.join("secret.txt"))
+            ),
+        )],
+    );
+    assert_ne!(r["READ0"], "SECRET", "{text}");
+    assert_ne!(r["READ1"], "SECRET", "{text}");
+    assert!(
+        text.contains("may have made that link"),
+        "the start says why: {text}"
+    );
 }

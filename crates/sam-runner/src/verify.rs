@@ -51,6 +51,62 @@ fn rank(a: Access) -> u8 {
     }
 }
 
+/// What the sandbox check expects at `path`, a user or extra folder the
+/// sandbox leaves out because the way there leads through a link the app
+/// could have planted or to where programs outside the sandbox listen
+/// ([`sam_core::places::linked_place_left_out`]). Inside the sandbox the
+/// link itself may still be there (the home or a user folder shows it),
+/// and the probe follows it, so it finds what the other grants show where
+/// the link leads: their expectation (`shown`, the deepest decides, as
+/// the mounts do), nothing in SAM's own folders (`sam_dirs`), and nothing
+/// where none of them shows it. A person who kept such a link and listed
+/// its place as well was told the check failed. `None` (no check) where
+/// the sandbox may show the place on its own: the system folders it binds
+/// read-only (also `extra_lib_dirs`), `/run`, `/proc`, `/dev`, `/sys`,
+/// and the fonts and theme files of a private home (`own`).
+fn expect_at_target(
+    path: &Path,
+    shown: &[(PathBuf, Access)],
+    sam_dirs: &[PathBuf],
+    own: &[PathBuf],
+    extra_lib_dirs: &[PathBuf],
+) -> Option<Access> {
+    let leads = sam_core::places::follow(path).leads;
+    if sam_core::places::inside_sams_folders(&leads, sam_dirs) {
+        return Some(Access::Hidden);
+    }
+    if let Some((_, want)) = shown
+        .iter()
+        .filter(|(g, _)| leads.starts_with(g))
+        .max_by_key(|(g, _)| g.components().count())
+    {
+        return Some(*want);
+    }
+    let on_its_own = [
+        "/usr",
+        "/etc",
+        "/bin",
+        "/sbin",
+        "/lib",
+        "/lib32",
+        "/lib64",
+        "/var/cache/fontconfig",
+        "/run",
+        "/proc",
+        "/dev",
+        "/sys",
+    ]
+    .iter()
+    .map(PathBuf::from)
+    .chain(extra_lib_dirs.iter().cloned())
+    .chain(
+        own.iter()
+            .flat_map(|o| [o.clone(), sam_core::places::resolve(o)]),
+    )
+    .any(|d| leads.starts_with(&d));
+    (!on_its_own).then_some(Access::Hidden)
+}
+
 /// The checks for an app, with what each should find.
 pub fn plan(p: &PermissionSet, cfg: &Config, paths: &Paths, host: &HostInfo) -> ProbePlan {
     let mut v: Vec<ProbeCheck> = Vec::new();
@@ -109,6 +165,19 @@ pub fn plan(p: &PermissionSet, cfg: &Config, paths: &Paths, host: &HostInfo) -> 
             },
         ));
     }
+    // What the sandbox itself shows of the home, the user folders and the
+    // extra folders, each where it really is, with what the check expects
+    // there. A user or extra folder the sandbox leaves out through a link
+    // is expected as these show the place the link leads to
+    // ([`expect_at_target`]).
+    let mut shown: Vec<(PathBuf, Access)> = Vec::new();
+    if fs.home {
+        shown.push((host.home.clone(), home_level));
+        shown.push((sam_core::places::resolve(&host.home), home_level));
+    }
+    // The folder checks, in order: id, title, path and what it should
+    // find; `None` for one the sandbox leaves out through a link.
+    let mut folders: Vec<(&str, String, PathBuf, Option<Access>)> = Vec::new();
     for (key, title, a) in [
         ("documents", "Documents", fs.documents),
         ("downloads", "Downloads", fs.downloads),
@@ -144,15 +213,20 @@ pub fn plan(p: &PermissionSet, cfg: &Config, paths: &Paths, host: &HostInfo) -> 
             } else {
                 want
             };
-        v.push(c(
+        // One the sandbox binds on its own (in a private home, or writable
+        // in a read-only home) is left out where its way leads through a
+        // link the app could have planted, or to where programs outside
+        // the sandbox listen: by the sandbox's rule.
+        let binds_own = !fs.home || (fs.home_access != Perm::Rw && a == Perm::Rw);
+        let left_out = binds_own && sam_core::places::user_folder_left_out(p, host, key).is_some();
+        if binds_own && !left_out {
+            shown.push((sam_core::places::resolve(path), want));
+        }
+        folders.push((
             key,
-            "Files",
-            title,
-            ProbeTest::Folder {
-                path: path.to_path_buf(),
-                host_id: probe::identity(path),
-                expect: want,
-            },
+            title.to_string(),
+            path.to_path_buf(),
+            (!left_out).then_some(want),
         ));
     }
     for (list, want) in [
@@ -184,28 +258,55 @@ pub fn plan(p: &PermissionSet, cfg: &Config, paths: &Paths, host: &HostInfo) -> 
             // what it is shown, or through a link to where programs outside
             // the sandbox listen: the sandbox leaves it out, by the same
             // rule.
-            let left_out = sam_core::places::linked_place_left_out(p, host, &path).is_some();
+            let left_out =
+                sam_core::places::linked_place_left_out(p, host, &path, want == Access::ReadWrite)
+                    .is_some();
+            let want = if in_sams {
+                Access::Hidden
+            } else if in_start_place.is_some() {
+                Access::ReadOnly
+            } else if rank(home_level) > rank(want) && path.starts_with(&host.home) {
+                home_level
+            } else {
+                want
+            };
+            if !left_out {
+                shown.push((bound, want));
+            }
             if path.is_dir() {
-                let want = if in_sams || left_out {
-                    Access::Hidden
-                } else if in_start_place.is_some() {
-                    Access::ReadOnly
-                } else if rank(home_level) > rank(want) && path.starts_with(&host.home) {
-                    home_level
-                } else {
-                    want
-                };
-                v.push(c(
+                folders.push((
                     "custom",
-                    "Files",
                     format!("Extra folder {}", sam_core::util::tildify(&path)),
-                    ProbeTest::Folder {
-                        host_id: probe::identity(&path),
-                        path,
-                        expect: want,
-                    },
+                    path,
+                    (!left_out).then_some(want),
                 ));
             }
+        }
+    }
+    let own: Vec<PathBuf> = if fs.home {
+        Vec::new()
+    } else {
+        sam_sandbox::own_home_places(p)
+            .iter()
+            .map(|rel| host.home.join(rel))
+            .collect()
+    };
+    for (id, title, path, want) in folders {
+        let want = match want {
+            Some(want) => Some(want),
+            None => expect_at_target(&path, &shown, &sam_dirs, &own, &host.extra_lib_dirs),
+        };
+        if let Some(want) = want {
+            v.push(c(
+                id,
+                "Files",
+                title,
+                ProbeTest::Folder {
+                    host_id: probe::identity(&path),
+                    path,
+                    expect: want,
+                },
+            ));
         }
     }
     for (name, title, granted) in [
@@ -1421,6 +1522,85 @@ mod tests {
         assert_eq!(folder(&pl, &title(&ro)), Access::ReadOnly);
         assert_eq!(folder(&pl, &title(&rw)), Access::ReadWrite);
         assert_eq!(folder(&pl, &title(&tmux)), Access::Hidden);
+    }
+
+    /// An extra folder the sandbox leaves out because of a link the app
+    /// could have planted is expected as the other grants show the place
+    /// the link leads to: the link itself stays visible through the home
+    /// or a user folder, and the probe follows it. Listed by its real place
+    /// as well (as the launch note advises), it is expected as that entry
+    /// shows it, read-only or writable; in a private home with Documents
+    /// writable, read-only as its real place is listed. Shown by nothing
+    /// else, it is expected not to be shown.
+    #[test]
+    fn the_check_expects_a_left_out_extra_folder_as_its_target_is_shown() {
+        let t = tempfile::tempdir().unwrap();
+        let h = host_in(t.path());
+        let cfg = Config::default();
+        let s = |p: &Path| p.to_string_lossy().into_owned();
+        let title = |p: &Path| format!("Extra folder {}", sam_core::util::tildify(p));
+        let (data, data2, data3) = (
+            t.path().join("data"),
+            t.path().join("data2"),
+            t.path().join("data3"),
+        );
+        for d in [&data, &data2, &data3] {
+            fs::create_dir_all(d).unwrap();
+        }
+        let (rw, ro, docs) = (
+            h.home.join("Data"),
+            h.home.join("Data2"),
+            h.home.join("Documents/Data3"),
+        );
+        std::os::unix::fs::symlink(&data, &rw).unwrap();
+        std::os::unix::fs::symlink(&data2, &ro).unwrap();
+        std::os::unix::fs::symlink(&data3, &docs).unwrap();
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.home = true;
+        p.filesystem.home_access = Perm::Rw;
+        p.filesystem.custom_write = vec![s(&rw), s(&data)];
+        p.filesystem.custom_read = vec![s(&ro), s(&data2)];
+        let pl = plan(&p, &cfg, &sam_paths(), &h);
+        assert_eq!(folder(&pl, &title(&rw)), Access::ReadWrite);
+        assert_eq!(folder(&pl, &title(&ro)), Access::ReadOnly);
+        // Only the link: nothing else shows its place.
+        p.filesystem.custom_write = vec![s(&rw)];
+        let pl = plan(&p, &cfg, &sam_paths(), &h);
+        assert_eq!(folder(&pl, &title(&rw)), Access::Hidden);
+        // A private home, the link in writable Documents.
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.documents = Perm::Rw;
+        p.filesystem.custom_read = vec![s(&docs), s(&data3)];
+        let pl = plan(&p, &cfg, &sam_paths(), &h);
+        assert_eq!(folder(&pl, &title(&docs)), Access::ReadOnly);
+    }
+
+    /// A user folder the sandbox leaves out because the way there leads
+    /// through a link the app could have planted (Documents set to
+    /// `~/Sync/Documents`, `~/Sync` writable) is expected as the rest shows
+    /// the place it leads to, here not at all; reached through a link you
+    /// made in the home, it is expected as its switch says.
+    #[test]
+    fn the_check_expects_a_user_folder_behind_a_planted_link_as_its_target_is_shown() {
+        let t = tempfile::tempdir().unwrap();
+        let mut h = host_in(t.path());
+        let cfg = Config::default();
+        let outside = t.path().join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        fs::create_dir_all(h.home.join("Sync")).unwrap();
+        let docs = h.home.join("Sync/Documents");
+        std::os::unix::fs::symlink(&outside, &docs).unwrap();
+        h.xdg_dirs.insert("documents".into(), docs);
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.documents = Perm::Ro;
+        p.filesystem.custom_write = vec![h.home.join("Sync").to_string_lossy().into_owned()];
+        let pl = plan(&p, &cfg, &sam_paths(), &h);
+        assert_eq!(folder(&pl, "Documents"), Access::Hidden);
+        let mine = h.home.join("MyDocs");
+        std::os::unix::fs::symlink(&outside, &mine).unwrap();
+        h.xdg_dirs.insert("documents".into(), mine);
+        let pl = plan(&p, &cfg, &sam_paths(), &h);
+        assert_eq!(folder(&pl, "Documents"), Access::ReadOnly);
     }
 
     /// Network, display, sound, the session bus, the SSH agent, variables
