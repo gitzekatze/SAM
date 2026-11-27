@@ -957,7 +957,7 @@ mod tests {
     /// when it has asked: a hint rated Think twice or Dangerous, or one
     /// that turns on compatibility mode, but not a Medium one (owner
     /// decision 13 of 2026-11-23: `hints --apply` refuses a risky hint
-    /// without --yes). A repair step is always confirmed, as before.
+    /// without --yes).
     #[test]
     fn the_window_confirms_a_hint_exactly_when_it_asked() {
         use super::data::{apply_args, asks_first};
@@ -978,18 +978,66 @@ mod tests {
                 "{risk} {kind}: {args:?}"
             );
         }
-        assert_eq!(
-            apply_args("app-1", "x11", true, false),
-            ["repair", "app-1", "--apply", "x11", "--yes"]
-        );
         // A refusal for a rating the page did not show yet: a short
         // notice, then the page is drawn again; other errors as before.
         use crate::backend::CliError;
-        let stale = super::data::stale_hint_notice(&CliError::coded("hint-needs-yes", "x"));
+        let stale = super::data::stale_rating_notice(&CliError::coded("hint-needs-yes", "x"));
         assert!(stale.is_some_and(|t| !t.contains("--yes")));
         assert!(
-            super::data::stale_hint_notice(&CliError::coded("change-needs-yes", "x")).is_none()
+            super::data::stale_rating_notice(&CliError::coded("change-needs-yes", "x")).is_none()
         );
+    }
+
+    /// The window confirms a repair step for the command line with --yes
+    /// exactly when it has asked, as it does for a hint: a step rated
+    /// Think twice or Dangerous, one that turns on compatibility mode, or
+    /// one from the app's own output. A step it did not ask about goes
+    /// without --yes, so where SAM now rates it higher than the page showed
+    /// (review of PR #149: the window passed --yes for every repair step),
+    /// the command line refuses it and the window draws the page again
+    /// with a short notice instead of applying it unasked.
+    #[test]
+    fn the_window_confirms_a_repair_step_exactly_when_it_asked() {
+        use super::data::{apply_args, stale_rating_notice, window_asks};
+        use crate::backend::CliError;
+        let step = |risk: &str, kind: &str, from_app: bool| json!({"id": "s", "risk": risk, "action": {"kind": kind}, "from_app_output": from_app});
+        for (risk, kind, from_app, expect) in [
+            ("high", "set", false, true),
+            ("dangerous", "set", false, true),
+            ("medium", "compat", false, true),
+            ("medium", "set", false, false),
+            ("low", "set", false, false),
+            // From the app's own output: always asked, and so confirmed,
+            // whatever its rating (regression #69: the command line
+            // refuses it without --yes, and the window would be stuck).
+            ("low", "set", true, true),
+            ("medium", "set", true, true),
+        ] {
+            let asked = window_asks(&step(risk, kind, from_app));
+            assert_eq!(asked, expect, "{risk} {kind} from app {from_app}");
+            let args = apply_args("app-1", "s", true, asked);
+            assert_eq!(&args[..4], ["repair", "app-1", "--apply", "s"]);
+            assert_eq!(
+                args.iter().any(|a| a == "--yes"),
+                expect,
+                "{risk} {kind} from app {from_app}: {args:?}"
+            );
+        }
+        // Not asked: no --yes, whatever step it is.
+        assert_eq!(
+            apply_args("app-1", "x11", true, false),
+            ["repair", "app-1", "--apply", "x11"]
+        );
+        assert_eq!(
+            apply_args("app-1", "x11", true, true),
+            ["repair", "app-1", "--apply", "x11", "--yes"]
+        );
+        // The command line's refusal of a step the window did not ask
+        // about becomes the short notice, never advice to add --yes.
+        for code in ["step-needs-yes", "repair-needs-yes"] {
+            let notice = stale_rating_notice(&CliError::coded(code, "x"));
+            assert!(notice.is_some_and(|t| !t.contains("--yes")), "{code}");
+        }
     }
 
     /// "Confirm Settings" names what the changed settings let the app do
