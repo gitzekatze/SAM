@@ -24,7 +24,7 @@ Use these keys with `sam-jail set <app> <key> <value>`, or edit the `[permission
 | `filesystem.documents` … `downloads`, `music`, `pictures`, `videos`, `desktop` | `none` / `ro` / `rw` |
 | `filesystem.ssh`, `filesystem.gnupg`, `filesystem.hidden_files` | `true` / `false` (only apply with full home) |
 | `filesystem.opened_files` | `none` / `ro` / `rw`: files you open with the app ("Open with") |
-| `filesystem.custom_read`, `filesystem.custom_write` | list, e.g. `"~/Projects, /mnt/data"`; rated where they lead (`/.` is `/`, `~/..` the folder above the home). Read-only does not stop the app from connecting to programs listening in the folder, so `/tmp` is rated Dangerous |
+| `filesystem.custom_read`, `filesystem.custom_write` | list, e.g. `"~/Projects, /mnt/data"`; rated where they lead (`/.` is `/`, `~/..` the folder above the home). Read-only does not stop the app from connecting to programs listening in the folder, so `/tmp` is rated Dangerous. One reached through a link is left out, with a note in the launch log, where the link lies in a folder the app can change and leads out of what the home and the user folders show (the app may have made it), or where it leads to programs listening outside the sandbox (`/tmp`'s socket folders, `/run`); name such a folder by its real place instead |
 | `network.mode` | `none` / `localhost` (no internet; loopback ports forwarded by pasta, Bubblewrap only) / `full` (a `filtered` value from old profiles loads as `none`) |
 | `devices.gpu`, `devices.webcam`, `devices.gamepads`, `devices.input`, `devices.usb`, `devices.bluetooth` | `true` / `false` |
 | `audio.enabled`, `audio.direct`, `audio.pipewire`, `audio.alsa_raw` | `true` / `false` |

@@ -1,0 +1,456 @@
+//! The places SAM shows an app from your home on its own (your fonts, the
+//! fonts settings) and the extra read-only folders are never followed
+//! through a link to a place the app must not reach, attacked from inside
+//! a real sandbox.
+//!
+//! With the whole home writable and `~/.fonts` missing (common), an app
+//! makes `~/.fonts` a link to `/tmp/tmux-1000` in one start. At the next
+//! start SAM followed the link and bound the host's folder over the
+//! sandbox's own `/tmp`. Connecting to a socket needs no write access, so
+//! the app reached the host's tmux server through the read-only bind and
+//! could run commands outside the sandbox (the same with `/run/user/1000`,
+//! which holds the session bus, systemd's and GnuPG's sockets). Here the
+//! socket folder is a stand-in named like tmux's, in the test machine's
+//! `/tmp`, with a listening socket the app must not reach.
+//!
+//! Each protection has its own case:
+//! - a link in a folder the app can change that leads out of what the app
+//!   is shown is not followed (the app may have made it);
+//! - a link that leads to a place where programs outside the sandbox
+//!   listen is not followed, whoever made it;
+//! - a link that leads from a fonts place to your keys is not followed.
+//!
+//! Controls: ordinary fonts folders and links that stay inside what the
+//! app is shown still work, and an extra folder you list by its real
+//! place in `/tmp` is still passed in, so a connection would have been
+//! seen.
+//!
+//! In its own file because it sets `HOME` for the test process.
+#![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
+
+use std::collections::HashMap;
+use std::fs;
+use std::os::unix::fs::symlink;
+use std::os::unix::net::UnixListener;
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+
+use sam_core::permissions::*;
+use sam_core::{HostInfo, Paths};
+use sam_intake::testkit::{build, FixtureFile, FixtureSpec};
+use sam_runner::launch::{run, LaunchOptions};
+use sam_runner::ops::{AddOptions, Sam};
+
+/// The tests share `HOME` and the runtime folder of the test process.
+static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
+
+/// `plant`: put a link at `SAM_TEST_LINK` to `SAM_TEST_TARGET`, as an app
+/// with the folder writable can. Then connect to every socket in
+/// `SAM_TEST_SOCKETS` and read every file in `SAM_TEST_FILES` (each list
+/// split by `|`), saying for each what happened.
+const PROBE_PY: &str = r#"
+import os, socket
+if os.environ.get("SAM_TEST_STEP") == "plant":
+    link = os.environ["SAM_TEST_LINK"]
+    try:
+        os.makedirs(os.path.dirname(link), exist_ok=True)
+        os.symlink(os.environ["SAM_TEST_TARGET"], link)
+        print("PLANTED=yes")
+    except OSError as e:
+        print("PLANTED=" + str(e.errno))
+for i, path in enumerate(p for p in os.environ.get("SAM_TEST_SOCKETS", "").split("|") if p):
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        s.connect(path); s.sendall(b"pwned"); print("CONNECT%d=ok" % i)
+    except OSError as e:
+        print("CONNECT%d=%d" % (i, e.errno))
+for i, path in enumerate(p for p in os.environ.get("SAM_TEST_FILES", "").split("|") if p):
+    try:
+        with open(path) as f:
+            print("READ%d=%s" % (i, f.read().strip()))
+    except OSError as e:
+        print("READ%d=%d" % (i, e.errno))
+print("END=1")
+"#;
+
+const APPRUN: &str = "#!/bin/sh\nexec python3 \"$APPDIR/usr/bin/probe.py\"\n";
+
+fn parse(log: &Path) -> HashMap<String, String> {
+    fs::read_to_string(log)
+        .unwrap()
+        .lines()
+        .filter_map(|l| l.split_once('='))
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect()
+}
+
+/// A stand-in for a folder in `/tmp` where a program outside the sandbox
+/// listens (`/tmp/tmux-1000`), with its socket.
+struct SocketFolder {
+    dir: tempfile::TempDir,
+    listener: UnixListener,
+}
+
+impl SocketFolder {
+    fn new() -> SocketFolder {
+        // Named like tmux's own, in the machine's real `/tmp`.
+        let dir = tempfile::Builder::new()
+            .prefix("tmux-")
+            .tempdir_in("/tmp")
+            .unwrap();
+        let listener = UnixListener::bind(dir.path().join("default")).unwrap();
+        listener.set_nonblocking(true).unwrap();
+        SocketFolder { dir, listener }
+    }
+
+    fn path(&self) -> PathBuf {
+        self.dir.path().to_path_buf()
+    }
+
+    fn socket(&self) -> String {
+        self.dir.path().join("default").display().to_string()
+    }
+
+    /// Whether anyone connected since the last look (it does not wait).
+    fn was_reached(&self) -> bool {
+        let mut any = false;
+        while self.listener.accept().is_ok() {
+            any = true;
+        }
+        any
+    }
+}
+
+/// A fake home with the probe app added, and starts of it.
+struct Rig {
+    _tmp: tempfile::TempDir,
+    root: PathBuf,
+    home: PathBuf,
+    app: Sam,
+    id: String,
+    host: HostInfo,
+}
+
+impl Rig {
+    /// `None` (recorded as a skip) where Bubblewrap or python3 is missing.
+    fn new(name: &str) -> Option<Rig> {
+        let host = HostInfo::probe();
+        if host.tools.bwrap.is_none()
+            || sam_runner::doctor::bwrap_functional(&host).is_err()
+            || sam_core::util::which("python3").is_none()
+        {
+            sam_runner::contracts::skip("bubblewrap is not functional here, or python3 is missing")
+                .unwrap_or_else(|e| panic!("{e}"));
+            return None;
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(tmp.path()).unwrap();
+        sam_runner::testenv::isolate_this_process(&root);
+        let home = root.join("home/tester");
+        fs::create_dir_all(home.join(".config")).unwrap();
+        std::env::set_var("HOME", &home);
+        std::env::set_var("XDG_CONFIG_HOME", home.join(".config"));
+        std::env::set_var("XDG_DATA_HOME", home.join(".local/share"));
+        let img = root.join(format!("{name}-1.0-x86_64.AppImage"));
+        let mut spec = FixtureSpec::hello(name);
+        spec.apprun = APPRUN.into();
+        spec.host_binary = None;
+        spec.files.push(FixtureFile {
+            path: "usr/bin/probe.py".into(),
+            data: PROBE_PY.as_bytes().to_vec(),
+            mode: 0o644,
+        });
+        build(&img, &spec).unwrap();
+        let app = Sam::with_paths(Paths::rooted(&root.join("sam"))).unwrap();
+        let id = app
+            .add(
+                &img,
+                &AddOptions {
+                    accept: true,
+                    launcher: Some(false),
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+            .entry
+            .id;
+        let mut host = sam_runner::testenv::test_host(HostInfo::probe());
+        host.xdg_dirs.clear();
+        Some(Rig {
+            _tmp: tmp,
+            root,
+            home,
+            app,
+            id,
+            host,
+        })
+    }
+
+    /// Starts the app with `p` and the probe's variables `env`; what the
+    /// probe said, and the start's notes.
+    fn start(
+        &self,
+        p: &PermissionSet,
+        env: &[(&str, String)],
+    ) -> (HashMap<String, String>, String) {
+        let mut p = p.clone();
+        for (k, v) in env {
+            p.environment.set.insert(k.to_string(), v.clone());
+        }
+        let mut e = self.app.set_permissions(&self.id, p).unwrap();
+        let rec = run(
+            &mut e,
+            &LaunchOptions {
+                quiet: true,
+                owd: Some(self.home.clone()),
+                ..Default::default()
+            },
+            &self.app.config,
+            &self.app.paths,
+            &self.host,
+        )
+        .unwrap_or_else(|e| panic!("the app did not start: {e:#}"));
+        let log = rec.log_file.clone().unwrap();
+        let text = fs::read_to_string(&log).unwrap_or_default();
+        let r = parse(&log);
+        assert_eq!(
+            r.get("END").map(String::as_str),
+            Some("1"),
+            "the probe did not finish: {}\n{text}",
+            rec.summary
+        );
+        (r, text)
+    }
+}
+
+fn whole_home_writable() -> PermissionSet {
+    let mut p = PermissionSet::strict_gui();
+    p.filesystem.home = true;
+    p.filesystem.home_access = Access::Rw;
+    p
+}
+
+fn s(p: &Path) -> String {
+    p.display().to_string()
+}
+
+/// With the whole home writable, the app makes `place` (missing so far) a
+/// link to a stand-in for tmux's socket folder in one start; in the next
+/// start it reaches the socket neither where the link leads nor through
+/// the link.
+fn planted_link_never_reaches_host_sockets(rig: &Rig, place: &Path, p: &PermissionSet) {
+    let sockets = SocketFolder::new();
+    let (r, text) = rig.start(
+        p,
+        &[
+            ("SAM_TEST_STEP", "plant".into()),
+            ("SAM_TEST_LINK", s(place)),
+            ("SAM_TEST_TARGET", s(&sockets.path())),
+        ],
+    );
+    assert_eq!(r["PLANTED"], "yes", "the writable home lets it: {text}");
+    assert!(fs::symlink_metadata(place)
+        .unwrap()
+        .file_type()
+        .is_symlink());
+    assert!(!sockets.was_reached());
+    let through_link = place.join("default");
+    let (r, text) = rig.start(
+        p,
+        &[(
+            "SAM_TEST_SOCKETS",
+            format!("{}|{}", sockets.socket(), s(&through_link)),
+        )],
+    );
+    assert_ne!(
+        r["CONNECT0"], "ok",
+        "the app reached the host's socket folder at its own place: {text}"
+    );
+    assert_ne!(
+        r["CONNECT1"], "ok",
+        "the app reached the host's socket through its link: {text}"
+    );
+    assert!(
+        !sockets.was_reached(),
+        "a program outside the sandbox was reached through {}",
+        place.display()
+    );
+}
+
+/// `~/.fonts`, planted as a link to a socket folder in `/tmp`.
+#[test]
+fn a_font_folder_link_the_app_planted_never_reaches_host_sockets() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(rig) = Rig::new("Fonts") else {
+        return;
+    };
+    planted_link_never_reaches_host_sockets(&rig, &rig.home.join(".fonts"), &whole_home_writable());
+}
+
+/// `~/.config/fontconfig`, planted as a link to a socket folder in `/tmp`.
+#[test]
+fn a_fontconfig_link_the_app_planted_never_reaches_host_sockets() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(rig) = Rig::new("Fontconfig") else {
+        return;
+    };
+    planted_link_never_reaches_host_sockets(
+        &rig,
+        &rig.home.join(".config/fontconfig"),
+        &whole_home_writable(),
+    );
+}
+
+/// An extra read-only folder that did not exist yet, planted as a link to
+/// a socket folder in `/tmp`; also one planted as a link to a folder
+/// outside the home that the app is not shown (not a place of sockets:
+/// the link rule alone). The control: listed by its real place in `/tmp`,
+/// a socket folder is still passed in (you were warned), and the probe
+/// reaches its socket.
+#[test]
+fn an_extra_folder_link_the_app_planted_never_reaches_host_sockets() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(rig) = Rig::new("Extra") else {
+        return;
+    };
+    // The control.
+    let listed = SocketFolder::new();
+    let mut p = PermissionSet::strict_gui();
+    p.filesystem.custom_read = vec![s(&listed.path())];
+    let (r, text) = rig.start(&p, &[("SAM_TEST_SOCKETS", listed.socket())]);
+    assert_eq!(r["CONNECT0"], "ok", "listed by its real place: {text}");
+    assert!(listed.was_reached());
+
+    fs::create_dir_all(rig.home.join("shared")).unwrap();
+    let place = rig.home.join("shared/ro");
+    let mut p = whole_home_writable();
+    p.filesystem.custom_read = vec![s(&place)];
+    planted_link_never_reaches_host_sockets(&rig, &place, &p);
+
+    // A folder outside the home the app is never shown.
+    let outside = rig.root.join("outside");
+    fs::create_dir_all(&outside).unwrap();
+    fs::write(outside.join("secret.txt"), "SECRET").unwrap();
+    let place = rig.home.join("shared/ro2");
+    p.filesystem.custom_read = vec![s(&place)];
+    let (r, _) = rig.start(
+        &p,
+        &[
+            ("SAM_TEST_STEP", "plant".into()),
+            ("SAM_TEST_LINK", s(&place)),
+            ("SAM_TEST_TARGET", s(&outside)),
+        ],
+    );
+    assert_eq!(r["PLANTED"], "yes");
+    let (r, text) = rig.start(
+        &p,
+        &[(
+            "SAM_TEST_FILES",
+            format!(
+                "{}|{}",
+                s(&outside.join("secret.txt")),
+                s(&place.join("secret.txt"))
+            ),
+        )],
+    );
+    assert_ne!(r["READ0"], "SECRET", "{text}");
+    assert_ne!(r["READ1"], "SECRET", "{text}");
+}
+
+/// Each rule on its own, for `~/.fonts`:
+/// - with the whole home writable, a link to a folder outside the home
+///   that the app is not shown (the app may have made it) is not
+///   followed;
+/// - in a private home, a link to a socket folder in `/tmp` (another
+///   program made it; the app cannot change the home) is not followed;
+/// - in a private home, a link to your SSH keys is not followed.
+#[test]
+fn a_font_folder_link_never_leads_out_of_what_the_app_is_shown() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(rig) = Rig::new("Leads") else {
+        return;
+    };
+    let fonts = rig.home.join(".fonts");
+    let outside = rig.root.join("outside");
+    fs::create_dir_all(&outside).unwrap();
+    fs::write(outside.join("secret.txt"), "SECRET").unwrap();
+    symlink(&outside, &fonts).unwrap();
+    let files = format!(
+        "{}|{}",
+        s(&outside.join("secret.txt")),
+        s(&fonts.join("secret.txt"))
+    );
+    let (r, text) = rig.start(&whole_home_writable(), &[("SAM_TEST_FILES", files.clone())]);
+    assert_ne!(r["READ0"], "SECRET", "{text}");
+    assert_ne!(r["READ1"], "SECRET", "{text}");
+    assert!(
+        text.contains("may have made that link"),
+        "the start says why: {text}"
+    );
+
+    fs::remove_file(&fonts).unwrap();
+    let sockets = SocketFolder::new();
+    symlink(sockets.path(), &fonts).unwrap();
+    let private = PermissionSet::strict_gui();
+    let (r, text) = rig.start(
+        &private,
+        &[(
+            "SAM_TEST_SOCKETS",
+            format!("{}|{}", s(&fonts.join("default")), sockets.socket()),
+        )],
+    );
+    assert_ne!(r["CONNECT0"], "ok", "{text}");
+    assert_ne!(r["CONNECT1"], "ok", "{text}");
+    assert!(!sockets.was_reached(), "{text}");
+
+    fs::remove_file(&fonts).unwrap();
+    fs::create_dir_all(rig.home.join(".ssh")).unwrap();
+    fs::write(rig.home.join(".ssh/id_ed25519"), "PRIVATE KEY").unwrap();
+    symlink(rig.home.join(".ssh"), &fonts).unwrap();
+    let (r, text) = rig.start(
+        &private,
+        &[("SAM_TEST_FILES", s(&fonts.join("id_ed25519")))],
+    );
+    assert_ne!(r["READ0"], "PRIVATE KEY", "{text}");
+}
+
+/// The controls: fonts folders and links that stay inside what the app
+/// is shown still work. In a private home: `~/.local/share/fonts` as it
+/// is, `~/.fonts` a link you made to `~/myfonts`, and an extra read-only
+/// folder. With the whole home writable: `~/.fonts` a link to
+/// `~/.local/share/fonts`, which the home shows anyway.
+#[test]
+fn ordinary_font_folders_and_links_inside_the_home_still_work() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(rig) = Rig::new("Ordinary") else {
+        return;
+    };
+    let h = &rig.home;
+    for d in [".local/share/fonts", "myfonts", "notes"] {
+        fs::create_dir_all(h.join(d)).unwrap();
+    }
+    fs::write(h.join(".local/share/fonts/a.txt"), "FONT A").unwrap();
+    fs::write(h.join("myfonts/b.txt"), "FONT B").unwrap();
+    fs::write(h.join("notes/n.txt"), "NOTE").unwrap();
+    symlink(h.join("myfonts"), h.join(".fonts")).unwrap();
+    let mut p = PermissionSet::strict_gui();
+    p.filesystem.custom_read = vec![s(&h.join("notes"))];
+    let files = format!(
+        "{}|{}|{}",
+        s(&h.join(".local/share/fonts/a.txt")),
+        s(&h.join(".fonts/b.txt")),
+        s(&h.join("notes/n.txt"))
+    );
+    let (r, text) = rig.start(&p, &[("SAM_TEST_FILES", files)]);
+    assert_eq!(r["READ0"], "FONT A", "{text}");
+    assert_eq!(r["READ1"], "FONT B", "{text}");
+    assert_eq!(r["READ2"], "NOTE", "{text}");
+
+    fs::remove_file(h.join(".fonts")).unwrap();
+    symlink(h.join(".local/share/fonts"), h.join(".fonts")).unwrap();
+    let (r, text) = rig.start(
+        &whole_home_writable(),
+        &[("SAM_TEST_FILES", s(&h.join(".fonts/a.txt")))],
+    );
+    assert_eq!(r["READ0"], "FONT A", "{text}");
+}

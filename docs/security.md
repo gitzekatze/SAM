@@ -32,7 +32,7 @@ proves it, is in [threat-model.md](threat-model.md).
 
 | Path in the sandbox | What it is |
 |---|---|
-| `$HOME` | the app's **private home** (`~/.local/share/sam/homes/<app>`), plus the folders you granted. Also shown, read-only: your fonts (`~/.local/share/fonts`, `~/.fonts`, `~/.config/fontconfig`) and, with *Host theme settings* (on by default), your desktop's look: the GTK, Qt and KDE settings (`~/.config/gtk-3.0`, `~/.config/gtk-4.0`, `~/.config/kdeglobals` and similar), icons and themes. The file chooser's bookmarks and server list in the GTK folders stay out, unless you grant their folder |
+| `$HOME` | the app's **private home** (`~/.local/share/sam/homes/<app>`), plus the folders you granted. Also shown, read-only: your fonts (`~/.local/share/fonts`, `~/.fonts`, `~/.config/fontconfig`) and, with *Host theme settings* (on by default), your desktop's look: the GTK, Qt and KDE settings (`~/.config/gtk-3.0`, `~/.config/gtk-4.0`, `~/.config/kdeglobals` and similar), icons and themes. The file chooser's bookmarks and server list in the GTK folders stay out, unless you grant their folder. A link there is followed only where it may lead (see *Links never take a bind where it must not lead*) |
 | `/opt/app` | the unpacked app, read-only |
 | `/usr/lib`, `/usr/bin` | the system's libraries and programs, read-only (all of `/usr` with `advanced.host_runtime full` or compatibility mode) |
 | `/usr/share/…` | selected shared data (fonts, icons, locales, themes), read-only |
@@ -730,6 +730,38 @@ How these stay protected with the home writable:
   outside the sandbox. A grant of `/tmp`, or of those places in it, is
   rated *Dangerous* and warned about
   (`a_grant_of_tmp_or_its_listening_places_is_dangerous_even_read_only`).
+- **Links never take a bind where it must not lead.** SAM shows your
+  fonts (`~/.fonts`, `~/.local/share/fonts`, `~/.config/fontconfig`) and
+  your theme files read-only on its own, and binds each extra folder where
+  its links lead. With the whole home writable, an app could make a
+  missing `~/.fonts`, or an extra folder not made yet, a link to
+  `/tmp/tmux-1000` or to `/run/user/1000`, and the next start showed the
+  host's tmux server, SSH or GnuPG agent or the systemd user manager, read-only
+  but enough to connect and run commands outside the sandbox. Each of
+  these binds now follows one rule:
+  - a link on the way that lies in a folder the app can change (the
+    writable home, a writable user or extra folder) is not followed out of
+    what the home and the user folders show: the app may have made it;
+  - a link that leads to where programs outside the sandbox listen (the
+    whole computer, `/tmp` and its socket folders, `/run` except drives
+    under `/run/media`, `/proc`, `/dev`) is never followed, whoever made
+    it;
+  - a place SAM shows on its own never leads to the home or a folder above
+    it, a key or credential store, a protected place or SAM's own folders.
+
+  Such a place is not shown, and the launch log says why; the sandbox
+  check expects an extra folder left out this way as not shown. A link
+  that stays inside what the app is shown (`~/.fonts` a link to
+  `~/.local/share/fonts`) works as before, and an extra folder you name by
+  its real place is shown as written (`/tmp/tmux-1000` named so is rated
+  *Dangerous* and warned about). If you made such a link yourself, add the
+  place it leads to as an extra folder
+  (`a_font_folder_link_the_app_planted_never_reaches_host_sockets`,
+  `a_fontconfig_link_the_app_planted_never_reaches_host_sockets`,
+  `an_extra_folder_link_the_app_planted_never_reaches_host_sockets`,
+  `a_font_folder_link_never_leads_out_of_what_the_app_is_shown`, each
+  from a real sandbox; `fonts_themes_and_extra_folders_never_follow_a_planted_link`,
+  `ordinary_font_folders_and_links_inside_the_home_still_work`).
 - **Extra sockets** (`sockets.custom`) are passed in from where their links
   lead. One reached through a link in a folder the app may change is left
   out (the app could have made that link, to the session bus or another

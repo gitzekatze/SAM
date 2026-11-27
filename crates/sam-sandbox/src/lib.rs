@@ -1157,7 +1157,7 @@ impl Views {
             match g.how {
                 WriteBind::Writable => v.grants.push((g.bound.clone(), true)),
                 WriteBind::ReadOnly(_) => v.grants.push((g.bound.clone(), false)),
-                WriteBind::Below(_) | WriteBind::InsideSam => {}
+                WriteBind::Below(_) | WriteBind::InsideSam | WriteBind::LeftOut(_) => {}
             }
         }
         v
@@ -1178,8 +1178,12 @@ impl Views {
                 }
             }
         }
+        // Never one SAM leaves out ([`read_grant_left_out`]): its place
+        // is not shown.
         for c in &fsp.custom_read {
-            grants.push((grant_path(c), false));
+            if read_grant_left_out(ctx, c).is_none() {
+                grants.push((grant_path(c), false));
+            }
         }
         Views { grants }
     }
@@ -1402,6 +1406,10 @@ enum WriteBind {
     Below(PathBuf),
     /// In SAM's own folders, which the app never sees: not bound.
     InsideSam,
+    /// Reached through a link the app could have planted, out of what it
+    /// is shown, or through a link to where programs outside the sandbox
+    /// listen ([`sam_core::places::linked_place_left_out`]): not bound.
+    LeftOut(sam_core::places::LeftOut),
 }
 
 /// The extra writable folders of this start, each decided once
@@ -1449,7 +1457,13 @@ fn write_grants(ctx: &LaunchContext) -> Vec<WriteGrant> {
         .map(|(written, bound, place)| {
             // One answer for the sandbox and its check (independent review
             // of decision 9: the check missed SAM's folders kept elsewhere).
-            let how = if sam_core::places::write_grant_in_sams_folders(
+            let how = if let Some(why) = sam_core::places::linked_place_left_out(
+                &ctx.permissions,
+                &ctx.host,
+                &expand_home(&written),
+            ) {
+                WriteBind::LeftOut(why)
+            } else if sam_core::places::write_grant_in_sams_folders(
                 &bound,
                 place.as_ref(),
                 &sams,
@@ -1476,6 +1490,38 @@ fn write_grants(ctx: &LaunchContext) -> Vec<WriteGrant> {
 /// so the checks see what the app sees.
 fn grant_path(c: &str) -> PathBuf {
     resolve(&expand_home(c))
+}
+
+/// Why this start leaves out the extra read-only folder `c` (as the
+/// person wrote it), if it does: reached through a link the app could have
+/// planted, out of what it is shown, or through a link to where programs
+/// outside the sandbox listen ([`sam_core::places::linked_place_left_out`]).
+/// With the whole home writable, an extra folder not made yet was turned
+/// into a link to `/tmp/tmux-1000` in one start, and the next start bound
+/// the host's tmux sockets.
+fn read_grant_left_out(ctx: &LaunchContext, c: &str) -> Option<sam_core::places::LeftOut> {
+    sam_core::places::linked_place_left_out(&ctx.permissions, &ctx.host, &expand_home(c))
+}
+
+/// Where to bind the place `at` of the home that SAM shows the app on its
+/// own, read-only (the fonts, the fonts settings, the theme files), or why
+/// it is left out: never through a link the app could have planted out of
+/// what it is shown, never to where programs outside the sandbox listen,
+/// and never to the home, a key or credential store, a protected place or
+/// SAM's own folders (`guarded`, [`sam_core::places::own_place_left_out`]).
+/// With the whole home writable and `~/.fonts` missing, the app made it a
+/// link to `/tmp/tmux-1000`, and the next start bound the host's tmux
+/// sockets over the sandbox's own `/tmp`.
+fn own_bind(
+    ctx: &LaunchContext,
+    views: &Views,
+    guarded: &[PathBuf],
+    at: &Path,
+) -> std::result::Result<PathBuf, sam_core::places::LeftOut> {
+    match sam_core::places::own_place_left_out(&ctx.permissions, &ctx.host, at, guarded) {
+        Some(why) => Err(why),
+        None => Ok(bind_place(views, at)),
+    }
 }
 
 /// Step 1 of the protections inside the shown parts of the real home: the
@@ -1708,11 +1754,14 @@ pub fn shown_extra_folders(ctx: &LaunchContext) -> Vec<String> {
         .filesystem
         .custom_read
         .iter()
-        .filter(|c| !sam_core::places::inside_sams_folders(&grant_path(c), &sams))
+        .filter(|c| {
+            !sam_core::places::inside_sams_folders(&grant_path(c), &sams)
+                && read_grant_left_out(ctx, c).is_none()
+        })
         .cloned();
     let writes = write_grants(ctx)
         .into_iter()
-        .filter(|g| !matches!(g.how, WriteBind::InsideSam))
+        .filter(|g| !matches!(g.how, WriteBind::InsideSam | WriteBind::LeftOut(_)))
         .map(|g| g.written);
     reads.chain(writes).collect()
 }
@@ -2247,16 +2296,20 @@ impl Section<'_> {
                 }
             }
         }
-        // Safe read-only user resources.
-        for r in [".local/share/fonts", ".fonts", ".config/fontconfig"] {
-            let at = bind_place(&self.views, &home.join(r));
-            mount(&at, &|m| m.ro(&at));
+        // Safe read-only user resources, each only where it leads to a
+        // place it may show ([`own_bind`]).
+        let guarded = sam_core::places::guarded_places_everywhere(&home, &self.sams);
+        let mut own: Vec<&str> = vec![".local/share/fonts", ".fonts", ".config/fontconfig"];
+        if p.advanced.host_themes && !fsp.home {
+            own.extend(THEME_FILES);
+        }
+        for rel in own {
+            match own_bind(ctx, &self.views, &guarded, &home.join(rel)) {
+                Ok(at) => mount(&at, &|m| m.ro(&at)),
+                Err(why) => notes.push(sam_core::places::left_out_note(&format!("~/{rel}"), &why)),
+            }
         }
         if p.advanced.host_themes && !fsp.home {
-            for t in THEME_FILES {
-                let at = bind_place(&self.views, &home.join(t));
-                mount(&at, &|m| m.ro(&at));
-            }
             // Deeper than its folder, so mounted after it. Only a plain
             // file: a link inside leads where the sandbox shows nothing,
             // and Bubblewrap cannot mount over a link.
@@ -2270,7 +2323,13 @@ impl Section<'_> {
             }
         }
         // Extra folders, at their resolved place: what the app sees there.
+        // Never one reached through a link that could take it somewhere it
+        // must not lead ([`read_grant_left_out`]).
         for c in &fsp.custom_read {
+            if let Some(why) = read_grant_left_out(ctx, c) {
+                notes.push(sam_core::places::left_out_note(c, &why));
+                continue;
+            }
             let path = grant_path(c);
             mount(&path, &|m| m.op2("--ro-bind-try", &path, &path));
         }
@@ -2300,6 +2359,10 @@ impl Section<'_> {
                 }
                 WriteBind::InsideSam => {
                     notes.push(sam_core::places::inside_sams_folders_note(&g.written));
+                    continue;
+                }
+                WriteBind::LeftOut(why) => {
+                    notes.push(sam_core::places::left_out_note(&g.written, why));
                     continue;
                 }
             };
@@ -3111,50 +3174,12 @@ pub fn write_identity_files(ctx: &LaunchContext) -> Result<()> {
 /// Whether reaching `p` passes a link that sits in a folder the app can
 /// change (`app_can_change`, asked with the folder's real place): the app
 /// could have put that link there, pointing anywhere. Followed the way the
-/// kernel does, link by link; a path with too many links counts as one.
+/// kernel does, link by link; a path with too many links counts as one
+/// (the one rule every bind through links takes,
+/// [`sam_core::places::link_the_app_could_plant`]).
 fn link_the_app_can_change(p: &Path, app_can_change: &dyn Fn(&Path) -> bool) -> bool {
-    use std::ffi::OsString;
-    use std::path::Component;
-    // The parts still to walk, as owned names ("/" for the root).
-    let parts = |p: &Path| -> Vec<OsString> {
-        p.components()
-            .map(|c| match c {
-                Component::RootDir | Component::Prefix(_) => OsString::from("/"),
-                other => other.as_os_str().to_os_string(),
-            })
-            .collect()
-    };
-    let p = match p.is_absolute() {
-        true => p.to_path_buf(),
-        false => std::env::current_dir().unwrap_or_default().join(p),
-    };
-    let mut todo: std::collections::VecDeque<OsString> = parts(&p).into();
-    let mut at = PathBuf::from("/");
-    let mut links = 0;
-    while let Some(c) = todo.pop_front() {
-        if c == "/" {
-            at = PathBuf::from("/");
-        } else if c == ".." {
-            at.pop();
-        } else if c != "." {
-            let next = at.join(&c);
-            if !fs::symlink_metadata(&next).is_ok_and(|m| m.file_type().is_symlink()) {
-                at = next;
-                continue;
-            }
-            links += 1;
-            if app_can_change(&at) || links > 40 {
-                return true;
-            }
-            let Ok(target) = fs::read_link(&next) else {
-                return true;
-            };
-            for t in parts(&target).into_iter().rev() {
-                todo.push_front(t);
-            }
-        }
-    }
-    false
+    let way = sam_core::places::follow(p);
+    sam_core::places::link_the_app_could_plant(&way, app_can_change).is_some()
 }
 
 /// True for an existing Unix socket (not a folder, file or device).
@@ -6314,6 +6339,10 @@ mod guard_tests {
                     assert!(!rw && !ro && in_views.is_none(), "{g:?}");
                     kinds.push("left out");
                 }
+                WriteBind::LeftOut(_) => {
+                    assert!(!rw && !ro && in_views.is_none(), "{g:?}");
+                    kinds.push("left out");
+                }
                 WriteBind::ReadOnly(_) => {
                     assert!(
                         ro && !rw && in_views == Some(&(g.bound.clone(), false)),
@@ -7372,5 +7401,154 @@ mod guard_tests {
         let a = args_of(&ctx_for(&p, &home));
         let netrc = home.join(".netrc").to_string_lossy().into_owned();
         assert!(has_seq(&a, &["--ro-bind", "/dev/null", &netrc]), "{a:?}");
+    }
+
+    /// The places SAM shows on its own (`~/.fonts`,
+    /// `~/.local/share/fonts`, `~/.config/fontconfig`, the theme files) and
+    /// the extra folders never follow a link the app could have planted out
+    /// of what it is shown, nor a link to where programs outside the
+    /// sandbox listen: with the whole home writable and `~/.fonts` a link
+    /// to `/tmp/tmux-…`, the start bound the host's folder over its own
+    /// `/tmp`. A place SAM shows on its own never leads to the keys either.
+    /// The start says why, and the views and the list of extra folders
+    /// agree. A link that stays in the home, or one in a folder the app
+    /// cannot change that leads to an ordinary folder, is still followed.
+    #[test]
+    fn fonts_themes_and_extra_folders_never_follow_a_planted_link() {
+        let t = tempfile::tempdir().unwrap();
+        let base = fs::canonicalize(t.path()).unwrap();
+        let home = base.join("home");
+        let outside = base.join("outside");
+        for d in [
+            home.join(".config"),
+            home.join(".local/share"),
+            home.join(".ssh"),
+            home.join("myfonts"),
+            home.join("shared"),
+            outside.clone(),
+        ] {
+            fs::create_dir_all(d).unwrap();
+        }
+        let sockets = tempfile::Builder::new()
+            .prefix("tmux-")
+            .tempdir_in("/tmp")
+            .unwrap();
+        let sock = sockets.path().to_path_buf();
+        let st = |p: &Path| p.to_string_lossy().into_owned();
+        let link = |to: &Path, at: &Path| {
+            let _ = fs::remove_file(at);
+            std::os::unix::fs::symlink(to, at).unwrap();
+        };
+        let said = |notes: &[String], place: &str, why: &str| {
+            assert!(
+                notes.iter().any(|n| n.contains(place) && n.contains(why)),
+                "{place}: {notes:?}"
+            );
+        };
+        // The whole home writable: every place planted.
+        link(&sock, &home.join(".fonts"));
+        link(&sock, &home.join(".config/fontconfig"));
+        link(&outside, &home.join(".local/share/fonts"));
+        link(&sock, &home.join("shared/ro"));
+        link(&outside, &home.join("shared/rw"));
+        let mut p = full_rw();
+        p.filesystem.custom_read = vec![st(&home.join("shared/ro"))];
+        p.filesystem.custom_write = vec![st(&home.join("shared/rw"))];
+        let ctx = ctx_for(&p, &home);
+        let cmd = Bubblewrap.build(&ctx).unwrap();
+        assert!(
+            !cmd.args.iter().any(|a| a.starts_with(&st(&sock))),
+            "{:?}",
+            cmd.args
+        );
+        assert!(
+            !cmd.args.iter().any(|a| *a == st(&outside)),
+            "{:?}",
+            cmd.args
+        );
+        for place in [
+            "~/.fonts".to_string(),
+            "~/.config/fontconfig".to_string(),
+            "~/.local/share/fonts".to_string(),
+            st(&home.join("shared/ro")),
+            st(&home.join("shared/rw")),
+        ] {
+            said(&cmd.notes, &place, "may have made that link");
+        }
+        assert!(!Views::of(&ctx).visible(&sock.join("x")));
+        assert!(!Views::of(&ctx).visible(&outside.join("x")));
+        assert!(shown_extra_folders(&ctx).is_empty());
+
+        // The theme files without the whole home: a writable `~/.config`
+        // holds the planted link.
+        let mut p = PermissionSet::strict_gui();
+        p.advanced.host_themes = true;
+        p.filesystem.custom_write = vec![st(&home.join(".config"))];
+        link(&outside, &home.join(".config/gtk-3.0"));
+        let cmd = Bubblewrap.build(&ctx_for(&p, &home)).unwrap();
+        assert!(
+            !cmd.args.iter().any(|a| *a == st(&outside)),
+            "{:?}",
+            cmd.args
+        );
+        said(&cmd.notes, "~/.config/gtk-3.0", "may have made that link");
+
+        // A private home: the app cannot change the home, yet a link made
+        // there by someone else to the sockets or to the keys is not
+        // followed; one to an ordinary folder is.
+        let private = PermissionSet::strict_gui();
+        let fonts = home.join(".fonts");
+        let bound = |ctx: &LaunchContext| {
+            let a = args_of(ctx);
+            has_seq(&a, &["--ro-bind-try", &st(&fonts), &st(&fonts)])
+        };
+        link(&sock, &fonts);
+        let cmd = Bubblewrap.build(&ctx_for(&private, &home)).unwrap();
+        assert!(!bound(&ctx_for(&private, &home)), "{:?}", cmd.args);
+        said(
+            &cmd.notes,
+            "~/.fonts",
+            "where programs outside the sandbox listen",
+        );
+        link(&home.join(".ssh"), &fonts);
+        let cmd = Bubblewrap.build(&ctx_for(&private, &home)).unwrap();
+        assert!(!bound(&ctx_for(&private, &home)), "{:?}", cmd.args);
+        said(&cmd.notes, "~/.fonts", "your keys or passwords");
+        link(&outside, &fonts);
+        assert!(bound(&ctx_for(&private, &home)));
+        // An extra folder named by its link to the sockets, in a private
+        // home: left out, the start says why.
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.custom_read = vec![st(&home.join("shared/ro"))];
+        let ctx = ctx_for(&p, &home);
+        let cmd = Bubblewrap.build(&ctx).unwrap();
+        assert!(
+            !cmd.args.iter().any(|a| a.starts_with(&st(&sock))),
+            "{:?}",
+            cmd.args
+        );
+        said(
+            &cmd.notes,
+            &st(&home.join("shared/ro")),
+            "where programs outside the sandbox listen",
+        );
+        assert!(!Views::of(&ctx).visible(&sock));
+
+        // The control: with the whole home writable, a link that stays in
+        // the home is bound where the app reaches it, without a note.
+        link(&home.join("myfonts"), &fonts);
+        let ctx = ctx_for(&full_rw(), &home);
+        let cmd = Bubblewrap.build(&ctx).unwrap();
+        let mine = st(&home.join("myfonts"));
+        assert!(
+            has_seq(&cmd.args, &["--ro-bind-try", &mine, &mine]),
+            "{:?}",
+            cmd.args
+        );
+        assert!(
+            !cmd.notes.iter().any(|n| n.contains("~/.fonts")),
+            "{:?}",
+            cmd.notes
+        );
     }
 }

@@ -180,8 +180,13 @@ pub fn plan(p: &PermissionSet, cfg: &Config, paths: &Paths, host: &HostInfo) -> 
             } else {
                 sam_core::places::inside_sams_folders(&bound, &sam_dirs)
             };
+            // Reached through a link the app could have planted, out of
+            // what it is shown, or through a link to where programs outside
+            // the sandbox listen: the sandbox leaves it out, by the same
+            // rule.
+            let left_out = sam_core::places::linked_place_left_out(p, host, &path).is_some();
             if path.is_dir() {
-                let want = if in_sams {
+                let want = if in_sams || left_out {
                     Access::Hidden
                 } else if in_start_place.is_some() {
                     Access::ReadOnly
@@ -1375,6 +1380,47 @@ mod tests {
         p.filesystem.custom_write = vec![s(&proj)];
         let pl = plan(&p, &cfg, &paths, &h);
         assert_eq!(folder(&pl, &title(&proj)), Access::ReadOnly);
+    }
+
+    /// An extra folder that the sandbox leaves out because the app could
+    /// have planted the link on its way (the whole home writable, the link
+    /// leading out of it) is expected not to be shown, read-only or
+    /// writable; so is one whose link leads to a socket folder in `/tmp`.
+    /// The same link in a read-only home is expected as listed.
+    #[test]
+    fn the_check_expects_an_extra_folder_behind_a_planted_link_as_not_shown() {
+        let t = tempfile::tempdir().unwrap();
+        let h = host_in(t.path());
+        let cfg = Config::default();
+        let outside = t.path().join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        fs::create_dir_all(&h.home).unwrap();
+        let sockets = tempfile::Builder::new()
+            .prefix("tmux-")
+            .tempdir_in("/tmp")
+            .unwrap();
+        let ro = h.home.join("ro");
+        let rw = h.home.join("rw");
+        let tmux = h.home.join("tmux");
+        std::os::unix::fs::symlink(&outside, &ro).unwrap();
+        std::os::unix::fs::symlink(&outside, &rw).unwrap();
+        std::os::unix::fs::symlink(sockets.path(), &tmux).unwrap();
+        let title = |p: &Path| format!("Extra folder {}", sam_core::util::tildify(p));
+        let s = |p: &Path| p.to_string_lossy().into_owned();
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.home = true;
+        p.filesystem.home_access = Perm::Rw;
+        p.filesystem.custom_read = vec![s(&ro), s(&tmux)];
+        p.filesystem.custom_write = vec![s(&rw)];
+        let pl = plan(&p, &cfg, &sam_paths(), &h);
+        for f in [&ro, &rw, &tmux] {
+            assert_eq!(folder(&pl, &title(f)), Access::Hidden, "{}", f.display());
+        }
+        p.filesystem.home_access = Perm::Ro;
+        let pl = plan(&p, &cfg, &sam_paths(), &h);
+        assert_eq!(folder(&pl, &title(&ro)), Access::ReadOnly);
+        assert_eq!(folder(&pl, &title(&rw)), Access::ReadWrite);
+        assert_eq!(folder(&pl, &title(&tmux)), Access::Hidden);
     }
 
     /// Network, display, sound, the session bus, the SSH agent, variables

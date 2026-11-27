@@ -574,6 +574,286 @@ pub fn home_read_only_note(place: &str) -> String {
     )
 }
 
+/// Where a path leads, followed as Linux follows it ([`follow`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Way {
+    /// Where it leads, every link followed, also one whose target does not
+    /// exist yet (the rest of the path appended): a bind made a moment
+    /// later shows that place if it appears in between.
+    pub leads: PathBuf,
+    /// Every link on the way, in the order Linux follows them, each named
+    /// in the folder that really holds it (the links before it followed).
+    pub links: Vec<PathBuf>,
+    /// The way ends at the last link of `links`, which Linux would not
+    /// follow: one too many (more than 40, a loop) or one that cannot be
+    /// read.
+    pub stuck: bool,
+}
+
+/// The way to `p`, part after part as Linux reads a path: a link is
+/// followed where it lies, `..` goes back from where the way really is. A
+/// relative path counts from the current folder.
+pub fn follow(p: &Path) -> Way {
+    use std::collections::VecDeque;
+    use std::ffi::OsString;
+    let names = |p: &Path| -> Vec<OsString> {
+        p.components()
+            .filter_map(|c| match c {
+                Component::Normal(n) => Some(n.to_os_string()),
+                Component::ParentDir => Some("..".into()),
+                _ => None,
+            })
+            .collect()
+    };
+    let p = match p.is_absolute() {
+        true => p.to_path_buf(),
+        false => std::env::current_dir().unwrap_or_default().join(p),
+    };
+    let mut todo: VecDeque<OsString> = names(&p).into();
+    let mut at = PathBuf::from("/");
+    let mut links: Vec<PathBuf> = Vec::new();
+    while let Some(c) = todo.pop_front() {
+        if c == ".." {
+            at.pop();
+            continue;
+        }
+        let next = at.join(&c);
+        if !std::fs::symlink_metadata(&next).is_ok_and(|m| m.file_type().is_symlink()) {
+            at = next;
+            continue;
+        }
+        let target = std::fs::read_link(&next).ok().filter(|_| links.len() < 40);
+        links.push(next.clone());
+        let Some(target) = target else {
+            let leads = todo.iter().fold(next, |l, n| l.join(n));
+            return Way {
+                leads,
+                links,
+                stuck: true,
+            };
+        };
+        if target.is_absolute() {
+            at = PathBuf::from("/");
+        }
+        for n in names(&target).into_iter().rev() {
+            todo.push_front(n);
+        }
+    }
+    Way {
+        leads: at,
+        links,
+        stuck: false,
+    }
+}
+
+/// The first link on `way` that lies in a folder `can_change` names (asked
+/// with the folder's real place), or the link where the way is stuck: the
+/// app could have put it there, pointing anywhere. SAM cannot tell such a
+/// link from one the person made.
+pub fn link_the_app_could_plant(way: &Way, can_change: &dyn Fn(&Path) -> bool) -> Option<PathBuf> {
+    let last = way.links.len().saturating_sub(1);
+    way.links
+        .iter()
+        .enumerate()
+        .find(|(i, l)| (way.stuck && *i == last) || l.parent().is_some_and(can_change))
+        .map(|(_, l)| l.clone())
+}
+
+/// Whether a place holds what programs outside the sandbox listen on: the
+/// whole computer, `/tmp` or a folder in it where they listen
+/// ([`crate::risk::shows_host_sockets`]: tmux, SSH, the X server), anything
+/// under `/run` (`/run/user/<uid>` with the session bus, systemd's and
+/// GnuPG's sockets; the system bus; Docker's socket) except drives under
+/// `/run/media`, and `/proc` and `/dev` (`/dev/log`, `/dev/shm`).
+/// Connecting to a socket needs no write access, so a read-only bind of
+/// such a place hands them over: through tmux's socket the app runs
+/// commands outside the sandbox.
+pub fn leads_to_host_services(real: &Path) -> bool {
+    let under = |d: &str| real.starts_with(d);
+    real == Path::new("/")
+        || crate::risk::shows_host_sockets(&real.to_string_lossy())
+        || (under("/run") && !under("/run/media"))
+        || under("/proc")
+        || under("/dev")
+}
+
+/// Why SAM leaves out a place it would bind where its links lead: an extra
+/// folder (`filesystem.custom_read`, `custom_write`) or a place of the home
+/// SAM shows on its own (the fonts, the fonts settings, the theme files).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LeftOut {
+    /// The way there holds this link, in a folder the app can change, and
+    /// leads out of what the app is shown: the app may have made the link
+    /// in an earlier start (`ln -s /tmp/tmux-1000 ~/.fonts`).
+    Link(PathBuf),
+    /// Through a link it leads to this place, where programs outside the
+    /// sandbox listen ([`leads_to_host_services`]), whoever made the link.
+    HostServices(PathBuf),
+    /// It leads to this place, which is or holds the home, a key or
+    /// credential store, a protected place or SAM's own folders (only for
+    /// the places SAM shows on its own, [`own_place_left_out`]).
+    Guarded(PathBuf),
+}
+
+/// The folders the permissions `p` show, each where it really is, and
+/// whether the app can change it: the whole home (as named and as
+/// reached), the user folders, the extra folders. Judged from the
+/// permissions alone, so the sandbox, its check and the app page take one
+/// answer: a writable extra folder counts writable also where the sandbox
+/// shows it read-only (inside a start place), which leaves out more, never
+/// less.
+fn permission_grants(p: &PermissionSet, host: &HostInfo) -> Vec<(PathBuf, bool)> {
+    use crate::permissions::Access;
+    let fs = &p.filesystem;
+    let mut grants: Vec<(PathBuf, bool)> = Vec::new();
+    if fs.home {
+        let rw = fs.home_access == Access::Rw;
+        grants.push((host.home.clone(), rw));
+        grants.push((resolve(&host.home), rw));
+    }
+    for key in XDG_DIR_KEYS {
+        let acc = fs.xdg_access(key);
+        if acc.is_granted() {
+            if let Some(real) = host
+                .xdg_dir(key)
+                .and_then(|d| user_folder_place(d, &host.home))
+            {
+                grants.push((real, acc == Access::Rw));
+            }
+        }
+    }
+    for c in &fs.custom_read {
+        grants.push((resolve(&crate::util::expand_home(c)), false));
+    }
+    for c in &fs.custom_write {
+        grants.push((resolve(&crate::util::expand_home(c)), true));
+    }
+    grants
+}
+
+/// Whether SAM leaves out the place `named` (with `~` expanded) that it
+/// binds where its links lead, in a start with the permissions `p`: an
+/// extra folder, read-only or writable, or a place of the home it shows on
+/// its own ([`own_place_left_out`]). One rule for every such bind, so no
+/// bind follows a link the app could have planted to a place it must not
+/// reach:
+/// - a link on the way that lies in a folder the app can change is not
+///   followed out of what the whole home and the user folders show
+///   (with the whole home writable, `~/.fonts` missing and an extra folder
+///   not made yet, the app made them links to `/tmp/tmux-1000` or any
+///   folder on the computer, and the next start bound what they named);
+/// - a link that leads to a place where programs outside the sandbox listen
+///   is not followed, whoever made it: that place is bound over the
+///   sandbox's own `/tmp` or runtime folder and hands their sockets over.
+///
+/// An extra folder named by its real place (no link on the way) is shown
+/// as written: its name was rated, and warned about, as it is.
+pub fn linked_place_left_out(p: &PermissionSet, host: &HostInfo, named: &Path) -> Option<LeftOut> {
+    let way = follow(named);
+    let grants = permission_grants(p, host);
+    // The deepest grant that shows a folder decides, as the mounts do.
+    let can_change = |d: &Path| {
+        grants
+            .iter()
+            .filter(|(g, _)| d.starts_with(g))
+            .max_by_key(|(g, rw)| (g.components().count(), *rw))
+            .is_some_and(|(_, rw)| *rw)
+    };
+    if let Some(link) = link_the_app_could_plant(&way, &can_change) {
+        let fs = &p.filesystem;
+        let in_home = fs.home
+            && (way.leads.starts_with(&host.home) || way.leads.starts_with(resolve(&host.home)));
+        let in_user_folder = XDG_DIR_KEYS.iter().any(|key| {
+            fs.xdg_access(key).is_granted()
+                && host
+                    .xdg_dir(key)
+                    .and_then(|d| user_folder_place(d, &host.home))
+                    .is_some_and(|real| way.leads.starts_with(real))
+        });
+        if way.stuck || !(in_home || in_user_folder) {
+            return Some(LeftOut::Link(link));
+        }
+    }
+    if !way.links.is_empty() && leads_to_host_services(&way.leads) {
+        return Some(LeftOut::HostServices(way.leads));
+    }
+    None
+}
+
+/// Every place a bind SAM makes on its own must never show
+/// ([`own_place_left_out`]): the protected places, the key folders and the
+/// credential stores of the home `home`, each under the home as named,
+/// under its real place and where it really leads, and SAM's own folders
+/// (`sams`).
+pub fn guarded_places_everywhere(home: &Path, sams: &[PathBuf]) -> Vec<PathBuf> {
+    let homes = [home.to_path_buf(), resolve(home)];
+    let rels = protected_places(home)
+        .into_iter()
+        .chain(SENSITIVE_DOTFILES.iter().map(|s| s.to_string()))
+        .chain([".ssh".to_string(), ".gnupg".to_string()]);
+    let mut out: Vec<PathBuf> = Vec::new();
+    for rel in rels {
+        for h in &homes {
+            let at = h.join(&rel);
+            for g in [resolve(&at), at] {
+                if !out.contains(&g) {
+                    out.push(g);
+                }
+            }
+        }
+    }
+    out.extend(sams.iter().cloned());
+    out
+}
+
+/// [`linked_place_left_out`] for a place of the home that SAM shows on its
+/// own, read-only (`~/.fonts`, `~/.local/share/fonts`,
+/// `~/.config/fontconfig`, the theme files): also never one that leads to
+/// the home or a folder above it, or into or onto one of the places in
+/// `guarded` ([`guarded_places_everywhere`]). In a private home nothing
+/// else guards what such a bind shows: `~/.fonts` made a link to `~/.ssh`
+/// showed the keys as fonts.
+pub fn own_place_left_out(
+    p: &PermissionSet,
+    host: &HostInfo,
+    named: &Path,
+    guarded: &[PathBuf],
+) -> Option<LeftOut> {
+    if let Some(why) = linked_place_left_out(p, host, named) {
+        return Some(why);
+    }
+    let leads = follow(named).leads;
+    let home_or_above = is_home_or_above(&host.home, &resolve(&host.home), &leads);
+    if home_or_above
+        || guarded
+            .iter()
+            .any(|g| leads.starts_with(g) || g.starts_with(&leads))
+    {
+        return Some(LeftOut::Guarded(leads));
+    }
+    None
+}
+
+/// What the start says about the place `shown` (as the person wrote it,
+/// or `~/.fonts`) that SAM leaves out ([`LeftOut`]).
+pub fn left_out_note(shown: &str, why: &LeftOut) -> String {
+    let t = crate::util::tildify;
+    match why {
+        LeftOut::Link(link) => crate::i18n::trf(
+            "SAM does not show {path} to this app because the way there leads through the link {link}, which lies in a folder the app can change, to a place the app is not shown otherwise: the app may have made that link. If you made it yourself, add the place it leads to as an extra folder.",
+            &[("path", &shown), ("link", &t(link))],
+        ),
+        LeftOut::HostServices(place) => crate::i18n::trf(
+            "SAM does not show {path} to this app because it leads through a link to {place}, where programs outside the sandbox listen: through them the app could run commands outside the sandbox.",
+            &[("path", &shown), ("place", &t(place))],
+        ),
+        LeftOut::Guarded(place) => crate::i18n::trf(
+            "SAM does not show {path} to this app because it leads to {place}, which is or holds your home folder, your keys or passwords, a place SAM protects or SAM's own files.",
+            &[("path", &shown), ("place", &t(place))],
+        ),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -956,5 +1236,241 @@ mod tests {
     /// [`sams_folder_by_name`] for a start that shows nothing.
     fn counts_in(home: &Path, rel: &str) -> bool {
         sams_folder_by_name(home, rel, &[], &[])
+    }
+
+    /// The way to a path follows every link as Linux does: each named in
+    /// the folder that really holds it, `..` after a link going back from
+    /// where the link leads, a link whose target does not exist yet
+    /// followed to that target (a bind a moment later would show it if it
+    /// appears), and a loop stuck at its 41st link.
+    #[test]
+    fn the_way_to_a_path_follows_every_link_also_one_that_leads_nowhere_yet() {
+        let t = tempfile::tempdir().unwrap();
+        let base = std::fs::canonicalize(t.path()).unwrap();
+        let link = |to: &Path, at: &Path| std::os::unix::fs::symlink(to, at).unwrap();
+        std::fs::create_dir_all(base.join("real/sub")).unwrap();
+        link(&base.join("real"), &base.join("a"));
+        link(Path::new("sub/../sub"), &base.join("real/s"));
+        let way = follow(&base.join("a/s/x"));
+        assert_eq!(way.leads, base.join("real/sub/x"));
+        assert_eq!(way.links, vec![base.join("a"), base.join("real/s")]);
+        assert!(!way.stuck);
+        // Not there yet: followed where it would lead.
+        link(
+            Path::new("/tmp/tmux-sam-never-there"),
+            &base.join("planted"),
+        );
+        let way = follow(&base.join("planted/default"));
+        assert_eq!(way.leads, Path::new("/tmp/tmux-sam-never-there/default"));
+        assert_eq!(way.links, vec![base.join("planted")]);
+        // A plain path has no links.
+        assert_eq!(follow(&base.join("real/sub")).links, Vec::<PathBuf>::new());
+        // A loop.
+        link(&base.join("loop2"), &base.join("loop1"));
+        link(&base.join("loop1"), &base.join("loop2"));
+        let way = follow(&base.join("loop1/x"));
+        assert!(way.stuck);
+        assert_eq!(way.links.len(), 41);
+        // A planted link is the one in a folder the app can change; a
+        // stuck way counts as one.
+        let in_base = |d: &Path| d == base;
+        let in_real = |d: &Path| d == base.join("real");
+        let way = follow(&base.join("a/s/x"));
+        assert_eq!(
+            link_the_app_could_plant(&way, &in_base),
+            Some(base.join("a"))
+        );
+        assert_eq!(
+            link_the_app_could_plant(&way, &in_real),
+            Some(base.join("real/s"))
+        );
+        assert_eq!(link_the_app_could_plant(&way, &|_| false), None);
+        let way = follow(&base.join("loop1"));
+        assert!(link_the_app_could_plant(&way, &|_| false).is_some());
+    }
+
+    /// The places where programs outside the sandbox listen: the whole
+    /// computer, `/tmp` and its socket folders, `/run` (the runtime folder
+    /// among it) but not drives under `/run/media`, `/proc` and `/dev`. An
+    /// ordinary folder in `/tmp` or the home is none.
+    #[test]
+    fn the_places_where_outside_programs_listen_are_known() {
+        for p in [
+            "/",
+            "/tmp",
+            "/tmp/tmux-1000",
+            "/tmp/ssh-XXXX/agent.1",
+            "/tmp/.X11-unix",
+            "/run",
+            "/run/user/1000",
+            "/run/user/1000/bus",
+            "/run/dbus",
+            "/run/docker.sock",
+            "/proc/1/root",
+            "/dev/shm",
+        ] {
+            assert!(leads_to_host_services(Path::new(p)), "{p}");
+        }
+        for p in [
+            "/tmp/exchange",
+            "/run/media/u/disk/fonts",
+            "/home/u/.fonts",
+            "/usr/share/fonts",
+            "/runner",
+        ] {
+            assert!(!leads_to_host_services(Path::new(p)), "{p}");
+        }
+    }
+
+    /// One rule for every bind through links (`~/.fonts`, an extra folder):
+    /// with the whole home writable, a link in it is not followed out of
+    /// what the home shows (the app may have planted it), also when its
+    /// target does not exist yet; one that stays in the home is. Without a
+    /// folder the app can change, a link is followed, unless it leads to
+    /// where programs outside the sandbox listen. A place named by its real
+    /// path (no link) is never left out: its name was rated as it is. A
+    /// link in a writable user folder counts as well, one in a read-only
+    /// home not.
+    #[test]
+    fn a_linked_place_is_left_out_where_a_planted_link_leads_out_or_to_host_services() {
+        let t = tempfile::tempdir().unwrap();
+        let base = std::fs::canonicalize(t.path()).unwrap();
+        let home = base.join("home/u");
+        let outside = base.join("outside");
+        for d in [
+            home.join("myfonts"),
+            home.join("Documents"),
+            outside.clone(),
+        ] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        let sockets = tempfile::Builder::new()
+            .prefix("tmux-")
+            .tempdir_in("/tmp")
+            .unwrap();
+        let sockets = sockets.path().to_path_buf();
+        let host = HostInfo {
+            home: home.clone(),
+            ..Default::default()
+        };
+        let mut whole = PermissionSet::strict_gui();
+        whole.filesystem.home = true;
+        whole.filesystem.home_access = crate::permissions::Access::Rw;
+        let private = PermissionSet::strict_gui();
+        let fonts = home.join(".fonts");
+        let to = |target: &Path| {
+            let _ = std::fs::remove_file(&fonts);
+            std::os::unix::fs::symlink(target, &fonts).unwrap();
+        };
+        to(&sockets);
+        assert_eq!(
+            linked_place_left_out(&whole, &host, &fonts),
+            Some(LeftOut::Link(fonts.clone()))
+        );
+        assert_eq!(
+            linked_place_left_out(&private, &host, &fonts),
+            Some(LeftOut::HostServices(sockets.clone()))
+        );
+        to(&outside);
+        assert_eq!(
+            linked_place_left_out(&whole, &host, &fonts),
+            Some(LeftOut::Link(fonts.clone()))
+        );
+        assert_eq!(linked_place_left_out(&private, &host, &fonts), None);
+        to(&base.join("not-there-yet"));
+        assert_eq!(
+            linked_place_left_out(&whole, &host, &fonts),
+            Some(LeftOut::Link(fonts.clone()))
+        );
+        to(&home.join("myfonts"));
+        assert_eq!(linked_place_left_out(&whole, &host, &fonts), None);
+        // A read-only home: the app cannot have put the link there.
+        let mut ro = whole.clone();
+        ro.filesystem.home_access = crate::permissions::Access::Ro;
+        to(&outside);
+        assert_eq!(linked_place_left_out(&ro, &host, &fonts), None);
+        // Named by its real place: shown as written (and warned about).
+        assert_eq!(linked_place_left_out(&private, &host, &sockets), None);
+        assert_eq!(linked_place_left_out(&whole, &host, &outside), None);
+        // A link in a writable user folder, without the whole home.
+        let mut host_docs = host.clone();
+        host_docs
+            .xdg_dirs
+            .insert("documents".into(), home.join("Documents"));
+        let mut docs = PermissionSet::strict_gui();
+        docs.filesystem.documents = crate::permissions::Access::Rw;
+        let planted = home.join("Documents/ro");
+        std::os::unix::fs::symlink(&outside, &planted).unwrap();
+        assert_eq!(
+            linked_place_left_out(&docs, &host_docs, &planted),
+            Some(LeftOut::Link(planted.clone()))
+        );
+        docs.filesystem.documents = crate::permissions::Access::Ro;
+        assert_eq!(linked_place_left_out(&docs, &host_docs, &planted), None);
+        // The note names the place and why.
+        let note = left_out_note("~/.fonts", &LeftOut::Link(fonts.clone()));
+        assert!(
+            note.contains("~/.fonts") && note.contains("may have made that link"),
+            "{note}"
+        );
+        let note = left_out_note("~/.fonts", &LeftOut::HostServices(sockets.clone()));
+        assert!(
+            note.contains(&sockets.display().to_string())
+                && note.contains("where programs outside the sandbox listen"),
+            "{note}"
+        );
+    }
+
+    /// A place SAM shows on its own (`~/.fonts`) never leads to the home,
+    /// a folder above it, a key folder (also where it is kept behind a
+    /// link), a credential store, a folder holding a protected place
+    /// (`~/.config`) or SAM's own folders, whoever made the link: in a
+    /// private home nothing else hides what such a bind shows. A fonts
+    /// folder of your own is shown.
+    #[test]
+    fn an_own_place_never_leads_to_the_home_keys_or_sams_folders() {
+        let t = tempfile::tempdir().unwrap();
+        let base = std::fs::canonicalize(t.path()).unwrap();
+        let home = base.join("home/u");
+        for d in ["myfonts", "Sync/ssh", ".config", "Games/sam", ".aws"] {
+            std::fs::create_dir_all(home.join(d)).unwrap();
+        }
+        std::os::unix::fs::symlink(home.join("Sync/ssh"), home.join(".ssh")).unwrap();
+        let host = HostInfo {
+            home: home.clone(),
+            ..Default::default()
+        };
+        let p = PermissionSet::strict_gui();
+        let sams = [home.join("Games/sam")];
+        let guarded = guarded_places_everywhere(&home, &sams);
+        let fonts = home.join(".fonts");
+        let to = |target: &Path| {
+            let _ = std::fs::remove_file(&fonts);
+            std::os::unix::fs::symlink(target, &fonts).unwrap();
+            own_place_left_out(&p, &host, &fonts, &guarded)
+        };
+        for target in [
+            home.clone(),
+            base.clone(),
+            home.join(".ssh"),
+            home.join("Sync/ssh"),
+            home.join(".aws"),
+            home.join(".config"),
+            home.join("Games"),
+            home.join("Games/sam"),
+        ] {
+            assert!(
+                matches!(to(&target), Some(LeftOut::Guarded(_))),
+                "{}",
+                target.display()
+            );
+        }
+        assert_eq!(to(&home.join("myfonts")), None);
+        std::fs::remove_file(&fonts).unwrap();
+        assert_eq!(own_place_left_out(&p, &host, &fonts, &guarded), None);
+        assert_eq!(
+            own_place_left_out(&p, &host, &home.join(".config/fontconfig"), &guarded),
+            None
+        );
     }
 }
