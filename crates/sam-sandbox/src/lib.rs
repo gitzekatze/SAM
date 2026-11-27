@@ -5223,9 +5223,14 @@ mod guard_tests {
 
     use super::*;
     use sam_core::sandbox::sample_context;
-    // Notes name a place as SAM shows it to people: below the real home
-    // as `~/…`, which happens wherever the test folders lie in it (CI).
     use sam_core::util::tildify;
+
+    /// Whether the launch note `note` names the place `p`: by its full
+    /// path, or as SAM shows a place below the real home to people (`~/…`),
+    /// which happens wherever the test folders lie in the home (CI).
+    fn names(note: &str, p: &Path) -> bool {
+        note.contains(p.to_string_lossy().as_ref()) || note.contains(&tildify(p))
+    }
 
     /// An app started from SAM's window keeps the system's language, even
     /// when the window itself shows another one.
@@ -7236,7 +7241,7 @@ mod guard_tests {
         assert!(
             cmd.notes
                 .iter()
-                .any(|n| n.contains(&tildify(&in_home)) && n.contains("may have made that link")),
+                .any(|n| names(n, &in_home) && n.contains("may have made that link")),
             "{:?}",
             cmd.notes
         );
@@ -7377,7 +7382,7 @@ mod guard_tests {
             assert!(
                 cmd.notes
                     .iter()
-                    .any(|n| n.contains(&tildify(link)) && n.contains("may have made that link")),
+                    .any(|n| names(n, link) && n.contains("may have made that link")),
                 "{:?}",
                 cmd.notes
             );
@@ -7607,7 +7612,7 @@ mod guard_tests {
             assert!(
                 cmd.notes
                     .iter()
-                    .any(|n| n.contains(&tildify(link)) && n.contains("may have made that link")),
+                    .any(|n| names(n, link) && n.contains("may have made that link")),
                 "{:?}",
                 cmd.notes
             );
@@ -9774,14 +9779,14 @@ mod guard_tests {
             // The note names the danger and gives no way out: the one for
             // a planted link says to set the folder to where it leads.
             assert!(
-                cmd.notes.iter().any(|n| n.contains(&tildify(&docs))
-                    && n.contains(&tildify(&sock))
+                cmd.notes.iter().any(|n| names(n, &docs)
+                    && names(n, &sock)
                     && n.contains("where programs outside the sandbox listen")),
                 "{:?}",
                 cmd.notes
             );
             assert!(
-                !cmd.notes.iter().any(|n| n.contains(&st(&docs))
+                !cmd.notes.iter().any(|n| names(n, &docs)
                     && (n.contains("may have made that link") || n.contains("user-dirs.dirs"))),
                 "{:?}",
                 cmd.notes
@@ -9789,7 +9794,7 @@ mod guard_tests {
             assert!(
                 cmd.notes
                     .iter()
-                    .any(|n| n.contains(&st(&docs)) && n.contains(says)),
+                    .any(|n| names(n, &docs) && n.contains(says)),
                 "{says}: {:?}",
                 cmd.notes
             );
