@@ -4,7 +4,7 @@
   (Documents, Music, Downloads and the others) was still writable through
   the home, and a user folder outside the home was not shown at all. SAM
   now shows each user folder at its own access, inside or outside the
-  home: a read-only Documents under a writable home is really read-only,
+  home, unless it refuses the folder (see below): a read-only Documents under a writable home is really read-only,
   and a start file kept as a link into it stays locked.
 - An extra folder set to read and write inside a read-only user folder
   (`~/Documents/proj`) stays writable, as its switch says.

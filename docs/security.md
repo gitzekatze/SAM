@@ -776,7 +776,12 @@ How these stay protected with the home writable:
   (`a_user_folder_behind_a_link_the_app_could_plant_is_not_shown`,
   `a_user_folder_link_the_app_planted_never_shows_where_it_leads`,
   `a_user_folder_where_outside_programs_listen_is_not_shown`). A user folder is shown at its own access also with the whole home
-  granted, inside the home or outside it: Documents set to read-only is
+  granted, inside the home or outside it, unless SAM refuses it as above
+  (set to the home, a folder above it, a system folder, a protected place
+  such as `~/.local/share/Documents`, or inside SAM's own folders): such a
+  folder gets no place of its own, so a read-only Documents at
+  `~/.local/share/Documents` is writable through a writable home, and no
+  note names it. Otherwise Documents set to read-only is
   read-only under a writable home, so a start file kept as a link into it
   (`~/.bashrc` to `~/Documents/dotfiles/bashrc`) cannot be changed either,
   and one outside the home (`XDG_DOCUMENTS_DIR=/data/Documents`) is shown
