@@ -287,12 +287,11 @@ impl Sam {
 
     /// Apply a first-run hint, log finding or repair step. Repair steps
     /// (`as_repair`) are remembered so "Undo repairs" can revert them all.
-    /// A first-run hint rated Think twice or Dangerous, or one that turns
-    /// on compatibility mode, needs `confirmed` (the person said yes),
-    /// judged here on the record that is changed and saved, so no caller
-    /// can skip it (owner decision 13 of 2026-11-23). Any other repair step
-    /// rated Think twice or Dangerous, or one that turns on compatibility
-    /// mode, needs it as well (owner decision A of 2026-11-25).
+    /// One rated Think twice or Dangerous, one that turns on compatibility
+    /// mode, or one from what the app printed needs `confirmed` (the person
+    /// said yes), judged by SAM's one gate on the record that is changed
+    /// and saved, so no caller can skip it (owner decisions 13 of
+    /// 2026-11-23 and A of 2026-11-25, audit U-M2).
     pub fn apply_suggestion(
         &self,
         query: &str,
@@ -301,8 +300,13 @@ impl Sam {
         confirmed: bool,
     ) -> Result<AppEntry> {
         let mut e = self.resolve(query)?;
-        crate::repair::confirm_hint(&e, sug, confirmed)?;
-        crate::repair::confirm_step(&e, &self.config, &self.paths, sug, confirmed)?;
+        let change = crate::gate::Change::Apply {
+            e: &e,
+            cfg: &self.config,
+            paths: &self.paths,
+            sug,
+        };
+        crate::gate::confirm(&change, confirmed)?;
         if as_repair && e.repair_backup.is_none() {
             e.repair_backup = Some(e.profile.clone());
         }
@@ -576,27 +580,23 @@ impl Sam {
 
     /// Takes back a group change (its `undo`): only the setting it
     /// changed, so later changes to the apps stay (audit G-F4: the whole
-    /// sets from before were written back). `confirm` sees what the undo
-    /// adds that is rated Think twice or Dangerous (the one rule for
-    /// asking, which the old whole-set restore passed by). All apps or
-    /// none: a setting changed meanwhile refuses the whole undo.
+    /// sets from before were written back). `confirm` sees the undo as one
+    /// change of all its apps, for SAM's one gate ([`crate::gate`]), which
+    /// the old whole-set restore passed by. All apps or none: a setting
+    /// changed meanwhile refuses the whole undo.
     pub fn group_restore(
         &self,
         undo: BTreeMap<String, PermissionChange>,
-        confirm: impl FnOnce(&[sam_core::risk::RiskItem]) -> Result<()>,
+        confirm: impl FnOnce(&crate::gate::Change<'_>) -> Result<()>,
     ) -> Result<usize> {
         let mut planned = Vec::new();
-        let mut added: Vec<sam_core::risk::RiskItem> = Vec::new();
+        let mut pairs = Vec::new();
         for (id, change) in &undo {
             let (e, merged) = self.plan_change(id, change)?;
-            for i in sam_core::risk::new_risks(&e.profile.permissions, &merged) {
-                if !added.iter().any(|x| x.title == i.title) {
-                    added.push(i);
-                }
-            }
-            planned.push((e.id.clone(), merged));
+            pairs.push((e.profile.permissions, merged.clone()));
+            planned.push((e.id, merged));
         }
-        confirm(&added)?;
+        confirm(&crate::gate::Change::Group(&pairs))?;
         let n = planned.len();
         for (id, perms) in planned {
             self.change_permissions(&id, perms)?;

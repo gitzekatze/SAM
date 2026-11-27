@@ -271,7 +271,7 @@ fn analyze_with(
                 "Chromium's own sandbox cannot start",
                 "Electron/Chromium apps start their own internal sandbox. Allow nested namespaces.",
                 set("advanced.allow_userns", "true"),
-                RiskLevel::Low,
+                RiskLevel::Medium,
             ));
         } else if p.advanced.seccomp_strict {
             push(s(
@@ -723,7 +723,7 @@ pub fn apply_step(
 /// The highest level among what applying `st` adds to the app's settings
 /// that asks first (Think twice or Dangerous); Low when it adds none of
 /// that, or cannot be applied at all (then it grants nothing either).
-fn level_added(e: &AppEntry, st: &Suggestion) -> RiskLevel {
+pub(crate) fn level_added(e: &AppEntry, st: &Suggestion) -> RiskLevel {
     let mut after = e.clone();
     if apply_step(&mut after, st, &mut Default::default()).is_err() {
         return RiskLevel::Low;
@@ -733,105 +733,6 @@ fn level_added(e: &AppEntry, st: &Suggestion) -> RiskLevel {
         .map(|i| i.level)
         .max()
         .unwrap_or(RiskLevel::Low)
-}
-
-/// Applying a first-run hint rated Think twice or Dangerous, or one that
-/// turns on compatibility mode, waits for a yes (`confirmed`): `hints
-/// --apply` and `repair --apply` alike, however the hint was found, and
-/// judged on the settings `e` it is applied to, so a page drawn before a
-/// change cannot apply it with an older, lower label. Refused with
-/// `hint-needs-yes`, naming the hint, what it turns on and what it adds
-/// (owner decision 13 of 2026-11-23). Other repair steps are judged by
-/// [`confirm_step`].
-pub fn confirm_hint(e: &AppEntry, sug: &Suggestion, confirmed: bool) -> anyhow::Result<()> {
-    if confirmed {
-        return Ok(());
-    }
-    let Some(hint) = first_run_hints(e).into_iter().find(|h| h.id == sug.id) else {
-        return Ok(());
-    };
-    let level = hint.risk.max(sug.risk).max(level_added(e, sug));
-    let compat =
-        matches!(sug.action, FixAction::Compat) || matches!(hint.action, FixAction::Compat);
-    if level < RiskLevel::High && !compat {
-        return Ok(());
-    }
-    Err(needs_yes(e, sug, level, "hint-needs-yes"))
-}
-
-/// Applying any other repair step rated Think twice or Dangerous, or one
-/// that turns on compatibility mode, waits for a yes (`confirmed`) as
-/// well: a step of the ladder, also one reached with `repair --next`, and
-/// a finding of the last start. `sam-jail set` and risky hints already
-/// asked for `--yes`; `repair --apply seccomp-baseline` turned off the
-/// syscall filter unasked (owner decision A of 2026-11-25). Judged like a
-/// hint, on the settings `e` it is applied to: the highest of its own
-/// label, its label in the ladder SAM offers now and what applying it
-/// adds, so a lower label handed in for a step SAM lists, or for one that
-/// changes a setting, cannot skip the yes (the command line and the window
-/// hand in SAM's own copy, found by id). Refused with `step-needs-yes`.
-/// First-run hints are left to [`confirm_hint`].
-pub fn confirm_step(
-    e: &AppEntry,
-    cfg: &Config,
-    paths: &sam_core::Paths,
-    sug: &Suggestion,
-    confirmed: bool,
-) -> anyhow::Result<()> {
-    if confirmed || first_run_hints(e).iter().any(|h| h.id == sug.id) {
-        return Ok(());
-    }
-    let listed = ladder(e, cfg, paths).into_iter().find(|s| s.id == sug.id);
-    let level = listed
-        .as_ref()
-        .map_or(sug.risk, |s| s.risk.max(sug.risk))
-        .max(level_added(e, sug));
-    // Compatibility mode asks whatever its label, also where it adds
-    // nothing rated Think twice to settings that are wide already.
-    let compat = matches!(sug.action, FixAction::Compat);
-    if level < RiskLevel::High && !compat {
-        return Ok(());
-    }
-    Err(needs_yes(e, sug, level, "step-needs-yes"))
-}
-
-/// The refusal for a hint or repair step that waits for a yes: names it,
-/// its level, what it turns on or off and what it adds, and the two ways
-/// to say yes.
-fn needs_yes(
-    e: &AppEntry,
-    sug: &Suggestion,
-    level: RiskLevel,
-    code: &'static str,
-) -> anyhow::Error {
-    let mut after = e.clone();
-    let added = match apply_step(&mut after, sug, &mut Default::default()) {
-        Ok(()) => sam_core::risk::new_risks(&e.profile.permissions, &after.profile.permissions),
-        Err(_) => Vec::new(),
-    };
-    let level_words = level.words();
-    let effect = effect(sug, &e.profile.permissions);
-    let text = if added.is_empty() {
-        sam_core::i18n::trf(
-            "SAM applies \"{title}\" ({level}) only after a yes. {effect} Look at it, then apply it with --yes, or in SAM's window, which asks.",
-            &[("title", &sug.title), ("level", &level_words), ("effect", &effect)],
-        )
-    } else {
-        let items: Vec<String> = added
-            .iter()
-            .map(|i| format!("{} ({})", i.title, i.level.words()))
-            .collect();
-        sam_core::i18n::trf(
-            "SAM applies \"{title}\" ({level}) only after a yes. {effect} It adds {items}. Look at it, then apply it with --yes, or in SAM's window, which asks.",
-            &[
-                ("title", &sug.title),
-                ("level", &level_words),
-                ("effect", &effect),
-                ("items", &items.join(", ")),
-            ],
-        )
-    };
-    sam_core::error::CodedError::new(code, text).into()
 }
 
 /// Puts back exactly what the applied repair step `r` changed (already
@@ -925,24 +826,12 @@ pub fn judge_trials(e: &mut AppEntry, worked: bool) -> Vec<String> {
     undone
 }
 
-pub fn ladder(e: &AppEntry, cfg: &Config, paths: &sam_core::Paths) -> Vec<Suggestion> {
-    ladder_for(e, cfg, paths, chromium_sandbox_blocked())
-}
-
-/// [`ladder`] with whether this computer blocks Chromium's own sandbox.
-fn ladder_for(
-    e: &AppEntry,
-    cfg: &Config,
-    paths: &sam_core::Paths,
-    chromium_blocked: bool,
-) -> Vec<Suggestion> {
-    let p = &e.profile.permissions;
-    let mut steps: Vec<Suggestion> = e
-        .last_launch
-        .as_ref()
-        .map(|l| l.findings.clone())
-        .unwrap_or_default();
-    steps.extend([
+/// SAM's own repair steps, from mild to strong, each labelled as the risk
+/// catalog rates what applying it adds (owner decision 17 of 2026-11-23:
+/// honest risk words): nested namespaces are Some access, turning off the
+/// syscall filter is Think twice.
+fn own_steps() -> [Suggestion; 7] {
+    [
         s(
             "full-usr",
             "Show all of /usr",
@@ -969,14 +858,14 @@ fn ladder_for(
             "Allow nested namespaces",
             "Needed by apps that start their own sandbox (Chromium, Electron, WebKit).",
             set("advanced.allow_userns", "true"),
-            RiskLevel::Low,
+            RiskLevel::Medium,
         ),
         s(
             "seccomp-baseline",
             "Turn off the baseline syscall filter",
             "Rarely needed: some apps use kernel interfaces the filter blocks.",
             set("advanced.seccomp_baseline", "false"),
-            RiskLevel::Medium,
+            RiskLevel::High,
         ),
         s(
             "writable-appdir",
@@ -986,7 +875,27 @@ fn ladder_for(
             RiskLevel::Low,
         ),
         compat_step(),
-    ]);
+    ]
+}
+
+pub fn ladder(e: &AppEntry, cfg: &Config, paths: &sam_core::Paths) -> Vec<Suggestion> {
+    ladder_for(e, cfg, paths, chromium_sandbox_blocked())
+}
+
+/// [`ladder`] with whether this computer blocks Chromium's own sandbox.
+fn ladder_for(
+    e: &AppEntry,
+    cfg: &Config,
+    paths: &sam_core::Paths,
+    chromium_blocked: bool,
+) -> Vec<Suggestion> {
+    let p = &e.profile.permissions;
+    let mut steps: Vec<Suggestion> = e
+        .last_launch
+        .as_ref()
+        .map(|l| l.findings.clone())
+        .unwrap_or_default();
+    steps.extend(own_steps());
     if chromium_blocked
         && e.detection
             .as_ref()
@@ -1014,10 +923,11 @@ fn ladder_for(
         seen.push(st.id.clone());
         keep
     });
-    // A step is never labelled lower than what applying it adds, as for
-    // the hints: turning off the syscall filter is Think twice, whatever
-    // the step's own label says. The window asks by this label (owner
-    // decision 13 of 2026-11-23).
+    // A step is never labelled lower than what applying it adds to these
+    // settings, as for the hints: a step from the app's output that turns
+    // on the network next to a home already allowed is Dangerous, whatever
+    // its own label says. The window asks by this label (owner decision 13
+    // of 2026-11-23).
     for st in &mut steps {
         st.risk = st.risk.max(level_added(e, st));
     }
@@ -1027,6 +937,7 @@ fn ladder_for(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::gate::{confirm_hint, confirm_step};
     use sam_core::Paths;
 
     /// Compatibility mode lists only what it actually changes, in the words
@@ -1648,6 +1559,44 @@ mod tests {
             .find(|s| s.id == "seccomp-baseline")
             .expect("offered");
         assert!(off.risk >= RiskLevel::High, "{off:?}");
+    }
+
+    /// Each of SAM's own repair steps, and the nested namespaces step its
+    /// log analyzer finds, is labelled at least as the risk catalog rates
+    /// what applying it adds, at every level: nested namespaces are Some
+    /// access, not Harmless, and turning off the syscall filter is Think
+    /// twice, not Some access (owner decision 17 of 2026-11-23: honest risk
+    /// words; the labels were written by hand and contradicted the
+    /// catalog).
+    #[test]
+    fn a_repair_steps_label_is_never_below_what_applying_it_adds() {
+        let mut e = AppEntry::default();
+        e.profile.permissions = PermissionSet::strict_gui();
+        let found = analyze_with("credentials.cc", &e.profile.permissions, None, false);
+        assert!(found.iter().any(|f| f.id == "userns"), "{found:?}");
+        let had = sam_core::risk::assess(&e.profile.permissions).items;
+        let mut checked = Vec::new();
+        for st in own_steps().into_iter().chain(found) {
+            let mut after = e.clone();
+            apply_step(&mut after, &st, &mut Default::default())
+                .unwrap_or_else(|err| panic!("{}: {err:#}", st.id));
+            for item in sam_core::risk::assess(&after.profile.permissions).items {
+                if !had.contains(&item) {
+                    assert!(
+                        st.risk >= item.level,
+                        "{} is labelled {:?} but adds {:?} ({:?})",
+                        st.id,
+                        st.risk,
+                        item.title,
+                        item.level
+                    );
+                }
+            }
+            checked.push(st.id);
+        }
+        for id in ["userns", "seccomp-baseline", "full-usr", "x11", "compat"] {
+            assert!(checked.iter().any(|c| c == id), "{id}: {checked:?}");
+        }
     }
 
     /// A first-run hint rated Think twice or Dangerous needs a yes,

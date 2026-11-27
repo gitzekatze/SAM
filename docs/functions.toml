@@ -168,9 +168,11 @@ tests = ["the_strictest_window_profile_is_low_risk", "full_home_is_dangerous", "
 id = 8
 area = "B"
 promise = "You can change permissions per app, for several apps at once, or through your own presets."
-code = ["sam-core/src/permissions.rs", "sam-profile/src/lib.rs", "sam-runner/src/ops/profiles.rs", "sam-storage/src/lib.rs"]
+code = ["sam-core/src/permissions.rs", "sam-profile/src/lib.rs", "sam-runner/src/ops/profiles.rs", "sam-runner/src/gate.rs", "sam-storage/src/lib.rs"]
 tests = ["set_and_get_keys", "an_empty_list_left_out_of_the_saved_form_takes_comma_separated_input", "change_check_flags_removals_and_additions", "folders_are_not_breakage_but_lost_local_network_and_bus_are", "lost_sound_is_named_sound", "preset_template_is_strict", "only_a_damaged_preset_is_moved_aside", "user_changes_survive_better_recommendation", "a_dry_run_changes_nothing_and_names_what_would_stop_working", "only_changed_apps_are_saved_and_one_undo_restores_all_of_them", "an_invalid_value_or_unknown_app_changes_no_app", "sam_ships_no_presets_and_old_built_in_names_are_free_for_the_user", "saving_an_apps_settings_as_a_preset_keeps_them_exactly", "reset_to_recommendation_brings_back_the_recommended_settings", "preset_names_cannot_place_files_outside_the_presets_folder", "a_saved_preset_loads_back_unchanged", "group_list_set_and_restore_round_trip", "group_set_refuses_bad_input_without_changing_anything", "presets_are_the_users_own_only", "each_permission_adds_exactly_its_part_to_the_command",
   "only_new_or_higher_serious_risks_ask",
+  "a_change_waits_for_a_yes_by_one_rule",
+  "one_gate_refuses_each_change_that_waits_with_its_own_code",
   "a_change_from_an_old_copy_keeps_what_changed_meanwhile",
   "a_change_from_the_window_keeps_changes_made_elsewhere",
   "undo_takes_back_only_its_own_change",
@@ -746,7 +748,7 @@ about = "When an app fails, SAM says why and offers fixes from mild to strong, e
 id = 23
 area = "E"
 promise = "After a failed start, SAM says what went wrong and offers a fix with one click."
-code = ["sam-runner/src/repair.rs", "sam-runner/src/launch.rs", "sam-gtk/src/app_page/render.rs"]
+code = ["sam-runner/src/repair.rs", "sam-runner/src/gate.rs", "sam-runner/src/launch.rs", "sam-gtk/src/app_page/render.rs"]
 tests = [
   "a_step_from_the_apps_output_needs_yes",
   "the_apps_own_words_never_give_it_a_bus_name",
@@ -762,7 +764,9 @@ tests = [
   "a_risky_hint_needs_yes_and_says_what_it_allows",
   "a_risky_repair_step_is_applied_only_with_yes",
   "a_risky_repair_step_needs_yes_and_says_what_it_changes",
+  "one_gate_judges_an_applied_step_in_one_order",
   "a_hint_is_never_rated_below_what_it_grants",
+  "a_repair_steps_label_is_never_below_what_applying_it_adds",
   "the_window_confirms_a_hint_exactly_when_it_asked",
   "the_window_confirms_a_repair_step_exactly_when_it_asked",
   "a_quick_failure_gets_a_notice_with_the_fix_button",
