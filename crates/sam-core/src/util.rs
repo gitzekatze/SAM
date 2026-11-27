@@ -250,7 +250,10 @@ fn programs_beside(exe: Option<&Path>, appimage: Option<PathBuf>) -> Vec<PathBuf
 /// or a copy on `$PATH` the user cannot change, SAM takes the installed
 /// translations, keeps no D-Bus log, runs only tools the user cannot
 /// change and keeps its files in the standard folders (which
-/// `XDG_CONFIG_HOME` and `XDG_DATA_HOME` still move). So a forgotten
+/// `XDG_CONFIG_HOME` and `XDG_DATA_HOME` still move). It reads
+/// `SAM_CONFIG_DIR` and `SAM_DATA_DIR` only to keep the folders they name
+/// hidden from every app ([`crate::paths::folders_named_by_switches`]),
+/// never to use them. So a forgotten
 /// developer setting, or a variable something else put into the desktop's
 /// environment, never changes what an installed SAM runs, shows, records
 /// or keeps where (owner decision 16 of 2026-11-23; the folder switches by
@@ -301,6 +304,16 @@ impl<'a> DeveloperVars<'a> {
         if !self.developer_build {
             return None;
         }
+        (self.lookup)(name).filter(|v| !v.is_empty())
+    }
+
+    /// The value of the developer variable `name` in every build, a
+    /// release build too, which never uses it: only for what can only
+    /// hide more from the apps, never for what SAM uses or shows (the
+    /// folders that `SAM_CONFIG_DIR` and `SAM_DATA_DIR` name stay hidden,
+    /// [`crate::paths::folders_named_by_switches`]). An empty value counts
+    /// as not set.
+    pub(crate) fn set_in_any_build(&self, name: &str) -> Option<OsString> {
         (self.lookup)(name).filter(|v| !v.is_empty())
     }
 }

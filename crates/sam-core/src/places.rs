@@ -444,19 +444,36 @@ pub fn shown_folders(p: &PermissionSet, host: &HostInfo) -> Vec<PathBuf> {
 /// SAM's folder kept elsewhere, and the place stays hidden as before:
 /// nothing that was hidden becomes visible.
 pub fn sams_folder_by_name(home: &Path, rel: &str, own: &[PathBuf], shown: &[PathBuf]) -> bool {
-    if !is_sams_name(rel) {
-        return false;
-    }
-    let at = home.join(rel);
-    let real = resolve(&at);
-    if own.iter().any(|d| *d == at || real.starts_with(resolve(d))) {
+    is_sams_name(rel) && counts_as_sams(home, &home.join(rel), own, shown)
+}
+
+/// Whether the folder `at`, named like SAM's folders or named by one of
+/// SAM's folder switches, counts as one of SAM's own folders in a start
+/// that shows the folders `shown`: the rules of [`sams_folder_by_name`],
+/// whatever the folder's name. Where this SAM keeps its own (`own`) always
+/// counts; the home or a folder above it never does; a folder reached
+/// through a link does not where the start shows only folders inside the
+/// place it leads to. A link on the way to the home itself (`/home` a
+/// link to `/var/home`) is no such link.
+fn counts_as_sams(home: &Path, at: &Path, own: &[PathBuf], shown: &[PathBuf]) -> bool {
+    let real = resolve(at);
+    if own
+        .iter()
+        .any(|d| d.as_path() == at || real.starts_with(resolve(d)))
+    {
         return true;
     }
     let real_home = resolve(home);
     if is_home_or_above(home, &real_home, &real) {
         return false;
     }
-    let through_link = real != real_home.join(rel);
+    // Where it would be without a link on the way: below the home's real
+    // place when it lies in the home, else as written with `..` taken
+    // back.
+    let unlinked = at
+        .strip_prefix(home)
+        .map_or_else(|_| lexical(at), |rel| real_home.join(rel));
+    let through_link = real != unlinked;
     let shown_whole = shown.iter().any(|s| real.starts_with(s));
     let shown_inside = shown.iter().any(|s| s.starts_with(&real));
     !(through_link && shown_inside && !shown_whole)
@@ -464,26 +481,43 @@ pub fn sams_folder_by_name(home: &Path, rel: &str, own: &[PathBuf], shown: &[Pat
 
 /// SAM's own folders in a start that shows the folders `shown`
 /// ([`shown_folders`]): where this SAM keeps its own (`own`:
-/// [`crate::Paths::sam_dirs`]) and the protected places named like them
-/// that count as SAM's ([`sams_folder_by_name`]). The sandbox hides them,
-/// its check expects them hidden, and the start line and the app page
-/// leave them out, all from this one list.
+/// [`crate::Paths::sam_dirs`]), the protected places named like them that
+/// count as SAM's ([`sams_folder_by_name`]), and the folders SAM's folder
+/// switches `SAM_CONFIG_DIR` and `SAM_DATA_DIR` name
+/// ([`crate::paths::folders_named_by_switches`]) that count by the same
+/// rules: a release build never keeps anything there, yet an installed SAM
+/// may once have kept its app records and the other apps' private homes
+/// there. The sandbox hides them, its check expects them hidden, and the
+/// start line and the app page leave them out, all from this one list.
 pub fn sams_folders(home: &Path, own: &[PathBuf], shown: &[PathBuf]) -> Vec<PathBuf> {
-    sams_folders_in(home, own, shown, &protected_places(home))
+    sams_folders_in(
+        home,
+        own,
+        shown,
+        &protected_places(home),
+        &crate::paths::folders_named_by_switches(),
+    )
 }
 
-/// [`sams_folders`] among the protected places `places`.
+/// [`sams_folders`] among the protected places `places`, with the folders
+/// that SAM's folder switches name `switched`.
 pub fn sams_folders_in(
     home: &Path,
     own: &[PathBuf],
     shown: &[PathBuf],
     places: &[String],
+    switched: &[PathBuf],
 ) -> Vec<PathBuf> {
     let mut out = own.to_vec();
     for rel in places {
         let at = home.join(rel);
         if !out.contains(&at) && sams_folder_by_name(home, rel, own, shown) {
             out.push(at);
+        }
+    }
+    for at in switched {
+        if !out.contains(at) && counts_as_sams(home, at, own, shown) {
+            out.push(at.clone());
         }
     }
     out
@@ -731,7 +765,7 @@ mod tests {
         let t = tempfile::tempdir().unwrap();
         let home = std::fs::canonicalize(t.path()).unwrap().join("u");
         let places = protected_places_with(&home, Some(home.join("cfg")), Some(home.join("dat")));
-        let mut found = sams_folders_in(&home, &[], &[], &places);
+        let mut found = sams_folders_in(&home, &[], &[], &places, &[]);
         found.sort();
         let mut want: Vec<PathBuf> = [".config/sam", ".local/share/sam", "cfg/sam", "dat/sam"]
             .iter()
@@ -851,7 +885,8 @@ mod tests {
                 &home,
                 std::slice::from_ref(&elsewhere),
                 &[at("work/proj")],
-                &places
+                &places,
+                &[]
             ),
             vec![elsewhere, at(".local/share/sam"), at("dat/sam")]
         );
@@ -869,7 +904,7 @@ mod tests {
                 home_or_above: true,
             })
         );
-        let sams = sams_folders_in(&home, &[], std::slice::from_ref(&work), &places);
+        let sams = sams_folders_in(&home, &[], std::slice::from_ref(&work), &places, &[]);
         assert!(!write_grant_in_sams_folders(
             &work,
             found.as_ref(),
@@ -919,11 +954,11 @@ mod tests {
         link(".config/sam", &home);
         let whole = std::slice::from_ref(&home);
         let own = [base.join("elsewhere")];
-        let sams = sams_folders_in(&home, &own, whole, &places);
+        let sams = sams_folders_in(&home, &own, whole, &places, &[]);
         assert_eq!(named(&sams), Some(".config/sam".to_string()));
         // Hidden as SAM's (where this SAM keeps its own): not named.
         let own_there = [at(".config/sam")];
-        let sams = sams_folders_in(&home, &own_there, whole, &places);
+        let sams = sams_folders_in(&home, &own_there, whole, &places, &[]);
         assert_eq!(named(&sams), None);
         // A link to a folder in the home or above it: not named.
         link(".config/sam", &at("work"));
@@ -950,6 +985,102 @@ mod tests {
                 && note.contains("delete the shortcut ~/.config/fish")
                 && note.contains("read-only"),
             "{note}"
+        );
+    }
+
+    /// A folder that one of SAM's folder switches names (`SAM_DATA_DIR`,
+    /// `SAM_CONFIG_DIR`) counts as SAM's by the rules for the folders named
+    /// like SAM's, whatever its own name, so hiding it never covers too
+    /// much (batch review of the change that made release builds ignore
+    /// these switches):
+    /// - a real folder counts, inside or outside the home, also with a
+    ///   grant inside it or of the folder above it;
+    /// - the home, a folder above it (`/` too) and a way there (`~/work/..`)
+    ///   never count, nor does a link to the home: nothing then covers the
+    ///   home, and SAM's folders by name stay as they are;
+    /// - a link counts neither where the start shows only folders inside
+    ///   the place it leads to (`~/work/proj` granted), but does where the
+    ///   start shows that place whole;
+    /// - one that is where this SAM keeps its own is listed once, its own
+    ///   first, the folders by name next and the switches' folders last.
+    #[test]
+    fn a_folder_a_switch_names_is_hidden_unless_that_would_cover_too_much() {
+        let t = tempfile::tempdir().unwrap();
+        let base = std::fs::canonicalize(t.path()).unwrap();
+        let home = base.join("u");
+        for d in ["Games/sam/homes/x", "mydata", "work/proj", ".config"] {
+            std::fs::create_dir_all(home.join(d)).unwrap();
+        }
+        std::fs::create_dir_all(base.join("outside/sam")).unwrap();
+        let at = |rel: &str| home.join(rel);
+        std::os::unix::fs::symlink(at("work"), at("Games/linked")).unwrap();
+        std::os::unix::fs::symlink(&home, at("Games/home-link")).unwrap();
+        let places = protected_places_with(&home, None, None);
+        let own = [base.join("elsewhere")];
+        let counts = |dir: &Path, shown: &[PathBuf]| {
+            let switched = [dir.to_path_buf()];
+            sams_folders_in(&home, &own, shown, &places, &switched).contains(&dir.to_path_buf())
+        };
+        let none: Vec<PathBuf> = vec![];
+        let whole = vec![home.clone()];
+
+        for dir in [at("Games/sam"), at("mydata"), base.join("outside/sam")] {
+            for shown in [
+                &none,
+                &whole,
+                &vec![at("Games")],
+                &vec![at("Games/sam/homes/x")],
+            ] {
+                assert!(counts(&dir, shown), "{}: {shown:?}", dir.display());
+            }
+        }
+        for dir in [
+            home.clone(),
+            at("work/.."),
+            base.clone(),
+            PathBuf::from("/"),
+            at("Games/home-link"),
+        ] {
+            for shown in [&none, &whole, &vec![at("work")]] {
+                let sams = sams_folders_in(&home, &own, shown, &places, std::slice::from_ref(&dir));
+                assert!(
+                    !sams.iter().any(|d| home.starts_with(resolve(d))),
+                    "{}: {shown:?}: {sams:?}",
+                    dir.display()
+                );
+                assert_eq!(
+                    sams,
+                    sams_folders_in(&home, &own, shown, &places, &[]),
+                    "{}: {shown:?}",
+                    dir.display()
+                );
+            }
+        }
+        let linked = at("Games/linked");
+        assert!(!counts(&linked, &[at("work/proj")]));
+        for shown in [
+            &none,
+            &vec![at("work")],
+            &vec![at("work/proj"), home.clone()],
+        ] {
+            assert!(counts(&linked, shown), "linked: {shown:?}");
+        }
+        let games = at("Games/sam");
+        let sams = sams_folders_in(
+            &home,
+            std::slice::from_ref(&games),
+            &whole,
+            &places,
+            &[at("mydata"), games.clone()],
+        );
+        assert_eq!(
+            sams,
+            vec![
+                games.clone(),
+                at(".config/sam"),
+                at(".local/share/sam"),
+                at("mydata")
+            ]
         );
     }
 
