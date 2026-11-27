@@ -1520,13 +1520,17 @@ was easily misread.
   Confirming an app is refused while SAM changes its sandbox (unpacks it
   again or updates it, for example), so it never clears the mark of new
   content nobody has seen. When an "unpack again" cannot save or finish
-  its result, SAM removes what it unpacked, so the app starts only after
-  it has been unpacked again. When SAM cannot remove it either (a disk
-  remounted read-only, for example), the message says so: new content
-  that is not SAM's own update keeps its "look at it first" mark, and
-  otherwise (SAM's own update, going back, the same content again) the
-  app starts with what was left in place, under its record from before,
-  until it is unpacked again. When two saves at once change the same
+  its result, SAM removes what it unpacked, so the app never starts with
+  it: it starts only after it has been unpacked again or, when the unpack
+  folder was moved since the last unpacking, with its earlier copy in the
+  earlier folder, under its record from before. The message says which,
+  and new content that is not SAM's own update still asks first. When
+  SAM cannot remove it either (a disk remounted read-only, for example),
+  the message says so: new content that is not SAM's own update keeps its
+  "look at it first" mark, and otherwise (SAM's own update, going back,
+  the same content again) the app starts with the copy its record from
+  before names until it is unpacked again: what was left in place or,
+  after a move of the unpack folder, the earlier copy. When two saves at once change the same
   setting or the same list (the granted folders, the bus names, the
   arguments, the repair steps), the later one wins. A change that replaces
   the whole set of settings (a preset, a reset, the compatibility mode, an

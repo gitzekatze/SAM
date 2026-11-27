@@ -532,6 +532,85 @@ fn new_content_asks_first_also_when_its_record_cannot_be_saved() {
     );
 }
 
+/// As above, after the person moved the unpack folder (Preferences >
+/// Unpacking > Location; SAM leaves the existing copies where they are
+/// until they are unpacked again): "Unpack Again" unpacks into the new
+/// folder, the save of its result cannot happen, and SAM removes what it
+/// unpacked there. The record still names the complete copy in the earlier
+/// folder, so a start runs that copy once the person looked at the new
+/// content, and the message says exactly that. Before, it said that the
+/// app starts only after it has been unpacked again.
+#[test]
+fn an_unfinished_unpack_after_a_move_names_the_copy_that_starts() {
+    if sam_runner::doctor::bwrap_functional(&HostInfo::probe()).is_err() {
+        sam_runner::contracts::skip(
+            "bubblewrap is not functional here (SAM unpacks inside a sandbox)",
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let img = tmp.path().join("Tool.AppImage");
+    build(&img, &FixtureSpec::hello("Tool")).unwrap();
+    let mut sam = Sam::with_paths(Paths::rooted(&tmp.path().join("sam"))).unwrap();
+    let id = add_tool(&sam, &img).entry.id;
+    let earlier = sam.resolve(&id).unwrap().extraction.expect("unpacked");
+    let moved = tmp.path().join("Moved");
+    sam.config.extraction.location = moved.to_string_lossy().into_owned();
+    let mut spec = FixtureSpec::hello("Tool");
+    spec.comment = "content nobody looked at".into();
+    build(&img, &spec).unwrap();
+
+    let (release, released) = std::sync::mpsc::channel();
+    let holder = hold_record_lock(&sam, Some(marked(&sam, &id)), released);
+    let result = sam.reextract(&id, false);
+    let _ = release.send(());
+    assert!(holder.join().unwrap(), "the unpacking never began");
+    let err = format!(
+        "{:#}",
+        result.expect_err("the result was saved without the record lock")
+    );
+    assert!(err.contains("another SAM process"), "{err}");
+    assert!(err.contains("so it removed what it unpacked"), "{err}");
+    assert!(
+        !moved.join(&id).join("AppDir").exists(),
+        "what SAM unpacked into the new folder is left in place"
+    );
+
+    // What a start does: the record names the earlier copy, which is
+    // complete, so the only reason a start is refused is the mark.
+    let e = sam.resolve(&id).unwrap();
+    let x = e.extraction.as_ref().expect("still unpacked");
+    assert_eq!(
+        x.appdir, earlier.appdir,
+        "the record names the earlier copy"
+    );
+    assert!(
+        x.appdir.join(&x.entry).exists(),
+        "the earlier copy is complete"
+    );
+    assert!(e.content_changed_outside, "the new content is marked");
+    let errors = preflight(&e).0;
+    assert!(
+        errors
+            .iter()
+            .all(|m| m.contains("replaced by something other than a SAM update")),
+        "only the mark refuses a start, nothing asks for a new unpacking: {errors:?}"
+    );
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    // ... and the message says exactly that.
+    assert!(
+        err.contains(
+            "the app starts with the copy SAM unpacked before in the earlier unpack folder, and only after you have looked at it"
+        ),
+        "the message names the copy a start runs: {err}"
+    );
+    assert!(
+        !err.contains("starts only after it has been unpacked again"),
+        "the message promises a new unpacking that a start does not need: {err}"
+    );
+}
+
 /// When the "look at it first" mark of a swapped AppImage cannot be saved
 /// before the unpacking (another SAM process holds the record lock longer
 /// than a save waits), "Unpack Again" stops before it unpacks anything:
