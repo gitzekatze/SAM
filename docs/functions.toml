@@ -266,6 +266,7 @@ tests = ["a_grant_inside_sams_folder_does_not_show_it", "opened_files_are_judged
   "credential_places_of_any_kind_are_hidden",
   "credentials_behind_links_pipes_and_sockets_stay_hidden",
   "git_credentials_under_config_git_stay_hidden",
+  "credential_stores_follow_other_config_and_data_folders",
 ]
 
 [[function]]

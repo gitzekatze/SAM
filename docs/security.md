@@ -570,7 +570,14 @@ so nothing bound later shows them again
 `credentials_behind_links_pipes_and_sockets_stay_hidden`). Git's second
 credential file is hidden on its own too, inside `~/.config/git`, which
 SAM keeps read-only as a start place, so a read-only lock alone would let
-the app read it (`git_credentials_under_config_git_stay_hidden`).
+the app read it (`git_credentials_under_config_git_stay_hidden`). Where
+`XDG_CONFIG_HOME` or `XDG_DATA_HOME` names another folder inside the home
+(`~/cfg`), the stores kept under `~/.config` or `~/.local/share` are hidden
+there as well (`~/cfg/git/credentials`, `~/cfg/keepassxc`), as the start
+places are locked there, and none of them is shared as a file named on the
+command line (`credential_stores_follow_other_config_and_data_folders`).
+Such a folder outside the home is shown only when you grant it, and SAM
+does not hide the stores in it then.
 
 **Hidden whenever anything would show them:** SAM's own folders
 (configuration, data and unpacked apps, wherever they are, and the folders
