@@ -8,6 +8,19 @@
   installed SAM use other settings and permissions.
 - `XDG_CONFIG_HOME` and `XDG_DATA_HOME` still move SAM's folders in every
   build, as they do for other programs.
+- Every build of a program SAM ships or signs now checks that the built
+  `sam-jail` ignores these variables, and stops if it follows them: the
+  AppImage build (`scripts/make-appimage.sh`, which the release workflow
+  runs through `make appimage`), `scripts/release.sh`,
+  `scripts/sign-release.sh` before the release key is used, and the build
+  steps of the Arch and Fedora recipes (`build()` and `%build`, not their
+  test steps, which builders often skip). Cargo settings in the builder's
+  environment or in a Cargo configuration file outside the source could
+  otherwise turn SAM's developer variables on in a release build. The
+  check starts the program with an empty environment and every folder in
+  a temporary folder, which it removes afterwards. The Makefile's `cli`
+  target does not run it: a developer builds with it for local use, and
+  the check would start SAM's program on that computer.
 - With such a variable set, an installed window now behaves as without it:
   starting SAM again brings the open window forward instead of opening a
   second window on the same settings.
