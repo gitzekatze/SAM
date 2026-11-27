@@ -676,7 +676,8 @@ pub fn prepare(
         sam_sandbox::write_identity_files(&ctx)?;
         // Launches that can write start places take turns here: each takes
         // over what the running ones saw at their start and keeps its own
-        // record on disk (`home_shared`, review 2026-11-23 F1 and F2).
+        // record on disk (`home_shared`, review 2026-11-23 F1 and F2). This
+        // wait for the records of the running apps has no time limit yet.
         let shared = if sam_sandbox::writes_start_places(&ctx) {
             // What is moved aside comes from the person's home: for them
             // only (review F4).
@@ -707,7 +708,7 @@ pub fn prepare(
             home_record = Some(s.register(&name, w, &home_aside)?);
             // What a running app planted in a place this launch takes over
             // as empty, or in place of a link, goes before this one starts.
-            moved_at_start = w.settle(&home_aside);
+            moved_at_start = crate::home_shared::Turns::of(paths).settle(w, &home_aside);
         }
         drop(shared);
         if perms.dbus.session.mode == DbusMode::Filtered
@@ -1234,7 +1235,11 @@ fn run_once(
         r.arm(&log_path);
     }
     let (live_watch, watch_warning) = match prepared.home_watch.as_ref() {
-        Some(w) => crate::home_live::LiveWatch::start(w, aside.clone()),
+        Some(w) => crate::home_live::LiveWatch::start(
+            w,
+            aside.clone(),
+            crate::home_shared::Turns::of(paths),
+        ),
         None => (None, None),
     };
     if let Some(warn) = &watch_warning {
@@ -1457,7 +1462,7 @@ fn run_once(
     let mut found = std::mem::take(&mut prepared.moved_at_start);
     found.extend(live_watch.map(|l| l.finish()).unwrap_or_default());
     if let Some(w) = &prepared.home_watch {
-        found.extend(w.settle(&aside));
+        found.extend(crate::home_shared::Turns::of(paths).settle(w, &aside));
     }
     if let Some(r) = prepared.home_record.take() {
         r.finish();
