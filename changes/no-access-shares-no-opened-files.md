@@ -7,7 +7,8 @@
   none of them, not even read-only. *Read-only* and *Read & write* work as
   before.
 - Old profiles that still say `opened_files = false` already loaded as *No
-  access*; such an app now really sees no file you open with it. Set it to
+  access*; such an app now gets no file you open with it shared; it sees
+  one only where another permission shows its folder. Set it to
   *Read-only* or *Read & write* if it needs them.
 - With *No access*, the app starts in its private home instead of a folder
   it cannot see, and a terminal app's start line and the launch log say
