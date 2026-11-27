@@ -237,13 +237,16 @@ pub fn plan(p: &PermissionSet, cfg: &Config, paths: &Paths, host: &HostInfo) -> 
             } else {
                 want
             };
-        // One the sandbox binds on its own (in a private home, and every
-        // granted one with the whole home, at its own access) is left out
+        // One the sandbox binds on its own (every granted one, in a private
+        // home and with the whole home, at its own access) is left out
         // where its way leads through a link the app could have planted,
         // or to where programs outside the sandbox listen: by the
         // sandbox's rule. With the whole home it is then seen only as the
-        // home shows the place its link leads to.
-        let binds_own = !fs.home || a.is_granted();
+        // home shows the place its link leads to. One not granted gets no
+        // bind in either home, so nothing is counted for it where it
+        // really is: counted hidden there, it hid a wider extra folder
+        // around that place from a left-out link that leads into it.
+        let binds_own = a.is_granted();
         let left_out =
             binds_own && sam_core::places::user_folder_left_out(p, host, key, &this).is_some();
         if binds_own && !left_out {
@@ -1874,13 +1877,14 @@ mod tests {
         assert_eq!(folder(&pl, &title(&docs)), Access::ReadOnly);
     }
 
-    /// With the whole home, a user folder without a setting gets no bind of
-    /// its own, so the check counts nothing for it where the folder really
-    /// is: an extra folder left out for a planted link that leads into such
-    /// a user folder outside the home (Documents set to `/data/Docs`, not
-    /// granted) is expected as the extra read-only folder `/data` around it
-    /// shows it, read-only. Counted as hidden there, the check expected the
-    /// place hidden and failed a sandbox that showed it as it should.
+    /// With the whole home and in a private home, a user folder without a
+    /// setting gets no bind of its own, so the check counts nothing for it
+    /// where the folder really is: an extra folder left out for a planted
+    /// link that leads into such a user folder outside the home (Documents
+    /// set to `/data/Docs`, or to `~/Docs`, a link there, not granted) is
+    /// expected as the extra read-only folder `/data` around it shows it,
+    /// read-only. Counted as hidden there, the check expected the place
+    /// hidden and failed a sandbox that showed it as it should.
     #[test]
     fn the_check_expects_a_left_out_extra_folder_inside_an_ungranted_user_folder_as_the_grant_around_it_shows_it(
     ) {
@@ -1906,6 +1910,30 @@ mod tests {
             folder(&pl, &title(&link)),
             Access::ReadOnly,
             "left out, and shown read-only by the extra folder around its place"
+        );
+        // A private home: Documents set to `~/Docs`, a link to `/data/Docs`
+        // the private home does not show, not granted; the app planted
+        // `~/w/l`, a link to `/data/Docs`, in the writable extra folder
+        // `~/w`. The sandbox leaves `~/w/l` out and the app reaches the
+        // place read-only through `~/w`, the link and `/data`.
+        let home_docs = h.home.join("Docs");
+        std::os::unix::fs::symlink(&docs, &home_docs).unwrap();
+        h.xdg_dirs.insert("documents".into(), home_docs);
+        let w = h.home.join("w");
+        fs::create_dir_all(&w).unwrap();
+        let planted = w.join("l");
+        std::os::unix::fs::symlink(&docs, &planted).unwrap();
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.documents = Perm::None;
+        p.filesystem.custom_read = vec![s(&data), s(&planted)];
+        p.filesystem.custom_write = vec![s(&w)];
+        let pl = plan(&p, &cfg, &sam_paths(), &h);
+        assert_eq!(folder(&pl, "Documents"), Access::Hidden);
+        assert_eq!(folder(&pl, &title(&data)), Access::ReadOnly);
+        assert_eq!(
+            folder(&pl, &title(&planted)),
+            Access::ReadOnly,
+            "left out in a private home, and shown read-only by the extra folder around its place"
         );
     }
 
