@@ -112,13 +112,13 @@ Bubblewrap shows a folder or file SAM opened (--bind-fd, --ro-bind-fd) as exactl
 
 ## bwrap-overlay
 
-Bubblewrap 0.11 or newer offers overlays (--overlay-src, --overlay) for a writable app folder whose changes go to a separate layer.
+Bubblewrap offers overlays (--overlay-src, --overlay; upstream since 0.11) for a writable app folder whose changes go to a separate layer.
 
 - **Component:** Bubblewrap ([releases](https://github.com/containers/bubblewrap/releases))
 - **When it breaks:** one feature is unavailable; the sandbox is unaffected.
 - **SAM functions that rely on it:** [18](functions.md#18)
 - **Quick check:** `bwrap-option:--overlay-src`
-- **Tests:** `an_app_starts_read_only_when_its_writable_app_folder_cannot_work` (fully)
+- **Tests:** `an_app_starts_read_only_when_its_writable_app_folder_cannot_work`, `the_overlay_checks_match_the_real_bubblewrap` (fully)
 - **Covers:** `option:--overlay`, `option:--overlay-src`
 - **If it breaks:** Without working overlays the app starts with its app folder read-only, as it would without the option (tested). Only the writable app folder is lost.
 
