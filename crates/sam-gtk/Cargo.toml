@@ -10,6 +10,12 @@ publish = false
 name = "sam-jail-gui"
 path = "src/main.rs"
 
+# The screenshot options (--screenshot, --size, --delay, --focus-walk) are
+# in development builds; a release build has them only with this feature.
+# Release builds and packages never turn them on (docs/testing.md).
+[features]
+dev-tools = []
+
 [dependencies]
 gtk = { package = "gtk4", version = "0.11", features = ["v4_12"] }
 adw = { package = "libadwaita", version = "0.9", features = ["v1_5"] }

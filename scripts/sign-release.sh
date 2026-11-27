@@ -26,9 +26,11 @@ tag=${1:-}
 echo "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || die "usage: SIGN_KEY=<fingerprint> scripts/sign-release.sh vX.Y.Z"
 : "${SIGN_KEY:?set SIGN_KEY to the fingerprint of the release key}"
 root=$(cd "$(dirname "$0")/.." && pwd)
-sam="$root/target/debug/sam-jail"
-[ -x "$sam" ] || sam="$root/target/release/sam-jail"
-[ -x "$sam" ] || die "build SAM first (cargo build)"
+# The signing tool is a release build with SAM's release tools switched
+# on, so it runs like the shipped program (developer variables off; owner
+# decision 2026-11-27). A plain release build no longer has the tools.
+sam="$root/target/sign-tools/release/sam-jail"
+[ -x "$sam" ] || die "build the signing tool first: cargo build --release --locked --target-dir target/sign-tools -p sam-jail-cli --features dev-tools"
 gpg --batch --list-secret-keys "$SIGN_KEY" >/dev/null 2>&1 || die "no secret GPG key '$SIGN_KEY'"
 [ "$(gh release view "$tag" --json isDraft --jq .isDraft)" = true ] || die "$tag is not a draft release"
 

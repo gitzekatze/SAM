@@ -154,7 +154,7 @@ the desktop launchers use, so apps keep running when SAM closes. The GUI
 links no SAM crate except `sam-core` (for the permission catalog and the
 translations): the CLI is the API.
 
-`sam-jail-gui --screenshot out.png [--size WxH] [--page …]` renders the
+In developer builds, `sam-jail-gui --screenshot out.png [--size WxH] [--page …]` renders the
 window once it has loaded (with `GDK_BACKEND=broadway` it works without a
 desktop), and saves the scrollable content of the right column as
 `out-content.png`.
@@ -215,6 +215,9 @@ The complete list, with what each test proves, is the
   builds synthetic AppImages for manual testing.
 - `sam-jail-gui --screenshot out.png --page <page>` (with
   `GDK_BACKEND=broadway`) renders the window without a desktop.
+- Both are in developer builds only, like the other test and release tools;
+  release builds have them only with the `dev-tools` feature
+  ([Testing](testing.md)).
 - `scripts/function-map.py` checks that every function has its tests and
   writes [functions.md](functions.md); `scripts/i18n.py check` keeps the
   three translations complete. [Testing](testing.md) explains the rest.

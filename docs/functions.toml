@@ -1107,8 +1107,8 @@ tests = ["times_are_shown_without_a_date_library", "the_permission_model_depends
 id = 42
 area = "I"
 internal = true
-promise = "SAM is checked and released as it says: the release key signs only files the release build of that very tag made, source files that match the package recipe and checksum lists the signing script writes itself; a failed release build leaves no tag; the owner's approval counts only for the version the owner saw and is judged by the base branch's checker; the CI scripts fail when the tests could not run; and every workflow keeps pinned actions, least rights and checked downloads."
-code = ["scripts/sign-release.sh", "scripts/release.sh", "scripts/workflow-check.py", ".github/workflows/approval.yml", ".github/workflows/release.yml", ".github/workflows/pages.yml", "tests/gui/desktop-sandbox.sh", "Cargo.toml"]
+promise = "SAM is checked and released as it says: the release key signs only files the release build of that very tag made, source files that match the package recipe and checksum lists the signing script writes itself; a failed release build leaves no tag; the owner's approval counts only for the version the owner saw and is judged by the base branch's checker; the CI scripts fail when the tests could not run; the programs SAM ships contain none of its test and release tools; and every workflow keeps pinned actions, least rights and checked downloads."
+code = ["scripts/sign-release.sh", "scripts/release.sh", "scripts/workflow-check.py", ".github/workflows/approval.yml", ".github/workflows/release.yml", ".github/workflows/pages.yml", "tests/gui/desktop-sandbox.sh", "Cargo.toml", "scripts/make-appimage.sh", "tests/shipped/in-container.sh"]
 tests = [
   "the_release_key_signs_no_appimage_the_release_build_did_not_make",
   "an_appimage_built_for_an_older_release_is_not_signed",
@@ -1122,5 +1122,9 @@ tests = [
   "the_approval_check_runs_the_base_branchs_checker",
   "a_desktop_test_run_that_does_not_build_fails",
   "the_website_is_not_built_with_a_changed_diagram_script",
+  "the_test_and_release_commands_are_left_out_of_release_builds",
+  "the_window_screenshot_options_are_left_out_of_release_builds",
+  "the_test_helpers_of_the_libraries_are_left_out_of_release_builds",
+  "release_builds_never_turn_the_tools_on",
 ]
-checks = ["scripts/workflow-check.py"]
+checks = ["scripts/workflow-check.py", "tests/shipped/in-container.sh"]

@@ -97,7 +97,8 @@ stop the desktop portals that Flatpak apps rely on.
 ## The version report
 
 `make report` (`scripts/version-report.py`) runs every test in a build that
-records which code runs, then the benchmarks (`sam-jail dev bench`), and
+records which code runs, then the benchmarks (`sam-jail dev bench`, in a
+release build with the `dev-tools` feature), and
 writes `docs/reports/<version>-<commit>.md` and `.json`. The report shows for
 each part of SAM the tests that pass and fail, its line coverage, how long
 its steps take, and which parts it depends on, each compared with the
