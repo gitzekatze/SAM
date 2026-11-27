@@ -622,15 +622,22 @@ user folders: like `~/.config/user-dirs.dirs`, it is read-only and cannot
 be renamed away, and when it is missing, SAM creates it empty before a
 start that shows it writable, so the app cannot write one there while it
 runs; the same holds for `~/cfg/user-dirs.dirs` where `XDG_CONFIG_HOME`
-names `~/cfg`. An app therefore cannot point the user folders of its own
-later start, or of a start running at the same time, elsewhere
+names `~/cfg`. As long as every start has `XDG_CONFIG_HOME` set this
+way, an app therefore cannot point the user folders of its own later
+start, or of a start running at the same time, elsewhere
 (`the_user_folders_file_is_protected_wherever_sam_reads_it_in_the_home`,
 `the_user_folders_file_stays_locked_when_the_config_folder_is_the_home`).
 Not covered: while another app runs that saw the file missing, SAM
 leaves it missing, as for the other places it creates (see *Folders are
 created empty first* below); a file an app writes there then is moved
 aside within moments while the home is watched, otherwise when the app ends,
-and a start in between finds the user folders it names. The other start
+and a start in between finds the user folders it names. SAM reads
+`XDG_CONFIG_HOME` from the environment of each start, so a start whose
+environment does not set it (for example a start from a menu entry while
+the variable is set only in a shell's startup file) leaves
+`~/user-dirs.dirs` (or `~/cfg/user-dirs.dirs`) unlocked, and a later start
+that does set it reads what the app wrote there; so set the variable in
+the desktop session's environment, not only in a shell's startup file. The other start
 places are not locked at the top of the home then (`~/autostart`), so an
 app with the whole home writable can change them there. Such a folder outside the home is shown only when you
 grant it, and SAM does not hide the stores in it then.
