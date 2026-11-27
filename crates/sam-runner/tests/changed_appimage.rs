@@ -403,7 +403,8 @@ fn kept_data_goes_back_to_the_unpacked_file_after_a_swap_was_seen() {
 }
 
 /// Whether a `.desktop` file at the top of the unpacked copy of `id`
-/// carries `text`: which content is unpacked now.
+/// carries `text`: which content is unpacked now (false when nothing is
+/// unpacked there).
 fn unpacked_desktop_says(sam: &Sam, id: &str, text: &str) -> bool {
     let appdir = sam
         .resolve(id)
@@ -411,9 +412,10 @@ fn unpacked_desktop_says(sam: &Sam, id: &str, text: &str) -> bool {
         .extraction
         .expect("unpacked")
         .appdir;
-    fs::read_dir(&appdir)
-        .unwrap()
-        .flatten()
+    let Ok(dir) = fs::read_dir(&appdir) else {
+        return false;
+    };
+    dir.flatten()
         .filter(|f| f.path().extension().is_some_and(|x| x == "desktop"))
         .any(|f| {
             fs::read_to_string(f.path())
@@ -424,12 +426,12 @@ fn unpacked_desktop_says(sam: &Sam, id: &str, text: &str) -> bool {
 
 /// Holds SAM's record lock from another thread, as a SAM process stalled
 /// in its own save does (a `sam-jail` stopped with Ctrl+Z, a home folder
-/// on a hung network drive): once `start` exists (or at once without
+/// on a hung network drive): once `start` says so (or at once without
 /// one), until `release` says so or two minutes pass. Returns whether it
 /// took the lock.
 fn hold_record_lock(
     sam: &Sam,
-    start: Option<std::path::PathBuf>,
+    start: Option<Box<dyn Fn() -> bool + Send>>,
     release: std::sync::mpsc::Receiver<()>,
 ) -> std::thread::JoinHandle<bool> {
     use std::time::{Duration, Instant};
@@ -439,7 +441,7 @@ fn hold_record_lock(
     let holder = std::thread::spawn(move || {
         let until = Instant::now() + Duration::from_secs(120);
         if let Some(start) = start {
-            while !start.exists() {
+            while !start() {
                 if Instant::now() > until {
                     let _ = taken.send(());
                     return false;
@@ -463,13 +465,24 @@ fn hold_record_lock(
     holder
 }
 
+/// Whether the record of `id` carries the "look at it first" mark of new
+/// content, as another SAM process reads it: "Unpack Again" saves it just
+/// before it unpacks, and it stays until the result is saved, so a check
+/// of it is never too late to catch the unpacking (a folder that exists
+/// only while the unpacking runs could be missed).
+fn marked(sam: &Sam, id: &str) -> Box<dyn Fn() -> bool + Send> {
+    let other = Sam::with_paths(sam.paths.clone()).unwrap();
+    let id = id.to_string();
+    Box::new(move || other.resolve(&id).is_ok_and(|e| e.content_changed_outside))
+}
+
 /// "Unpack Again" of a swapped AppImage whose record cannot be saved
 /// after the new content replaced the unpacked copy (another SAM process
 /// holds the record lock longer than a save waits; a full disk is
-/// similar): the new content still does not start until the person has
-/// looked at it, and the message says so. Before, the "look at it first"
-/// mark was saved only with the result, so the new content started with
-/// the old app's permissions and without a question.
+/// similar): SAM removes what it unpacked, the record keeps its "look at
+/// it first" mark, a start is refused, and the message says so. Before,
+/// the mark was saved only with the result, so the new content started
+/// with the old app's permissions and without a question.
 #[test]
 fn new_content_asks_first_also_when_its_record_cannot_be_saved() {
     if sam_runner::doctor::bwrap_functional(&HostInfo::probe()).is_err() {
@@ -488,12 +501,10 @@ fn new_content_asks_first_also_when_its_record_cannot_be_saved() {
     spec.comment = "content nobody looked at".into();
     build(&img, &spec).unwrap();
 
-    // The lock is taken once the unpacking has begun, so the save of the
-    // result is the one that cannot happen.
-    let root = sam.resolve(&id).unwrap().extraction.unwrap().root;
-    let unpacking = root.join(format!(".unpack-{}", std::process::id()));
+    // The lock is taken once the unpacking is about to begin (its mark is
+    // saved), so the save of the result is the one that cannot happen.
     let (release, released) = std::sync::mpsc::channel();
-    let holder = hold_record_lock(&sam, Some(unpacking), released);
+    let holder = hold_record_lock(&sam, Some(marked(&sam, &id)), released);
     let result = sam.reextract(&id, false);
     let _ = release.send(());
     assert!(holder.join().unwrap(), "the unpacking never began");
@@ -503,12 +514,12 @@ fn new_content_asks_first_also_when_its_record_cannot_be_saved() {
     );
     assert!(err.contains("another SAM process"), "{err}");
     assert!(
-        err.contains("does not start the app until you have looked at it"),
+        err.contains("removed what it unpacked"),
         "the message says what happened: {err}"
     );
     assert!(
-        unpacked_desktop_says(&sam, &id, "content nobody looked at"),
-        "the new content is in place"
+        !unpacked_desktop_says(&sam, &id, "content nobody looked at"),
+        "the new content is left in place while the record names the old"
     );
     let e = sam.resolve(&id).unwrap();
     assert!(e.content_changed_outside, "the new content is marked");
@@ -560,4 +571,94 @@ fn nothing_is_unpacked_when_the_mark_cannot_be_saved_first() {
         before,
         "the record is unchanged"
     );
+}
+
+/// A confirmation while "Unpack Again" unpacks a swapped AppImage (`sam-jail
+/// review` in a terminal, after its "look at it first" mark was saved and
+/// before the result is), followed by a save of the result that cannot
+/// happen (another SAM process holds the record lock longer than a save
+/// waits): the confirmation is refused, the mark stays, what was unpacked
+/// is removed, and a start is refused. Before, the confirmation cleared the
+/// mark for content nobody had seen, the failed save never set it again,
+/// and the new content started with the old record without a question.
+#[test]
+fn a_confirmation_during_the_unpack_never_lets_new_content_start_unseen() {
+    use std::time::{Duration, Instant};
+    if sam_runner::doctor::bwrap_functional(&HostInfo::probe()).is_err() {
+        sam_runner::contracts::skip(
+            "bubblewrap is not functional here (SAM unpacks inside a sandbox)",
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let img = tmp.path().join("Tool.AppImage");
+    build(&img, &FixtureSpec::hello("Tool")).unwrap();
+    let sam = Sam::with_paths(Paths::rooted(&tmp.path().join("sam"))).unwrap();
+    let id = add_tool(&sam, &img).entry.id;
+    let mut spec = FixtureSpec::hello("Tool");
+    spec.comment = "content nobody looked at".into();
+    build(&img, &spec).unwrap();
+
+    // Another SAM process: once the unpacking is about to begin (its "look
+    // at it first" mark is saved), it confirms the app, then holds the
+    // record lock so the save of the result cannot happen.
+    let started = marked(&sam, &id);
+    let other = Sam::with_paths(sam.paths.clone()).unwrap();
+    let lock = sam.paths.apps_dir().join(".records.lock");
+    let app = id.clone();
+    let (release, released) = std::sync::mpsc::channel::<()>();
+    let holder = std::thread::spawn(move || {
+        let until = Instant::now() + Duration::from_secs(120);
+        while !started() {
+            if Instant::now() > until {
+                return None;
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        let confirmed = other
+            .mark_reviewed(&app)
+            .map(|_| ())
+            .map_err(|e| sam_core::error::code_of(&e).unwrap_or("").to_string());
+        let f = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&lock)
+            .unwrap();
+        f.lock().unwrap();
+        let _ = released.recv_timeout(Duration::from_secs(120));
+        Some(confirmed)
+    });
+    let result = sam.reextract(&id, false);
+    let _ = release.send(());
+    let confirmed = holder.join().unwrap().expect("the unpacking never began");
+    assert_eq!(
+        confirmed,
+        Err("app-being-changed".to_string()),
+        "a confirmation while the app is being changed is refused"
+    );
+    let err = format!(
+        "{:#}",
+        result.expect_err("the result was saved without the record lock")
+    );
+    assert!(err.contains("another SAM process"), "{err}");
+    assert!(
+        !unpacked_desktop_says(&sam, &id, "content nobody looked at"),
+        "the new content is left in place while the record names the old"
+    );
+    let e = sam.resolve(&id).unwrap();
+    assert!(e.content_changed_outside, "the mark stays");
+    let errors = preflight(&e).0;
+    assert!(
+        errors
+            .iter()
+            .any(|m| m.contains("replaced by something other than a SAM update")),
+        "a start is refused until the person looked: {errors:?}"
+    );
+
+    // Unpacked again once nothing holds the record: still asks first.
+    let e = sam.reextract(&id, false).unwrap();
+    assert!(unpacked_desktop_says(&sam, &id, "content nobody looked at"));
+    assert!(e.content_changed_outside, "the new content asks first");
+    assert!(!preflight(&e).0.is_empty(), "{:?}", preflight(&e).0);
 }

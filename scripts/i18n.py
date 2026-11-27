@@ -6,6 +6,8 @@ the language files.
     scripts/i18n.py check      fail when po/sam.pot is out of date, German misses a
                                text, or any translation loses or adds a placeholder
     scripts/i18n.py stats      how complete each language is
+    scripts/i18n.py self-test  check that test code is left out and nothing else
+                               (check runs it too)
 
 Texts are marked in the code with tr("…"), trf("…", …) and trn("…", "…", …)
 (sam_core::i18n), and the permission catalog's titles and explanations are
@@ -149,12 +151,38 @@ def literal(arg):
     return lit[0] if lit and lit[1] == len(a) else None
 
 
+def test_item_end(src, j):
+    """Where the item or statement that the `#[cfg(test)]` at src[j] marks
+    ends (the index after its last line). It starts on the attribute's line
+    or on the first line after it that is not another attribute; it is that
+    one line when the line ends with `;`, else it runs to the first later
+    line that starts, at the attribute's indentation, with a closing `)`,
+    `]` or `}` (where rustfmt closes it).
+    """
+    line_start = src.rfind("\n", 0, j) + 1
+    indent = src[line_start:j]
+    k = j + len("#[cfg(test)]")
+    if not src[k:src.find("\n", k) if "\n" in src[k:] else len(src)].strip():
+        k = src.find("\n", k) + 1 if "\n" in src[k:] else len(src)
+        while src.startswith(indent + "#[", k):
+            k = src.find("\n", k) + 1 if "\n" in src[k:] else len(src)
+    eol = src.find("\n", k)
+    eol = len(src) if eol < 0 else eol + 1
+    if src[k:eol].rstrip().endswith(";"):
+        return eol
+    close = re.compile(r"^" + re.escape(indent) + r"[)\]}].*(?:\n|$)", re.M).search(src, eol)
+    return len(src) if close is None else close.end()
+
+
 def without_tests(src):
-    """`src` without its test sections: each `#[cfg(test)]` up to the next
-    line that is a lone `}` (where rustfmt ends a top-level item), with
-    their lines kept as empty lines so line numbers stay right. Before,
-    everything after the first test section was dropped, so texts below a
-    test module in the middle of a file were never offered for translation.
+    """`src` without its test sections: each item or statement marked
+    `#[cfg(test)]` ([`test_item_end`]), with their lines kept as empty lines
+    so line numbers stay right. Only an attribute that starts its line
+    counts. Before, everything after the first test section was dropped, so
+    texts below a test module in the middle of a file were never offered for
+    translation; and a `#[cfg(test)]` on one statement inside a function
+    dropped everything up to the next lone `}` of the file, texts the code
+    still uses among them, so their translations were lost.
     """
     out, i = [], 0
     while True:
@@ -162,11 +190,43 @@ def without_tests(src):
         if j < 0:
             out.append(src[i:])
             return "".join(out)
+        if src[src.rfind("\n", 0, j) + 1:j].strip():
+            # Not the start of its line (a comment or a text naming it).
+            out.append(src[i:j + 1])
+            i = j + 1
+            continue
         out.append(src[i:j])
-        end = src.find("\n}\n", j)
-        end = len(src) if end < 0 else end + 3
+        end = test_item_end(src, j)
         out.append("\n" * src.count("\n", j, end))
         i = end
+
+
+def self_test():
+    """Checks `without_tests` with made-up sources; returns the problems."""
+    cases = [
+        # (source, texts that must be found, texts that must not)
+        ('fn a() { tr("kept 1"); }\n#[cfg(test)]\nmod tests {\n    fn t() { tr("test 1"); }\n}\nfn b() { tr("kept 2"); }\n',
+         ["kept 1", "kept 2"], ["test 1"]),
+        ('fn a() {\n    #[cfg(test)]\n    hook();\n    tr("kept 3");\n}\n\nfn b() {\n    tr("kept 4");\n}\n',
+         ["kept 3", "kept 4"], []),
+        ('fn a() {\n    #[cfg(test)]\n    if flag() {\n        tr("test 2");\n    }\n    tr("kept 5");\n}\n',
+         ["kept 5"], ["test 2"]),
+        ('#[cfg(test)]\nconst X: &str = "x";\nfn a() {\n    tr("kept 6");\n}\n',
+         ["kept 6"], []),
+        ('impl A {\n    #[cfg(test)]\n    #[allow(dead_code)]\n    fn t() {\n        tr("test 3");\n    }\n    fn b() {\n        tr("kept 7");\n    }\n}\n',
+         ["kept 7"], ["test 3"]),
+        ('// marked #[cfg(test)] in a comment\nfn a() {\n    tr("kept 8");\n}\n',
+         ["kept 8"], []),
+    ]
+    problems = []
+    for src, want, unwanted in cases:
+        body = without_tests(src)
+        if body.count("\n") != src.count("\n"):
+            problems.append(f"line numbers moved in {src[:40]!r}")
+        found = {literal(split_args(body, m.end())[0]) for m in CALL.finditer(body)}
+        problems += [f"{t!r} not found" for t in want if t not in found]
+        problems += [f"{t!r} found in test code" for t in unwanted if t in found]
+    return problems
 
 
 def messages():
@@ -277,7 +337,9 @@ def languages():
 
 
 def check():
-    problems = []
+    # The reader of the code first: a text it misses is missing from every
+    # language without any other check noticing.
+    problems = [f"extractor: {p}" for p in self_test()]
     found = messages()
     if not POT.exists() or {k for k in read_po(POT)} != {(m, p) for m, p, _ in found}:
         problems.append("po/sam.pot is out of date: run scripts/i18n.py extract")
@@ -314,6 +376,14 @@ def stats():
         print(f"  {lang}: {done} translated ({done * 100 // max(1, len(wanted))} %)")
 
 
+def run_self_test():
+    problems = self_test()
+    for p in problems:
+        print(p)
+    print(f"i18n self-test: {'failed' if problems else 'passed'}")
+    sys.exit(1 if problems else 0)
+
+
 def extract():
     POT.write_text(write_pot(messages()))
     for lang in languages():
@@ -322,4 +392,4 @@ def extract():
 
 
 if __name__ == "__main__":
-    {"extract": extract, "check": check, "stats": stats}.get(sys.argv[1] if len(sys.argv) > 1 else "", lambda: print(__doc__))()
+    {"extract": extract, "check": check, "stats": stats, "self-test": run_self_test}.get(sys.argv[1] if len(sys.argv) > 1 else "", lambda: print(__doc__))()

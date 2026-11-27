@@ -117,13 +117,14 @@ impl Sam {
         let new_content = unpacked_sha256(&entry) != fp.sha256;
         // New content that is not SAM's own update is marked "look at it
         // first" on the record before it replaces the unpacked copy, and
-        // nothing is unpacked when that mark cannot be saved: a save that
-        // fails after the unpacking (the record lock held too long by
-        // another SAM process, a full disk) then leaves the record asking
-        // before the new content starts, never naming it confirmed. Before,
-        // the mark was saved only with the result, so such a failure left
-        // the new content in place unmarked.
-        if new_content && !checked.sams_update {
+        // nothing is unpacked when that mark cannot be saved. No
+        // confirmation can clear it meanwhile: a confirmation is refused
+        // while this change holds the app (`mark_reviewed_as_shown`).
+        // Before, the mark was saved only with the result, so a save that
+        // failed after the unpacking left the new content in place
+        // unmarked.
+        let marked = new_content && !checked.sams_update;
+        if marked {
             self.update_record(&entry.id, |f| f.content_changed_outside = true)?;
             entry.content_changed_outside = true;
         }
@@ -158,7 +159,10 @@ impl Sam {
                     entry.metadata.icon_name = icon_name;
                 }
                 entry.last_error = None;
-                let asked = self.finish_intake(&mut entry, &log, &ProgressSink::default())?;
+                let asked = match self.finish_intake(&mut entry, &log, &ProgressSink::default()) {
+                    Ok(asked) => asked,
+                    Err(e) => return Err(unfinished_unpack(&appdir, &entry, marked, e)),
+                };
                 if entry.desktop_entry.is_some() || self.config.general.desktop_integration {
                     entry.desktop_entry = desktop::install_launcher(&self.paths, &entry).ok();
                 }
@@ -173,21 +177,9 @@ impl Sam {
                 return Err(e);
             }
         };
-        let name = sam_core::util::display_safe(entry.display_name(), 80);
-        self.save_unpacked(&read, &mut entry, asked)
-            .with_context(|| {
-                if entry.content_changed_outside {
-                    sam_core::i18n::trf(
-                        "SAM unpacked the new content of {app} but could not save it in the app's record. SAM does not start the app until you have looked at it; unpack it again to finish",
-                        &[("app", &name)],
-                    )
-                } else {
-                    sam_core::i18n::trf(
-                        "SAM unpacked {app} again but could not save it in the app's record. Unpack it again to finish",
-                        &[("app", &name)],
-                    )
-                }
-            })?;
+        if let Err(e) = self.save_unpacked(&read, &mut entry, asked) {
+            return Err(unfinished_unpack(&root.join("AppDir"), &entry, marked, e));
+        }
         Ok(entry)
     }
 
@@ -1930,6 +1922,42 @@ impl Sam {
             page,
         })
     }
+}
+
+/// The error of an "unpack again" that unpacked `appdir` but could not
+/// finish (its detection failed, or the record could not be saved: the
+/// record lock held too long by another SAM process, a full disk). What it
+/// unpacked is removed, so no start runs it while the record still
+/// describes the content unpacked before (a start then finds the unpacked
+/// app missing and needs a new unpacking): the record names neither the
+/// new content nor, for SAM's own update, the note of its new needs.
+/// Before, the new content stayed in place and started with the old
+/// record. `marked`: new content marked "look at it first" on the record
+/// before the unpacking; when the removal fails, that mark still holds it.
+fn unfinished_unpack(
+    appdir: &Path,
+    entry: &AppEntry,
+    marked: bool,
+    err: anyhow::Error,
+) -> anyhow::Error {
+    let name = sam_core::util::display_safe(entry.display_name(), 80);
+    let text = if remove_tree(appdir).is_ok() {
+        sam_core::i18n::trf(
+            "SAM unpacked {app} again but could not finish, so it removed what it unpacked. The app starts only after it has been unpacked again; unpack it again to finish",
+            &[("app", &name)],
+        )
+    } else if marked {
+        sam_core::i18n::trf(
+            "SAM unpacked the new content of {app} but could not finish. SAM does not start the app until you have looked at it; unpack it again to finish",
+            &[("app", &name)],
+        )
+    } else {
+        sam_core::i18n::trf(
+            "SAM unpacked {app} again but could not finish. Unpack it again to finish",
+            &[("app", &name)],
+        )
+    };
+    err.context(text)
 }
 
 /// Rename, or copy and delete across file systems.

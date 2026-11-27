@@ -14,22 +14,27 @@
   then; what another part of SAM saved meanwhile in other settings stays.
   When both change the same setting or the same list (such as the granted
   folders), the later save wins.
+- The "look at it first" marks go further, on the safe side: a refresh, a
+  new detection or an "unpack again" that worked on a copy carrying a
+  mark saves it again. If you confirm the app while a refresh or a new
+  detection runs, SAM may ask you once more.
 - A change that replaces all settings at once (a preset, a reset, the
   compatibility mode, undoing the repair steps, a whole set you confirm)
   saves exactly that set, never mixed with a switch saved meanwhile.
 - Confirming that you looked at an app checks and clears the marks under
   the same lock, so it never clears a mark saved after the page was
   checked.
-- When you confirm an app while SAM unpacks a newly changed AppImage of
-  it again, the "look at it first" mark of the new content stays, so SAM
-  still asks before that new content starts, and so does the note of what
-  the new content asks for more.
+- SAM refuses to confirm an app while it changes the app's sandbox
+  (unpacks it again or updates it, for example) and says so; confirm it
+  once that is done. Before, a confirmation at that moment could clear the
+  "look at it first" mark of new content nobody had seen yet.
 - If another SAM process keeps the lock for more than 10 seconds, the save
   stops with a message that says so and saves nothing; try again.
 - "Unpack Again" marks new content "look at it first" before it replaces
-  the unpacked copy. If the record cannot be saved after the unpacking,
-  SAM still asks before the new content starts, and the message says so;
-  if the mark itself cannot be saved, SAM unpacks nothing. If the
+  the unpacked copy. If the record cannot be saved or the unpacking cannot
+  be finished, SAM removes what it unpacked, so the app starts only after
+  it has been unpacked again, and the message says so; if the mark itself
+  cannot be saved, SAM unpacks nothing. If the
   unpacking then fails, SAM asks once more before the app starts.
 - Records written by older SAM versions read as before. An older SAM that
   runs at the same time does not take the lock, so close old SAM windows

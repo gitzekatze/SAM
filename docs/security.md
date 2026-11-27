@@ -1513,7 +1513,15 @@ was easily misread.
   `sam-jail` commands, a start that stores its result) save an app's
   record under one short record lock, and each saves only the fields it
   changed: a save keeps what another saved meanwhile in other fields, a
-  "look at it first" mark included. When two saves at once change the same
+  "look at it first" mark included. The marks are the one exception, on the safe
+  side: a refresh, a new detection or an "unpack again" saves a mark again
+  when the copy it worked on carried it, so a confirmation given while a
+  refresh or a new detection runs can be undone, and SAM asks once more.
+  Confirming an app is refused while SAM changes its sandbox (unpacks it
+  again or updates it, for example), so it never clears the mark of new
+  content nobody has seen. When an "unpack again" cannot save or finish
+  its result, SAM removes what it unpacked, so the app starts only after
+  it has been unpacked again. When two saves at once change the same
   setting or the same list (the granted folders, the bus names, the
   arguments, the repair steps), the later one wins. A change that replaces
   the whole set of settings (a preset, a reset, the compatibility mode, an

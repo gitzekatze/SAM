@@ -35,8 +35,7 @@ impl Sam {
         entry: &mut AppEntry,
         kind: SetChange,
     ) -> Result<()> {
-        #[cfg(test)]
-        record_lock_tests::before_save();
+        before_save();
         let saved = self.registry().try_update(&entry.id, |now| {
             sam_storage::apply_changes(now, read, entry)?;
             if kind == SetChange::WholeSet {
@@ -462,9 +461,28 @@ impl Sam {
     /// nothing is confirmed and the error says to look again (code
     /// `review-out-of-date`): no button may confirm what its page never
     /// showed (review L4). Without `seen` (a person at the terminal), what
-    /// is there now is confirmed.
+    /// is there now is confirmed. Refused at once, without waiting, while
+    /// the app's sandbox is being changed (code `app-being-changed`).
     pub fn mark_reviewed_as_shown(&self, query: &str, seen: Option<&str>) -> Result<AppEntry> {
-        let id = self.resolve(query)?.id;
+        let app = self.resolve(query)?;
+        let id = app.id.clone();
+        // Held like a start ([`crate::app_lock`]) until the confirmation is
+        // saved, so it never lands while an "unpack again", an update, a
+        // going back or a move of the app runs. Such a change marks new
+        // content "look at it first" before it replaces the unpacked copy;
+        // a confirmation in between cleared that mark for content nobody
+        // had seen yet, and when the change then could not save its result
+        // the new content started without a question.
+        let Some(_start) = crate::app_lock::for_start(&self.paths, &id)? else {
+            return Err(sam_core::error::CodedError::new(
+                "app-being-changed",
+                sam_core::i18n::trf(
+                    "{app} is being changed right now (for example unpacked again or updated). SAM confirmed nothing: look at it again when that is done, then confirm.",
+                    &[("app", &sam_core::util::display_safe(app.display_name(), 80))],
+                ),
+            )
+            .into());
+        };
         // Checked and confirmed on the record as it is under the record
         // lock: a mark or notice another SAM process saved after the check
         // is never cleared unseen.
@@ -664,6 +682,20 @@ impl Sam {
         }
         Ok(n)
     }
+}
+
+/// The moment in [`Sam::save_profile`] before it takes the record lock,
+/// where a test makes another SAM process save. Outside tests nothing
+/// happens. A function in both builds, not an attribute on the call: the
+/// reader of the texts to translate (`scripts/i18n.py`) leaves out what
+/// is marked as test code, and the marked call once hid seven texts of
+/// this file from it, so their translations were lost.
+#[cfg(not(test))]
+fn before_save() {}
+
+#[cfg(test)]
+fn before_save() {
+    record_lock_tests::before_save();
 }
 
 #[cfg(test)]
@@ -1120,5 +1152,53 @@ mod record_lock_tests {
             "the new content's note stays, the one seen stays cleared"
         );
         assert_eq!(mine.pending_changes, back.pending_changes);
+    }
+
+    /// A confirmation while the app's sandbox is being changed (an
+    /// "unpack again" of new content holds the app from its "look at it
+    /// first" mark to the save of its result) is refused at once and
+    /// clears nothing; once the change is done it goes through. Before, it
+    /// cleared the mark the change had just saved for content nobody had
+    /// seen yet.
+    #[test]
+    fn a_confirmation_is_refused_while_the_app_is_being_changed() {
+        let t = tempfile::tempdir().unwrap();
+        let sam = Sam::with_paths(Paths::rooted(t.path())).unwrap();
+        const ID: &str = "appimage-changing-1a2b";
+        let mut e = AppEntry {
+            id: ID.into(),
+            name: "Changing".into(),
+            content_changed_outside: true,
+            pending_changes: vec!["network".into()],
+            ..Default::default()
+        };
+        sam.registry().save_confirmed(&mut e).unwrap();
+        // Held from another thread, as the window's "Unpack Again" or a
+        // `sam-jail reextract` in a terminal holds it.
+        let paths = sam.paths.clone();
+        let (taken, is_taken) = std::sync::mpsc::channel();
+        let (release, released) = std::sync::mpsc::channel::<()>();
+        let changer = std::thread::spawn(move || {
+            let lock = crate::app_lock::for_change(&paths, ID).unwrap();
+            let _ = taken.send(lock.is_some());
+            let _ = released.recv_timeout(std::time::Duration::from_secs(60));
+        });
+        assert!(is_taken
+            .recv_timeout(std::time::Duration::from_secs(60))
+            .unwrap());
+        let refused = sam.mark_reviewed(ID);
+        let _ = release.send(());
+        changer.join().unwrap();
+        let err = refused.expect_err("confirmed while the app was being changed");
+        assert_eq!(
+            sam_core::error::code_of(&err),
+            Some("app-being-changed"),
+            "{err:#}"
+        );
+        let back = sam.resolve(ID).unwrap();
+        assert!(back.content_changed_outside, "the mark stays");
+        assert_eq!(back.pending_changes, ["network"], "the note stays");
+        let confirmed = sam.mark_reviewed(ID).unwrap();
+        assert!(!confirmed.content_changed_outside, "confirmed once done");
     }
 }
