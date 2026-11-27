@@ -297,14 +297,10 @@ mod overlay_option_tests {
         let help = "  --ro-bind-fds FD DEST\n  --xbind-fd FD\n  --bind-fd-all\n";
         assert!(!help_lists_option(help, "--bind-fd"));
         assert!(!help_lists_option(help, "--ro-bind-fd"));
-        assert!(help_lists_option(
-            "  --bind-fd, --ro-bind-fd=FD\n",
-            "--bind-fd"
-        ));
-        assert!(help_lists_option(
-            "  --bind-fd, --ro-bind-fd=FD\n",
-            "--ro-bind-fd"
-        ));
+        let marked = "  --bind-fd, --ro-bind-fd FD\n  --overlay-src= SRC\n";
+        assert!(help_lists_option(marked, "--bind-fd"));
+        assert!(help_lists_option(marked, "--ro-bind-fd"));
+        assert!(help_lists_option(marked, "--overlay-src"));
     }
 
     /// No help and no option name list nothing.
