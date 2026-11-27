@@ -237,6 +237,97 @@ fn release_builds_never_turn_on_debug_assertions() {
     }
 }
 
+/// A release build ignores SAM's developer variables (folders and tools),
+/// so a test built in release mode would reach the real SAM folders or real
+/// tools. One test-only crate, `sam-test-guard`, stops every build without
+/// debug assertions; every other crate of the workspace lists it under
+/// `[dev-dependencies]`, so its tests cannot be built in release mode, while
+/// `cargo build --release` of the shipped programs never compiles it.
+#[test]
+fn release_test_builds_stop_at_the_test_guard() {
+    const GUARD: &str = "sam-test-guard";
+    let read = |p: PathBuf| -> toml::Value {
+        let text = fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()));
+        toml::from_str(&text).unwrap_or_else(|e| panic!("{}: {e}", p.display()))
+    };
+    let names = |v: Option<&toml::Value>| -> Vec<String> {
+        v.and_then(|v| v.as_array())
+            .expect("the workspace lists its members")
+            .iter()
+            .map(|m| m.as_str().expect("a member is a path").to_string())
+            .collect()
+    };
+    let workspace = read(root().join("Cargo.toml"));
+    let members = names(workspace["workspace"].get("members"));
+    let guard_dir = format!("crates/{GUARD}");
+    assert!(
+        members.contains(&guard_dir),
+        "{GUARD} is not a workspace member"
+    );
+    // A plain `cargo build --release` in the workspace builds the default
+    // members: the guard is not one of them, or that build would stop.
+    let defaults = names(workspace["workspace"].get("default-members"));
+    assert!(
+        !defaults.contains(&guard_dir),
+        "{GUARD} is a default member: a plain cargo build --release would stop at it"
+    );
+
+    // The guard itself: one compile_error under cfg(not(debug_assertions)),
+    // and nothing else that could switch the crate off.
+    let lib = root().join(&guard_dir).join("src/lib.rs");
+    let text = fs::read_to_string(&lib).unwrap_or_else(|e| panic!("{}: {e}", lib.display()));
+    let code: Vec<&str> = text
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with("//"))
+        .collect();
+    assert!(
+        code.first() == Some(&"#[cfg(not(debug_assertions))]")
+            && code
+                .get(1)
+                .is_some_and(|l| l.starts_with("compile_error!("))
+            && code.last().is_some_and(|l| l.ends_with(");"))
+            && code.iter().filter(|l| l.contains('#')).count() == 1
+            && code.iter().filter(|l| l.contains("compile_error!")).count() == 1,
+        "{} no longer holds exactly one compile_error! under \
+         #[cfg(not(debug_assertions))]:\n{}",
+        lib.display(),
+        code.join("\n")
+    );
+    let guard = read(root().join(&guard_dir).join("Cargo.toml"));
+    for table in ["dependencies", "build-dependencies"] {
+        assert!(guard.get(table).is_none(), "{GUARD} has [{table}]");
+    }
+
+    // Every other crate lists the guard as a test-only dependency, and only
+    // there: in [dependencies] it would stop the release build of SAM.
+    let mut missing = Vec::new();
+    let others: Vec<&String> = members.iter().filter(|m| **m != guard_dir).collect();
+    assert!(others.len() >= 9, "the workspace lists only {others:?}");
+    for member in others {
+        let manifest = read(root().join(member).join("Cargo.toml"));
+        for table in ["dependencies", "build-dependencies"] {
+            assert!(
+                manifest.get(table).and_then(|t| t.get(GUARD)).is_none(),
+                "{member} lists {GUARD} in [{table}]: only [dev-dependencies] may"
+            );
+        }
+        if manifest
+            .get("dev-dependencies")
+            .and_then(|t| t.get(GUARD))
+            .is_none()
+        {
+            missing.push(member.as_str());
+        }
+    }
+    assert!(
+        missing.is_empty(),
+        "these crates do not list {GUARD} in [dev-dependencies], so their tests \
+         could be built in release mode, where SAM ignores the variables that \
+         keep tests away from the real folders and tools: {missing:?}"
+    );
+}
+
 const TAG: &str = "v1.2.3";
 const WORKFLOW: &str = "gitzekatze/SAM/.github/workflows/release.yml";
 const APPIMAGE: &str = "SAM-1.2.3-x86_64.AppImage";

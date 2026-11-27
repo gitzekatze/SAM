@@ -18,7 +18,10 @@ Optional dependencies of `sam-jail-cli`:
 
 Packages build SAM with `cargo build --release` and no features: the
 `dev-tools` feature (and `--all-features`) would put the test and release
-tools into the packaged programs ([Testing](testing.md)).
+tools into the packaged programs ([Testing](testing.md)). SAM's tests run
+only in a developer build (`cargo test` without `--release`): a test build
+in release mode stops with a message, because a release build ignores the
+variables that keep the tests away from the real folders and tools.
 
 ## Arch / CachyOS (AUR)
 

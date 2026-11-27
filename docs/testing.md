@@ -159,11 +159,17 @@ or records:
 names a folder of stand-in tools that SAM's tests may run although the user
 owns them. SAM's scripts and tests that set them (`tests/real-apps/`,
 `tests/gui/desktop-sandbox.sh`, the integration tests) use developer builds.
-An integration test that keeps SAM away from your folders with these
-variables refuses to compile in a release build (a test run with
-`--release`), since it would then use your real folders;
-`crates/sam-jail-cli/tests/developer_build_tests.rs` checks that every such
-test file carries this guard.
+SAM's tests keep SAM away from your folders and tools with SAM's developer
+variables (the four folder variables and these five tool variables), which
+a release build ignores, so a test built in release mode would use your
+real SAM folders and real tools. SAM's tests therefore refuse to compile in
+a release build (a test run with `--release`): every crate lists one
+test-only crate, `crates/sam-test-guard`, under `[dev-dependencies]`, and
+that crate stops every build without debug assertions. Cargo compiles
+dev-dependencies only for tests, so `cargo build --release` of SAM's
+programs never compiles it. `release_test_builds_stop_at_the_test_guard`
+in `crates/sam-jail-cli/tests/automation.rs` checks that the guard stays
+in place and that every crate lists it.
 
 The test and release tools are in developer builds only, too: `sam-jail dev
 make-fixture` (test AppImages), `dev bench`, `dev set-update-info`, `dev

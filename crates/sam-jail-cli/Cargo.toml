@@ -37,6 +37,7 @@ libc.workspace = true
 clap_mangen = "0.3"
 
 [dev-dependencies]
+sam-test-guard.workspace = true
 tempfile.workspace = true
 
 [lints]

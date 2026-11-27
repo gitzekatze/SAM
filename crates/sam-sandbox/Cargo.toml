@@ -11,6 +11,7 @@ sam-core.workspace = true
 anyhow.workspace = true
 
 [dev-dependencies]
+sam-test-guard.workspace = true
 tempfile.workspace = true
 
 [lints]
