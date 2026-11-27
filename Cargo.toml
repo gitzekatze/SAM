@@ -10,6 +10,21 @@ members = [
     "crates/sam-runner",
     "crates/sam-jail-cli",
     "crates/sam-gtk",
+    "crates/sam-test-guard",
+]
+# Everything but the test guard: a plain `cargo build --release` in this
+# folder builds SAM's programs and libraries, not the guard, which stops
+# every build without debug assertions (crates/sam-test-guard/src/lib.rs).
+default-members = [
+    "crates/sam-core",
+    "crates/sam-storage",
+    "crates/sam-detect",
+    "crates/sam-intake",
+    "crates/sam-profile",
+    "crates/sam-sandbox",
+    "crates/sam-runner",
+    "crates/sam-jail-cli",
+    "crates/sam-gtk",
 ]
 
 [workspace.package]
@@ -27,6 +42,8 @@ sam-intake = { path = "crates/sam-intake" }
 sam-profile = { path = "crates/sam-profile" }
 sam-sandbox = { path = "crates/sam-sandbox" }
 sam-runner = { path = "crates/sam-runner" }
+# Test-only: every crate lists it under [dev-dependencies], never elsewhere.
+sam-test-guard = { path = "crates/sam-test-guard" }
 
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }

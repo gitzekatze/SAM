@@ -8,6 +8,7 @@
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
 
 use std::fs;
+use std::ops::Range;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
@@ -190,14 +191,139 @@ fn files_below(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
+const PKGBUILD: &str = "packaging/arch/PKGBUILD";
+const SPEC: &str = "packaging/fedora/sam-jail.spec";
+
+/// The lines of the package recipe `recipe` (a path below the repository).
+fn recipe_text(recipe: &str) -> String {
+    fs::read_to_string(root().join(recipe)).unwrap_or_else(|e| panic!("{recipe}: {e}"))
+}
+
+/// The body of the shell function `name` in the Arch recipe: the lines (as
+/// indices into `lines`) between its `name() {` line and the first `}` at
+/// the start of a line. Fails, naming the file and line, when the recipe
+/// does not define the function exactly once in that form or never closes
+/// it.
+fn pkgbuild_function(lines: &[&str], name: &str) -> Range<usize> {
+    let defines = |l: &str| {
+        let l = l.trim_start();
+        match l.strip_prefix("function") {
+            Some(rest) if rest.starts_with([' ', '\t']) => rest
+                .trim_start()
+                .strip_prefix(name)
+                .is_some_and(|r| r.is_empty() || r.starts_with([' ', '\t', '(', '{'])),
+            _ => l
+                .strip_prefix(name)
+                .is_some_and(|r| r.trim_start().starts_with('(')),
+        }
+    };
+    let defined: Vec<usize> = (0..lines.len()).filter(|&i| defines(lines[i])).collect();
+    let &[at] = defined.as_slice() else {
+        panic!(
+            "{PKGBUILD}: {name}() must be defined exactly once, found at lines {:?}",
+            defined.iter().map(|i| i + 1).collect::<Vec<_>>()
+        );
+    };
+    let header = format!("{name}() {{");
+    assert!(
+        lines[at] == header,
+        "{PKGBUILD}:{}: {name}() must start with the line `{header}`, not {:?}",
+        at + 1,
+        lines[at]
+    );
+    let end = (at + 1..lines.len())
+        .find(|&i| lines[i] == "}")
+        .unwrap_or_else(|| {
+            panic!(
+                "{PKGBUILD}:{}: {name}() has no closing `}}` at the start of a line",
+                at + 1
+            )
+        });
+    at + 1..end
+}
+
+/// The section names of an RPM spec file: a line whose first word is one of
+/// them starts a new section.
+const SPEC_SECTIONS: &str = "%prep %generate_buildrequires %conf %build \
+    %install %check %clean %files %changelog %package %description %pre %post \
+    %preun %postun %pretrans %posttrans %preuntrans %postuntrans %triggerprein \
+    %triggerin %triggerun %triggerpostun %filetriggerin %filetriggerun \
+    %filetriggerpostun %transfiletriggerin %transfiletriggerun \
+    %transfiletriggerpostun %verifyscript %sourcelist %patchlist";
+
+/// The body of the section `name` (for example `%check`) of the Fedora
+/// recipe: the lines (as indices into `lines`) after its header, up to the
+/// next section header or the end of the file. Fails, naming the file and
+/// line, when the section is not there exactly once or its header carries
+/// more than its name.
+fn spec_section(lines: &[&str], name: &str) -> Range<usize> {
+    assert!(
+        SPEC_SECTIONS.split_whitespace().any(|s| s == name),
+        "{name} is no spec section"
+    );
+    let section = |l: &str| -> Option<&'static str> {
+        let first = l.split_whitespace().next()?;
+        SPEC_SECTIONS.split_whitespace().find(|s| *s == first)
+    };
+    let headers: Vec<usize> = (0..lines.len())
+        .filter(|&i| section(lines[i]) == Some(name))
+        .collect();
+    let &[at] = headers.as_slice() else {
+        panic!(
+            "{SPEC}: {name} must be there exactly once, found at lines {:?}",
+            headers.iter().map(|i| i + 1).collect::<Vec<_>>()
+        );
+    };
+    assert!(
+        lines[at] == name,
+        "{SPEC}:{}: the line must be just `{name}`, not {:?}",
+        at + 1,
+        lines[at]
+    );
+    let end = (at + 1..lines.len())
+        .find(|&i| section(lines[i]).is_some())
+        .unwrap_or(lines.len());
+    at + 1..end
+}
+
+/// Whether `line` sets an optimisation level other than a literal 1, 2, 3,
+/// s or z in any spelling (`-C opt-level=0`, `-Copt-level=0`,
+/// `opt-level = 0`, `opt_level: "0"`, `CARGO_PROFILE_RELEASE_OPT_LEVEL=0`),
+/// or a level this test cannot read, such as `opt-level=$LEVEL`.
+fn sets_a_level_that_may_be_zero(line: &str) -> bool {
+    let line = line.to_lowercase().replace('_', "-");
+    line.match_indices("opt-level").any(|(at, word)| {
+        let mut value = line[at + word.len()..]
+            .trim_start_matches([' ', '\t', '=', ':', '"', '\'', '\\'])
+            .chars();
+        let level = value.next();
+        let after = value.next();
+        !(matches!(level, Some('1' | '2' | '3' | 's' | 'z'))
+            && after.is_none_or(|c| c.is_whitespace() || "\"',;)]}\\".contains(c)))
+    })
+}
+
 /// SAM's developer variables and test hooks (SAM_CLI, SAM_RUN,
-/// SAM_LOCALE_DIR, SAM_DBUS_LOG, SAM_TRUST_TOOLS_IN) work only where debug
-/// assertions are on (owner decision 16 of 2026-11-23). A release build
-/// with them on would honour every one of them, silently. So the release
-/// profile never turns them on, and no packaging recipe, the Makefile or
-/// the release scripts turn them on by a flag (`-C debug-assertions`,
+/// SAM_LOCALE_DIR, SAM_DBUS_LOG, SAM_TRUST_TOOLS_IN, and the folder
+/// variables SAM_CONFIG_DIR, SAM_DATA_DIR, SAM_APPLICATIONS_DIR and
+/// SAM_RUNTIME_DIR) work only where debug assertions are on (owner decision
+/// 16 of 2026-11-23). A release build with them on would honour every one
+/// of them, silently. So the release profile never turns them on, and no
+/// packaging recipe, the Makefile or the release scripts turn them on by a
+/// flag (`-C debug-assertions`,
 /// `--config profile.release.debug-assertions=true`) or a variable
 /// (`CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS`).
+///
+/// An optimisation level of 0 turns them on too: Cargo passes no
+/// debug-assertions flag for a release build, so rustc derives them from
+/// the last `-C opt-level` it gets, and one from `RUSTFLAGS` comes after
+/// the profile's. So no such file sets level 0, in any spelling, except the
+/// test steps of the Arch and Fedora recipes (check() and %check), which
+/// build only SAM's tests and never in release mode. The profile variable
+/// `CARGO_PROFILE_RELEASE_OPT_LEVEL=0` would be safe (Cargo then passes
+/// `-C debug-assertions=off` itself), but no shipped build needs level 0, so
+/// the one rule covers it too. A level this test cannot read (a variable)
+/// counts as 0.
 #[test]
 fn release_builds_never_turn_on_debug_assertions() {
     let cargo: toml::Value =
@@ -212,6 +338,9 @@ fn release_builds_never_turn_on_debug_assertions() {
     let mut files = vec![
         root().join("Makefile"),
         root().join("scripts/make-appimage.sh"),
+        // It writes the Cargo configuration of the vendored source that the
+        // package recipes build with.
+        root().join("scripts/make-release.sh"),
         root().join("scripts/release.sh"),
         root().join(".github/workflows/release.yml"),
     ];
@@ -219,22 +348,251 @@ fn release_builds_never_turn_on_debug_assertions() {
     files_below(&root().join("packaging"), &mut files);
     // The recipes that build SAM with --release are among them: a moved
     // folder must not leave this test checking nothing.
-    for recipe in ["packaging/arch/PKGBUILD", "packaging/fedora/sam-jail.spec"] {
+    for recipe in [PKGBUILD, SPEC] {
         assert!(files.contains(&root().join(recipe)), "{recipe} is gone");
     }
     assert!(files.len() > before + 1);
+
+    let arch = recipe_text(PKGBUILD);
+    let arch: Vec<&str> = arch.lines().collect();
+    let spec = recipe_text(SPEC);
+    let spec: Vec<&str> = spec.lines().collect();
+    let test_steps = [
+        (PKGBUILD, pkgbuild_function(&arch, "check")),
+        (SPEC, spec_section(&spec, "%check")),
+    ];
+    let mut level_zero = Vec::new();
     for f in &files {
-        let text = fs::read_to_string(f)
-            .unwrap_or_else(|e| panic!("{}: {e}", f.display()))
-            .to_lowercase()
-            .replace('_', "-");
+        let raw = fs::read_to_string(f).unwrap_or_else(|e| panic!("{}: {e}", f.display()));
+        let name = f.strip_prefix(root()).unwrap_or(f).display().to_string();
         assert!(
-            !text.contains("debug-assertions"),
-            "{} turns debug assertions on for a release build (or names them): \
-             SAM's developer variables would work there",
-            f.display()
+            !raw.to_lowercase()
+                .replace('_', "-")
+                .contains("debug-assertions"),
+            "{name} turns debug assertions on for a release build (or names them): \
+             SAM's developer variables would work there"
         );
+        let test_step = test_steps
+            .iter()
+            .find(|(recipe, _)| root().join(recipe) == *f)
+            .map(|(_, body)| body.clone());
+        for (i, line) in raw.lines().enumerate() {
+            let allowed = test_step.as_ref().is_some_and(|body| body.contains(&i));
+            if !allowed && sets_a_level_that_may_be_zero(line) {
+                level_zero.push(format!("{name}:{}: {}", i + 1, line.trim()));
+            }
+        }
     }
+    assert!(
+        level_zero.is_empty(),
+        "optimisation level 0 (or a level this test cannot read) outside the \
+         test steps of the package recipes: a release build at level 0 has debug \
+         assertions and honours SAM's developer variables (SAM_DATA_DIR, SAM_CLI, \
+         SAM_TRUST_TOOLS_IN, ...):\n{}",
+        level_zero.join("\n")
+    );
+
+    // The test steps may build at level 0 only because they build no
+    // release: a release build there would overwrite the programs that
+    // package() installs on Arch.
+    for (recipe, body) in &test_steps {
+        let lines = if *recipe == PKGBUILD { &arch } else { &spec };
+        for i in body.clone() {
+            let code = lines[i].trim();
+            let release = !code.starts_with('#')
+                && code
+                    .split_whitespace()
+                    .any(|w| w == "-r" || w.starts_with("--release") || w.starts_with("--profile"));
+            assert!(
+                !release,
+                "{recipe}:{}: the test step builds at optimisation level 0 and must \
+                 not build in release mode: {code}",
+                i + 1
+            );
+        }
+    }
+
+    // The build steps hand on the distribution's flags and add no level.
+    let calls: Vec<&str> = arch[pkgbuild_function(&arch, "build")]
+        .iter()
+        .map(|l| l.trim())
+        .filter(|l| !l.starts_with('#') && l.contains("_rustflags"))
+        .collect();
+    assert_eq!(
+        calls,
+        ["_rustflags"],
+        "build() in {PKGBUILD} must call _rustflags without arguments"
+    );
+    let flags: Vec<&str> = spec[spec_section(&spec, "%build")]
+        .iter()
+        .map(|l| l.trim())
+        .filter(|l| !l.starts_with('#') && l.to_lowercase().contains("rustflags"))
+        .collect();
+    assert!(
+        flags.len() == 1
+            && !flags[0]
+                .to_lowercase()
+                .replace('_', "-")
+                .contains("opt-level"),
+        "%build in {SPEC} must set RUSTFLAGS once, without an optimisation level: {flags:?}"
+    );
+}
+
+/// A release build ignores SAM's developer variables (folders and tools),
+/// so a test built in release mode would reach the real SAM folders or real
+/// tools. One test-only crate, `sam-test-guard`, stops every build without
+/// debug assertions; every other crate of the workspace lists it under
+/// `[dev-dependencies]`, so its tests cannot be built in release mode, while
+/// `cargo build --release` of the shipped programs never compiles it.
+#[test]
+fn release_test_builds_stop_at_the_test_guard() {
+    const GUARD: &str = "sam-test-guard";
+    let read = |p: PathBuf| -> toml::Value {
+        let text = fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()));
+        toml::from_str(&text).unwrap_or_else(|e| panic!("{}: {e}", p.display()))
+    };
+    let names = |v: Option<&toml::Value>| -> Vec<String> {
+        v.and_then(|v| v.as_array())
+            .expect("the workspace lists its members")
+            .iter()
+            .map(|m| m.as_str().expect("a member is a path").to_string())
+            .collect()
+    };
+    let workspace = read(root().join("Cargo.toml"));
+    let members = names(workspace["workspace"].get("members"));
+    let guard_dir = format!("crates/{GUARD}");
+    assert!(
+        members.contains(&guard_dir),
+        "{GUARD} is not a workspace member"
+    );
+    // A plain `cargo build --release` in the workspace builds the default
+    // members: the guard is not one of them, or that build would stop.
+    let defaults = names(workspace["workspace"].get("default-members"));
+    assert!(
+        !defaults.contains(&guard_dir),
+        "{GUARD} is a default member: a plain cargo build --release would stop at it"
+    );
+
+    // The guard itself: one compile_error under cfg(not(debug_assertions)),
+    // and nothing else that could switch the crate off.
+    let lib = root().join(&guard_dir).join("src/lib.rs");
+    let text = fs::read_to_string(&lib).unwrap_or_else(|e| panic!("{}: {e}", lib.display()));
+    let code: Vec<&str> = text
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with("//"))
+        .collect();
+    assert!(
+        code.first() == Some(&"#[cfg(not(debug_assertions))]")
+            && code
+                .get(1)
+                .is_some_and(|l| l.starts_with("compile_error!("))
+            && code.last().is_some_and(|l| l.ends_with(");"))
+            && code.iter().filter(|l| l.contains('#')).count() == 1
+            && code.iter().filter(|l| l.contains("compile_error!")).count() == 1,
+        "{} no longer holds exactly one compile_error! under \
+         #[cfg(not(debug_assertions))]:\n{}",
+        lib.display(),
+        code.join("\n")
+    );
+    let guard = read(root().join(&guard_dir).join("Cargo.toml"));
+    for table in ["dependencies", "build-dependencies"] {
+        assert!(guard.get(table).is_none(), "{GUARD} has [{table}]");
+    }
+
+    // Every other crate lists the guard as a test-only dependency, and only
+    // there: in [dependencies] it would stop the release build of SAM.
+    let mut missing = Vec::new();
+    let others: Vec<&String> = members.iter().filter(|m| **m != guard_dir).collect();
+    assert!(others.len() >= 9, "the workspace lists only {others:?}");
+    for member in others {
+        let manifest = read(root().join(member).join("Cargo.toml"));
+        for table in ["dependencies", "build-dependencies"] {
+            assert!(
+                manifest.get(table).and_then(|t| t.get(GUARD)).is_none(),
+                "{member} lists {GUARD} in [{table}]: only [dev-dependencies] may"
+            );
+        }
+        if manifest
+            .get("dev-dependencies")
+            .and_then(|t| t.get(GUARD))
+            .is_none()
+        {
+            missing.push(member.as_str());
+        }
+    }
+    assert!(
+        missing.is_empty(),
+        "these crates do not list {GUARD} in [dev-dependencies], so their tests \
+         could be built in release mode, where SAM ignores the variables that \
+         keep tests away from the real folders and tools: {missing:?}"
+    );
+}
+
+/// Unless debug assertions are set explicitly, rustc turns them off at every
+/// optimisation level above 0, and the distributions' flags may set one
+/// (Fedora's set `-Copt-level=3`). So the test steps of the Arch and Fedora
+/// recipes add `-C opt-level=0` after the distribution's flags (the last
+/// level wins); without it, a test build of a package may stop at the test
+/// guard. On Arch it is a safety net: build() already unsets makepkg's
+/// `RUSTFLAGS`, which check() then no longer sees.
+#[test]
+fn package_test_steps_build_at_optimisation_level_zero() {
+    let code = |lines: &[&str]| -> Vec<String> {
+        lines
+            .iter()
+            .map(|l| l.trim())
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+            .map(String::from)
+            .collect()
+    };
+    // The flag lines of a test step, up to its `cargo test`.
+    let flags_before_test = |step: &[String], recipe: &str| -> Vec<String> {
+        let at = step
+            .iter()
+            .position(|l| l.starts_with("cargo test"))
+            .unwrap_or_else(|| panic!("the test step of {recipe} no longer runs cargo test"));
+        step[..at]
+            .iter()
+            .filter(|l| l.to_lowercase().contains("rustflags"))
+            .cloned()
+            .collect()
+    };
+
+    // Arch: check() hands the flag to _rustflags, which adds its arguments
+    // after makepkg's RUSTFLAGS.
+    let pkgbuild = recipe_text(PKGBUILD);
+    let pkgbuild: Vec<&str> = pkgbuild.lines().collect();
+    let function = |name: &str| code(&pkgbuild[pkgbuild_function(&pkgbuild, name)]);
+    assert_eq!(
+        flags_before_test(&function("check"), "PKGBUILD"),
+        ["_rustflags -C opt-level=0"],
+        "check() in {PKGBUILD} must build the tests with \
+         `_rustflags -C opt-level=0`: makepkg's RUSTFLAGS may set a higher level"
+    );
+    let helper = function("_rustflags");
+    let inherited = helper.iter().position(|l| l.contains("${RUSTFLAGS"));
+    let added = helper
+        .iter()
+        .position(|l| l.starts_with("flags+=(") && l.ends_with("\"$@\")"));
+    assert!(
+        matches!((inherited, added), (Some(i), Some(a)) if i < a),
+        "_rustflags in packaging/arch/PKGBUILD no longer adds its arguments \
+         after makepkg's RUSTFLAGS:\n{}",
+        helper.join("\n")
+    );
+
+    // Fedora: %check sets RUSTFLAGS once, with the level after the
+    // distribution's flags.
+    let spec = recipe_text(SPEC);
+    let spec: Vec<&str> = spec.lines().collect();
+    let check = code(&spec[spec_section(&spec, "%check")]);
+    assert_eq!(
+        flags_before_test(&check, "sam-jail.spec"),
+        [r#"export RUSTFLAGS="%{?build_rustflags} -C opt-level=0""#],
+        "%check in {SPEC} must build the tests with \
+         -C opt-level=0 after %{{build_rustflags}}, which set -Copt-level=3"
+    );
 }
 
 const TAG: &str = "v1.2.3";

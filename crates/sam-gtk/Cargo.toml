@@ -28,4 +28,5 @@ libc.workspace = true
 workspace = true
 
 [dev-dependencies]
+sam-test-guard.workspace = true
 tempfile.workspace = true

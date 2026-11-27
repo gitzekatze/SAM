@@ -240,16 +240,21 @@ fn programs_beside(exe: Option<&Path>, appimage: Option<PathBuf>) -> Vec<PathBuf
 }
 
 /// SAM's developer variables (`SAM_CLI`, `SAM_RUN`, `SAM_LOCALE_DIR`,
-/// `SAM_DBUS_LOG`, the test hook `SAM_TRUST_TOOLS_IN`): they point SAM at
-/// other programs, other translations, a log file or a folder of stand-in
-/// tools, and exist for working on SAM itself. Only a developer (debug)
-/// build reads them. A release build ignores them: the window takes SAM's
-/// programs next to it or a copy on `$PATH` the user cannot change, SAM
-/// takes the installed translations, keeps no D-Bus log and runs only
-/// tools the user cannot change. So a forgotten developer setting, or a
-/// variable something else put into the desktop's environment, never
-/// changes what an installed SAM runs, shows or records (owner decision 16
-/// of 2026-11-23).
+/// `SAM_DBUS_LOG`, the test hook `SAM_TRUST_TOOLS_IN`, and the folder
+/// switches `SAM_CONFIG_DIR`, `SAM_DATA_DIR`, `SAM_APPLICATIONS_DIR`,
+/// `SAM_RUNTIME_DIR`): they point SAM at other programs, other
+/// translations, a log file, a folder of stand-in tools or other folders
+/// for its settings, data, menu entries and runtime files, and exist for
+/// working on SAM itself. Only a developer (debug) build reads them. A
+/// release build ignores them: the window takes SAM's programs next to it
+/// or a copy on `$PATH` the user cannot change, SAM takes the installed
+/// translations, keeps no D-Bus log, runs only tools the user cannot
+/// change and keeps its files in the standard folders (which
+/// `XDG_CONFIG_HOME` and `XDG_DATA_HOME` still move). So a forgotten
+/// developer setting, or a variable something else put into the desktop's
+/// environment, never changes what an installed SAM runs, shows, records
+/// or keeps where (owner decision 16 of 2026-11-23; the folder switches by
+/// the owner's decision of 2026-11-27).
 ///
 /// Every reader takes one of these: [`DeveloperVars::of_this_build`] in
 /// SAM, a stand-in with its own variables in tests, which so never change
@@ -260,8 +265,9 @@ pub struct DeveloperVars<'a> {
     lookup: &'a dyn Fn(&str) -> Option<OsString>,
 }
 
-/// The process environment, for [`DeveloperVars::of_this_build`].
-fn environment(name: &str) -> Option<OsString> {
+/// The process environment, for [`DeveloperVars::of_this_build`] and
+/// [`crate::paths::Paths::from_env`].
+pub(crate) fn environment(name: &str) -> Option<OsString> {
     std::env::var_os(name)
 }
 

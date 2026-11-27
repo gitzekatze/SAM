@@ -45,6 +45,12 @@ pub const LANGUAGES: &[(&str, &str)] = &[
 /// Set by SAM's window when it shows a language of its own: the system's
 /// `LANGUAGE` from before (empty when it had none). Apps get that one, so
 /// SAM's language setting never changes the language of the apps.
+///
+/// Every build reads it, a release build too: it is no developer variable
+/// ([`crate::util::DeveloperVars`]) but the way SAM's window hands the
+/// system's language to the sandbox, so ignoring it would give apps SAM's
+/// language. A stray value only changes the language an app sees inside
+/// its sandbox.
 pub const SYSTEM_LANGUAGE_VAR: &str = "SAM_SYSTEM_LANGUAGE";
 
 /// Sets up translations. `set_locale` is for programs without GTK (the

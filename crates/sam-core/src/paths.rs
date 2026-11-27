@@ -6,12 +6,15 @@
 //! ~/.local/share/applications/  sam-<app-id>.desktop
 //! ```
 //!
-//! `SAM_CONFIG_DIR` and `SAM_DATA_DIR` override the roots (used by
-//! tests and for portable setups).
+//! `XDG_CONFIG_HOME` and `XDG_DATA_HOME` move these folders in every
+//! build. `SAM_CONFIG_DIR`, `SAM_DATA_DIR`, `SAM_APPLICATIONS_DIR` and
+//! `SAM_RUNTIME_DIR` move them only in a developer build (tests and work
+//! on SAM itself, [`DeveloperVars`]); a release build ignores them.
 
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
-use crate::util::{expand_home, home_dir};
+use crate::util::{environment, expand_home, home_dir, DeveloperVars};
 
 #[derive(Debug, Clone)]
 pub struct Paths {
@@ -24,32 +27,67 @@ pub struct Paths {
     pub runtime_root: Option<PathBuf>,
 }
 
-/// A folder named in the environment variable `var`, if it is set to an
-/// absolute path. Empty or relative, it is ignored, as the XDG rules say:
-/// "" or "data" would put SAM's files into whatever folder SAM was started
-/// in (audit G-F20).
-fn folder_from(var: &str) -> Option<PathBuf> {
-    std::env::var_os(var)
-        .map(PathBuf::from)
-        .filter(|p| p.is_absolute())
+/// A folder from the value of a variable, if it is an absolute path.
+/// Empty or relative, it is ignored, as the XDG rules say: "" or "data"
+/// would put SAM's files into whatever folder SAM was started in (audit
+/// G-F20).
+fn folder_from(value: Option<OsString>) -> Option<PathBuf> {
+    value.map(PathBuf::from).filter(|p| p.is_absolute())
+}
+
+/// The folder that the developer variable `name` names: only in a
+/// developer build, and only an absolute path ([`folder_from`]).
+fn switched_folder(dev: &DeveloperVars, name: &str) -> Option<PathBuf> {
+    folder_from(dev.get(name))
+}
+
+/// Whether a developer switch (`SAM_CONFIG_DIR` or `SAM_DATA_DIR`) moves
+/// SAM's settings or data away from the folders where SAM keeps them
+/// otherwise. SAM's window then runs as a window of its own and leaves
+/// the desktop's entry for SAM alone (tests). A release build ignores
+/// these switches, so for it the answer is always no: a stray switch in
+/// the desktop's environment never makes an installed window run beside
+/// another one on the same settings.
+pub fn folders_moved_by_a_developer_switch() -> bool {
+    folders_moved_in(&DeveloperVars::of_this_build())
+}
+
+/// [`folders_moved_by_a_developer_switch`] with the developer variables
+/// `dev`.
+fn folders_moved_in(dev: &DeveloperVars) -> bool {
+    ["SAM_CONFIG_DIR", "SAM_DATA_DIR"]
+        .iter()
+        .any(|name| switched_folder(dev, name).is_some())
 }
 
 impl Paths {
+    /// SAM's folders for this program: the standard XDG folders in every
+    /// build, moved by SAM's own folder switches only in a developer build.
     pub fn from_env() -> Self {
-        let home = home_dir();
-        let xdg_config = folder_from("XDG_CONFIG_HOME").unwrap_or_else(|| home.join(".config"));
-        let xdg_data = folder_from("XDG_DATA_HOME").unwrap_or_else(|| home.join(".local/share"));
-        let config_dir = folder_from("SAM_CONFIG_DIR").unwrap_or_else(|| xdg_config.join("sam"));
-        let data_dir = folder_from("SAM_DATA_DIR").unwrap_or_else(|| xdg_data.join("sam"));
-        let applications_dir =
-            folder_from("SAM_APPLICATIONS_DIR").unwrap_or_else(|| xdg_data.join("applications"));
+        Self::from_vars(&home_dir(), &DeveloperVars::of_this_build(), &environment)
+    }
+
+    /// [`from_env`](Self::from_env) for the home folder `home`, the
+    /// developer variables `dev` and the environment `env`, which gives
+    /// the standard variables `XDG_CONFIG_HOME` and `XDG_DATA_HOME`
+    /// (a test's stand-ins).
+    fn from_vars(home: &Path, dev: &DeveloperVars, env: &dyn Fn(&str) -> Option<OsString>) -> Self {
+        let xdg_config =
+            folder_from(env("XDG_CONFIG_HOME")).unwrap_or_else(|| home.join(".config"));
+        let xdg_data =
+            folder_from(env("XDG_DATA_HOME")).unwrap_or_else(|| home.join(".local/share"));
+        let config_dir =
+            switched_folder(dev, "SAM_CONFIG_DIR").unwrap_or_else(|| xdg_config.join("sam"));
+        let data_dir = switched_folder(dev, "SAM_DATA_DIR").unwrap_or_else(|| xdg_data.join("sam"));
+        let applications_dir = switched_folder(dev, "SAM_APPLICATIONS_DIR")
+            .unwrap_or_else(|| xdg_data.join("applications"));
         Paths {
             config_dir,
             data_dir,
             applications_dir,
             // SAM_RUNTIME_DIR moves the per-launch runtime folders, like the
             // three above (tests that start SAM's programs use it).
-            runtime_root: folder_from("SAM_RUNTIME_DIR"),
+            runtime_root: switched_folder(dev, "SAM_RUNTIME_DIR"),
         }
     }
 
@@ -196,6 +234,130 @@ fn rooted_runtime_below(root: &Path, xdg: Option<&std::ffi::OsStr>) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A stand-in environment with SAM's four folder switches set to
+    /// absolute folders, and the standard XDG folders set as `xdg` says.
+    fn switches_set(xdg: bool) -> impl Fn(&str) -> Option<OsString> {
+        move |name: &str| {
+            let v = match name {
+                "SAM_CONFIG_DIR" => "/home/ann/planted/config",
+                "SAM_DATA_DIR" => "/home/ann/planted/data",
+                "SAM_APPLICATIONS_DIR" => "/home/ann/planted/applications",
+                "SAM_RUNTIME_DIR" => "/home/ann/planted/run",
+                "XDG_CONFIG_HOME" if xdg => "/home/ann/cfg",
+                "XDG_DATA_HOME" if xdg => "/home/ann/dat",
+                _ => return None,
+            };
+            Some(OsString::from(v))
+        }
+    }
+
+    /// A release build ignores SAM's folder switches (`SAM_CONFIG_DIR`,
+    /// `SAM_DATA_DIR`, `SAM_APPLICATIONS_DIR`, `SAM_RUNTIME_DIR`): it keeps
+    /// its settings, data and menu entries where it keeps them otherwise
+    /// and its runtime folders in the session's runtime folder, so a
+    /// variable in the desktop's environment never moves an installed SAM
+    /// to other settings and app records (owner decision of 2026-11-27).
+    /// The variables are a stand-in's.
+    #[test]
+    fn a_release_build_ignores_sams_folder_switches() {
+        let env = switches_set(false);
+        let home = Path::new("/home/ann");
+        let p = Paths::from_vars(home, &DeveloperVars::new(false, &env), &env);
+        assert_eq!(p.config_dir, home.join(".config/sam"));
+        assert_eq!(p.data_dir, home.join(".local/share/sam"));
+        assert_eq!(p.applications_dir, home.join(".local/share/applications"));
+        assert_eq!(p.runtime_root, None, "a release build read SAM_RUNTIME_DIR");
+    }
+
+    /// A developer build (tests, work on SAM itself) follows SAM's four
+    /// folder switches. The variables are a stand-in's.
+    #[test]
+    fn a_developer_build_follows_sams_folder_switches() {
+        let env = switches_set(true);
+        let p = Paths::from_vars(
+            Path::new("/home/ann"),
+            &DeveloperVars::new(true, &env),
+            &env,
+        );
+        assert_eq!(p.config_dir, Path::new("/home/ann/planted/config"));
+        assert_eq!(p.data_dir, Path::new("/home/ann/planted/data"));
+        assert_eq!(
+            p.applications_dir,
+            Path::new("/home/ann/planted/applications")
+        );
+        assert_eq!(
+            p.runtime_root.as_deref(),
+            Some(Path::new("/home/ann/planted/run"))
+        );
+    }
+
+    /// The standard `XDG_CONFIG_HOME` and `XDG_DATA_HOME` move SAM's
+    /// folders in every build, a release build too, also while SAM's own
+    /// folder switches are set and ignored. The variables are a stand-in's.
+    #[test]
+    fn every_build_follows_the_standard_config_and_data_folders() {
+        let env = switches_set(true);
+        let p = Paths::from_vars(
+            Path::new("/home/ann"),
+            &DeveloperVars::new(false, &env),
+            &env,
+        );
+        assert_eq!(p.config_dir, Path::new("/home/ann/cfg/sam"));
+        assert_eq!(p.data_dir, Path::new("/home/ann/dat/sam"));
+        assert_eq!(p.applications_dir, Path::new("/home/ann/dat/applications"));
+        assert_eq!(p.runtime_root, None);
+    }
+
+    /// An empty or relative folder is ignored in every build, for SAM's
+    /// switches and the XDG folders alike: "" or "data" would put SAM's
+    /// files into whatever folder SAM was started in (audit G-F20). The
+    /// variables are a stand-in's.
+    #[test]
+    fn empty_or_relative_folders_are_ignored_in_every_build() {
+        let env = |name: &str| match name {
+            "SAM_CONFIG_DIR" | "XDG_DATA_HOME" => Some(OsString::new()),
+            "SAM_DATA_DIR" | "SAM_APPLICATIONS_DIR" | "SAM_RUNTIME_DIR" | "XDG_CONFIG_HOME" => {
+                Some(OsString::from("data"))
+            }
+            _ => None,
+        };
+        let home = Path::new("/home/ann");
+        for developer in [false, true] {
+            let p = Paths::from_vars(home, &DeveloperVars::new(developer, &env), &env);
+            assert_eq!(p.config_dir, home.join(".config/sam"), "{developer}");
+            assert_eq!(p.data_dir, home.join(".local/share/sam"), "{developer}");
+            assert_eq!(
+                p.applications_dir,
+                home.join(".local/share/applications"),
+                "{developer}"
+            );
+            assert_eq!(p.runtime_root, None, "{developer}");
+            assert!(!folders_moved_in(&DeveloperVars::new(developer, &env)));
+        }
+    }
+
+    /// SAM's window runs as a window of its own and leaves the desktop's
+    /// entry for SAM alone only when a developer switch really moves its
+    /// settings or data: in a developer build. In a release build with the
+    /// switches set, it behaves as without them, so it never runs beside
+    /// another window on the same settings. The variables are a stand-in's.
+    #[test]
+    fn only_a_developer_build_counts_its_folders_as_moved_by_a_switch() {
+        let env = switches_set(false);
+        assert!(!folders_moved_in(&DeveloperVars::new(false, &env)));
+        assert!(folders_moved_in(&DeveloperVars::new(true, &env)));
+        for only in ["SAM_CONFIG_DIR", "SAM_DATA_DIR"] {
+            let one = |name: &str| (name == only).then(|| OsString::from("/home/ann/planted"));
+            assert!(folders_moved_in(&DeveloperVars::new(true, &one)), "{only}");
+            assert!(
+                !folders_moved_in(&DeveloperVars::new(false, &one)),
+                "{only}"
+            );
+        }
+        let none = |_: &str| None;
+        assert!(!folders_moved_in(&DeveloperVars::new(true, &none)));
+    }
 
     /// Rooted paths (tests) keep their runtime folders apart from SAM's real
     /// one and from every other root, and short enough for SAM's sockets.

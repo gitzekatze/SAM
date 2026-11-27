@@ -26,12 +26,12 @@ sha256sums=('03795afa5d35c4be72de02390167d57350bcb13fdf490a897b7abd02d64fc81c'
             '6f31053708211a434a638e01f121062013edce5068598684b93b9085ca793396')
 
 # makepkg's RUSTFLAGS plus a path remap that keeps the build folder out of
-# the binaries (reproducible builds). Passed space-safe, because $srcdir may
-# contain spaces.
+# the binaries (reproducible builds), then the flags given as arguments.
+# Passed space-safe, because $srcdir may contain spaces.
 _rustflags() {
   local flags=()
   read -ra flags <<< "${RUSTFLAGS:-}"
-  flags+=("--remap-path-prefix=$srcdir=/usr/src/debug/$pkgbase")
+  flags+=("--remap-path-prefix=$srcdir=/usr/src/debug/$pkgbase" "$@")
   CARGO_ENCODED_RUSTFLAGS="$(IFS=$'\x1f'; echo "${flags[*]}")"
   export CARGO_ENCODED_RUSTFLAGS
   unset RUSTFLAGS
@@ -48,7 +48,13 @@ build() {
 check() {
   cd "sam-$pkgver"
   export RUSTUP_TOOLCHAIN=stable CARGO_TARGET_DIR=target
-  _rustflags
+  # SAM's tests need a developer build, which rustc makes only at
+  # optimisation level 0 unless debug assertions are set explicitly. If
+  # makepkg's RUSTFLAGS reached this step with a higher level, the tests
+  # would stop at SAM's test guard. build() unsets RUSTFLAGS, which hides
+  # them here today, so this is a safety net. The last level wins. Only this
+  # test step may build at level 0, and never with --release.
+  _rustflags -C opt-level=0
   # The end-to-end sandbox tests skip themselves where Bubblewrap cannot run
   # (for example in a clean chroot without user namespaces).
   cargo test --frozen --offline --workspace

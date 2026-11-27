@@ -23,6 +23,7 @@ backhand.workspace = true
 libc.workspace = true
 
 [dev-dependencies]
+sam-test-guard.workspace = true
 sam-sandbox.workspace = true
 tempfile.workspace = true
 
