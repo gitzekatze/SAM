@@ -1521,7 +1521,12 @@ was easily misread.
   again or updates it, for example), so it never clears the mark of new
   content nobody has seen. When an "unpack again" cannot save or finish
   its result, SAM removes what it unpacked, so the app starts only after
-  it has been unpacked again. When two saves at once change the same
+  it has been unpacked again. When SAM cannot remove it either (a disk
+  remounted read-only, for example), the message says so: new content
+  that is not SAM's own update keeps its "look at it first" mark, and
+  otherwise (SAM's own update, going back, the same content again) the
+  app starts with what was left in place, under its record from before,
+  until it is unpacked again. When two saves at once change the same
   setting or the same list (the granted folders, the bus names, the
   arguments, the repair steps), the later one wins. A change that replaces
   the whole set of settings (a preset, a reset, the compatibility mode, an

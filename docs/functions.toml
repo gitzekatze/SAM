@@ -877,6 +877,7 @@ tests = ["records_changed_outside_sam_are_recognized", "a_save_of_an_older_copy_
   "nothing_is_unpacked_when_the_mark_cannot_be_saved_first",
   "a_confirmation_is_refused_while_the_app_is_being_changed",
   "a_confirmation_during_the_unpack_never_lets_new_content_start_unseen",
+  "an_unpack_whose_copy_cannot_be_removed_says_so",
 ]
 checks = ["tests/gui/app-page-atspi.sh"]
 

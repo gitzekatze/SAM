@@ -563,14 +563,28 @@ fn nothing_is_unpacked_when_the_mark_cannot_be_saved_first() {
     let err = format!("{:#}", result.expect_err("saved without the record lock"));
     assert!(err.contains("another SAM process"), "{err}");
     assert!(
+        !err.contains("removed what it unpacked"),
+        "SAM unpacked the new content and removed it again: {err}"
+    );
+    assert!(
         !unpacked_desktop_says(&sam, &id, "content nobody looked at"),
         "the new content was unpacked although its mark was not saved"
+    );
+    // The confirmed content is still the unpacked copy: an unpacking that
+    // began and was then removed again also leaves the new content absent,
+    // so only this tells "nothing unpacked" from "unpacked and removed".
+    assert!(
+        unpacked_desktop_says(&sam, &id, "Tool test application"),
+        "the confirmed content was replaced or removed"
     );
     assert_eq!(
         unpacked_sha256(&sam, &id),
         before,
         "the record is unchanged"
     );
+    let e = sam.resolve(&id).unwrap();
+    assert!(!e.content_changed_outside, "no mark was saved");
+    assert_ne!(e.state, AppState::Broken, "the app was left as it was");
 }
 
 /// A confirmation while "Unpack Again" unpacks a swapped AppImage (`sam-jail

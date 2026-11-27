@@ -1932,8 +1932,13 @@ impl Sam {
 /// app missing and needs a new unpacking): the record names neither the
 /// new content nor, for SAM's own update, the note of its new needs.
 /// Before, the new content stayed in place and started with the old
-/// record. `marked`: new content marked "look at it first" on the record
-/// before the unpacking; when the removal fails, that mark still holds it.
+/// record. The removal can fail too (a disk remounted read-only after an
+/// input/output error), and the message then says so: `marked` (new
+/// content marked "look at it first" on the record before the unpacking)
+/// still holds that content until the person looked at it; otherwise (SAM's
+/// own update, going back, or the same content again) what SAM unpacked
+/// stays in place and starts with the old record until it is unpacked
+/// again.
 fn unfinished_unpack(
     appdir: &Path,
     entry: &AppEntry,
@@ -1948,12 +1953,12 @@ fn unfinished_unpack(
         )
     } else if marked {
         sam_core::i18n::trf(
-            "SAM unpacked the new content of {app} but could not finish. SAM does not start the app until you have looked at it; unpack it again to finish",
+            "SAM unpacked the new content of {app} but could not finish, and it could not remove what it unpacked either. SAM does not start the app until you have looked at it; unpack it again to finish",
             &[("app", &name)],
         )
     } else {
         sam_core::i18n::trf(
-            "SAM unpacked {app} again but could not finish. Unpack it again to finish",
+            "SAM unpacked {app} again but could not finish, and it could not remove what it unpacked either. Until it is unpacked again, the app starts with what SAM unpacked, under the settings it had before; unpack it again to finish",
             &[("app", &name)],
         )
     };
@@ -2407,6 +2412,46 @@ mod tests {
             entry.source.sha256,
             "0".repeat(64),
             "as the other change left it"
+        );
+    }
+
+    /// An "unpack again" that could not finish and could not remove what it
+    /// unpacked either (a disk remounted read-only; here a stand-in path
+    /// that cannot be removed, under a plain file) says that it removed
+    /// nothing, and what that means for a start. Before, the message said
+    /// only "could not finish", so a person could not tell that the
+    /// unpacked content had stayed in place.
+    #[test]
+    fn an_unpack_whose_copy_cannot_be_removed_says_so() {
+        let t = tempfile::tempdir().unwrap();
+        fs::write(t.path().join("plain-file"), "").unwrap();
+        let appdir = t.path().join("plain-file").join("AppDir");
+        let entry = AppEntry {
+            id: "tool-1a2b".into(),
+            ..Default::default()
+        };
+        let message = |marked| {
+            format!(
+                "{:#}",
+                unfinished_unpack(&appdir, &entry, marked, anyhow::anyhow!("disk full"))
+            )
+        };
+        for marked in [true, false] {
+            let err = message(marked);
+            assert!(
+                err.contains("could not remove what it unpacked"),
+                "the message says nothing was removed: {err}"
+            );
+            assert!(!err.contains("removed what it unpacked"), "{err}");
+            assert!(err.contains("disk full"), "the cause stays: {err}");
+        }
+        assert!(
+            message(true).contains("until you have looked at it"),
+            "marked new content still asks first"
+        );
+        assert!(
+            message(false).contains("the app starts with what SAM unpacked"),
+            "unmarked content starts as it was left, and the message says so"
         );
     }
 
