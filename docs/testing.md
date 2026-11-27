@@ -140,9 +140,13 @@ These four folder variables (`SAM_CONFIG_DIR`, `SAM_DATA_DIR`,
 `SAM_APPLICATIONS_DIR`, `SAM_RUNTIME_DIR`) work only in developer builds: they
 move SAM's own folders, and with them which settings, app records and
 permissions SAM uses, so a release build ignores them and keeps its files in
-the standard folders. `XDG_CONFIG_HOME` and `XDG_DATA_HOME` move those
-folders in every build; to test a release build apart from your real
-configuration, point those two (or `HOME`) at a test folder.
+the standard folders. `XDG_CONFIG_HOME` and `XDG_DATA_HOME` move SAM's
+configuration and data folders in every build, but they do not keep a
+release build apart from an installed SAM: the window is still the one SAM
+window of your desktop session (started with an AppImage while SAM's window
+is open, it hands the AppImage to that window, which adds it to your real
+app list), and the runtime folders stay in `$XDG_RUNTIME_DIR/sam`. Test a
+release build in a separate user account, a container or a virtual machine.
 
 Five more variables work only in developer builds (`cargo build` without
 `--release`); a release build ignores them, so a forgotten setting in
@@ -155,6 +159,11 @@ or records:
 names a folder of stand-in tools that SAM's tests may run although the user
 owns them. SAM's scripts and tests that set them (`tests/real-apps/`,
 `tests/gui/desktop-sandbox.sh`, the integration tests) use developer builds.
+An integration test that keeps SAM away from your folders with these
+variables refuses to compile in a release build (a test run with
+`--release`), since it would then use your real folders;
+`crates/sam-jail-cli/tests/developer_build_tests.rs` checks that every such
+test file carries this guard.
 
 The test and release tools are in developer builds only, too: `sam-jail dev
 make-fixture` (test AppImages), `dev bench`, `dev set-update-info`, `dev

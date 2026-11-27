@@ -6,6 +6,10 @@
 //! Each was missing (mutation run 2026-11-23).
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
 
+// Isolated by variables only a developer build reads (developer_build_tests.rs).
+#[cfg(not(debug_assertions))]
+compile_error!("This test keeps SAM away from your real folders with variables only a developer build reads: run it without --release.");
+
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
