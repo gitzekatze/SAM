@@ -1212,6 +1212,53 @@ mod tests {
         );
     }
 
+    /// A user folder is refused by each of the rules on its own, also when
+    /// the home is kept behind a link (`~` at `home/ann`, a link to
+    /// `data/ann`), where the home as named and the home where it really
+    /// is answer differently (audit S-F11):
+    /// - the folder that holds the home's link (`home`) lies above the home
+    ///   as named, not above the real home: shown, it handed the app the
+    ///   link and every other home there;
+    /// - the key folder by the home's linked name (`~/.ssh`) is a key store
+    ///   of the real home only;
+    /// - a folder in `/tmp` where programs outside the sandbox listen
+    ///   (`/tmp`, `/tmp/tmux-1000`) is neither above the home nor a
+    ///   sensitive place, yet hands over the host's terminal multiplexers.
+    ///
+    /// A folder in the real home and a plain folder in `/tmp` are shown.
+    #[test]
+    fn a_user_folder_above_a_linked_home_is_not_shown() {
+        let t = tempfile::tempdir().unwrap();
+        let base = std::fs::canonicalize(t.path()).unwrap();
+        for d in ["data/ann/.ssh", "data/ann/Docs", "home"] {
+            std::fs::create_dir_all(base.join(d)).unwrap();
+        }
+        std::os::unix::fs::symlink(base.join("data/ann"), base.join("home/ann")).unwrap();
+        let home = base.join("home/ann");
+        assert_eq!(
+            user_folder_place(&base.join("home"), &home),
+            None,
+            "the folder holding the home's link"
+        );
+        assert_eq!(
+            user_folder_place(&home.join(".ssh"), &home),
+            None,
+            "the key folder by the home's linked name"
+        );
+        assert_eq!(
+            user_folder_place(&home.join("Docs"), &home),
+            Some(base.join("data/ann/Docs")),
+            "a folder in the home, where it really is"
+        );
+        let ann = Path::new("/home/ann");
+        assert_eq!(user_folder_place(Path::new("/tmp/tmux-1000"), ann), None);
+        assert_eq!(user_folder_place(Path::new("/tmp"), ann), None);
+        assert_eq!(
+            user_folder_place(Path::new("/tmp/exchange"), ann),
+            Some(PathBuf::from("/tmp/exchange"))
+        );
+    }
+
     /// A folder that one of SAM's folder switches names (`SAM_DATA_DIR`,
     /// `SAM_CONFIG_DIR`) counts as SAM's by the rules for the folders named
     /// like SAM's, whatever its own name, so hiding it never covers too

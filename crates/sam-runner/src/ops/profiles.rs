@@ -750,4 +750,60 @@ mod update_note_tests {
             ["GPU", "network", "X11", "downloads folder", "music folder"]
         );
     }
+
+    /// A need the old recommendation already asked for is not new: when
+    /// the person switched it off (the GPU) or gave less (the downloads
+    /// folder read-only instead of read and write), the note after an
+    /// update or Unpack Again does not name it again as if the app newly
+    /// asked for it. Only what the app newly asks for (sound) is named.
+    #[test]
+    fn the_note_leaves_out_a_need_the_old_recommendation_already_asked_for() {
+        let mut old = PermissionSet::default();
+        old.devices.gpu = true;
+        old.filesystem.downloads = Access::Rw;
+        old.audio.enabled = false;
+        let mut new = old.clone();
+        new.audio.enabled = true;
+        let mut cur = old.clone();
+        cur.devices.gpu = false;
+        cur.filesystem.downloads = Access::Ro;
+        cur.audio.enabled = false;
+        assert_eq!(new_requirements(&old, &new, &cur), ["audio"]);
+    }
+
+    /// The mark that the person changed an app's settings, which `sam
+    /// profile get` shows, says whether they differ from SAM's
+    /// recommendation after each change: set when a switch leaves it, and
+    /// cleared when the switch goes back. Read from the saved record, not
+    /// after reading the app again, which works the mark out anew.
+    #[test]
+    fn a_changed_switch_marks_the_profile_as_changed_and_undoing_it_clears_the_mark() {
+        let t = tempfile::tempdir().unwrap();
+        let sam = Sam::with_paths(Paths::rooted(t.path())).unwrap();
+        let mut e = AppEntry {
+            id: "appimage-modified-1a2b".into(),
+            ..Default::default()
+        };
+        e.recommended.devices.gpu = false;
+        e.profile.permissions.devices.gpu = false;
+        sam.registry().save(&mut e).unwrap();
+        let changed = |sam: &Sam| {
+            sam.registry()
+                .get(&e.id)
+                .unwrap()
+                .unwrap()
+                .profile
+                .user_modified
+        };
+        sam.set_permission(&e.id, "devices.gpu", "true").unwrap();
+        assert!(
+            changed(&sam),
+            "a switch that differs from the recommendation is saved as changed"
+        );
+        sam.set_permission(&e.id, "devices.gpu", "false").unwrap();
+        assert!(
+            !changed(&sam),
+            "back on the recommendation is no longer changed"
+        );
+    }
 }

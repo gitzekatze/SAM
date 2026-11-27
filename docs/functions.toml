@@ -184,6 +184,7 @@ tests = ["set_and_get_keys", "an_empty_list_left_out_of_the_saved_form_takes_com
   "set_shows_the_warnings_about_the_changed_setting",
   "an_apps_own_name_never_captures_a_reference_to_another_app",
   "a_preset_changed_after_the_question_is_not_applied",
+  "a_changed_switch_marks_the_profile_as_changed_and_undoing_it_clears_the_mark",
 ]
 checks = ["tests/gui/permissions-atspi.sh"]
 
@@ -213,6 +214,7 @@ code = ["sam-sandbox/src/lib.rs", "sam-core/src/host.rs", "sam-core/src/util.rs"
 tests = [
   "links_in_etc_never_bring_sockets_or_devices",
   "a_user_folder_that_shows_more_is_not_shown",
+  "a_user_folder_above_a_linked_home_is_not_shown",
   "a_writable_folder_stays_writable_in_a_read_only_home",
   "a_user_folder_is_mounted_at_its_own_access_with_the_whole_home",
   "a_read_only_user_folder_under_a_writable_home_is_read_only",
@@ -232,6 +234,9 @@ tests = [
   "a_linked_start_file_inside_a_writable_folder_in_the_fonts_stays_pinned",
   "a_writable_user_folder_the_home_shows_inside_a_font_folder_adds_no_pin",
   "a_font_folder_opened_or_bound_writable_keeps_the_pins_inside",
+  "a_place_bound_writable_elsewhere_leaves_the_font_folders_unpinned",
+  "a_writable_user_folder_at_a_font_folder_adds_no_pin_inside",
+  "a_writable_user_folder_inside_a_font_folder_in_a_private_home_keeps_its_pins",
   "user_folders_at_one_place_take_the_stricter_access",
   "a_user_folder_the_sandbox_does_not_show_is_named_before_the_start",
   "user_folders_at_one_place_with_different_access_are_named",
@@ -948,6 +953,7 @@ tests = ["both_forms_of_update_information_are_understood", "update_wildcards_ma
   "a_download_never_answered_is_deleted_after_a_week",
   "only_an_https_release_page_is_opened",
   "the_note_names_new_needs_the_settings_lack",
+  "the_note_leaves_out_a_need_the_old_recommendation_already_asked_for",
   "a_switch_change_unrelated_to_the_note_keeps_it",
   "a_group_change_from_the_permissions_page_keeps_the_note",
   "granting_exactly_the_requested_need_removes_it_from_the_note",

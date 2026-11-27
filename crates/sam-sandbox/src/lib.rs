@@ -6154,6 +6154,10 @@ mod guard_tests {
         );
         assert!(!binds(&cmd.args, &proj), "{:?}", cmd.args);
         assert!(skipped(&cmd.notes, &proj), "{:?}", cmd.notes);
+        // Left out, it adds no mount at all, not even a pin of the folder
+        // above it.
+        let wa = s(home.join("work/a"));
+        assert!(!has_seq(&cmd.args, &["--bind", &wa, &wa]), "{:?}", cmd.args);
         // Shown all the same, writable, through the folder above it.
         assert!(Views::base(&ctx).writable(Path::new(&proj)));
         // Below a folder opened writable on the command line: the same.
@@ -6176,6 +6180,7 @@ mod guard_tests {
         p.filesystem.custom_write = vec![proj.clone()];
         let cmd = Bubblewrap.build(&ctx_for(&p, &home)).unwrap();
         assert!(!binds(&cmd.args, &proj), "{:?}", cmd.args);
+        assert!(!has_seq(&cmd.args, &["--bind", &wa, &wa]), "{:?}", cmd.args);
         // Below a read-only whole home it is bound as usual.
         p.filesystem.home_access = Access::Ro;
         let cmd = Bubblewrap.build(&ctx_for(&p, &home)).unwrap();
@@ -7328,6 +7333,31 @@ mod guard_tests {
             "--ro-bind-try",
             &home.join("Sync/a/Documents"),
         );
+        // Below a folder opened read-only inside a writable extra folder:
+        // the start shows the opened `~/work/sub` through `~/work`, so it
+        // binds nothing for it, but the write grant `~/work/sub/proj` lies
+        // below a read-only grant and is bound writable on its own. Its
+        // own place is the only guarded one below `~/work`, so only that
+        // pins `~/work/sub`.
+        fs::create_dir_all(home.join("work/sub/proj")).unwrap();
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.opened_files = Access::Ro;
+        p.filesystem.custom_write = vec![st(&home.join("work")), st(&home.join("work/sub/proj"))];
+        let mut ctx = ctx_for(&p, &home);
+        ctx.owd = home.clone();
+        ctx.args = vec!["work/sub".into()];
+        let a = args_of(&ctx);
+        let proj = st(&home.join("work/sub/proj"));
+        assert!(
+            has_seq(&a, &["--bind-try", &proj, &proj]),
+            "{proj} bound writable: {a:?}"
+        );
+        pinned_before(
+            &a,
+            &home.join("work/sub"),
+            "--bind-try",
+            &home.join("work/sub/proj"),
+        );
     }
 
     /// Two user folders set to one place with different access (Music
@@ -7468,6 +7498,83 @@ mod guard_tests {
         );
     }
 
+    /// A place bound writable somewhere else (an extra writable folder, a
+    /// file opened writable, a writable bind of SAM's, each outside the
+    /// home) does not cover the fonts and the font settings: their
+    /// read-only bind is still the topmost mount, so they are never pinned
+    /// writable, as in a start without it. Counted as bound writable after
+    /// a font place, or as a writable mount between it and the folder,
+    /// any writable bind anywhere had the pin of `~/.fonts` made the font
+    /// folder writable. Each way is checked on its own, so each one shows
+    /// when it counts.
+    #[test]
+    fn a_place_bound_writable_elsewhere_leaves_the_font_folders_unpinned() {
+        let st = |p: &Path| p.to_string_lossy().into_owned();
+        let mut lost = Vec::new();
+        for way in [
+            "extra writable folder",
+            "opened file",
+            "SAM's writable bind",
+        ] {
+            let t = tempfile::tempdir().unwrap();
+            let home = fs::canonicalize(t.path()).unwrap().join("home");
+            for d in [
+                ".fonts/licensed",
+                ".local/share/fonts/a/licensed",
+                ".config/fontconfig/conf.d",
+            ] {
+                fs::create_dir_all(home.join(d)).unwrap();
+            }
+            let shared = home.parent().unwrap().join("shared");
+            fs::create_dir_all(&shared).unwrap();
+            let doc = home.parent().unwrap().join("doc.txt");
+            fs::write(&doc, "").unwrap();
+            let mut p = full_rw();
+            p.filesystem.custom_read = vec![
+                st(&home.join(".fonts/licensed")),
+                st(&home.join(".local/share/fonts/a/licensed")),
+                st(&home.join(".config/fontconfig/conf.d")),
+            ];
+            if way == "extra writable folder" {
+                p.filesystem.custom_write = vec![st(&shared)];
+            }
+            let mut ctx = ctx_for(&p, &home);
+            if way == "opened file" {
+                ctx.permissions.filesystem.opened_files = Access::Rw;
+                ctx.args = vec![st(&doc)];
+                assert_eq!(opened_paths(&ctx), vec![(doc.clone(), true)]);
+            } else if way == "SAM's writable bind" {
+                ctx.extra_binds = vec![(shared.clone(), "/run/x".into(), true)];
+            }
+            let a = args_of(&ctx);
+            let shared = st(&shared);
+            let doc = st(&doc);
+            let bound = match way {
+                "extra writable folder" => has_seq(&a, &["--bind-try", &shared, &shared]),
+                "opened file" => has_seq(&a, &["--bind-try", &doc, &doc]),
+                _ => has_seq(&a, &["--bind", &shared, "/run/x"]),
+            };
+            assert!(bound, "{way}: bound writable: {a:?}");
+            for (ro, inside) in [
+                (".fonts", ".fonts"),
+                (".local/share/fonts", ".local/share/fonts/a"),
+                (".config/fontconfig", ".config/fontconfig"),
+            ] {
+                let (ro, inside) = (st(&home.join(ro)), st(&home.join(inside)));
+                assert!(
+                    !at_seq(&a, &["--ro-bind-try", &ro, &ro]).is_empty(),
+                    "{way}: {ro} bound read-only: {a:?}"
+                );
+                for pin in [&ro, &inside] {
+                    if !at_seq(&a, &["--bind", pin, pin]).is_empty() {
+                        lost.push(format!("{way}: {pin} pinned writable"));
+                    }
+                }
+            }
+        }
+        assert!(lost.is_empty(), "{lost:#?}");
+    }
+
     /// A writable extra folder inside a place SAM binds read-only for the
     /// fonts or the themes, or at one, is bound after it and writable: a
     /// start file kept as a link into it (`~/.bashrc` to
@@ -7491,6 +7598,7 @@ mod guard_tests {
         let cases = [
             (".fonts", ".fonts/work", fonts),
             (".fonts", ".fonts", PermissionSet::strict_gui()),
+            (".config/gtk-3.0", ".config/gtk-3.0", themes.clone()),
             (".config/gtk-3.0", ".config/gtk-3.0/work", themes),
         ];
         let mut lost = Vec::new();
@@ -7570,6 +7678,91 @@ mod guard_tests {
         assert!(
             writable_inside.is_empty(),
             "nothing inside {fonts} bound writable: {writable_inside:?}"
+        );
+    }
+
+    /// A writable user folder set to a font folder itself
+    /// (`XDG_MUSIC_DIR=~/.fonts`), without the whole home or with the home
+    /// read-only, gets its own writable mount at the same place as the
+    /// font folder's read-only bind. That one comes after it (equal depth,
+    /// stable order), so the read-only bind stays the topmost mount and
+    /// the folder above an extra read-only folder inside
+    /// (`~/.fonts/dots/licensed`) is not pinned: a pin there was bound
+    /// after the read-only bind and made `dots` writable inside the
+    /// read-only font folder. Only a writable mount strictly inside the
+    /// font folder lets the app rename something there.
+    #[test]
+    fn a_writable_user_folder_at_a_font_folder_adds_no_pin_inside() {
+        let st = |p: &Path| p.to_string_lossy().into_owned();
+        let mut read_only_home = PermissionSet::strict_gui();
+        read_only_home.filesystem.home = true;
+        read_only_home.filesystem.home_access = Access::Ro;
+        let mut lost = Vec::new();
+        for (case, mut p) in [
+            ("no home", PermissionSet::strict_gui()),
+            ("read-only home", read_only_home),
+        ] {
+            let t = tempfile::tempdir().unwrap();
+            let home = fs::canonicalize(t.path()).unwrap().join("home");
+            let fonts = home.join(".fonts");
+            let dots = fonts.join("dots");
+            fs::create_dir_all(dots.join("licensed")).unwrap();
+            p.filesystem.music = Access::Rw;
+            p.filesystem.custom_read = vec![st(&dots.join("licensed"))];
+            let mut ctx = ctx_for(&p, &home);
+            ctx.host.xdg_dirs.insert("music".into(), fonts.clone());
+            let a = args_of(&ctx);
+            let (fonts, dots) = (st(&fonts), st(&dots));
+            let first = |seq: &[&str]| at_seq(&a, seq).first().copied();
+            let write = first(&["--bind-try", &fonts, &fonts]).expect("Music bound writable");
+            let ro_bind = first(&["--ro-bind-try", &fonts, &fonts]).expect("bound read-only");
+            assert!(write < ro_bind, "{case}: read-only on top: {a:?}");
+            if first(&["--bind", &dots, &dots]).is_some() {
+                lost.push(format!("{case}: {dots} pinned writable: {a:?}"));
+            }
+        }
+        assert!(lost.is_empty(), "{lost:#?}");
+    }
+
+    /// A writable user folder inside a font folder in a start without the
+    /// whole home (`XDG_MUSIC_DIR=~/.fonts/work`) gets its own writable
+    /// mount, after the read-only bind of `~/.fonts`, so the app can
+    /// rename what lies inside it. A start file kept as a link into it
+    /// (`~/.bashrc` to `~/.fonts/work/dots/bashrc`) keeps the pin of
+    /// `dots`, between that mount and the guard (review B2 S3, R50): left
+    /// out of the writable mounts, the user folder counted as covered by
+    /// the read-only bind, `dots` lost its pin, and the app could rename
+    /// it away with the guard. `~/.fonts` itself stays unpinned.
+    #[test]
+    fn a_writable_user_folder_inside_a_font_folder_in_a_private_home_keeps_its_pins() {
+        let st = |p: &Path| p.to_string_lossy().into_owned();
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap().join("home");
+        let work = home.join(".fonts/work");
+        let dots = work.join("dots");
+        fs::create_dir_all(&dots).unwrap();
+        fs::write(dots.join("bashrc"), "").unwrap();
+        std::os::unix::fs::symlink(dots.join("bashrc"), home.join(".bashrc")).unwrap();
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.music = Access::Rw;
+        let mut ctx = ctx_for(&p, &home);
+        ctx.host.xdg_dirs.insert("music".into(), work.clone());
+        let a = args_of(&ctx);
+        let (fonts, work, dots) = (st(&home.join(".fonts")), st(&work), st(&dots));
+        let bashrc = format!("{dots}/bashrc");
+        let first = |seq: &[&str]| at_seq(&a, seq).first().copied();
+        let ro_bind = first(&["--ro-bind-try", &fonts, &fonts]).expect("bound read-only");
+        let write = first(&["--bind-try", &work, &work]).expect("Music bound writable");
+        assert!(ro_bind < write, "{work} after {fonts}: {a:?}");
+        let guard = first(&["--ro-bind-try", &bashrc, &bashrc]).expect("bashrc guarded");
+        let pin = first(&["--bind", &dots, &dots]);
+        assert!(
+            pin.is_some_and(|pin| write < pin && pin < guard),
+            "{dots} pinned after {work} ({write}) and before the guard ({guard}): {pin:?}: {a:?}"
+        );
+        assert!(
+            first(&["--bind", &fonts, &fonts]).is_none(),
+            "{fonts} never pinned: {a:?}"
         );
     }
 
