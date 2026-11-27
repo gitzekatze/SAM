@@ -503,3 +503,105 @@ fn a_read_only_user_folder_outside_the_home_is_shown_with_the_whole_home() {
         }
     }
 }
+
+/// The probe of [`a_user_folder_link_the_app_planted_never_shows_where_it_leads`]:
+/// told to (`plant PLACE`), it turns Downloads into a link to `PLACE`, as
+/// an app with the whole home writable can; otherwise it reads and writes
+/// through Downloads.
+const PLANT_PROBE: &str = r#"#!/bin/sh
+H="$HOME"
+if [ "$1" = plant ]; then
+  mv "$H/Downloads" "$H/D" 2>/dev/null && ln -s "$2" "$H/Downloads" 2>/dev/null && echo PLANTED=yes || echo PLANTED=no
+fi
+grep -q secret "$H/Downloads/secret.txt" 2>/dev/null && echo READ=yes || echo READ=no
+( echo x > "$H/Downloads/new.txt" ) 2>/dev/null && echo WRITE=yes || echo WRITE=no
+echo END=1
+"#;
+
+/// An app with the whole home writable and Downloads granted turns
+/// `~/Downloads` into a link to a folder outside the home that it was never
+/// shown (in one start). In the next start, SAM does not show where the
+/// link leads: the app can neither read nor write there. Before, SAM followed the link and bound the place,
+/// any place on the computer the app chose (also the host's `/tmp`, with
+/// the sockets of programs outside the sandbox).
+#[test]
+fn a_user_folder_link_the_app_planted_never_shows_where_it_leads() {
+    let _one = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    if !bwrap_works() {
+        sam_runner::contracts::skip("bubblewrap is not functional here")
+            .unwrap_or_else(|e| panic!("{e}"));
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    sam_runner::testenv::isolate_this_process(root);
+    let home = root.join("home/tester");
+    let secret = root.join("data/secret");
+    fs::create_dir_all(home.join("Downloads")).unwrap();
+    fs::create_dir_all(&secret).unwrap();
+    fs::create_dir_all(home.join(".config")).unwrap();
+    fs::write(secret.join("secret.txt"), "secret\n").unwrap();
+    fs::write(
+        home.join(".config/user-dirs.dirs"),
+        "XDG_DOWNLOAD_DIR=\"$HOME/Downloads\"\n",
+    )
+    .unwrap();
+    std::env::set_var("HOME", &home);
+    std::env::set_var("XDG_CONFIG_HOME", home.join(".config"));
+    std::env::set_var("XDG_DATA_HOME", home.join(".local/share"));
+
+    let img = root.join("Plant-1.0-x86_64.AppImage");
+    let mut spec = FixtureSpec::hello("Plant");
+    spec.apprun = PLANT_PROBE.into();
+    build(&img, &spec).unwrap();
+    let app = Sam::with_paths(Paths::rooted(&root.join("sam"))).unwrap();
+    let id = app
+        .add(
+            &img,
+            &AddOptions {
+                accept: true,
+                launcher: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .entry
+        .id;
+    let host = sam_runner::testenv::test_host(HostInfo::probe());
+    assert_eq!(
+        host.xdg_dir("downloads"),
+        Some(home.join("Downloads").as_path()),
+        "the test's own"
+    );
+    let mut p = PermissionSet::strict_gui();
+    p.filesystem.home = true;
+    p.filesystem.home_access = Access::Rw;
+    p.filesystem.downloads = Access::Rw;
+    let start = |args: &[&str]| {
+        let mut e = app.set_permissions(&id, p.clone()).unwrap();
+        let opts = LaunchOptions {
+            args: args.iter().map(|a| a.to_string()).collect(),
+            quiet: true,
+            owd: Some(home.clone()),
+            ..Default::default()
+        };
+        let rec = run(&mut e, &opts, &app.config, &app.paths, &host).unwrap();
+        assert!(rec.success, "launch failed: {}", rec.summary);
+        let r = parse(rec.log_file.as_ref().unwrap());
+        assert_eq!(r.get("END").map(String::as_str), Some("1"), "{r:?}");
+        r
+    };
+    let secret_text = secret.to_string_lossy().into_owned();
+    let r = start(&["plant", &secret_text]);
+    assert_eq!(r["PLANTED"], "yes", "the writable home lets it: {r:?}");
+    assert_eq!(r["READ"], "no", "not shown in the same start: {r:?}");
+    assert!(fs::symlink_metadata(home.join("Downloads"))
+        .unwrap()
+        .file_type()
+        .is_symlink());
+
+    let r = start(&[]);
+    assert_eq!(r["READ"], "no", "{r:?}");
+    assert_eq!(r["WRITE"], "no", "{r:?}");
+    assert!(!secret.join("new.txt").exists());
+}

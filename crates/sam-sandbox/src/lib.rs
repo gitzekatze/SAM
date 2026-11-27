@@ -1310,6 +1310,11 @@ enum NotShown {
     /// It is the home, a folder above it, a system folder, a credential
     /// store, a start place or one of SAM's folders.
     Refused(PathBuf),
+    /// It is a folder in `/tmp` where programs outside the sandbox listen.
+    Sockets(PathBuf),
+    /// The way to it (the first path) holds a link (the second) in a
+    /// folder the app can change, which the app could have put there.
+    Link(PathBuf, PathBuf),
 }
 
 /// A granted user folder as it is bound: where `user-dirs.dirs` says it is,
@@ -1320,11 +1325,52 @@ enum NotShown {
 /// protections inside (audit S-F11). The same place the list of what a
 /// start shows takes ([`sam_core::places::user_folder_place`]), which
 /// decides about SAM's folders by name, and never in SAM's folders.
+///
+/// Nor one reached through a link the app could have put there, in a
+/// folder this start lets it change
+/// ([`sam_core::places::user_folder_link_the_app_can_change`]): with the
+/// whole home writable, `ln -s /tmp ~/Downloads` in one start showed the
+/// host's `/tmp` in the next. Nor a folder in `/tmp` where programs outside
+/// the sandbox listen, which also the person may have set.
 fn user_dir(ctx: &LaunchContext, key: &str) -> std::result::Result<PathBuf, NotShown> {
     let dir = ctx.host.xdg_dir(key).ok_or(NotShown::Missing)?;
+    if let Some(link) =
+        sam_core::places::user_folder_link_the_app_can_change(&ctx.permissions, &ctx.host, dir)
+    {
+        return Err(NotShown::Link(dir.to_path_buf(), link));
+    }
+    if sam_core::risk::shows_host_sockets(&resolve(dir).to_string_lossy()) {
+        return Err(NotShown::Sockets(dir.to_path_buf()));
+    }
     match sam_core::places::user_folder_place(dir, &ctx.host.home) {
         Some(real) if !inside_sam(ctx, &real) => Ok(real),
         _ => Err(NotShown::Refused(dir.to_path_buf())),
+    }
+}
+
+/// What the start says about the user folder `key` that it does not show.
+fn user_folder_note(key: &str, why: &NotShown) -> String {
+    match why {
+        NotShown::Missing => sam_core::i18n::trf(
+            "{key} folder does not exist on the host; not bound",
+            &[("key", &key)],
+        ),
+        NotShown::Refused(dir) => sam_core::i18n::trf(
+            "{key} folder is set to {path}, which shows more than a user folder (the home, a folder above it, a system or SAM folder, or a protected place); not bound",
+            &[("key", &key), ("path", &dir.display())],
+        ),
+        NotShown::Sockets(dir) => sam_core::i18n::trf(
+            "{key} folder is set to {path}, where programs outside the sandbox listen; not bound",
+            &[("key", &key), ("path", &dir.display())],
+        ),
+        NotShown::Link(dir, link) => sam_core::i18n::trf(
+            "{key} folder is set to {path}, whose way leads through the link {link} in a folder the app can change, so the app may have put it there; not bound",
+            &[
+                ("key", &key),
+                ("path", &dir.display()),
+                ("link", &link.display()),
+            ],
+        ),
     }
 }
 
@@ -2239,8 +2285,15 @@ impl Section<'_> {
                 if !acc.is_granted() {
                     continue;
                 }
-                let Ok(real) = user_dir(ctx, key) else {
-                    continue;
+                let real = match user_dir(ctx, key) {
+                    Ok(real) => real,
+                    // Seen through the home where it lies in it, at the
+                    // home's access, as before.
+                    Err(NotShown::Missing | NotShown::Refused(_)) => continue,
+                    Err(why) => {
+                        notes.push(user_folder_note(key, &why));
+                        continue;
+                    }
                 };
                 let rw = acc == Access::Rw;
                 if home_shows_exactly(&self.views, &home, &real, rw) {
@@ -2300,14 +2353,7 @@ impl Section<'_> {
                             mount(dir, &|m| m.op2("--symlink", &real, dir));
                         }
                     }
-                    Err(NotShown::Missing) => notes.push(sam_core::i18n::trf(
-                        "{key} folder does not exist on the host; not bound",
-                        &[("key", &key)],
-                    )),
-                    Err(NotShown::Refused(dir)) => notes.push(sam_core::i18n::trf(
-                        "{key} folder is set to {path}, which shows more than a user folder (the home, a folder above it, a system or SAM folder, or a protected place); not bound",
-                        &[("key", &key), ("path", &dir.display())],
-                    )),
+                    Err(why) => notes.push(user_folder_note(key, &why)),
                 }
             }
         }
@@ -6692,15 +6738,32 @@ mod guard_tests {
             has_seq(&a, &["--symlink", &st(&outside), &st(&link)]),
             "{a:?}"
         );
-        // A link in the home: the home shows the link itself.
+        // A link in a read-only home: the home shows the link itself.
         let in_home = home.join("Docs");
         std::os::unix::fs::symlink(&outside, &in_home).unwrap();
-        let a = args_of(&start(Access::Rw, Access::Ro, &in_home));
+        let a = args_of(&start(Access::Ro, Access::Rw, &in_home));
         assert!(
-            has_seq(&a, &["--ro-bind-try", &st(&outside), &st(&outside)]),
+            has_seq(&a, &["--bind-try", &st(&outside), &st(&outside)]),
             "{a:?}"
         );
         assert!(!a.iter().any(|x| *x == st(&in_home)), "{a:?}");
+        // In a writable home the app could have put that link there: where
+        // it leads is not shown, and the start names the link.
+        let ctx = start(Access::Rw, Access::Ro, &in_home);
+        let cmd = Bubblewrap.build(&ctx).unwrap();
+        assert!(
+            !cmd.args.iter().any(|x| *x == st(&outside)),
+            "{:?}",
+            cmd.args
+        );
+        assert!(
+            cmd.notes
+                .iter()
+                .any(|n| n.contains(&st(&in_home)) && n.contains("the app may have put it there")),
+            "{:?}",
+            cmd.notes
+        );
+        assert!(!Views::base(&ctx).visible(&outside.join("x")));
         // A user folder that shows more than one is still not shown.
         fs::create_dir_all(home.join(".ssh")).unwrap();
         let a = args_of(&start(Access::Rw, Access::Ro, &home.join(".ssh")));
@@ -6755,6 +6818,134 @@ mod guard_tests {
             locked_after(&a, &st(&dots.join("bashrc")), &st(&dots)),
             "{a:?}"
         );
+    }
+
+    /// A user folder reached through a link the app could have put there
+    /// is not shown where the link leads: with the whole home writable,
+    /// `mv ~/Downloads ~/D; ln -s /data/elsewhere ~/Downloads` in one start
+    /// showed `/data/elsewhere` writable in the next, any place on the
+    /// computer the app chose. Also a link in a writable user folder
+    /// (Downloads set to `~/Documents/dl`, Documents writable) without the
+    /// whole home, and a link inside a link's target. A link in a folder
+    /// the app cannot change is followed as before. The start names the
+    /// link, and the views agree with the mounts.
+    #[test]
+    fn a_user_folder_behind_a_link_the_app_could_plant_is_not_shown() {
+        let t = tempfile::tempdir().unwrap();
+        let base = fs::canonicalize(t.path()).unwrap();
+        let home = base.join("home");
+        let elsewhere = base.join("data/elsewhere");
+        for d in [home.join("Documents"), home.join("D"), elsewhere.clone()] {
+            fs::create_dir_all(d).unwrap();
+        }
+        let st = |p: &Path| p.to_string_lossy().into_owned();
+        let planted = home.join("Downloads");
+        std::os::unix::fs::symlink(&elsewhere, &planted).unwrap();
+        let start = |p: &PermissionSet, downloads: &Path| {
+            let mut ctx = ctx_for(p, &home);
+            ctx.permissions.filesystem.downloads = Access::Rw;
+            ctx.host
+                .xdg_dirs
+                .insert("downloads".into(), downloads.to_path_buf());
+            ctx.host
+                .xdg_dirs
+                .insert("documents".into(), home.join("Documents"));
+            ctx
+        };
+        let refused = |ctx: &LaunchContext, link: &Path| {
+            let cmd = Bubblewrap.build(ctx).unwrap();
+            assert!(
+                !cmd.args.iter().any(|x| *x == st(&elsewhere)),
+                "{:?}",
+                cmd.args
+            );
+            assert!(
+                cmd.notes
+                    .iter()
+                    .any(|n| n.contains(&st(link)) && n.contains("the app may have put it there")),
+                "{:?}",
+                cmd.notes
+            );
+            assert!(!Views::base(ctx).visible(&elsewhere.join("x")));
+            assert!(matches!(
+                user_dir(ctx, "downloads"),
+                Err(NotShown::Link(_, l)) if l == link
+            ));
+        };
+        // The writable whole home holds the link.
+        refused(&start(&full_rw(), &planted), &planted);
+        // A writable user folder holds it, without the whole home.
+        let dl = home.join("Documents/dl");
+        std::os::unix::fs::symlink(&elsewhere, &dl).unwrap();
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.documents = Access::Rw;
+        refused(&start(&p, &dl), &dl);
+        // A link inside a link's target: `~/D/dl` reached through `/data/d`,
+        // a link the app cannot change, into the writable home.
+        let into_home = base.join("data/d");
+        std::os::unix::fs::symlink(home.join("D"), &into_home).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, home.join("D/dl")).unwrap();
+        refused(
+            &start(&full_rw(), &into_home.join("dl")),
+            &home.join("D/dl"),
+        );
+        // A link in a folder the app cannot change is followed: the home
+        // read-only, or Documents read-only.
+        let mut p = full_rw();
+        p.filesystem.home_access = Access::Ro;
+        let a = args_of(&start(&p, &planted));
+        assert!(
+            has_seq(&a, &["--bind-try", &st(&elsewhere), &st(&elsewhere)]),
+            "{a:?}"
+        );
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.documents = Access::Ro;
+        let a = args_of(&start(&p, &dl));
+        assert!(
+            has_seq(&a, &["--bind-try", &st(&elsewhere), &st(&elsewhere)]),
+            "{a:?}"
+        );
+    }
+
+    /// A user folder set to `/tmp` or to a folder in it where programs
+    /// outside the sandbox listen (`/tmp/tmux-1000`) is not shown, with or
+    /// without the whole home: bound over the sandbox's own `/tmp`, it
+    /// handed the app the host's terminal multiplexers and SSH agents,
+    /// read-only too (`tmux -S /tmp/tmux-1000/default new-window …` runs
+    /// outside the sandbox). The start says why. An ordinary folder in
+    /// `/tmp` is shown.
+    #[test]
+    fn a_user_folder_where_outside_programs_listen_is_not_shown() {
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap().join("home");
+        fs::create_dir_all(&home).unwrap();
+        for p in [full_rw(), PermissionSet::strict_gui()] {
+            for (at, acc) in [("/tmp", Access::Ro), ("/tmp/tmux-1000", Access::Rw)] {
+                let mut ctx = ctx_for(&p, &home);
+                ctx.permissions.filesystem.downloads = acc;
+                ctx.host.xdg_dirs.insert("downloads".into(), at.into());
+                let cmd = Bubblewrap.build(&ctx).unwrap();
+                assert!(
+                    !cmd.args
+                        .windows(2)
+                        .any(|w| w[0].ends_with("bind-try") && w[1] == at),
+                    "{at}: {:?}",
+                    cmd.args
+                );
+                assert!(
+                    cmd.notes.iter().any(
+                        |n| n.contains(at) && n.contains("programs outside the sandbox listen")
+                    ),
+                    "{at}: {:?}",
+                    cmd.notes
+                );
+                assert!(matches!(
+                    user_dir(&ctx, "downloads"),
+                    Err(NotShown::Sockets(_))
+                ));
+            }
+        }
+        assert!(sam_core::places::user_folder_place(Path::new("/tmp/exchange"), &home).is_some());
     }
 
     /// An extra folder granted read and write inside a read-only user

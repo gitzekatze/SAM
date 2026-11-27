@@ -128,21 +128,24 @@ pub fn plan(p: &PermissionSet, cfg: &Config, paths: &Paths, host: &HostInfo) -> 
         // (independent re-review of decision 9). A granted one the sandbox
         // shows is shown at its own access, also with the whole home,
         // inside the home or outside it: read-only in a writable home
-        // (finding R63). Only one not granted, or one the sandbox refuses
-        // for showing more than a user folder, is seen through the home
-        // alone, at the home's access.
-        let want =
-            if sam_core::places::inside_sams_folders(&sam_core::places::resolve(path), &sam_dirs) {
-                Access::Hidden
-            } else if a.is_granted()
-                && sam_core::places::user_folder_place(path, &host.home).is_some()
-            {
-                level(a)
-            } else if rank(home_level) > rank(level(a)) {
-                home_level
-            } else {
-                level(a)
-            };
+        // (finding R63). One not granted, or one the sandbox refuses (for
+        // showing more than a user folder, for listening programs in
+        // `/tmp`, or for a link on its way the app could have put there),
+        // is seen only through the home, at the home's access, and only
+        // where it lies in the home as named and as reached; elsewhere it
+        // is not shown at all.
+        let real = sam_core::places::resolve(path);
+        let through_home =
+            path.starts_with(&host.home) && real.starts_with(sam_core::places::resolve(&host.home));
+        let want = if sam_core::places::inside_sams_folders(&real, &sam_dirs) {
+            Access::Hidden
+        } else if a.is_granted() && sam_core::places::user_folder_shown(p, host, path).is_some() {
+            level(a)
+        } else if through_home {
+            home_level
+        } else {
+            Access::Hidden
+        };
         // With the whole home writable, a user folder the home already
         // shows at its own access gets no mount of its own: one in the home
         // is then shown through it, so read-only at most where the home is
@@ -1206,6 +1209,45 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// The check expects a user folder the sandbox refuses as the sandbox
+    /// shows it: one reached through a link the app could have put in the
+    /// writable home (`~/Downloads` a link to `/data/elsewhere`), or one
+    /// set to `/tmp`, where programs outside the sandbox listen, is
+    /// expected not shown, not writable through the home. The same link
+    /// in a read-only home is followed and expected at its own access.
+    #[test]
+    fn the_check_expects_a_refused_user_folder_as_not_shown() {
+        let t = tempfile::tempdir().unwrap();
+        let mut h = host_in(t.path());
+        let elsewhere = t.path().join("data/elsewhere");
+        fs::create_dir_all(&elsewhere).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, h.home.join("Downloads")).unwrap();
+        h.xdg_dirs
+            .insert("downloads".into(), h.home.join("Downloads"));
+        let cfg = Config::default();
+        let plan_with = |h: &HostInfo, home: Perm| {
+            let mut p = PermissionSet::strict_gui();
+            p.filesystem.home = true;
+            p.filesystem.home_access = home;
+            p.filesystem.downloads = Perm::Rw;
+            plan(&p, &cfg, &sam_paths(), h)
+        };
+        assert_eq!(
+            folder(&plan_with(&h, Perm::Rw), "Downloads"),
+            Access::Hidden
+        );
+        assert_eq!(
+            folder(&plan_with(&h, Perm::Ro), "Downloads"),
+            Access::ReadWrite,
+            "a link the app cannot change is followed"
+        );
+        h.xdg_dirs.insert("downloads".into(), PathBuf::from("/tmp"));
+        assert_eq!(
+            folder(&plan_with(&h, Perm::Rw), "Downloads"),
+            Access::Hidden
+        );
     }
 
     /// An extra folder inside SAM's own folders kept in a place of the

@@ -373,18 +373,146 @@ pub fn is_sams_name(place: &str) -> bool {
 /// Where a user folder (Documents, Downloads, …) set to `dir` is shown:
 /// where it really is (links resolved), unless that would show more than a
 /// user folder: the home, a folder above it, a system folder, a key or
-/// credential store or a start place (`user-dirs.dirs` is a plain text
-/// file, audit S-F11). The sandbox also refuses one inside SAM's own
-/// folders; that is left to the caller, since which folders count as
-/// SAM's depends on what the start shows ([`shown_folders`]).
+/// credential store, a start place (`user-dirs.dirs` is a plain text
+/// file, audit S-F11), or a folder in `/tmp` where programs outside the
+/// sandbox listen (`/tmp` itself, `/tmp/tmux-1000`): bound over the
+/// sandbox's own `/tmp`, it handed the app the host's terminal
+/// multiplexers, SSH agents and X server, read-only too, since connecting
+/// to a socket needs no write access. The sandbox also refuses one inside
+/// SAM's own folders; that is left to the caller, since which folders
+/// count as SAM's depends on what the start shows ([`shown_folders`]).
+/// Whether the way there holds a link the app could have put there is
+/// [`user_folder_shown`].
 pub fn user_folder_place(dir: &Path, home: &Path) -> Option<PathBuf> {
     let real = resolve(dir);
     let text = real.to_string_lossy();
     let real_home = resolve(home);
     let refused = real_home.starts_with(&real)
         || crate::risk::is_sensitive_path_in(&text, home)
-        || crate::risk::is_sensitive_path_in(&text, &real_home);
+        || crate::risk::is_sensitive_path_in(&text, &real_home)
+        || crate::risk::shows_host_sockets(&text);
     (!refused).then_some(real)
+}
+
+/// Where the user folder set to `dir` is shown in a start with the
+/// permissions `p` ([`user_folder_place`]), unless the way there holds a
+/// link the app could have put there ([`user_folder_link_the_app_can_change`]).
+/// The answer the sandbox, its check and the list of what a start shows
+/// take.
+pub fn user_folder_shown(p: &PermissionSet, host: &HostInfo, dir: &Path) -> Option<PathBuf> {
+    if user_folder_link_the_app_can_change(p, host, dir).is_some() {
+        return None;
+    }
+    user_folder_place(dir, &host.home)
+}
+
+/// The first link on the way to the user folder set to `dir` that lies in
+/// a folder the permissions `p` let the app change (the writable whole
+/// home, a writable extra folder, a writable user folder), if any. The app
+/// could have put that link there in an earlier start (`mv ~/Downloads
+/// ~/D; ln -s /tmp ~/Downloads`), so where it leads is not where the
+/// person put the folder: shown there, a writable home let the app pick
+/// any place on the computer as its Downloads (`user-dirs.dirs` stays
+/// locked, but the folder it names did not). A link SAM cannot tell from
+/// one the person made is refused as well; the start says so. Judged from
+/// the permissions alone, so the sandbox, its check and the app page take
+/// one answer: a writable extra folder counts writable also where the
+/// sandbox shows it read-only (inside a start place), which refuses more,
+/// never less.
+pub fn user_folder_link_the_app_can_change(
+    p: &PermissionSet,
+    host: &HostInfo,
+    dir: &Path,
+) -> Option<PathBuf> {
+    use crate::permissions::Access;
+    let fs = &p.filesystem;
+    let mut grants: Vec<(PathBuf, bool)> = Vec::new();
+    if fs.home {
+        let rw = fs.home_access == Access::Rw;
+        grants.push((host.home.clone(), rw));
+        grants.push((resolve(&host.home), rw));
+    }
+    for key in XDG_DIR_KEYS {
+        let acc = fs.xdg_access(key);
+        if acc.is_granted() {
+            if let Some(real) = host
+                .xdg_dir(key)
+                .and_then(|d| user_folder_place(d, &host.home))
+            {
+                grants.push((real, acc == Access::Rw));
+            }
+        }
+    }
+    for c in &fs.custom_read {
+        grants.push((resolve(&crate::util::expand_home(c)), false));
+    }
+    for c in &fs.custom_write {
+        grants.push((resolve(&crate::util::expand_home(c)), true));
+    }
+    // The deepest grant that shows a folder decides, as the mounts do.
+    let can_change = |d: &Path| {
+        grants
+            .iter()
+            .filter(|(g, _)| d.starts_with(g))
+            .max_by_key(|(g, rw)| (g.components().count(), *rw))
+            .is_some_and(|(_, rw)| *rw)
+    };
+    links_on_the_way(dir)
+        .into_iter()
+        .find(|l| l.parent().is_some_and(can_change))
+}
+
+/// Every link on the way to the absolute path `p`, in the order the system
+/// follows them, each named in the folder that really holds it (the links
+/// before it resolved), also the links inside a link's target. A part
+/// that does not exist ends the walk. At most 40 links, as the kernel
+/// follows.
+pub fn links_on_the_way(p: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    if !p.is_absolute() {
+        return out;
+    }
+    let mut todo: std::collections::VecDeque<std::ffi::OsString> = p
+        .components()
+        .filter_map(|c| match c {
+            Component::Normal(n) => Some(n.to_os_string()),
+            Component::ParentDir => Some("..".into()),
+            _ => None,
+        })
+        .collect();
+    let mut at = PathBuf::from("/");
+    while let Some(c) = todo.pop_front() {
+        if c == ".." {
+            at.pop();
+            continue;
+        }
+        let next = at.join(&c);
+        let Ok(m) = std::fs::symlink_metadata(&next) else {
+            break;
+        };
+        if !m.file_type().is_symlink() {
+            at = next;
+            continue;
+        }
+        if out.len() == 40 {
+            break;
+        }
+        let Ok(target) = std::fs::read_link(&next) else {
+            break;
+        };
+        out.push(next);
+        if target.is_absolute() {
+            at = PathBuf::from("/");
+        }
+        for t in target.components().rev() {
+            match t {
+                Component::Normal(n) => todo.push_front(n.to_os_string()),
+                Component::ParentDir => todo.push_front("..".into()),
+                _ => {}
+            }
+        }
+    }
+    out
 }
 
 /// Every folder the permissions `p` show in a start, where it really is
@@ -403,7 +531,7 @@ pub fn shown_folders(p: &PermissionSet, host: &HostInfo) -> Vec<PathBuf> {
         if fs.xdg_access(key).is_granted() {
             if let Some(real) = host
                 .xdg_dir(key)
-                .and_then(|d| user_folder_place(d, &host.home))
+                .and_then(|d| user_folder_shown(p, host, d))
             {
                 out.push(real);
             }
