@@ -7,13 +7,19 @@
 //!   private homes and the app records there, nor plant a record there,
 //!   and `SAM_CONFIG_DIR=~/Configs/sam` hides the settings there from a
 //!   grant of `~/Configs`;
+//! - the folders above such a folder cannot be renamed, with the whole
+//!   home or the folder above granted (`mv ~/Games ~/G` for
+//!   `SAM_DATA_DIR=~/Games/sam`, `mv ~/Games/old ~/Games/o2` for
+//!   `~/Games/old/sam`): renamed, the empty folder moved along and the next
+//!   start no longer found the old folder to hide;
 //! - a switch naming the home or `/` would cover too much: nothing covers
 //!   the home, which the app still reads and writes as granted, while the
 //!   home's protections and SAM's folders by name (`~/.local/share/sam`)
 //!   hold as before.
 //!
 //! Controls show the attack would have been seen: the rest of `~/Games`
-//! is read and written.
+//! is read and written, and a folder in it that holds none of SAM's is
+//! renamed.
 //!
 //! In its own file because it sets `HOME` and the switches for the test
 //! process.
@@ -42,6 +48,11 @@ echo x > "$H/ok.txt" 2>/dev/null && echo HOME_WRITE=written || echo HOME_WRITE=r
 cat "$H/.ssh/id_ed25519" 2>/dev/null | grep -q SECRET && echo KEY=read || echo KEY=hidden
 echo x > "$H/.config/autostart/evil.desktop" 2>/dev/null && echo AUTOSTART=written || echo AUTOSTART=refused
 grep -q BYNAME "$H/.local/share/sam/apps.toml" 2>/dev/null && echo BY_NAME=read || echo BY_NAME=hidden
+if [ -f "$H/Games/try-rename" ]; then
+  read FROM TO < "$H/Games/try-rename"
+  mv "$H/$FROM" "$H/$TO" 2>/dev/null && echo RENAME=done || echo RENAME=refused
+  mv "$H/Games/free" "$H/Games/free2" 2>/dev/null && echo FREE_RENAME=done || echo FREE_RENAME=refused
+fi
 echo END=1
 "#;
 
@@ -181,6 +192,33 @@ fn an_old_switch_folder_stays_hidden_from_a_real_sandbox() {
         );
         assert_eq!(r["BY_NAME"], "hidden", "{at}: {r:?}");
     }
-    std::env::remove_var("SAM_DATA_DIR");
+
+    // The folders above an old folder cannot be renamed, so the next start
+    // still finds it where the switch names it: with the whole home granted
+    // the folder above it, with `~/Games` granted a folder between.
     std::env::remove_var("SAM_CONFIG_DIR");
+    fs::create_dir_all(home.join("Games/old/sam/homes/x")).unwrap();
+    fs::write(home.join("Games/old/sam/homes/x/secret"), "SECRET").unwrap();
+    for (what, data, from, to, p) in [
+        ("whole home", "Games/sam", "Games", "G", whole_home_rw()),
+        (
+            "~/Games",
+            "Games/old/sam",
+            "Games/old",
+            "Games/o2",
+            games_rw(),
+        ),
+    ] {
+        std::env::set_var("SAM_DATA_DIR", home.join(data));
+        fs::create_dir_all(home.join("Games/free")).unwrap();
+        fs::write(home.join("Games/try-rename"), format!("{from} {to}\n")).unwrap();
+        let r = start(p);
+        assert_eq!(r["RENAME"], "refused", "{what}, mv ~/{from} ~/{to}: {r:?}");
+        assert!(!home.join(to).exists(), "{what}: ~/{to} exists");
+        assert!(home.join(data).join("homes/x/secret").is_file(), "{what}");
+        assert_eq!(r["FREE_RENAME"], "done", "control, {what}: {r:?}");
+        fs::remove_dir(home.join("Games/free2")).unwrap();
+    }
+    fs::remove_file(home.join("Games/try-rename")).unwrap();
+    std::env::remove_var("SAM_DATA_DIR");
 }
