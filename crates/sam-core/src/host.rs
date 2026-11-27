@@ -62,15 +62,35 @@ impl UsernsStatus {
     }
 }
 
-/// Whether a Bubblewrap whose `--help` printed `help` has overlays: it
-/// must list `--overlay-src`. The option itself decides, not the version
-/// number, so a distribution's backport counts and an odd version string
-/// does no harm (Bubblewrap added overlays in 0.11.0, which SAM's messages
-/// name). The same test as Room service's `bwrap_builds_rooms` and the
-/// contract probe `bwrap-option:--overlay-src`.
-fn help_lists_overlays(help: &str) -> bool {
-    help.split_whitespace()
-        .any(|w| w.trim_end_matches([',', '=']) == "--overlay-src")
+/// Whether Bubblewrap's help text `help` lists the option `opt` as a word
+/// of its own: `--overlay-src` counts, `--overlay-srcs` or `--tmp-overlay`
+/// never do. A trailing `,` or `=` is not part of the word.
+pub fn help_lists_option(help: &str, opt: &str) -> bool {
+    !opt.is_empty()
+        && help
+            .split_whitespace()
+            .any(|w| w.trim_end_matches([',', '=']) == opt)
+}
+
+/// Whether the Bubblewrap at `bwrap` offers the option `opt`: it runs
+/// `bwrap --help` (stdin closed), which must succeed, and its standard
+/// output must list `opt` as a word of its own ([`help_lists_option`]).
+/// Bubblewrap prints its help to standard output and exits with 0; any
+/// other answer, or a program that does not start, counts as "no". The one
+/// test for Bubblewrap's options: the writable app folder
+/// ([`bwrap_supports_overlay`]), Room service and the contract probe
+/// `bwrap-option:` all ask it. The option decides, not the version number,
+/// so a distribution's backport counts and an odd version text does no
+/// harm.
+pub fn bwrap_lists_option(bwrap: &std::path::Path, opt: &str) -> bool {
+    std::process::Command::new(bwrap)
+        .arg("--help")
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .is_ok_and(|o| {
+            o.status.success() && help_lists_option(&String::from_utf8_lossy(&o.stdout), opt)
+        })
 }
 
 /// Whether the installed Bubblewrap supports overlays (it lists
@@ -80,23 +100,7 @@ fn help_lists_overlays(help: &str) -> bool {
 pub fn bwrap_supports_overlay() -> bool {
     static CHECKED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *CHECKED.get_or_init(|| {
-        let Some(path) = crate::util::which("bwrap") else {
-            return false;
-        };
-        let out = std::process::Command::new(path)
-            .arg("--help")
-            .stdin(std::process::Stdio::null())
-            .output();
-        let text = out
-            .map(|o| {
-                format!(
-                    "{}{}",
-                    String::from_utf8_lossy(&o.stdout),
-                    String::from_utf8_lossy(&o.stderr)
-                )
-            })
-            .unwrap_or_default();
-        help_lists_overlays(&text)
+        crate::util::which("bwrap").is_some_and(|path| bwrap_lists_option(&path, "--overlay-src"))
     })
 }
 
@@ -263,6 +267,8 @@ mod probe_tests {
 
 #[cfg(test)]
 mod overlay_option_tests {
+    use super::{bwrap_lists_option, help_lists_option};
+
     /// Overlays count where Bubblewrap lists `--overlay-src`, whatever its
     /// version says: a backport to 0.10 counts, a 0.11 without the option
     /// does not, and `--tmp-overlay` or `--ro-overlay` alone are not it.
@@ -271,15 +277,71 @@ mod overlay_option_tests {
         let upstream = "usage: bwrap [OPTIONS...] [--] COMMAND [ARGS...]\n\
             --overlay-src SRC            Read files from SRC in the following overlay\n\
             --overlay RWSRC WORKDIR DEST Mount overlayfs on DEST\n";
-        assert!(super::help_lists_overlays(upstream));
+        assert!(help_lists_option(upstream, "--overlay-src"));
+        assert!(help_lists_option(upstream, "--overlay"));
         let backport = "bubblewrap 0.10.0\n  --overlay-src SRC  Read files from SRC\n";
-        assert!(super::help_lists_overlays(backport));
+        assert!(help_lists_option(backport, "--overlay-src"));
         let older = "usage: bwrap\n  --tmpfs DEST  Mount new tmpfs on DEST\n  --bind-fd FD DEST\n";
-        assert!(!super::help_lists_overlays(older));
+        assert!(!help_lists_option(older, "--overlay-src"));
         let only_tmp = "  --tmp-overlay DEST\n  --ro-overlay DEST\n  --overlay-srcs\n";
-        assert!(!super::help_lists_overlays(only_tmp));
-        assert!(!super::help_lists_overlays("bubblewrap 0.11.0\n"));
-        assert!(!super::help_lists_overlays(""));
+        assert!(!help_lists_option(only_tmp, "--overlay-src"));
+        assert!(!help_lists_option(only_tmp, "--overlay"));
+        assert!(!help_lists_option("bubblewrap 0.11.0\n", "--overlay-src"));
+    }
+
+    /// An option counts only as a word of its own: a longer option that
+    /// starts or ends with it is a look-alike, and a trailing `,` or `=`
+    /// does not hide it.
+    #[test]
+    fn an_option_counts_only_as_a_word_of_its_own() {
+        let help = "  --ro-bind-fds FD DEST\n  --xbind-fd FD\n  --bind-fd-all\n";
+        assert!(!help_lists_option(help, "--bind-fd"));
+        assert!(!help_lists_option(help, "--ro-bind-fd"));
+        assert!(help_lists_option(
+            "  --bind-fd, --ro-bind-fd=FD\n",
+            "--bind-fd"
+        ));
+        assert!(help_lists_option(
+            "  --bind-fd, --ro-bind-fd=FD\n",
+            "--ro-bind-fd"
+        ));
+    }
+
+    /// No help and no option name list nothing.
+    #[test]
+    fn empty_help_or_an_empty_option_lists_nothing() {
+        assert!(!help_lists_option("", "--overlay-src"));
+        assert!(!help_lists_option("  --overlay-src SRC\n", ""));
+        assert!(!help_lists_option("   \n\t", "--overlay-src"));
+    }
+
+    fn program(dir: &std::path::Path, name: &str, body: &str) -> std::path::PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let p = dir.join(name);
+        std::fs::write(&p, format!("#!/bin/sh\n{body}\n")).unwrap();
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        p
+    }
+
+    /// Bubblewrap's options are read from its help on standard output after
+    /// a successful run: help that fails, help only on standard error and a
+    /// program that does not exist all count as "no" (stand-ins; the real
+    /// Bubblewrap is checked in tests/host_probe.rs).
+    #[test]
+    fn bubblewrap_options_come_from_a_successful_help_on_standard_output() {
+        let tmp = tempfile::tempdir().unwrap();
+        let help = "usage: bwrap\n    --overlay-src SRC\n";
+        let good = program(tmp.path(), "good", &format!("printf '{help}'"));
+        assert!(bwrap_lists_option(&good, "--overlay-src"));
+        assert!(!bwrap_lists_option(&good, "--overlay"));
+        let fails = program(tmp.path(), "fails", &format!("printf '{help}'; exit 1"));
+        assert!(!bwrap_lists_option(&fails, "--overlay-src"));
+        let stderr = program(tmp.path(), "stderr", &format!("printf '{help}' >&2"));
+        assert!(!bwrap_lists_option(&stderr, "--overlay-src"));
+        assert!(!bwrap_lists_option(
+            &tmp.path().join("missing"),
+            "--overlay-src"
+        ));
     }
 }
 

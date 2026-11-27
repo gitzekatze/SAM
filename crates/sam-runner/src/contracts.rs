@@ -266,6 +266,20 @@ fn sound_relay(host: &HostInfo) -> (State, String) {
     }
 }
 
+/// The quick check `bwrap-option:<opt>`: whether the Bubblewrap at `bwrap`
+/// (None: not installed) offers `opt`, by SAM's one test for Bubblewrap's
+/// options ([`sam_core::host::bwrap_lists_option`]), the same one the
+/// writable app folder and Room service use.
+fn bwrap_option(bwrap: Option<&Path>, opt: &str) -> (State, String) {
+    match bwrap {
+        None => (State::Absent, "bwrap is not installed".into()),
+        Some(b) if sam_core::host::bwrap_lists_option(b, opt) => {
+            (State::Holds, format!("bwrap knows {opt}"))
+        }
+        Some(_) => (State::Broken, format!("bwrap does not know {opt}")),
+    }
+}
+
 fn probe(name: &str, host: &HostInfo) -> (State, String) {
     let holds = |d: &str| (State::Holds, d.to_string());
     let broken = |d: String| (State::Broken, d);
@@ -279,12 +293,7 @@ fn probe(name: &str, host: &HostInfo) -> (State, String) {
             },
         },
         p if p.starts_with("bwrap-option:") => {
-            let opt = &p["bwrap-option:".len()..];
-            match output("bwrap", &["--help"]) {
-                None => (State::Absent, "bwrap is not installed".into()),
-                Some(help) if help.contains(opt) => holds(&format!("bwrap knows {opt}")),
-                Some(_) => broken(format!("bwrap does not know {opt}")),
-            }
+            bwrap_option(which("bwrap").as_deref(), &p["bwrap-option:".len()..])
         }
         "pasta-splice-only" => {
             if which("pasta").is_none() {
@@ -775,6 +784,39 @@ mod tests {
         )
         .unwrap();
         assert!(matches!(portal_openuri_ask(t.path()).0, State::Broken));
+    }
+
+    /// The quick check for a Bubblewrap option asks SAM's one option test:
+    /// a look-alike that merely contains the name, help on standard error
+    /// only or a failing help do not count, and no Bubblewrap is "not
+    /// here" (stand-ins; the real one is checked by `sam-jail doctor
+    /// --contracts` and on CI).
+    #[test]
+    fn the_bubblewrap_option_check_counts_only_the_option_itself() {
+        use std::os::unix::fs::PermissionsExt;
+        let t = tempfile::tempdir().unwrap();
+        let fake = |name: &str, body: &str| {
+            let p = t.path().join(name);
+            std::fs::write(&p, format!("#!/bin/sh\n{body}\n")).unwrap();
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+            p
+        };
+        let real = fake("real", "printf 'usage: bwrap\\n    --overlay-src SRC\\n'");
+        let alike = fake("alike", "printf 'usage: bwrap\\n    --overlay-srcs SRC\\n'");
+        let stderr = fake(
+            "stderr",
+            "printf 'usage: bwrap\\n    --overlay-src SRC\\n' >&2",
+        );
+        let fails = fake(
+            "fails",
+            "printf 'usage: bwrap\\n    --overlay-src SRC\\n'; exit 1",
+        );
+        let opt = "--overlay-src";
+        assert!(matches!(bwrap_option(Some(&real), opt).0, State::Holds));
+        assert!(matches!(bwrap_option(Some(&alike), opt).0, State::Broken));
+        assert!(matches!(bwrap_option(Some(&stderr), opt).0, State::Broken));
+        assert!(matches!(bwrap_option(Some(&fails), opt).0, State::Broken));
+        assert!(matches!(bwrap_option(None, opt).0, State::Absent));
     }
 
     #[test]
