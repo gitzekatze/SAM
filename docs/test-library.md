@@ -415,7 +415,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-504 tests.
+505 tests.
 
 | Promise | Test |
 |---|---|
@@ -835,6 +835,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Under "This computer only", a room that asks for the network gets an empty network of its own: it reaches no port of the computer (not even one listed for its app) and no socket outside the sandbox. | [`under_this_computer_only_a_room_reaches_no_more_than_its_app`](../crates/sam-runner/tests/room_service_local.rs#L27) |
 | Inside a real sandbox, each profile shows exactly the files and services it allows. | [`a_real_sandbox_shows_exactly_what_each_profile_allows`](../crates/sam-runner/tests/sandbox.rs#L65) |
 | Inside a real sandbox, the host tools that ask a service outside it to start a program (`systemd-run`, `flatpak-spawn`) are SAM's stand-ins: `flatpak-spawn` refuses, `systemd-run` runs the command right there, also where the tool is a link (contract host-escape-tools; audit D-M10: nothing ran `flatpak-spawn` inside a sandbox). | [`host_tools_that_start_programs_outside_meet_their_stand_ins`](../crates/sam-runner/tests/sandbox.rs#L313) |
+| The filter answers every call of every architecture, with every argument it checks, under every setting, exactly as recorded: a change to how the filter is written cannot change what it refuses unnoticed. | [`the_filter_decides_every_call_as_recorded`](../crates/sam-runner/tests/seccomp_decisions.rs#L263) |
 | SAM installs an update of itself only when it was really signed with its release key. | [`sam_refuses_a_forged_update_that_carries_its_release_key`](../crates/sam-runner/tests/self_update_signature.rs#L89) |
 | ⟲ Regression (review B2 S6, R87): SAM's update of itself read its AppImage in the person's folder while it worked: the update information, the old blocks of a partial download (mapped into memory, where a file shortened meanwhile crashes SAM) and the running version's signature. | [`sam_updates_itself_from_its_own_copy_even_if_the_file_is_replaced`](../crates/sam-runner/tests/self_update_signature.rs#L281) |
 | ⟲ Regression (review B2 S6, R95): two updates of SAM at once (the window and the command line) shared their download and backup folders and deleted each other's files, the backup of the old SAM among them. | [`a_second_update_of_sam_is_refused_while_one_runs`](../crates/sam-runner/tests/self_update_signature.rs#L350) |
@@ -1140,4 +1141,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 1053 automated Rust tests plus 8 scripted checks.
+Total: 1054 automated Rust tests plus 8 scripted checks.

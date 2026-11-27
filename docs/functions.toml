@@ -314,6 +314,7 @@ tests = [
   "a_socket_pair_opens_only_the_listed_families_too",
   "the_filter_reads_arguments_as_wide_as_the_kernel_does",
   "the_filter_reaches_bubblewrap_as_whole_instructions",
+  "the_filter_decides_every_call_as_recorded",
   "an_app_cannot_open_the_kernels_rarely_used_doors",
   "own_names_that_are_refused",
   "wildcards_and_versions_of_dangerous_services_are_dangerous",

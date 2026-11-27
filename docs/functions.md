@@ -9,7 +9,7 @@
 >
 > Test results are from the newest version report (2026-11-21 05:11:03).
 
-**42 functions:** 3 proven by passing tests, 38 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 1053 tests in all.
+**42 functions:** 3 proven by passing tests, 38 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 1054 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
@@ -25,7 +25,7 @@
 | 10 | [The app sees only a private home folder and the folders you grant.](#10) | sam-sandbox, sam-core | 27 | ✅ 🆕 16 new tests since the report |
 | 11 | [Keys, passwords and the files of your other apps stay hidden, even with full home access.](#11) | sam-sandbox, sam-core | 31 | ✅ 🆕 17 new tests since the report |
 | 12 | [Network: none, "This computer only" (selected ports), or full.](#12) | sam-runner, sam-sandbox | 10 | ✅ 🆕 2 new tests since the report |
-| 13 | [The app reaches only allowed desktop services (a filtered D-Bus) and can't start programs outside its sandbox.](#13) | sam-runner, sam-sandbox, sam-core | 70 | ✅ 🆕 39 new tests since the report |
+| 13 | [The app reaches only allowed desktop services (a filtered D-Bus) and can't start programs outside its sandbox.](#13) | sam-runner, sam-sandbox, sam-core | 71 | ✅ 🆕 40 new tests since the report |
 | 14 | [Display: Wayland with a security context; X11 only when allowed, with its cost explained.](#14) | sam-runner, sam-sandbox, sam-core | 11 | ✅ 🆕 6 new tests since the report |
 | 15 | [Sound, GPU, camera and game controllers only when allowed.](#15) | sam-runner, sam-sandbox, sam-core | 37 | ✅ 🆕 23 new tests since the report |
 | 16 | [The app can't make itself start later outside the sandbox (autostart, shell startup files, menu entries).](#16) | sam-runner, sam-sandbox, sam-core | 52 | ✅ 🆕 33 new tests since the report |
@@ -485,6 +485,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`a_socket_pair_opens_only_the_listed_families_too`](../crates/sam-runner/src/kernel.rs#L1107) | Review R66: `socketpair` makes its sockets as `socket` does, but only `socket` had the family limit, so a pair of crypto, packet or virtual-machine sockets reached the kernel (and loaded its module; TIPC even works as a pair). | 🆕 new |
 | [`the_filter_reads_arguments_as_wide_as_the_kernel_does`](../crates/sam-runner/src/kernel.rs#L1155) | Review R74: the kernel reads `ioctl`'s request and `socket`'s family as 32-bit numbers and drops the upper half of the register. | 🆕 new |
 | [`the_filter_reaches_bubblewrap_as_whole_instructions`](../crates/sam-runner/src/kernel.rs#L1211) | Bubblewrap reads the filter as eight bytes per instruction. | ✅ |
+| [`the_filter_decides_every_call_as_recorded`](../crates/sam-runner/tests/seccomp_decisions.rs#L263) | The filter answers every call of every architecture, with every argument it checks, under every setting, exactly as recorded: a change to how the filter is written cannot change what it refuses unnoticed. | 🆕 new |
 | [`an_app_cannot_open_the_kernels_rarely_used_doors`](../crates/sam-runner/tests/kernel_surface.rs#L132) | An app cannot open the kernels rarely used doors. | ✅ |
 | [`own_names_that_are_refused`](../crates/sam-core/src/permissions.rs#L1448) | Own names that are refused. | ✅ |
 | [`wildcards_and_versions_of_dangerous_services_are_dangerous`](../crates/sam-core/src/permissions.rs#L1586) | Wildcards and versioned names of dangerous desktop services count as dangerous (warned about, rated Dangerous, never owned), and so does any wildcard over the portal's names; ordinary names do not. | 🆕 new |
