@@ -9,8 +9,8 @@
 //!   connect to abstract sockets created outside the sandbox, e.g. XWayland's
 //!   `@/tmp/.X11-unix/X0`, which is reachable whenever the app shares the
 //!   host network namespace.
-//! * Seccomp filters are compiled with seccompiler and loaded by the same
-//!   helper right before exec: a baseline filter (on by default; without
+//! * Seccomp filters are built from one table of rules (`RULES`) and loaded
+//!   by the same helper right before exec: a baseline filter (on by default; without
 //!   nested sandboxes it blocks what Flatpak's default filter blocks except
 //!   `ptrace`, some `personality` values and `modify_ldt`, and more: see
 //!   docs/security.md) and an optional strict one. Loading them in the helper rather
@@ -53,8 +53,8 @@ pub struct SeccompSpec {
     #[serde(default)]
     pub bluetooth: bool,
     /// The program the app starts is a 32-bit x86 program: its 32-bit
-    /// calls go through the same list (see [`i386_branch`]) instead of
-    /// ending it. Off for every other app, whose 32-bit calls still end
+    /// calls go through the same rules (see [`seccomp_program`]) instead
+    /// of ending it. Off for every other app, whose 32-bit calls still end
     /// the process. No effect on other processors.
     #[serde(default)]
     pub i386: bool,
@@ -283,129 +283,269 @@ fn apply_landlock(spec: &LandlockSpec) -> Result<(String, Option<bool>)> {
     })
 }
 
-/// Calls with their names: `calls![libc::SYS_mount, …]` gives
-/// `("mount", number)` on this architecture. The review list
-/// (docs/syscalls-reviewed.txt) is compared with these names.
-macro_rules! calls {
-    ($($p:path),* $(,)?) => {
-        vec![$((
-            {
-                let s = stringify!($p);
-                &s[s.rfind("SYS_").map_or(0, |i| i + 4)..]
-            },
-            $p as i64,
-        )),*]
+/// Who a row of the filter applies to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Scope {
+    /// Every app: the baseline filter, on by default.
+    Baseline,
+    /// Apps without nested sandboxes. Nested sandboxes (Chromium,
+    /// Electron, WebKit's bwrap) need namespaces and mounts; without them
+    /// nothing inside does.
+    WithoutNested,
+    /// Apps with the strict filter on, on top of the baseline.
+    Strict,
+}
+
+/// Which uses of a call a row refuses. An argument is compared by its
+/// lower 32 bits only: the kernel reads `ioctl`'s request, `socket`'s
+/// family and `clone`'s flags no wider, so a value with something in the
+/// upper half is the same request to it (review R74).
+#[derive(Clone, Copy, Debug)]
+enum Uses {
+    /// Every use.
+    All,
+    /// When argument number `.0` is one of these values.
+    ArgIs(u32, &'static [u32]),
+    /// When argument number `.0` has this bit set.
+    ArgHasBit(u32, u32),
+    /// When argument number `.0` is a socket family the app may not open:
+    /// one outside [`SOCKET_FAMILIES`], or Bluetooth without its switch.
+    FamilyNotAllowed(u32),
+}
+
+/// One row of the filter: a call, whom the row applies to, which uses it
+/// refuses, and the error a refused call answers.
+#[derive(Debug)]
+struct Rule {
+    /// The call's name, as docs/syscalls-reviewed.txt says it.
+    name: &'static str,
+    /// Its number on this processor; none where this processor has no
+    /// such call.
+    nr: Option<u32>,
+    /// Its 32-bit x86 numbers, older forms of the same call included.
+    i386: &'static [u32],
+    scope: Scope,
+    uses: Uses,
+    errno: i32,
+}
+
+impl Rule {
+    /// Whether the row is part of the filter for `spec`.
+    fn applies(&self, spec: &SeccompSpec) -> bool {
+        match self.scope {
+            Scope::Baseline => true,
+            Scope::WithoutNested => !spec.allow_userns,
+            Scope::Strict => spec.strict,
+        }
+    }
+}
+
+/// A call's name from its libc constant: `SYS_mount` is "mount".
+const fn call_name(constant: &'static str) -> &'static str {
+    constant.split_at("SYS_".len()).1
+}
+
+/// This processor's number of a call only x86-64 has; none elsewhere.
+#[cfg(target_arch = "x86_64")]
+macro_rules! x86_only {
+    ($sys:ident) => {
+        Some(libc::$sys as u32)
+    };
+}
+#[cfg(not(target_arch = "x86_64"))]
+macro_rules! x86_only {
+    ($sys:ident) => {
+        None
     };
 }
 
-/// Syscalls blocked (EPERM) by the baseline filter, on by default. Kernel
-/// interfaces no desktop app needs and that have a history of exploits:
-/// modules, kexec, BPF, perf, keyrings, userfaultfd, handle-based opens, io_uring.
-fn baseline_syscalls(allow_userns: bool) -> Vec<(&'static str, i64)> {
-    let mut v = calls![
-        libc::SYS_kexec_load,
-        libc::SYS_init_module,
-        libc::SYS_finit_module,
-        libc::SYS_delete_module,
-        libc::SYS_reboot,
-        libc::SYS_swapon,
-        libc::SYS_swapoff,
-        libc::SYS_acct,
-        libc::SYS_settimeofday,
-        libc::SYS_clock_settime,
-        libc::SYS_adjtimex,
-        // The same as adjtimex and quotactl through another door (audit
-        // S-F10: the siblings were blocked, these were not).
-        libc::SYS_clock_adjtime,
-        libc::SYS_quotactl,
-        libc::SYS_quotactl_fd,
-        libc::SYS_bpf,
-        libc::SYS_perf_event_open,
-        libc::SYS_userfaultfd,
-        libc::SYS_keyctl,
-        libc::SYS_add_key,
-        libc::SYS_request_key,
-        libc::SYS_open_by_handle_at,
-        libc::SYS_name_to_handle_at,
-        libc::SYS_vhangup,
-        libc::SYS_syslog,
-        // io_uring: a frequent source of kernel privilege escalations,
-        // blocked by Docker, ChromeOS and Android too. Programs that use it
-        // fall back to ordinary I/O when it is refused.
-        libc::SYS_io_uring_setup,
-        libc::SYS_io_uring_enter,
-        libc::SYS_io_uring_register,
-        // Blocked by Flatpak's default filter too, and needed by no
-        // desktop app (review R69; owner, 2026-11-25): the NUMA memory
-        // calls (which memory banks of a many-processor server a program
-        // uses; reading them tells another process's placement, changing
-        // them moves pages of the machine). `chroot` is with the namespace
-        // calls below: Chromium's own sandbox needs it.
-        libc::SYS_mbind,
-        libc::SYS_move_pages,
-        libc::SYS_migrate_pages,
-        libc::SYS_get_mempolicy,
-        libc::SYS_set_mempolicy,
-        libc::SYS_set_mempolicy_home_node,
-    ];
-    // On every processor (it sat with the x86-only calls, so ARM did not
-    // block it; found by the review list test on ARM).
-    v.extend(calls![libc::SYS_kexec_file_load]);
-    // Calls only x86-64 has.
-    #[cfg(target_arch = "x86_64")]
-    v.extend(calls![libc::SYS_iopl, libc::SYS_ioperm, libc::SYS_uselib]);
-    if !allow_userns {
-        // Without nested sandboxes nothing inside needs namespaces or mounts.
-        // clone and clone3 can make namespaces too: see `listed_calls` and
-        // `front_filter`.
-        v.extend(calls![
-            libc::SYS_unshare,
-            libc::SYS_setns,
-            libc::SYS_mount,
-            libc::SYS_umount2,
-            libc::SYS_pivot_root,
-            libc::SYS_open_tree,
-            libc::SYS_move_mount,
-            libc::SYS_fsopen,
-            libc::SYS_fsmount,
-            libc::SYS_fsconfig,
-            libc::SYS_fspick,
-            libc::SYS_mount_setattr,
-            // Changing the root folder (review R69, as in Flatpak). It
-            // needs a right the app has only in a namespace of its own, so
-            // the kernel refuses it there anyway; with nested sandboxes
-            // Chromium's sandbox (Electron, CEF) uses it to drop the file
-            // system, and refusing it would push apps to `--no-sandbox`.
-            libc::SYS_chroot,
-        ]);
-        // open_tree and mount_setattr in one call (Linux 6.15): blocked
-        // like the two it combines (review R67). The libc crate has no
-        // name for it yet; its number is 467 on x86_64, i386 and aarch64,
-        // the only processors the filter supports (see `listed_calls`).
-        v.push(("open_tree_attr", 467));
-    }
-    v
+/// A row of [`RULES`], named after its libc constant, with this
+/// processor's number from libc: `row!(SYS_mount, [21], WithoutNested)`
+/// refuses every use of `mount` with "not permitted"; the 32-bit x86
+/// number of `mount` is 21. A fourth and fifth part name the uses refused
+/// and the error; `x86_only` marks a call only x86-64 has.
+macro_rules! row {
+    (x86_only $sys:ident, $i386:expr, $scope:ident) => {
+        row!(@ $sys, x86_only!($sys), $i386, $scope, Uses::All, libc::EPERM)
+    };
+    ($sys:ident, $i386:expr, $scope:ident) => {
+        row!($sys, $i386, $scope, Uses::All, libc::EPERM)
+    };
+    ($sys:ident, $i386:expr, $scope:ident, $uses:expr, $errno:expr) => {
+        row!(@ $sys, Some(libc::$sys as u32), $i386, $scope, $uses, $errno)
+    };
+    (@ $sys:ident, $nr:expr, $i386:expr, $scope:ident, $uses:expr, $errno:expr) => {
+        Rule {
+            name: call_name(stringify!($sys)),
+            nr: $nr,
+            i386: &$i386,
+            scope: Scope::$scope,
+            uses: $uses,
+            errno: $errno,
+        }
+    };
 }
 
-/// Additionally blocked by the strict filter: `ptrace` and every call
-/// that reaches into another process as far (its memory, its descriptors,
-/// its kernel objects), and `personality` (review R68: the help text
-/// promised these, three were missing). The NUMA memory calls the strict
-/// filter used to add are in the baseline since review R69. `ptrace` and
-/// `personality` stay here: crash reporters and Wine use them, and
-/// programs ask `personality` for their mode. The full promise is written
-/// in `docs/security.md`, section "strict filter".
-fn strict_extra_syscalls() -> Vec<(&'static str, i64)> {
-    calls![
-        libc::SYS_ptrace,
-        libc::SYS_process_vm_writev,
-        libc::SYS_process_vm_readv,
-        libc::SYS_process_madvise,
-        libc::SYS_pidfd_getfd,
-        libc::SYS_kcmp,
-        libc::SYS_personality,
-    ]
-}
+/// What the syscall filter refuses: one row per call, with this
+/// processor's number and the 32-bit x86 numbers side by side, so a call
+/// added for one is added for the other. Every call not named here is
+/// allowed: the filter is a deny list (contract `kernel-seccomp`), and
+/// docs/syscalls-reviewed.txt says what it does with every call
+/// ([`review_statuses`]). [`seccomp_program`] turns the rows into the
+/// filter program.
+const RULES: &[Rule] = &[
+    // The baseline: kernel interfaces no desktop app needs and that have
+    // a history of exploits: modules, kexec, BPF, perf, keyrings,
+    // userfaultfd, handle-based opens, io_uring.
+    row!(SYS_kexec_load, [283], Baseline),
+    // On every processor (it sat with the x86-only calls, so ARM did not
+    // block it; found by the review list test on ARM). 32-bit x86 has no
+    // such call.
+    row!(SYS_kexec_file_load, [], Baseline),
+    row!(SYS_init_module, [128], Baseline),
+    row!(SYS_finit_module, [350], Baseline),
+    row!(SYS_delete_module, [129], Baseline),
+    row!(SYS_reboot, [88], Baseline),
+    row!(SYS_swapon, [87], Baseline),
+    row!(SYS_swapoff, [115], Baseline),
+    row!(SYS_acct, [51], Baseline),
+    row!(SYS_settimeofday, [79, 25 /* stime */], Baseline),
+    row!(
+        SYS_clock_settime,
+        [264, 404 /* clock_settime64 */],
+        Baseline
+    ),
+    row!(SYS_adjtimex, [124], Baseline),
+    // The same as adjtimex and quotactl through another door (audit
+    // S-F10: the siblings were blocked, these were not).
+    row!(
+        SYS_clock_adjtime,
+        [343, 405 /* clock_adjtime64 */],
+        Baseline
+    ),
+    row!(SYS_quotactl, [131], Baseline),
+    row!(SYS_quotactl_fd, [443], Baseline),
+    row!(SYS_bpf, [357], Baseline),
+    row!(SYS_perf_event_open, [336], Baseline),
+    row!(SYS_userfaultfd, [374], Baseline),
+    row!(SYS_keyctl, [288], Baseline),
+    row!(SYS_add_key, [286], Baseline),
+    row!(SYS_request_key, [287], Baseline),
+    row!(SYS_open_by_handle_at, [342], Baseline),
+    row!(SYS_name_to_handle_at, [341], Baseline),
+    row!(SYS_vhangup, [111], Baseline),
+    row!(SYS_syslog, [103], Baseline),
+    // io_uring: a frequent source of kernel privilege escalations,
+    // blocked by Docker, ChromeOS and Android too. Programs that use it
+    // fall back to ordinary I/O when it is refused.
+    row!(SYS_io_uring_setup, [425], Baseline),
+    row!(SYS_io_uring_enter, [426], Baseline),
+    row!(SYS_io_uring_register, [427], Baseline),
+    // Blocked by Flatpak's default filter too, and needed by no desktop
+    // app (review R69; owner, 2026-11-25): the NUMA memory calls (which
+    // memory banks of a many-processor server a program uses; reading
+    // them tells another process's placement, changing them moves pages
+    // of the machine). `chroot` is with the namespace calls below:
+    // Chromium's own sandbox needs it.
+    row!(SYS_mbind, [274], Baseline),
+    row!(SYS_move_pages, [317], Baseline),
+    row!(SYS_migrate_pages, [294], Baseline),
+    row!(SYS_get_mempolicy, [275], Baseline),
+    row!(SYS_set_mempolicy, [276], Baseline),
+    row!(SYS_set_mempolicy_home_node, [450], Baseline),
+    // Calls only x86-64 has (and 32-bit x86).
+    row!(x86_only SYS_iopl, [110], Baseline),
+    row!(x86_only SYS_ioperm, [101], Baseline),
+    row!(x86_only SYS_uselib, [86], Baseline),
+    // Typing into the terminal of the app's parent: TIOCSTI and
+    // TIOCLINUX (0x541C; libc has no name for it).
+    row!(
+        SYS_ioctl,
+        [54],
+        Baseline,
+        Uses::ArgIs(1, &[libc::TIOCSTI as u32, 0x541C]),
+        libc::EPERM
+    ),
+    // Only the families in SOCKET_FAMILIES, as in Flatpak (audit S-F7).
+    // `socketpair` makes its sockets as `socket` does, so it would load
+    // and open any other family as well (a usable pair of TIPC sockets,
+    // for one; review R66).
+    row!(
+        SYS_socket,
+        [359],
+        Baseline,
+        Uses::FamilyNotAllowed(0),
+        libc::EAFNOSUPPORT
+    ),
+    row!(
+        SYS_socketpair,
+        [360],
+        Baseline,
+        Uses::FamilyNotAllowed(0),
+        libc::EAFNOSUPPORT
+    ),
+    // Without nested sandboxes nothing inside needs namespaces or mounts.
+    row!(SYS_unshare, [310], WithoutNested),
+    row!(SYS_setns, [346], WithoutNested),
+    row!(SYS_mount, [21], WithoutNested),
+    row!(SYS_umount2, [52, 22 /* umount */], WithoutNested),
+    row!(SYS_pivot_root, [217], WithoutNested),
+    row!(SYS_open_tree, [428], WithoutNested),
+    row!(SYS_move_mount, [429], WithoutNested),
+    row!(SYS_fsopen, [430], WithoutNested),
+    row!(SYS_fsmount, [432], WithoutNested),
+    row!(SYS_fsconfig, [431], WithoutNested),
+    row!(SYS_fspick, [433], WithoutNested),
+    row!(SYS_mount_setattr, [442], WithoutNested),
+    // open_tree and mount_setattr in one call (Linux 6.15): blocked like
+    // the two it combines (review R67). The libc crate has no name for it
+    // yet; its number is 467 on x86_64, i386 and aarch64, the only
+    // processors the filter supports.
+    Rule {
+        name: "open_tree_attr",
+        nr: Some(467),
+        i386: &[467],
+        scope: Scope::WithoutNested,
+        uses: Uses::All,
+        errno: libc::EPERM,
+    },
+    // Changing the root folder (review R69, as in Flatpak). It needs a
+    // right the app has only in a namespace of its own, so the kernel
+    // refuses it there anyway; with nested sandboxes Chromium's sandbox
+    // (Electron, CEF) uses it to drop the file system, and refusing it
+    // would push apps to `--no-sandbox`.
+    row!(SYS_chroot, [61], WithoutNested),
+    // clone() can make a user namespace as well as unshare() can (review
+    // K-2): refused when its flags ask for one. A thread or a plain child
+    // process stays allowed.
+    row!(
+        SYS_clone,
+        [120],
+        WithoutNested,
+        Uses::ArgHasBit(0, libc::CLONE_NEWUSER as u32),
+        libc::EPERM
+    ),
+    // clone3 keeps its flags in memory, where no filter can read them, so
+    // it is refused as a whole (review K-2). "Not implemented" makes the C
+    // library fall back to clone(), whose flags the row above checks, as
+    // in Flatpak.
+    row!(SYS_clone3, [435], WithoutNested, Uses::All, libc::ENOSYS),
+    // The strict filter: `ptrace` and every call that reaches into
+    // another process as far (its memory, its descriptors, its kernel
+    // objects), and `personality` (review R68: the help text promised
+    // these, three were missing). The NUMA memory calls the strict filter
+    // used to add are in the baseline since review R69. `ptrace` and
+    // `personality` stay here: crash reporters and Wine use them, and
+    // programs ask `personality` for their mode. The full promise is
+    // written in `docs/security.md`, section "strict filter".
+    row!(SYS_ptrace, [26], Strict),
+    row!(SYS_process_vm_writev, [348], Strict),
+    row!(SYS_process_vm_readv, [347], Strict),
+    row!(SYS_process_madvise, [440], Strict),
+    row!(SYS_pidfd_getfd, [438], Strict),
+    row!(SYS_kcmp, [349], Strict),
+    row!(SYS_personality, [136], Strict),
+];
 
 /// What the filter does with each call it names, as the review list says
 /// it: "blocked" (always), "blocked unless nested sandboxes" (nested
@@ -414,43 +554,23 @@ fn strict_extra_syscalls() -> Vec<(&'static str, i64)> {
 /// `ioctl` typing into the terminal, `socket` and `socketpair` the
 /// families outside [`SOCKET_FAMILIES`], `clone` a new user namespace
 /// without nested sandboxes). Every other call is allowed (audit S-F10:
-/// the list said "blocked" for calls the default filter allows).
+/// the list said "blocked" for calls the default filter allows). The
+/// calls only x86-64 has are "blocked" on every processor: elsewhere
+/// there is no such call, and the list is shared.
 pub fn review_statuses() -> BTreeMap<&'static str, &'static str> {
-    let always: Vec<&str> = baseline_syscalls(true)
-        .into_iter()
-        .map(|(n, _)| n)
-        .collect();
-    let mut out = BTreeMap::new();
-    for (n, _) in baseline_syscalls(false) {
-        out.insert(
-            n,
-            if always.contains(&n) {
-                "blocked"
-            } else {
-                "blocked unless nested sandboxes"
-            },
-        );
-    }
-    for (n, _) in strict_extra_syscalls() {
-        out.insert(n, "blocked by the strict filter");
-    }
-    out.insert("ioctl", "limited");
-    out.insert("socket", "limited");
-    out.insert("socketpair", "limited");
-    // A clone into a new user namespace is refused without nested
-    // sandboxes; clone3 then answers "not implemented" (review K-2).
-    out.insert("clone", "limited");
-    out.insert("clone3", "blocked unless nested sandboxes");
-    // Calls only x86-64 has: blocked there; elsewhere there is no such
-    // call. The review list, shared by every processor, says "blocked".
-    for n in X86_ONLY {
-        out.entry(n).or_insert("blocked");
-    }
-    out
+    RULES
+        .iter()
+        .map(|r| {
+            let status = match (r.uses, r.scope) {
+                (Uses::All, Scope::Baseline) => "blocked",
+                (Uses::All, Scope::WithoutNested) => "blocked unless nested sandboxes",
+                (Uses::All, Scope::Strict) => "blocked by the strict filter",
+                _ => "limited",
+            };
+            (r.name, status)
+        })
+        .collect()
 }
-
-/// Calls only x86-64 has; the filter blocks them there.
-const X86_ONLY: [&str; 3] = ["iopl", "ioperm", "uselib"];
 
 /// Socket families every app may open: local sockets, the internet (the
 /// network namespace decides whether it leads anywhere) and netlink (the
@@ -467,246 +587,152 @@ pub const SOCKET_FAMILIES: &[i32] = &[
     libc::AF_NETLINK,
 ];
 
-/// The part of the filter seccompiler cannot say, put in front of it:
-/// - every call through the x32 ABI is refused. x32 programs share the
-///   architecture of x86-64 programs but number some calls on their own
-///   (x32 `ptrace` is 521, not 101), so blocking each call by its number
-///   missed those (audit S-F9). No AppImage is an x32 program.
-/// - `socket` and `socketpair` open only the families in
-///   [`SOCKET_FAMILIES`]. `socketpair` makes its sockets the same way, so
-///   it would load and open any other family as well (a usable pair of
-///   TIPC sockets, for one; review R66).
-/// - without nested sandboxes, `clone3` answers "not implemented".
-///
-/// It starts with the architecture: a call of another one (a 32-bit call
-/// of an app without [`i386_branch`]) ends the process before any number
-/// is compared, since a 32-bit number can be a different call here (41 is
-/// `dup` there, `socket` here; review R71). The rest only refuses;
-/// whatever passes goes on to seccompiler's filter.
-fn front_filter(spec: &SeccompSpec) -> seccompiler::BpfProgram {
-    use seccompiler::sock_filter;
-    const LD_W_ABS: u16 = 0x20; // BPF_LD | BPF_W | BPF_ABS
-    const JEQ_K: u16 = 0x15; // BPF_JMP | BPF_JEQ | BPF_K
-    const JSET_K: u16 = 0x45; // BPF_JMP | BPF_JSET | BPF_K
-    const RET_K: u16 = 0x06; // BPF_RET | BPF_K
-    const RET_ERRNO: u32 = 0x0005_0000; // SECCOMP_RET_ERRNO
-    const RET_KILL_PROCESS: u32 = 0x8000_0000; // SECCOMP_RET_KILL_PROCESS
-    const NR: u32 = 0; // seccomp_data.nr
-    const ARCH: u32 = 4; // seccomp_data.arch
-    const ARG0: u32 = 16; // seccomp_data.args[0], low half (little endian)
-    const X32: u32 = 0x4000_0000;
-    // AUDIT_ARCH_AARCH64 or AUDIT_ARCH_X86_64 (the filter supports only
-    // these two; see `listed_calls`).
-    const NATIVE: u32 = if cfg!(target_arch = "aarch64") {
-        0xC000_00B7
+// The filter language (classic BPF) as the kernel's seccomp runs it, and
+// the call it looks at (`struct seccomp_data`; linux/filter.h,
+// linux/seccomp.h, linux/audit.h).
+const LD_W_ABS: u16 = 0x20; // BPF_LD | BPF_W | BPF_ABS: load a 32-bit word of the call
+const JEQ_K: u16 = 0x15; // BPF_JMP | BPF_JEQ | BPF_K: jump on equal
+const JSET_K: u16 = 0x45; // BPF_JMP | BPF_JSET | BPF_K: jump when a bit is set
+const RET_K: u16 = 0x06; // BPF_RET | BPF_K: answer
+const RET_ALLOW: u32 = 0x7fff_0000; // SECCOMP_RET_ALLOW
+const RET_ERRNO: u32 = 0x0005_0000; // SECCOMP_RET_ERRNO, the error in the low 16 bits
+const RET_KILL_PROCESS: u32 = 0x8000_0000; // SECCOMP_RET_KILL_PROCESS
+const NR: u32 = 0; // seccomp_data.nr: the call number
+const ARCH: u32 = 4; // seccomp_data.arch: the architecture the call came from
+const ARGS: u32 = 16; // seccomp_data.args[0]; 8 bytes per argument, low half first (little endian)
+const X32: u32 = 0x4000_0000; // __X32_SYSCALL_BIT of a call number
+const AUDIT_ARCH_I386: u32 = 0x4000_0003;
+const AUDIT_ARCH_X86_64: u32 = 0xC000_003E;
+const AUDIT_ARCH_AARCH64: u32 = 0xC000_00B7;
+
+fn stmt(code: u16, k: u32) -> seccompiler::sock_filter {
+    jump(code, k, 0, 0)
+}
+
+fn jump(code: u16, k: u32, jt: u8, jf: u8) -> seccompiler::sock_filter {
+    seccompiler::sock_filter { code, jt, jf, k }
+}
+
+/// The answer "refused with `errno`".
+fn refusal(errno: i32) -> seccompiler::sock_filter {
+    stmt(RET_K, RET_ERRNO | errno as u32)
+}
+
+/// The architecture of this processor's own calls. The filter supports
+/// x86-64 and aarch64 (both little endian, as [`ARGS`] assumes).
+fn native_arch() -> Result<u32> {
+    if cfg!(target_arch = "x86_64") {
+        Ok(AUDIT_ARCH_X86_64)
+    } else if cfg!(target_arch = "aarch64") {
+        Ok(AUDIT_ARCH_AARCH64)
     } else {
-        0xC000_003E
+        bail!(
+            "{}",
+            sam_core::i18n::tr("seccomp filters are not supported on this architecture")
+        );
+    }
+}
+
+/// The instructions of one row for one call number. They expect the call
+/// number loaded and leave it loaded: a call with another number, or a use
+/// the row does not refuse, goes on to the next row.
+fn check(nr: u32, rule: &Rule, families: &[u32]) -> Result<Vec<seccompiler::sock_filter>> {
+    // Compares of the argument: each either jumps to the refusal right
+    // after them or past it, to where the call number is loaded again.
+    let (arg, compares) = match rule.uses {
+        Uses::All => return Ok(vec![jump(JEQ_K, nr, 0, 1), refusal(rule.errno)]),
+        Uses::ArgIs(arg, values) => (arg, one_of(values, true)?),
+        Uses::FamilyNotAllowed(arg) => (arg, one_of(families, false)?),
+        Uses::ArgHasBit(arg, bit) => (arg, vec![jump(JSET_K, bit, 0, 1)]),
     };
-    let op = |code, k, jt, jf| sock_filter { code, jt, jf, k };
-    let mut families: Vec<u32> = SOCKET_FAMILIES.iter().map(|f| *f as u32).collect();
-    if spec.bluetooth {
-        families.push(libc::AF_BLUETOOTH as u32);
-    }
-    let n = families.len() as u8;
-    let mut f = vec![
-        op(LD_W_ABS, ARCH, 0, 0),
-        op(JEQ_K, NATIVE, 1, 0),
-        op(RET_K, RET_KILL_PROCESS, 0, 0),
-        op(LD_W_ABS, NR, 0, 0),
-        op(JSET_K, X32, 0, 1),
-        op(RET_K, RET_ERRNO | libc::EPERM as u32, 0, 0),
-    ];
-    if !spec.allow_userns {
-        // clone3 keeps its flags in memory, where no filter can read them,
-        // so it is refused as a whole (review K-2). "Not implemented"
-        // makes the C library fall back to clone(), whose flags the
-        // listed calls check, as in Flatpak.
-        f.push(op(JEQ_K, libc::SYS_clone3 as u32, 0, 1));
-        f.push(op(RET_K, RET_ERRNO | libc::ENOSYS as u32, 0, 0));
-    }
-    f.extend([
-        // `socket` or `socketpair`: both name the family first. Neither:
-        // skip the family check (n compares, 1 load, 1 return).
-        op(JEQ_K, libc::SYS_socket as u32, 1, 0),
-        op(JEQ_K, libc::SYS_socketpair as u32, 0, n + 2),
-        op(LD_W_ABS, ARG0, 0, 0),
-    ]);
-    for (i, fam) in families.iter().enumerate() {
-        // A listed family jumps past the remaining compares and the return.
-        f.push(op(JEQ_K, *fam, n - i as u8, 0));
-    }
-    f.push(op(RET_K, RET_ERRNO | libc::EAFNOSUPPORT as u32, 0, 0));
-    f
+    // Another call number skips the argument's load, the compares and the
+    // refusal.
+    let skip = u8::try_from(compares.len() + 2).context("too many values for one row")?;
+    let mut out = vec![jump(JEQ_K, nr, 0, skip), stmt(LD_W_ABS, ARGS + 8 * arg)];
+    out.extend(compares);
+    out.extend([refusal(rule.errno), stmt(LD_W_ABS, NR)]);
+    Ok(out)
 }
 
-/// The compiled BPF program for a filter spec: for a 32-bit app the
-/// [`i386_branch`], then [`front_filter`], then the list of blocked calls.
-pub fn seccomp_program(spec: &SeccompSpec) -> Result<seccompiler::BpfProgram> {
-    let mut program = i386_branch(spec)?;
-    program.extend(front_filter(spec));
-    program.extend(listed_calls(spec)?);
-    Ok(program)
+/// Compares the loaded argument with each value. With `refuse`, a value
+/// that matches goes to the refusal after the compares and none matching
+/// goes past it; without, the other way round.
+fn one_of(values: &[u32], refuse: bool) -> Result<Vec<seccompiler::sock_filter>> {
+    let n = u8::try_from(values.len()).context("too many values for one row")?;
+    Ok((0..n)
+        .zip(values)
+        .map(|(i, v)| {
+            // From compare i: the refusal is n - 1 - i instructions ahead.
+            let (to_refusal, past_it) = (n - 1 - i, n - i);
+            let last = i + 1 == n;
+            if refuse {
+                jump(JEQ_K, *v, to_refusal, u8::from(last))
+            } else {
+                jump(JEQ_K, *v, past_it, 0)
+            }
+        })
+        .collect())
 }
 
-/// The 32-bit x86 numbers of the calls the filter blocks, under the name
-/// of the 64-bit call they stand for. A few have more than one number:
-/// the older and the 64-bit-time forms of the same call. kexec_file_load
-/// has no 32-bit x86 number.
-const I386_CALLS: &[(&str, u32)] = &[
-    ("kexec_load", 283),
-    ("init_module", 128),
-    ("finit_module", 350),
-    ("delete_module", 129),
-    ("reboot", 88),
-    ("swapon", 87),
-    ("swapoff", 115),
-    ("acct", 51),
-    ("settimeofday", 79),
-    ("settimeofday", 25), // stime
-    ("clock_settime", 264),
-    ("clock_settime", 404), // clock_settime64
-    ("adjtimex", 124),
-    ("clock_adjtime", 343),
-    ("clock_adjtime", 405), // clock_adjtime64
-    ("quotactl", 131),
-    ("quotactl_fd", 443),
-    ("bpf", 357),
-    ("perf_event_open", 336),
-    ("userfaultfd", 374),
-    ("keyctl", 288),
-    ("add_key", 286),
-    ("request_key", 287),
-    ("open_by_handle_at", 342),
-    ("name_to_handle_at", 341),
-    ("vhangup", 111),
-    ("syslog", 103),
-    ("io_uring_setup", 425),
-    ("io_uring_enter", 426),
-    ("io_uring_register", 427),
-    ("iopl", 110),
-    ("ioperm", 101),
-    ("uselib", 86),
-    ("unshare", 310),
-    ("setns", 346),
-    ("mount", 21),
-    ("umount2", 52),
-    ("umount2", 22), // umount
-    ("pivot_root", 217),
-    ("open_tree", 428),
-    ("move_mount", 429),
-    ("fsopen", 430),
-    ("fsconfig", 431),
-    ("fsmount", 432),
-    ("fspick", 433),
-    ("mount_setattr", 442),
-    ("open_tree_attr", 467),
-    ("ptrace", 26),
-    ("process_vm_readv", 347),
-    ("process_vm_writev", 348),
-    ("process_madvise", 440),
-    ("pidfd_getfd", 438),
-    ("kcmp", 349),
-    ("personality", 136),
-    ("chroot", 61),
-    ("mbind", 274),
-    ("move_pages", 317),
-    ("migrate_pages", 294),
-    ("get_mempolicy", 275),
-    ("set_mempolicy", 276),
-    ("set_mempolicy_home_node", 450),
-];
-
-/// 32-bit x86 numbers of the calls with a closer look.
-const I386_IOCTL: u32 = 54;
-const I386_SOCKET: u32 = 359;
-const I386_SOCKETPAIR: u32 = 360;
-const I386_CLONE: u32 = 120;
-const I386_CLONE3: u32 = 435;
-
-/// The filter for 32-bit calls, put in front of everything else when the
-/// app's start program is 32-bit ([`SeccompSpec::i386`]; review K-3: such
-/// apps ran with no filter at all, and an app could choose that by making
-/// its start program 32-bit). A 32-bit call gets the same answers as its
-/// 64-bit twin: the listed calls are refused, so are typing into the
-/// terminal, socket and socket-pair families outside [`SOCKET_FAMILIES`]
-/// and, without
-/// nested sandboxes, a clone into a new user namespace and clone3. Every
-/// other 32-bit call is allowed; 64-bit calls jump past this part.
+/// The filter program for `spec`, made from the rows of [`RULES`] that
+/// apply to it:
+/// 1. For a 32-bit app on x86-64 ([`SeccompSpec::i386`]; review K-3: such
+///    apps once ran with no filter at all, and an app could choose that
+///    by making its start program 32-bit), a 32-bit x86 call goes through
+///    the rows by its 32-bit numbers and is allowed when none refuses it.
+///    A call of another architecture jumps past this part. One gap is
+///    left, as in Flatpak: socketcall(), through which older C libraries
+///    open sockets, passes the family in memory the filter cannot read,
+///    so a 32-bit socket made that way is not limited to the families.
+/// 2. A call of any architecture other than this processor's ends the
+///    process before any number is compared, since a 32-bit number can be
+///    a different call here (41 is `dup` there, `socket` here; review
+///    R71).
+/// 3. Every call through the x32 ABI is refused. x32 programs share the
+///    architecture of x86-64 programs but number some calls on their own
+///    (x32 `ptrace` is 521, not 101), so refusing each call by its number
+///    missed those (audit S-F9). No AppImage is an x32 program.
+/// 4. The call goes through the rows by this processor's numbers and is
+///    allowed when none refuses it.
 ///
-/// One gap is left, as in Flatpak: socketcall(), through which older C
-/// libraries open sockets, passes the family in memory the filter cannot
-/// read, so a 32-bit socket or socket pair made that way is not limited
-/// to the listed families. Without this branch such an app had no filter
-/// at all.
-fn i386_branch(spec: &SeccompSpec) -> Result<seccompiler::BpfProgram> {
-    use seccompiler::sock_filter;
-    if !(spec.i386 && cfg!(target_arch = "x86_64")) {
-        return Ok(Vec::new());
-    }
-    const LD_W_ABS: u16 = 0x20;
-    const JEQ_K: u16 = 0x15;
-    const JSET_K: u16 = 0x45;
-    const RET_K: u16 = 0x06;
-    const RET_ERRNO: u32 = 0x0005_0000;
-    const RET_ALLOW: u32 = 0x7fff_0000;
-    const AUDIT_ARCH_I386: u32 = 0x4000_0003;
-    const NR: u32 = 0;
-    const ARCH: u32 = 4;
-    const ARG0: u32 = 16;
-    const ARG1: u32 = 24;
-    let op = |code, k, jt, jf| sock_filter { code, jt, jf, k };
-    let errno = |e: i32| op(RET_K, RET_ERRNO | e as u32, 0, 0);
-    let mut names: Vec<&str> = baseline_syscalls(spec.allow_userns)
-        .into_iter()
-        .map(|(n, _)| n)
-        .collect();
-    if spec.strict {
-        names.extend(strict_extra_syscalls().into_iter().map(|(n, _)| n));
-    }
-    let mut b = vec![op(LD_W_ABS, NR, 0, 0)];
-    for (_, nr) in I386_CALLS.iter().filter(|(n, _)| names.contains(n)) {
-        b.push(op(JEQ_K, *nr, 0, 1));
-        b.push(errno(libc::EPERM));
-    }
-    if !spec.allow_userns {
-        b.push(op(JEQ_K, I386_CLONE3, 0, 1));
-        b.push(errno(libc::ENOSYS));
-        // clone(flags, …): refused when the flags ask for a user namespace.
-        b.push(op(JEQ_K, I386_CLONE, 0, 3));
-        b.push(op(LD_W_ABS, ARG0, 0, 0));
-        b.push(op(JSET_K, libc::CLONE_NEWUSER as u32, 0, 1));
-        b.push(errno(libc::EPERM));
-        b.push(op(LD_W_ABS, NR, 0, 0));
-    }
-    // ioctl(fd, request, …): typing into the terminal is refused.
-    b.push(op(JEQ_K, I386_IOCTL, 0, 4));
-    b.push(op(LD_W_ABS, ARG1, 0, 0));
-    b.push(op(JEQ_K, libc::TIOCSTI as u32, 1, 0));
-    b.push(op(JEQ_K, 0x541C, 0, 1)); // TIOCLINUX
-    b.push(errno(libc::EPERM));
-    b.push(op(LD_W_ABS, NR, 0, 0));
-    // socket(family, …) and socketpair(family, …): only the listed families.
+/// No call number is in two rows (`each_call_number_is_in_one_row`), so
+/// the order of the rows changes no answer.
+pub fn seccomp_program(spec: &SeccompSpec) -> Result<seccompiler::BpfProgram> {
+    let native = native_arch()?;
+    let rules: Vec<&Rule> = RULES.iter().filter(|r| r.applies(spec)).collect();
     let mut families: Vec<u32> = SOCKET_FAMILIES.iter().map(|f| *f as u32).collect();
     if spec.bluetooth {
         families.push(libc::AF_BLUETOOTH as u32);
     }
-    let n = families.len() as u8;
-    b.push(op(JEQ_K, I386_SOCKET, 1, 0));
-    b.push(op(JEQ_K, I386_SOCKETPAIR, 0, n + 2));
-    b.push(op(LD_W_ABS, ARG0, 0, 0));
-    for (i, fam) in families.iter().enumerate() {
-        b.push(op(JEQ_K, *fam, n - i as u8, 0));
+    let mut program = Vec::new();
+    if spec.i386 && cfg!(target_arch = "x86_64") {
+        let mut part = vec![stmt(LD_W_ABS, NR)];
+        for rule in &rules {
+            for nr in rule.i386 {
+                part.extend(check(*nr, rule, &families)?);
+            }
+        }
+        part.push(stmt(RET_K, RET_ALLOW));
+        let skip =
+            u8::try_from(part.len()).context("the 32-bit filter is too long for one jump")?;
+        program.extend([stmt(LD_W_ABS, ARCH), jump(JEQ_K, AUDIT_ARCH_I386, 0, skip)]);
+        program.extend(part);
     }
-    b.push(errno(libc::EAFNOSUPPORT));
-    b.push(op(RET_K, RET_ALLOW, 0, 0));
-    // In front: a 32-bit call enters the branch, any other jumps past it.
-    let skip = u8::try_from(b.len()).context("the 32-bit filter is too long for one jump")?;
-    let mut f = vec![
-        op(LD_W_ABS, ARCH, 0, 0),
-        op(JEQ_K, AUDIT_ARCH_I386, 0, skip),
-    ];
-    f.extend(b);
-    Ok(f)
+    program.extend([
+        stmt(LD_W_ABS, ARCH),
+        jump(JEQ_K, native, 1, 0),
+        stmt(RET_K, RET_KILL_PROCESS),
+        stmt(LD_W_ABS, NR),
+        jump(JSET_K, X32, 0, 1),
+        refusal(libc::EPERM),
+    ]);
+    for rule in &rules {
+        if let Some(nr) = rule.nr {
+            program.extend(check(nr, rule, &families)?);
+        }
+    }
+    program.push(stmt(RET_K, RET_ALLOW));
+    Ok(program)
 }
 
 /// The filter as `bwrap --seccomp` reads it: the program's instructions,
@@ -720,75 +746,6 @@ pub fn filter_bytes(spec: &SeccompSpec) -> Result<Vec<u8>> {
         out.extend(i.k.to_ne_bytes());
     }
     Ok(out)
-}
-
-/// The calls the filter blocks by number, compiled by seccompiler.
-fn listed_calls(spec: &SeccompSpec) -> Result<seccompiler::BpfProgram> {
-    use seccompiler::{
-        SeccompAction, SeccompCmpArgLen, SeccompCmpOp, SeccompCondition, SeccompFilter,
-        SeccompRule, TargetArch,
-    };
-    let arch = if cfg!(target_arch = "x86_64") {
-        TargetArch::x86_64
-    } else if cfg!(target_arch = "aarch64") {
-        TargetArch::aarch64
-    } else {
-        bail!(
-            "{}",
-            sam_core::i18n::tr("seccomp filters are not supported on this architecture")
-        );
-    };
-    let mut list: Vec<i64> = baseline_syscalls(spec.allow_userns)
-        .into_iter()
-        .map(|(_, n)| n)
-        .collect();
-    if spec.strict {
-        list.extend(strict_extra_syscalls().into_iter().map(|(_, n)| n));
-    }
-    // Neither x32 calls nor calls of another architecture get here: the
-    // first end at `front_filter`'s x32 check, the second at its
-    // architecture check (a 32-bit app's 32-bit calls were answered by
-    // `i386_branch` before that). Seccompiler's own check below is a
-    // second one for the same architecture.
-    let mut rules: BTreeMap<i64, Vec<SeccompRule>> =
-        list.into_iter().map(|s| (s, vec![])).collect();
-    // Terminal input injection into the parent's tty (TIOCSTI, TIOCLINUX).
-    let ioctl_rule = |req: u64| -> Result<SeccompRule> {
-        let c = SeccompCondition::new(1, SeccompCmpArgLen::Dword, SeccompCmpOp::Eq, req)
-            .map_err(|e| anyhow!("{e}"))?;
-        SeccompRule::new(vec![c]).map_err(|e| anyhow!("{e}"))
-    };
-    rules.insert(
-        libc::SYS_ioctl,
-        vec![ioctl_rule(libc::TIOCSTI)?, ioctl_rule(0x541C)?],
-    );
-    if !spec.allow_userns {
-        // clone() can make a user namespace as well as unshare() can
-        // (review K-2). Its flags are the first argument on x86_64 and
-        // aarch64. A thread or a plain child process stays allowed.
-        let newuser = libc::CLONE_NEWUSER as u64;
-        let c = SeccompCondition::new(
-            0,
-            SeccompCmpArgLen::Qword,
-            SeccompCmpOp::MaskedEq(newuser),
-            newuser,
-        )
-        .map_err(|e| anyhow!("{e}"))?;
-        rules.insert(
-            libc::SYS_clone,
-            vec![SeccompRule::new(vec![c]).map_err(|e| anyhow!("{e}"))?],
-        );
-    }
-    let filter = SeccompFilter::new(
-        rules,
-        SeccompAction::Allow,
-        SeccompAction::Errno(libc::EPERM as u32),
-        arch,
-    )
-    .map_err(|e| anyhow!("{e}"))?;
-    filter
-        .try_into()
-        .map_err(|e: seccompiler::BackendError| anyhow!("{e}"))
 }
 
 fn apply_seccomp(spec: &SeccompSpec) -> Result<()> {
@@ -921,14 +878,25 @@ mod tests {
         unsafe { libc::socket(family, kind, proto) as libc::c_long }
     }
 
-    /// Review R71: the hand-written architecture check that opens
-    /// [`front_filter`] is the one seccompiler builds for this processor
-    /// (same field, same number, same end), for the processor the test
-    /// runs on. A wrong number would end every call of every app there.
-    /// CI runs it on x86_64; the aarch64 number is checked wherever the
-    /// tests run on an aarch64 machine.
+    /// Review R71: the architecture check that opens [`seccomp_program`]
+    /// (for an app that is not a 32-bit app) is the one seccompiler builds
+    /// for this processor (same field, same number, same end), for the
+    /// processor the test runs on. A wrong number would end every call of
+    /// every app there. CI runs it on x86_64; the aarch64 number is checked
+    /// wherever the tests run on an aarch64 machine.
     #[test]
     fn the_filter_checks_the_architecture_seccompiler_checks() {
+        use seccompiler::{SeccompAction, SeccompFilter, TargetArch};
+        let arch = TargetArch::try_from(std::env::consts::ARCH).unwrap();
+        let reference: seccompiler::BpfProgram = SeccompFilter::new(
+            BTreeMap::new(),
+            SeccompAction::Allow,
+            SeccompAction::Errno(libc::EPERM as u32),
+            arch,
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
         for spec in [
             SeccompSpec::default(),
             SeccompSpec {
@@ -937,9 +905,8 @@ mod tests {
                 ..SeccompSpec::default()
             },
         ] {
-            let front = front_filter(&spec);
-            let listed = listed_calls(&spec).unwrap();
-            assert_eq!(front[..3], listed[..3], "the architecture check");
+            let program = seccomp_program(&spec).unwrap();
+            assert_eq!(program[..3], reference[..3], "the architecture check");
         }
     }
 
@@ -1231,13 +1198,26 @@ mod tests {
             .unwrap()
             .is_empty());
         }
-        assert!(baseline_syscalls(false).contains(&("mount", libc::SYS_mount)));
+        // The calls a filter refuses in every use, with this processor's numbers.
+        let refused = |allow_userns| -> Vec<(&str, Option<u32>)> {
+            let spec = SeccompSpec {
+                allow_userns,
+                ..SeccompSpec::default()
+            };
+            RULES
+                .iter()
+                .filter(|r| r.applies(&spec) && matches!(r.uses, Uses::All))
+                .map(|r| (r.name, r.nr))
+                .collect()
+        };
+        let mount = ("mount", Some(libc::SYS_mount as u32));
+        assert!(refused(false).contains(&mount));
         assert!(
-            baseline_syscalls(true).contains(&("io_uring_setup", libc::SYS_io_uring_setup)),
+            refused(true).contains(&("io_uring_setup", Some(libc::SYS_io_uring_setup as u32))),
             "io_uring is blocked even with nested sandboxes"
         );
         assert!(
-            !baseline_syscalls(true).contains(&("mount", libc::SYS_mount)),
+            !refused(true).contains(&mount),
             "nested sandboxes need mount"
         );
     }
@@ -1502,26 +1482,41 @@ mod tests {
         }
     }
 
-    /// Every call the filter blocks by name has its 32-bit numbers in
-    /// [`I386_CALLS`] (kexec_file_load has none), and every name there is
-    /// one the filter blocks: a call added to the list is not forgotten
-    /// for 32-bit apps.
+    /// Every row of the filter has its 32-bit x86 numbers (kexec_file_load
+    /// has none): a call added to the filter is not forgotten for 32-bit
+    /// apps.
     #[test]
     fn every_blocked_call_is_blocked_for_32_bit_apps_too() {
-        let mut blocked: Vec<&str> = baseline_syscalls(false)
-            .into_iter()
-            .chain(strict_extra_syscalls())
-            .map(|(n, _)| n)
-            .collect();
-        blocked.extend(X86_ONLY);
-        for n in &blocked {
+        for r in RULES {
             assert!(
-                *n == "kexec_file_load" || I386_CALLS.iter().any(|(m, _)| m == n),
-                "{n} has no 32-bit number in I386_CALLS"
+                r.name == "kexec_file_load" || !r.i386.is_empty(),
+                "{} has no 32-bit number in its row",
+                r.name
             );
         }
-        for (n, _) in I386_CALLS {
-            assert!(blocked.contains(n), "{n} is not blocked by the filter");
+    }
+
+    /// No call is named twice and no call number is in two rows, neither
+    /// this processor's nor a 32-bit one: the filter answers a call by the
+    /// first row with its number, so two rows for one number would leave
+    /// the second unread, and the order of the rows would matter.
+    #[test]
+    fn each_call_number_is_in_one_row() {
+        let mut names = std::collections::BTreeSet::new();
+        let mut native = std::collections::BTreeSet::new();
+        let mut i386 = std::collections::BTreeSet::new();
+        for r in RULES {
+            assert!(names.insert(r.name), "{} has two rows", r.name);
+            if let Some(nr) = r.nr {
+                assert!(native.insert(nr), "{}: number {nr} has two rows", r.name);
+            }
+            for nr in r.i386 {
+                assert!(
+                    i386.insert(*nr),
+                    "{}: 32-bit number {nr} has two rows",
+                    r.name
+                );
+            }
         }
     }
 }

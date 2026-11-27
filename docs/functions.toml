@@ -293,6 +293,7 @@ tests = [
   "without_nested_sandboxes_clone_cannot_make_a_user_namespace",
   "a_32_bit_app_gets_its_calls_filtered_not_switched_off",
   "every_blocked_call_is_blocked_for_32_bit_apps_too",
+  "each_call_number_is_in_one_row",
   "a_32_bit_start_program_gets_the_filters_32_bit_part",
   "links_to_other_programs_ask_first",
   "the_link_portal_check_finds_the_ask_option",
