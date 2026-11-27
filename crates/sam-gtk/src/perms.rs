@@ -71,6 +71,29 @@ fn opt(value: Value, text: &str, description: &str) -> Opt {
     }
 }
 
+/// The choices for files opened with the app: one for every value the
+/// setting can hold, so a stored "No access" shows as itself (it used to
+/// show as "Read-only", the first choice, since it had none of its own).
+fn opened_files_options() -> Vec<Opt> {
+    vec![
+        opt(
+            json!("none"),
+            "No access",
+            "SAM does not share files you open with the app. The app cannot see them.",
+        ),
+        opt(
+            json!("ro"),
+            "Read-only",
+            "The app can view the files but not save changes.",
+        ),
+        opt(
+            json!("rw"),
+            "Read & write",
+            "The app can view and save the files.",
+        ),
+    ]
+}
+
 enum Ctl {
     Switch {
         key: &'static str,
@@ -669,18 +692,7 @@ impl Editor {
         self.choice(
             &g,
             "filesystem.opened_files",
-            vec![
-                opt(
-                    json!("ro"),
-                    "Read-only",
-                    "The app can view the files but not save changes.",
-                ),
-                opt(
-                    json!("rw"),
-                    "Read & write",
-                    "The app can view and save the files.",
-                ),
-            ],
+            opened_files_options(),
             Always,
         );
         self.list(
@@ -1291,6 +1303,22 @@ mod tests {
             .filter(|k| !src.contains(&format!("\"{k}\"")))
             .collect();
         assert!(missing.is_empty(), "not in the editor: {missing:?}");
+    }
+
+    /// Files opened with the app offer every value the setting can hold:
+    /// a stored "No access" showed as "Read-only", the first choice, since
+    /// it had none of its own.
+    #[test]
+    fn files_opened_with_the_app_offer_every_setting() {
+        use sam_core::permissions::Access;
+        let offered: Vec<serde_json::Value> = super::opened_files_options()
+            .into_iter()
+            .map(|o| o.value)
+            .collect();
+        for a in [Access::None, Access::Ro, Access::Rw] {
+            let v = serde_json::to_value(a).unwrap();
+            assert!(offered.contains(&v), "{v} is not offered: {offered:?}");
+        }
     }
 
     /// A switch whose key the saved form leaves out while it is at its

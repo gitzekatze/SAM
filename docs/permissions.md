@@ -23,7 +23,7 @@ Use these keys with `sam-jail set <app> <key> <value>`, or edit the `[permission
 | `filesystem.home_access` | `ro` / `rw` |
 | `filesystem.documents` … `downloads`, `music`, `pictures`, `videos`, `desktop` | `none` / `ro` / `rw` |
 | `filesystem.ssh`, `filesystem.gnupg`, `filesystem.hidden_files` | `true` / `false` (only apply with full home) |
-| `filesystem.opened_files` | `none` / `ro` / `rw`: files you open with the app ("Open with") |
+| `filesystem.opened_files` | `none` / `ro` / `rw`: files and folders you open with the app ("Open with") or name on its command line; `none` shares none of them, not even read-only (a file inside a folder the app sees anyway stays visible) |
 | `filesystem.custom_read`, `filesystem.custom_write` | list, e.g. `"~/Projects, /mnt/data"`; rated where they lead (`/.` is `/`, `~/..` the folder above the home). Read-only does not stop the app from connecting to programs listening in the folder, so `/tmp` is rated Dangerous |
 | `network.mode` | `none` / `localhost` (no internet; loopback ports forwarded by pasta, Bubblewrap only) / `full` (a `filtered` value from old profiles loads as `none`) |
 | `devices.gpu`, `devices.webcam`, `devices.gamepads`, `devices.input`, `devices.usb`, `devices.bluetooth` | `true` / `false` |

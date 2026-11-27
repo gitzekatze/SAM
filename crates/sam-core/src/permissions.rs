@@ -1221,7 +1221,7 @@ pub fn permission_catalog() -> Vec<PermissionInfo> {
         perm!("filesystem.hidden_files", "Filesystem", "Sensitive dotfiles",
             "With full home access, also exposes keyrings, password stores and cloud credentials.", Dangerous, advanced),
         perm!("filesystem.opened_files", "Filesystem", "Files you open with the app",
-            "Files you open with this app (for example with 'Open with' in the file manager). Read & write lets it save them; read-only lets it only view them.", Low),
+            "Files you open with this app (for example with 'Open with' in the file manager). Read & write lets it save them; read-only lets it only view them; no access shares none of them with the app.", Low),
         perm!("filesystem.custom_read", "Filesystem", "Extra read-only folders",
             "Additional folders the app can read but not change. Programs that listen in them stay reachable: read-only does not stop the app from connecting to them (for example to a terminal session in /tmp).", Medium, advanced),
         perm!("filesystem.custom_write", "Filesystem", "Extra read/write folders",
