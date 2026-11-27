@@ -1628,13 +1628,24 @@ fn terminal_banner(app: &AppEntry, ctx: &LaunchContext) -> String {
             &[("folders", &sees.join(", "))],
         )
     };
-    format!(
-        "\x1b[2msam-jail: {}\x1b[0m",
-        sam_core::i18n::trf(
-            "{app} runs sandboxed, in a terminal of its own. It sees {sees} (files it saves anywhere else stay there). It cannot type into this shell or use the clipboard through the terminal.",
-            &[("app", &app.display_name()), ("sees", &sees)],
-        )
-    )
+    let mut line = sam_core::i18n::trf(
+        "{app} runs sandboxed, in a terminal of its own. It sees {sees} (files it saves anywhere else stay there). It cannot type into this shell or use the clipboard through the terminal.",
+        &[("app", &app.display_name()), ("sees", &sees)],
+    );
+    // A file named here that the app does not get ("No access"): said
+    // plainly, so the app's "file not found" does not look like a fault.
+    let withheld: Vec<String> = sam_sandbox::withheld_opened_paths(ctx)
+        .iter()
+        .map(|p| sam_core::util::tildify(p))
+        .collect();
+    if !withheld.is_empty() {
+        line.push(' ');
+        line.push_str(&sam_core::i18n::trf(
+            "SAM did not share {files} with it, because files you open with this app are set to No access.",
+            &[("files", &withheld.join(", "))],
+        ));
+    }
+    format!("\x1b[2msam-jail: {line}\x1b[0m")
 }
 
 /// What the launch log says before the app's output: how the sandbox is
@@ -2947,6 +2958,25 @@ mod tests {
         let line = terminal_banner(&app, &ctx);
         assert!(line.contains(&at("Pictures")), "{line}");
         assert!(!line.contains(&at("Games/sam")), "{line}");
+        // A file named on the command line is listed as seen while files
+        // opened with the app are shared; with "No access" it is not seen,
+        // and the line says that SAM did not share it.
+        std::fs::write(home.join("plan.txt"), "x").unwrap();
+        ctx.args = vec!["plan.txt".into()];
+        ctx.permissions.filesystem.opened_files = sam_core::permissions::Access::Ro;
+        let line = terminal_banner(&app, &ctx);
+        assert!(line.contains(&at("plan.txt")), "{line}");
+        assert!(!line.contains("did not share"), "{line}");
+        ctx.permissions.filesystem.opened_files = sam_core::permissions::Access::None;
+        let line = terminal_banner(&app, &ctx);
+        let sees = line.split(" (files it saves").next().unwrap_or_default();
+        assert!(!sees.contains(&at("plan.txt")), "{line}");
+        assert!(
+            line.contains(&format!("SAM did not share {} with it", at("plan.txt"))),
+            "{line}"
+        );
+        // The checks below name no file on the command line.
+        ctx.args = Vec::new();
         // With the whole home, a user folder outside it is shown on its own
         // and named; one inside it is part of the home.
         let outside = home.parent().unwrap().join("data/Documents");

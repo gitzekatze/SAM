@@ -828,7 +828,11 @@ How these stay protected with the home writable:
 - **Files named on the command line** are checked where they really lead:
   never a key or credential store, a start place (also through a link: a
   dotfiles folder holding the real `.bashrc` is not shared), or anything
-  inside SAM's folders.
+  inside SAM's folders. With files opened with the app set to *No access*
+  (`filesystem.opened_files = "none"`, also an old profile's `false`), none
+  is shared, not even read-only; the app then starts in its private home,
+  and a terminal app's start line and the launch log name each file SAM did
+  not share. A file inside a folder the app sees anyway stays visible.
 - **No grant undoes these protections.** They are added after every grant,
   so an extra folder (`/home`, `~/.local`, `~/.config`) cannot show a
   hidden key or make a start file writable again. Grants are checked where

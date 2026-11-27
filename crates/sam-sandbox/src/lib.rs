@@ -1796,6 +1796,7 @@ fn guard_home(a: &mut Args, home: &Path, fsp: &FilesystemPerms, views: &Views, s
 /// Files and folders named on the command line ("Open with", or typed in a
 /// terminal: `hx notes.txt`, `hx .`), granted for this launch only, like a
 /// document portal; `true` means writable (`filesystem.opened_files`).
+/// With "No access" (`none`) nothing is granted this way.
 /// Relative names count from the folder the app was started in.
 ///
 /// Never granted this way: options (`-x`), sensitive paths (keys and
@@ -1852,7 +1853,42 @@ pub fn shown_user_folders(ctx: &LaunchContext) -> Vec<PathBuf> {
 /// [`opened_paths`] against the grants `views` ([`Views::base`]) worked out
 /// once for this start.
 fn opened_paths_in(ctx: &LaunchContext, views: &Views) -> Vec<(PathBuf, bool)> {
-    let rw = ctx.permissions.filesystem.opened_files == Access::Rw;
+    // "No access" shares nothing named on the command line, not even
+    // read-only: it used to share like "Read-only", so the setting said
+    // less than the sandbox gave.
+    let rw = match ctx.permissions.filesystem.opened_files {
+        Access::None => return Vec::new(),
+        Access::Ro => false,
+        Access::Rw => true,
+    };
+    shareable_paths_in(ctx, views, rw)
+}
+
+/// The files and folders named on the command line that SAM would share
+/// but does not, because files opened with the app are set to "No access"
+/// (`filesystem.opened_files = "none"`): what the start line and the
+/// launch log name, so that a person learns why the app cannot open the
+/// file. A file the app sees anyway (inside a granted folder) is not
+/// named, and nothing is named under "Read-only" or "Read & write".
+pub fn withheld_opened_paths(ctx: &LaunchContext) -> Vec<PathBuf> {
+    withheld_opened_paths_in(ctx, &Views::base(ctx))
+}
+
+/// [`withheld_opened_paths`] against the grants `views` ([`Views::base`]).
+fn withheld_opened_paths_in(ctx: &LaunchContext, views: &Views) -> Vec<PathBuf> {
+    if ctx.permissions.filesystem.opened_files != Access::None {
+        return Vec::new();
+    }
+    shareable_paths_in(ctx, views, false)
+        .into_iter()
+        .map(|(p, _)| p)
+        .collect()
+}
+
+/// Every file and folder named on the command line that may be shared
+/// (the rules of [`opened_paths`]), each with `rw`; what the setting
+/// allows of them decides the caller.
+fn shareable_paths_in(ctx: &LaunchContext, views: &Views, rw: bool) -> Vec<(PathBuf, bool)> {
     let home = &ctx.host.home;
     let on_drive = |p: &Path| {
         ["/media", "/mnt", "/run/media"]
@@ -2021,6 +2057,7 @@ impl Bubblewrap {
         let writes = write_grants(ctx);
         let base = Views::of_writes(ctx, &writes);
         let opened = opened_paths_in(ctx, &base);
+        let withheld = withheld_opened_paths_in(ctx, &base);
         let views = Views::with_opened(ctx, base, &opened);
         let mut s = Section {
             ctx,
@@ -2028,6 +2065,7 @@ impl Bubblewrap {
             notes: Vec::new(),
             exec_env: Vec::new(),
             opened,
+            withheld,
             writes,
             views,
             sams: sams_folders(ctx),
@@ -2079,6 +2117,9 @@ struct Section<'c> {
     /// The files named on the command line that are granted, worked out
     /// once per start (audit S-F13: four times before).
     opened: Vec<(PathBuf, bool)>,
+    /// The files named on the command line that are not shared because of
+    /// "No access" ([`withheld_opened_paths`]), named in the notes.
+    withheld: Vec<PathBuf>,
     /// The extra writable folders, decided once ([`write_grants`]).
     writes: Vec<WriteGrant>,
     /// Every grant ([`Views::of`]).
@@ -2542,6 +2583,13 @@ impl Section<'_> {
                     &[("path", &path.display())],
                 )
             });
+        }
+        // Named, not shared: the log says why the app cannot open it.
+        for path in self.withheld.clone() {
+            notes.push(sam_core::i18n::trf(
+                "did not share {path}, named when starting the app: files you open with this app are set to No access",
+                &[("path", &path.display())],
+            ));
         }
         let views = &self.views;
         // An extra folder shown read-only for a start place counts as a
@@ -3906,6 +3954,28 @@ mod tests {
         let f = proj.join("notes.txt").display().to_string();
         assert!(has_seq(&a, &["--ro-bind-try", &f, &f]));
         assert!(has_seq(&a, &["--chdir", proj.to_str().unwrap()]));
+        assert_eq!(withheld_opened_paths(&ctx), Vec::<PathBuf>::new());
+        // "No access" shares nothing, not even read-only (it used to share
+        // like "Read-only"): no bind, the app starts in its private home
+        // rather than in a folder it cannot see, and the log names the file
+        // it did not share.
+        ctx.permissions.filesystem.opened_files = Access::None;
+        assert_eq!(opened_paths(&ctx), vec![], "none shares no opened file");
+        let a = args_of(&ctx);
+        assert!(!a.contains(&f), "no bind of the opened file");
+        assert!(has_seq(&a, &["--chdir", home.to_str().unwrap()]));
+        assert_eq!(withheld_opened_paths(&ctx), vec![proj.join("notes.txt")]);
+        let notes = Bubblewrap.build(&ctx).unwrap().notes;
+        assert!(
+            notes
+                .iter()
+                .any(|n| n.contains(&f) && n.contains("No access")),
+            "{notes:?}"
+        );
+        // A file nobody may open is not named either.
+        ctx.args = vec!["../.bashrc".into()];
+        assert_eq!(withheld_opened_paths(&ctx), Vec::<PathBuf>::new());
+        ctx.permissions.filesystem.opened_files = Access::Ro;
         ctx.args.clear();
         assert!(
             has_seq(&args_of(&ctx), &["--chdir", home.to_str().unwrap()]),

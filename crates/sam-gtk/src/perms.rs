@@ -71,6 +71,32 @@ fn opt(value: Value, text: &str, description: &str) -> Opt {
     }
 }
 
+/// The choices for files opened with the app: one for every value the
+/// setting can hold, so a stored "No access" shows as itself (it used to
+/// show as "Read-only", the first choice, since it had none of its own).
+fn opened_files_options() -> Vec<Opt> {
+    vec![
+        // The second sentence names the exception the sandbox keeps: a file
+        // inside a folder another permission shows (Documents, an extra
+        // folder, the whole home) stays visible through that permission.
+        opt(
+            json!("none"),
+            "No access",
+            "SAM does not share files you open with the app. The app sees one only if another permission shows its folder.",
+        ),
+        opt(
+            json!("ro"),
+            "Read-only",
+            "The app can view the files but not save changes.",
+        ),
+        opt(
+            json!("rw"),
+            "Read & write",
+            "The app can view and save the files.",
+        ),
+    ]
+}
+
 enum Ctl {
     Switch {
         key: &'static str,
@@ -669,18 +695,7 @@ impl Editor {
         self.choice(
             &g,
             "filesystem.opened_files",
-            vec![
-                opt(
-                    json!("ro"),
-                    "Read-only",
-                    "The app can view the files but not save changes.",
-                ),
-                opt(
-                    json!("rw"),
-                    "Read & write",
-                    "The app can view and save the files.",
-                ),
-            ],
+            opened_files_options(),
             Always,
         );
         self.list(
@@ -1291,6 +1306,41 @@ mod tests {
             .filter(|k| !src.contains(&format!("\"{k}\"")))
             .collect();
         assert!(missing.is_empty(), "not in the editor: {missing:?}");
+    }
+
+    /// Files opened with the app offer every value the setting can hold:
+    /// a stored "No access" showed as "Read-only", the first choice, since
+    /// it had none of its own.
+    #[test]
+    fn files_opened_with_the_app_offer_every_setting() {
+        use sam_core::permissions::Access;
+        let offered: Vec<serde_json::Value> = super::opened_files_options()
+            .into_iter()
+            .map(|o| o.value)
+            .collect();
+        for a in [Access::None, Access::Ro, Access::Rw] {
+            let v = serde_json::to_value(a).unwrap();
+            assert!(offered.contains(&v), "{v} is not offered: {offered:?}");
+        }
+    }
+
+    /// The "No access" choice says what the sandbox keeps: a file inside a
+    /// folder another permission shows stays visible through that
+    /// permission, so the text may not promise that the app never sees an
+    /// opened file (it did, while Documents set to Read-only still showed
+    /// ~/Documents/report.pdf).
+    #[test]
+    fn the_no_access_choice_names_the_folders_the_app_sees_anyway() {
+        let none = super::opened_files_options()
+            .into_iter()
+            .find(|o| o.value == serde_json::json!("none"))
+            .expect("No access is offered");
+        let d = &none.description;
+        assert!(!d.contains("cannot see"), "promises too much: {d}");
+        assert!(
+            d.contains("only if another permission shows its folder"),
+            "does not name the exception: {d}"
+        );
     }
 
     /// A switch whose key the saved form leaves out while it is at its
