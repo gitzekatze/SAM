@@ -1764,16 +1764,17 @@ fn a_release_that_fails_to_build_leaves_no_tag() {
     assert!(stderr.contains("stopped before the tag"), "{stderr}");
 }
 
-/// The release script never starts the test suite on the computer it runs
-/// on (the tests start real sandboxes and SAM's programs): it runs the
+/// The release script never starts the test suite itself: it runs the
 /// program SAM_RELEASE_TEST_COMMAND names, with the checkout's path and
 /// SAM_REQUIRE_SANDBOX=1, and stops before the release commit when that
 /// program fails; with neither that nor SKIP_TESTS=1 it stops before it
-/// changes anything and names both. Cargo here is a stand-in that records
-/// its calls; this proves what the script calls, not what the named
-/// program does with the tests.
+/// changes anything and names both; where that program runs the tests is
+/// not checked here, by the script or by this test. The tests start real
+/// sandboxes and SAM's programs, so that program should run them in a
+/// container or under a separate account. Cargo here is a stand-in that
+/// records its calls.
 #[test]
-fn the_release_script_runs_no_tests_on_its_own_computer() {
+fn the_release_script_runs_no_tests_itself() {
     for (exit, case) in [
         (None, "nothing set"),
         (Some(3), "fails"),

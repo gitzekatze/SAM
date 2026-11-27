@@ -7,9 +7,9 @@
 #    CHANGELOG.md.
 # 2. Sets the version everywhere (Cargo.toml/Cargo.lock, metainfo, Fedora
 #    spec, PKGBUILD), dates the changelog section, regenerates man pages.
-# 3. Runs clippy (warnings are errors), then the whole test suite through
-#    the program SAM_RELEASE_TEST_COMMAND names: never on this computer
-#    itself.
+# 3. Runs clippy (warnings are errors). Never runs the tests itself: it
+#    hands the whole test suite to the program SAM_RELEASE_TEST_COMMAND
+#    names, which should run it in a container or under a separate account.
 # 4. Commits "Release X.Y.Z".
 # 5. Builds the release files (make dist) and, with RUNTIME set, the
 #    AppImage; puts the checksums into the PKGBUILD and .SRCINFO and commits.
@@ -22,10 +22,12 @@
 #   SIGN_KEY=<gpg key id>             sign the tag and the release files
 #                                     (UNSIGNED=1 for an unsigned test release)
 # Tests, one of the two:
-#   SAM_RELEASE_TEST_COMMAND=<program> runs the whole test suite somewhere
-#                                     else, for example in a container; it
-#                                     gets this checkout's path as its one
-#                                     argument and fails when a test fails
+#   SAM_RELEASE_TEST_COMMAND=<program> runs the whole test suite, and
+#                                     should run it in a container or under
+#                                     a separate account (this script does
+#                                     not check where); it gets this
+#                                     checkout's path as its one argument
+#                                     and fails when a test fails
 #   SKIP_TESTS=1                      skip clippy and tests, after the tests
 #                                     passed elsewhere on this commit
 # Optional:
@@ -49,12 +51,13 @@ elif [ "${UNSIGNED:-}" != 1 ]; then
     die "set SIGN_KEY=<gpg key id> to sign the release (or UNSIGNED=1 for an unsigned test release)"
 fi
 # The test suite starts real sandboxes and SAM's own programs, so this
-# script never runs it on the computer it runs on: a program you name runs
-# it (for example in a container or under a separate account). Checked
-# before anything is changed.
+# script never runs it itself: it hands it to a program you name, which
+# should run it in a container or under a separate account. This script
+# does not check where that program runs the tests. Checked before
+# anything is changed.
 test_command=${SAM_RELEASE_TEST_COMMAND:-}
 if [ "${SKIP_TESTS:-}" != 1 ] && [ -z "$test_command" ]; then
-    die "the test suite does not run on this computer: set SAM_RELEASE_TEST_COMMAND=<program> to run it elsewhere (for example in a container; it gets this checkout's path), or SKIP_TESTS=1 after the tests passed elsewhere"
+    die "this script does not run the test suite itself: set SAM_RELEASE_TEST_COMMAND=<program> to name the program that runs it (it gets this checkout's path; run the tests in a container or under a separate account), or SKIP_TESTS=1 after the tests passed elsewhere"
 fi
 [ -z "$(git status --porcelain)" ] || die "uncommitted changes; commit or stash them first"
 
