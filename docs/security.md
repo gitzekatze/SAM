@@ -307,11 +307,12 @@ rule: **no more than the app, no less than asked.**
     not name Bubblewrap's build stage (`/oldroot`, `/newroot`, `..`).
   - The app's own links that a room gets with a place it asked for (a
     system folder such as `/lib` that is a link on this computer, the links
-    of the app's `/dev`) count the same way: nothing of the room (a folder,
-    a link, a file system, a mode change, a remount, a place of the app) is
-    made, changed or shown at or behind one, whether it was named before or
-    after the place that brings the link. Bubblewrap would follow the link
-    to wherever it leads. Only the same link again, with the same target,
+    of the app's `/dev`, also those Bubblewrap makes itself when the room
+    asks for working devices) count the same way: nothing of the room (a
+    folder, a link, a file system, a mode change, a remount, a place of the
+    app) is made, changed or shown at or behind one, whether it was named
+    before or after the place that brings the link. Bubblewrap would follow
+    the link to wherever it leads. Only the same link again, with the same target,
     may stand at its place, since it changes nothing.
   - A place the app can write, and any device place, is shown only as a
     whole: nothing of the room (another place, a device, a hiding mount, a

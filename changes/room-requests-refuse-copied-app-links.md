@@ -3,7 +3,8 @@
 - When a program in an app asks for a sandbox of its own (a room) and
   names a place that holds one of the app's links (for example `/lib`,
   which is a link to `/usr/lib` on most systems, or the links in the
-  app's `/dev`), the room gets that link too. SAM now refuses a request
+  app's `/dev`, also those Bubblewrap makes itself when the room asks
+  for working devices), the room gets that link too. SAM now refuses a request
   that would make, change or show anything at or behind such a link (a
   folder, a link, a file system, a mode change, a remount or a place of
   the app), whether it names it before or after the place that brings

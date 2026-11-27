@@ -610,6 +610,29 @@ pub struct AppFacts {
 /// the app has such a /dev.
 const DEVFS_NODES: &[&str] = &["null", "zero", "full", "random", "urandom", "tty"];
 
+/// The links every /dev has (scripts use /dev/stdout), each with its
+/// target: SAM makes them itself in a /dev asked for without devices.
+const DEVFS_LINKS: &[(&str, &str)] = &[
+    ("fd", "/proc/self/fd"),
+    ("stdin", "/proc/self/fd/0"),
+    ("stdout", "/proc/self/fd/1"),
+    ("stderr", "/proc/self/fd/2"),
+];
+
+/// The links Bubblewrap's own `--dev` makes besides those above.
+const BWRAP_DEV_MORE_LINKS: &[(&str, &str)] = &[("core", "/proc/kcore"), ("ptmx", "pts/ptmx")];
+
+/// The links Bubblewrap's `--dev` makes in a /dev at `at`, each with its
+/// target: a room that asks for the app's /dev with working devices gets
+/// them although no `--symlink` of the room names them.
+fn bwrap_dev_links(at: &Path) -> Vec<(PathBuf, String)> {
+    DEVFS_LINKS
+        .iter()
+        .chain(BWRAP_DEV_MORE_LINKS)
+        .map(|(name, target)| (at.join(name), (*target).to_string()))
+        .collect()
+}
+
 fn under(p: &Path, top: &Path) -> bool {
     p.starts_with(top)
 }
@@ -677,12 +700,7 @@ fn devfs_steps(at: &Path, asked: DeviceAccess) -> Vec<Step> {
         access: asked,
     }));
     // The links and the folder every /dev has (scripts use /dev/stdout).
-    for (name, target) in [
-        ("fd", "/proc/self/fd"),
-        ("stdin", "/proc/self/fd/0"),
-        ("stdout", "/proc/self/fd/1"),
-        ("stderr", "/proc/self/fd/2"),
-    ] {
+    for &(name, target) in DEVFS_LINKS {
         steps.push(Step::Args(vec![
             "--symlink".into(),
             target.into(),
@@ -711,7 +729,8 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
     let mut shown: Vec<PathBuf> = Vec::new();
     let mut own_links: Vec<PathBuf> = Vec::new();
     // The app's links the room has too: place() copies the links of the
-    // app's view of a place (SAM's links, the links of the app's /dev), and
+    // app's view of a place (SAM's links, the links of the app's /dev, also
+    // those Bubblewrap's `--dev` makes for one with working devices), and
     // Bubblewrap follows them like the room's own. Each with its target:
     // the same link again at its place changes nothing (a program that
     // asks for `/` and makes the system's links as this system has them).
@@ -949,10 +968,16 @@ pub fn plan_room(plan: &FloorPlan, req: &Request, facts: AppFacts) -> Result<Roo
                 // `/` that is the app's places inside it, not the root).
                 for step in &room.steps[before..] {
                     if let Step::Args(a) = step {
-                        if let [o, target, at] = &a[..] {
-                            if o == "--symlink" {
+                        match &a[..] {
+                            [o, target, at] if o == "--symlink" => {
                                 app_links.push((PathBuf::from(at), target.clone()));
                             }
+                            // The app's /dev with working devices: Bubblewrap
+                            // makes its links itself.
+                            [o, at] if o == "--dev" => {
+                                app_links.extend(bwrap_dev_links(Path::new(at)));
+                            }
+                            _ => {}
                         }
                     }
                     let at = match step {
@@ -3096,6 +3121,51 @@ mod tests {
             let e = why(&[op, dev]);
             assert!(e.contains(SAID), "{op:?} first: {e}");
         }
+        // Asked for with working devices, the app's /dev is Bubblewrap's
+        // own `--dev`, which makes these links itself: they count all the
+        // same, whether the room asks for /dev or for everything.
+        let mut all = plan();
+        all.entries
+            .retain(|e| !e.at().starts_with("/home/me/") || e.at() == Path::new("/home/me"));
+        let why_all =
+            |ops: &[&[&str]]| plan_room(&all, &req(ops, &["x"]), AppFacts::default()).unwrap_err();
+        let dev_bind = &["--dev-bind", "/dev", "/dev"][..];
+        let root_bind = &["--dev-bind", "/", "/"][..];
+        for op in [
+            &["--dir", "/dev/fd/x"][..],
+            &["--symlink", "/x", "/dev/stdout"],
+            &["--tmpfs", "/dev/stderr/x"],
+            &["--remount-ro", "/dev/fd"],
+            &["--dir", "/dev/ptmx/x"],
+            &["--dir", "/dev/core/x"],
+        ] {
+            for ops in [
+                [dev_bind, op],
+                [op, dev_bind],
+                [root_bind, op],
+                [op, root_bind],
+            ] {
+                let e = why_all(&ops);
+                assert!(e.contains(SAID), "{ops:?}: {e}");
+            }
+        }
+        // Controls: Bubblewrap's own links again as they are, and places
+        // beside them.
+        plan_room(
+            &all,
+            &req(
+                &[
+                    root_bind,
+                    &["--symlink", "/proc/self/fd", "/dev/fd"],
+                    &["--symlink", "pts/ptmx", "/dev/ptmx"],
+                    &["--dir", "/dev/fdx"],
+                ],
+                &["x"],
+            ),
+            AppFacts::default(),
+        )
+        .unwrap();
+        ok(&[dev_bind, &["--dir", "/dev/stdoutx"]]);
         // Controls: beside the link, and without the link in the room.
         ok(&[
             usr,
