@@ -1477,7 +1477,17 @@ fn write_grants(ctx: &LaunchContext) -> Vec<WriteGrant> {
                 WriteBind::InsideSam
             } else if let Some(place) = place {
                 WriteBind::ReadOnly(place)
-            } else if let Some(folder) = bound.ancestors().skip(1).find(|a| app_can_change(a)) {
+            } else if let Some(folder) = bound.parent().filter(|a| app_can_change(a)) {
+                // Judged on the folder right above it, as the deepest
+                // grant there shows it: below a read-only grant inside a
+                // writable one (`~/Documents/proj` with Documents
+                // read-only under the writable home), the app cannot
+                // change the way, the read-only grant is a mount of its
+                // own it cannot rename, so the folder is bound writable
+                // after it. Judged on any folder above, it was left out,
+                // read-only under that grant, while the start said the
+                // app could already change it and the sandbox check
+                // expected it writable.
                 WriteBind::Below(folder.to_path_buf())
             } else {
                 WriteBind::Writable
@@ -6745,6 +6755,61 @@ mod guard_tests {
             locked_after(&a, &st(&dots.join("bashrc")), &st(&dots)),
             "{a:?}"
         );
+    }
+
+    /// An extra folder granted read and write inside a read-only user
+    /// folder under the writable whole home (`~/Documents/proj`, Documents
+    /// read-only) is bound writable after the read-only folder, as the
+    /// switch says and the sandbox check expects: the app cannot change
+    /// its way, since the read-only folder is a mount of its own. Before,
+    /// it was taken as lying below the writable home, left out, and so
+    /// read-only, while the start said the app could already change it.
+    /// The same inside a read-only extra folder. One right below the
+    /// writable home is still not bound a second time.
+    #[test]
+    fn a_write_grant_inside_a_read_only_user_folder_stays_writable() {
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap().join("home");
+        for d in ["Documents/proj", "ref/proj", "work"] {
+            fs::create_dir_all(home.join(d)).unwrap();
+        }
+        let st = |p: &Path| p.to_string_lossy().into_owned();
+        let docs = st(&home.join("Documents"));
+        let reference = st(&home.join("ref"));
+        let below = |notes: &[String], p: &str| {
+            notes
+                .iter()
+                .any(|n| n.contains(p) && n.contains("does not bind it a second time"))
+        };
+        for (inside, ro) in [("Documents/proj", &docs), ("ref/proj", &reference)] {
+            let proj = st(&home.join(inside));
+            let mut p = full_rw();
+            p.filesystem.documents = Access::Ro;
+            p.filesystem.custom_read = vec![reference.clone()];
+            p.filesystem.custom_write = vec![proj.clone(), st(&home.join("work"))];
+            let mut ctx = ctx_for(&p, &home);
+            ctx.host
+                .xdg_dirs
+                .insert("documents".into(), home.join("Documents"));
+            let cmd = Bubblewrap.build(&ctx).unwrap();
+            let ro_at = at_seq(&cmd.args, &["--ro-bind-try", ro, ro]);
+            let rw_at = at_seq(&cmd.args, &["--bind-try", &proj, &proj]);
+            assert!(
+                rw_at.iter().any(|w| ro_at.iter().any(|r| w > r)),
+                "{inside}: writable after the read-only folder: {:?}",
+                cmd.args
+            );
+            assert!(!below(&cmd.notes, &proj), "{inside}: {:?}", cmd.notes);
+            assert!(Views::base(&ctx).writable(&home.join(inside).join("x")));
+            // Right below the writable home: shown by it, not bound again.
+            let work = st(&home.join("work"));
+            assert!(
+                !has_seq(&cmd.args, &["--bind-try", &work, &work]),
+                "{:?}",
+                cmd.args
+            );
+            assert!(below(&cmd.notes, &work), "{:?}", cmd.notes);
+        }
     }
 
     /// With the whole home granted, credential files are replaced by an

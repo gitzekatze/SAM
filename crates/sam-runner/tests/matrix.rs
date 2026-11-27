@@ -984,3 +984,83 @@ fn a_read_only_user_folder_under_a_writable_home_is_read_only() {
     assert_eq!(r["DOCS_NEW"], "written", "{r:?}");
     assert!(docs.join("new.txt").is_file());
 }
+
+/// The probe of [`a_writable_extra_folder_inside_a_read_only_user_folder_stays_writable`]:
+/// it writes in the extra folder and, as a control, in Documents around it.
+const PROJ_PROBE: &str = r#"#!/bin/sh
+H="$HOME"
+( echo x > "$H/Documents/proj/new.txt" ) 2>/dev/null && echo PROJ_WRITE=yes || echo PROJ_WRITE=no
+( echo x > "$H/Documents/new.txt" ) 2>/dev/null && echo DOCS_WRITE=yes || echo DOCS_WRITE=no
+echo END=1
+"#;
+
+/// With the whole home writable and Documents read-only, an extra folder
+/// granted read and write inside Documents (`~/Documents/proj`) is
+/// writable inside a real sandbox, while Documents around it stays
+/// read-only. Before, SAM took it as lying below the writable home and did
+/// not bind it, so the read-only Documents covered it.
+#[test]
+fn a_writable_extra_folder_inside_a_read_only_user_folder_stays_writable() {
+    let _one = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    if !bwrap_works() {
+        sam_runner::contracts::skip("bubblewrap is not functional here")
+            .unwrap_or_else(|e| panic!("{e}"));
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    sam_runner::testenv::isolate_this_process(root);
+    let home = root.join("home/tester");
+    let docs = home.join("Documents");
+    fs::create_dir_all(docs.join("proj")).unwrap();
+    fs::create_dir_all(home.join(".config")).unwrap();
+    fs::write(
+        home.join(".config/user-dirs.dirs"),
+        "XDG_DOCUMENTS_DIR=\"$HOME/Documents\"\n",
+    )
+    .unwrap();
+    std::env::set_var("HOME", &home);
+    std::env::set_var("XDG_CONFIG_HOME", home.join(".config"));
+    std::env::set_var("XDG_DATA_HOME", home.join(".local/share"));
+
+    let img = root.join("Proj-1.0-x86_64.AppImage");
+    let mut spec = FixtureSpec::hello("Proj");
+    spec.apprun = PROJ_PROBE.into();
+    build(&img, &spec).unwrap();
+    let app = Sam::with_paths(Paths::rooted(&root.join("sam"))).unwrap();
+    let id = app
+        .add(
+            &img,
+            &AddOptions {
+                accept: true,
+                launcher: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .entry
+        .id;
+    let host = sam_runner::testenv::test_host(HostInfo::probe());
+    let mut p = PermissionSet::strict_gui();
+    p.filesystem.home = true;
+    p.filesystem.home_access = Access::Rw;
+    p.filesystem.documents = Access::Ro;
+    p.filesystem.custom_write = vec![docs.join("proj").to_string_lossy().into_owned()];
+    let mut e = app.set_permissions(&id, p).unwrap();
+    let opts = LaunchOptions {
+        quiet: true,
+        owd: Some(home.clone()),
+        ..Default::default()
+    };
+    let rec = run(&mut e, &opts, &app.config, &app.paths, &host).unwrap();
+    assert!(rec.success, "launch failed: {}", rec.summary);
+    let r = parse(rec.log_file.as_ref().unwrap());
+    assert_eq!(r.get("END").map(String::as_str), Some("1"), "{r:?}");
+    assert_eq!(r["PROJ_WRITE"], "yes", "{r:?}");
+    assert_eq!(
+        r["DOCS_WRITE"], "no",
+        "control: Documents is read-only: {r:?}"
+    );
+    assert!(docs.join("proj/new.txt").is_file());
+    assert!(!docs.join("new.txt").exists());
+}
