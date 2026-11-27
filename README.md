@@ -286,7 +286,8 @@ folders. Only its window looks like Flatseal, so it feels familiar.
 `XDG_CONFIG_HOME` and `XDG_DATA_HOME` move these folders in every build. For
 testing, `SAM_CONFIG_DIR`, `SAM_DATA_DIR`, `SAM_APPLICATIONS_DIR` and
 `SAM_RUNTIME_DIR` move them elsewhere too, but only in developer builds; an
-installed SAM ignores them.
+installed SAM ignores them, and no longer hides a folder it once kept there
+(move or delete such a folder before an app starts).
 
 ### Updates
 

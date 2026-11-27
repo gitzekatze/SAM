@@ -1356,10 +1356,11 @@ was easily misread.
   file without that mount, and nothing detects it. Since a room shows
   nothing inside a place the app can write, the file is then still shown
   read-only. Such a program can usually change the file directly anyway.
-- **Places on removable drives need Linux 5.6 or later in rooms.** Room
-  service opens such a place again for each room with `openat2`, which
-  refuses links; an older kernel (or a container whose syscall filter
-  blocks `openat2`) refuses every room that shows such a place.
+- **Rooms need Linux 5.8 or later.** SAM's room helper checks every place
+  of a room with `openat2`, which refuses links, and with `statx`, which
+  says whether the place is the root of its mount (Linux 5.8). An older
+  kernel, or a container whose syscall filter blocks `openat2` or `statx`,
+  refuses every room, with a message naming the cause.
 - **D-Bus filtering needs `xdg-dbus-proxy`.** Without it, an app with
   filtered D-Bus gets no session bus at all.
 - **Abstract sockets** are blocked only on kernel 6.12+. On older kernels,

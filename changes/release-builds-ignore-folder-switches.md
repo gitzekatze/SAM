@@ -11,6 +11,12 @@
 - With such a variable set, an installed window now behaves as without it:
   starting SAM again brings the open window forward instead of opening a
   second window on the same settings.
+- If you set `SAM_CONFIG_DIR` or `SAM_DATA_DIR` for an installed SAM, its
+  old folders are no longer SAM's own folders, so the sandbox no longer
+  hides them: an app that may see the folder above one of them can read the
+  other apps' private homes there and change their app records. Before you
+  start any app with this version, close SAM's window and every app started
+  from SAM, then move the old folders as described below, or delete them.
 - If you set one of these variables for an installed SAM, it now uses the
   standard folders (`~/.config/sam`, `~/.local/share/sam` and
   `~/.local/share/applications`) instead, without a message: its window
@@ -31,7 +37,8 @@
 - Adding an app's AppImage again instead, without moving the old folders,
   suits only apps whose own files you do not need: the new record starts
   with an empty private home and sets up its settings and permissions
-  anew, and the old home stays in the old folder. If it is the same
+  anew. The old home stays in the old folder, which SAM no longer hides:
+  delete it, or move it out of every folder an app may see. If it is the same
   AppImage file, the app gets the same id again, so its new menu entry
   replaces the old one in `~/.local/share/applications` instead of adding a
   second one. An AppImage that changed since (for example a newer version)
