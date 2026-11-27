@@ -369,6 +369,9 @@ tests = [
   "the_filter_reads_arguments_as_wide_as_the_kernel_does",
   "the_filter_reaches_bubblewrap_as_whole_instructions",
   "the_filter_decides_every_call_as_recorded",
+  "the_socket_note_matches_the_filters_answer_to_32_bit_socketcall",
+  "the_socket_note_follows_the_filters_32_bit_part",
+  "the_app_page_names_the_incomplete_socket_limit_of_a_32_bit_app",
   "an_app_cannot_open_the_kernels_rarely_used_doors",
   "own_names_that_are_refused",
   "wildcards_and_versions_of_dangerous_services_are_dangerous",
@@ -810,6 +813,8 @@ tests = ["a_check_reports_what_it_finds_not_what_it_hopes", "a_skipped_check_is_
   "the_check_expects_the_bus_the_start_gives",
   "the_key_leaves_out_what_changes_by_itself",
   "the_sandbox_check_fails_without_the_wayland_security_context",
+  "the_check_notes_the_incomplete_socket_limit_without_failing",
+  "the_sandbox_check_of_a_32_bit_app_says_its_socket_limit_is_incomplete",
 ]
 checks = ["tests/real-apps/run.sh"]
 

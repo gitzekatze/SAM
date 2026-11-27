@@ -168,6 +168,15 @@ limited to the listed types, because its type sits where no filter can
 read it. Other apps keep ending at a 32-bit call, so a 64-bit program
 cannot use the 32-bit doors.
 
+This includes Bluetooth sockets: such an app with full network access can
+open them even with its *Bluetooth* switch off, because the filter is the
+only place that limits them. SAM says this for each app it applies to: the
+app's page lists *Socket limit incomplete (32-bit)*, and its sandbox check
+adds a note, because the test program makes only 64-bit calls
+(`the_app_page_names_the_incomplete_socket_limit_of_a_32_bit_app`,
+`the_sandbox_check_of_a_32_bit_app_says_its_socket_limit_is_incomplete`,
+`the_socket_note_matches_the_filters_answer_to_32_bit_socketcall`).
+
 The same filter applies while SAM unpacks an AppImage, to its own reader
 and to the AppImage's own extractor (`an_unpacking_tool_cannot_open_the_kernels_rarely_used_doors`).
 `docs/syscalls-reviewed.txt` lists every kernel call with what the filter
@@ -1361,6 +1370,10 @@ gives apps a filtered bus by default.
 With `security.check_before_launch`, SAM repeats the check before a start
 whenever SAM, the app's settings, the security settings or the computer have
 changed, and refuses to start on any failure.
+
+For a 32-bit app the check also notes that its socket limit is incomplete
+(see the syscall filter); this note is neither passed nor failed, so it
+never stops a start.
 
 ---
 

@@ -133,6 +133,14 @@ These limits are real, and SAM says so rather than pretend otherwise.
 - **Bugs in the kernel, in graphics drivers and in firmware.** They bypass
   every sandbox that runs in user space. GPU access in particular widens what
   an app can reach in the kernel.
+- **Rare socket types for 32-bit apps.** An app whose start program is
+  32-bit can open virtual-machine, kernel-crypto and other rarely used
+  sockets through the old `socketcall` call, because their type sits where
+  no syscall filter can read it, as in Flatpak. With full network access
+  this includes Bluetooth sockets, even with the app's Bluetooth switch
+  off. Any AppImage can choose this by shipping a 32-bit start program; it
+  still has less than running the AppImage directly would give it. SAM
+  says so on the app's page and in its sandbox check.
 - **Malware that is already root,** or that gained your password.
 - **Access you grant.** An app with your Documents folder can read and
   change your documents; an app with the keyring can read every password in
