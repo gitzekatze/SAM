@@ -319,7 +319,9 @@ impl Draft {
             repo.join("scripts/sign-release.sh"),
         )
         .unwrap();
-        write_exec(&repo.join("target/debug/sam-jail"), SAM);
+        // The signing tool: a release build with the release tools on
+        // (sign-release.sh, owner decision of 2026-11-27).
+        write_exec(&repo.join("target/sign-tools/release/sam-jail"), SAM);
         write_exec(&t.join("bin/gh"), GH);
         write_exec(&t.join("bin/gpg"), GPG);
         let draft = t.join("draft");
