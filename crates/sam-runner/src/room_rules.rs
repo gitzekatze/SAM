@@ -36,6 +36,11 @@ pub const MAX_OPS: usize = 256;
 /// message (SCM_MAX_FD). Real Bubblewrap passes on every open connection,
 /// and programs started from large apps (Electron) hold many.
 pub const MAX_FDS: usize = 253;
+/// The numbers a passed connection may have: below this one (the usual
+/// first limit of open connections a program gets). No program is known
+/// that hands a room one numbered higher; a refusal names the number and
+/// this limit, so one that does is easy to tell.
+pub const FD_NUMBER_LIMIT: i32 = 1024;
 pub const MAX_ARGS: usize = 256;
 pub const MAX_TEXT: usize = 4096;
 
@@ -236,13 +241,7 @@ pub fn read_request(body: &[u8]) -> Result<Request, String> {
     if r.command.is_empty() || r.command.len() > MAX_ARGS {
         return Err("the request has no command, or too long a one".into());
     }
-    let mut seen = std::collections::BTreeSet::new();
-    if r.fds
-        .iter()
-        .any(|f| !(0..1024).contains(f) || !seen.insert(*f))
-    {
-        return Err("the request's connection numbers are not valid".into());
-    }
+    check_fd_numbers(&r.fds)?;
     let texts = r
         .ops
         .iter()
@@ -270,6 +269,33 @@ pub fn read_request(body: &[u8]) -> Result<Request, String> {
         return Err("the request's folder is not a plain absolute path".into());
     }
     Ok(r)
+}
+
+/// The numbers of the passed connections: each below `FD_NUMBER_LIMIT`,
+/// none negative, none twice. The refusal says which number is wrong and
+/// why (the stand-in prints it as Bubblewrap's error), so a program that
+/// holds a high-numbered connection learns what to change instead of
+/// getting a reason that names nothing.
+fn check_fd_numbers(fds: &[i32]) -> Result<(), String> {
+    let mut seen = std::collections::BTreeSet::new();
+    for &f in fds {
+        if f < 0 {
+            return Err(format!(
+                "the request names connection {f}, and a connection number is never negative"
+            ));
+        }
+        if f >= FD_NUMBER_LIMIT {
+            return Err(format!(
+                "the program passes connection {f}, but SAM's Room service accepts only \
+                 connections numbered below {FD_NUMBER_LIMIT}; close it or move it to a \
+                 lower number before starting bwrap"
+            ));
+        }
+        if !seen.insert(f) {
+            return Err(format!("the request names connection {f} twice"));
+        }
+    }
+    Ok(())
 }
 
 /// An absolute path made only of plain names: no `.`, `..`, empty parts or
@@ -1677,6 +1703,44 @@ mod tests {
         );
         assert!(read_request(r.as_bytes()).is_err());
         assert!(read_request(&vec![b' '; MAX_MESSAGE + 1]).is_err());
+    }
+
+    /// A wrong connection number is refused with a reason that names it:
+    /// one at or above the limit (with the limit and what the program can
+    /// do), a negative one, one given twice. Numbers below the limit, each
+    /// once, pass.
+    #[test]
+    fn a_wrong_connection_number_is_named_in_the_refusal() {
+        let read = |fds: Vec<i32>| {
+            let body = serde_json::to_vec(&Request {
+                fds,
+                ..req(&[], &["x"])
+            })
+            .unwrap();
+            read_request(&body)
+        };
+        assert_eq!(FD_NUMBER_LIMIT, 1024);
+        // Control: up to the last number below the limit, each once.
+        assert_eq!(read(vec![0, 1, 2, 1023]).unwrap().fds, vec![0, 1, 2, 1023]);
+        for high in [1024, 1500] {
+            let e = read(vec![0, 1, high]).unwrap_err();
+            assert_eq!(
+                e,
+                format!(
+                    "the program passes connection {high}, but SAM's Room service accepts \
+                     only connections numbered below 1024; close it or move it to a lower \
+                     number before starting bwrap"
+                )
+            );
+        }
+        assert_eq!(
+            read(vec![0, -1]).unwrap_err(),
+            "the request names connection -1, and a connection number is never negative"
+        );
+        assert_eq!(
+            read(vec![3, 5, 3]).unwrap_err(),
+            "the request names connection 3 twice"
+        );
     }
 
     #[test]

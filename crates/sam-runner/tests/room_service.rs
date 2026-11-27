@@ -131,6 +131,20 @@ say cwd_not_shown "$(cd "$HOME" && rv room -- /usr/bin/sh -c 'pwd -P')"
 say fds_most "$(rv python3 -c "$KEEP_FDS" 253 bwrap --ro-bind /usr /usr $SYS -- /usr/bin/echo ok)"
 # shellcheck disable=SC2086
 say fds_over "$(rv python3 -c "$KEEP_FDS" 254 bwrap --ro-bind /usr /usr $SYS -- /usr/bin/echo ok)"
+# A connection numbered at or above the limit (1024, room_rules::FD_NUMBER_LIMIT)
+# is refused, and the stand-in's error names the number and the limit
+# (its error alone is kept here). A computer whose hard limit leaves no
+# room for number 1500 gives "no-room-for-1500", which fails the test.
+# shellcheck disable=SC2086
+say fd_high "$(python3 -c 'import os, resource, sys
+soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+if hard != resource.RLIM_INFINITY and hard <= 1500:
+    print("no-room-for-1500", file=sys.stderr)
+    sys.exit(1)
+if soft != resource.RLIM_INFINITY and soft <= 1500:
+    resource.setrlimit(resource.RLIMIT_NOFILE, (1501, hard))
+os.dup2(os.open("/dev/null", os.O_RDONLY), 1500)
+os.execvp(sys.argv[1], sys.argv[1:])' bwrap --ro-bind /usr /usr $SYS -- /usr/bin/echo ok 2>&1 >/dev/null)"
 # A name found on PATH (the default /bin:/usr/bin without one).
 say on_path "$(rv room --setenv PATH /usr/bin -- echo ok)"
 say default_path "$(rv room --clearenv -- echo ok)"
@@ -1228,6 +1242,17 @@ fn room_service_builds_working_rooms_that_never_get_more_than_their_app() {
     if program_fds < 12 {
         failures.push(format!(
             "works: the program held {program_fds} open connections, not at least 12"
+        ));
+    }
+    // The refusal of a high-numbered connection names the number and the
+    // limit, not a reason that names nothing.
+    let fd_high = c.get("fd_high").map_or("", String::as_str);
+    if !(fd_high.contains("passes connection 1500")
+        && fd_high.contains("numbered below 1024")
+        && fd_high.contains("SAM's Room service"))
+    {
+        failures.push(format!(
+            "works: fd_high: the refusal of connection 1500 does not name the number and the limit ({fd_high:?})"
         ));
     }
     if c.get("standin_is_helper").map(String::as_str) != Some("helper") {
