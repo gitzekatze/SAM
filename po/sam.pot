@@ -690,102 +690,102 @@ msgstr ""
 msgid "Arguments passed verbatim to Bubblewrap. Can weaken the sandbox."
 msgstr ""
 
-#: crates/sam-core/src/places.rs:403
+#: crates/sam-core/src/places.rs:416
 #. Keep the {placeholders}; their order may change.
 msgid "SAM shows {path} read-only to this app because {place}, a folder SAM protects, is not a real folder but a shortcut to your home folder or a folder above it. Another app may have made this shortcut. If you did not make it yourself, delete the shortcut {place}; your files stay where they are. In a file manager, Ctrl+H shows hidden folders, whose names begin with a dot."
 msgstr ""
 
-#: crates/sam-core/src/places.rs:408
+#: crates/sam-core/src/places.rs:421
 #. Keep the {placeholders}; their order may change.
 msgid "{path} is inside {place}, which SAM protects because changing it can make your computer run programs or change what SAM does; SAM shows it read-only."
 msgstr ""
 
-#: crates/sam-core/src/places.rs:413
+#: crates/sam-core/src/places.rs:426
 #. Keep the {placeholders}; their order may change.
 msgid "{path} is a place SAM protects because changing it can make your computer run programs or change what SAM does; SAM shows it read-only."
 msgstr ""
 
-#: crates/sam-core/src/places.rs:580
+#: crates/sam-core/src/places.rs:593
 #. Keep the {placeholders}; their order may change.
 msgid "The {keys} folders are all set to {path}, some read and write, some read-only. The stricter setting wins: the app sees {path} read-only. To let it write there, set each of these folders to read and write, or give them places of their own."
 msgstr ""
 
-#: crates/sam-core/src/places.rs:596
+#: crates/sam-core/src/places.rs:609
 #. Keep the {placeholders}; their order may change.
 msgid "{key} folder is set to {path}, where programs outside the sandbox listen; not bound. The app sees its own empty /tmp there instead, and what it saves there is gone when it quits. Set the folder to one of its own, such as /tmp/{key}, to keep what the app saves."
 msgstr ""
 
-#: crates/sam-core/src/places.rs:607
+#: crates/sam-core/src/places.rs:620
 #. Keep the {placeholders}; their order may change.
 msgid "{key} folder is set to {path}, whose way leads through the link {link} in a folder the app can change, so the app may have put it there; not bound"
 msgstr ""
 
-#: crates/sam-core/src/places.rs:841
+#: crates/sam-core/src/places.rs:854
 #. Keep the {placeholders}; their order may change.
 msgid "{path} lies inside SAM's own folders, which apps never see; SAM does not show it."
 msgstr ""
 
-#: crates/sam-core/src/places.rs:885
+#: crates/sam-core/src/places.rs:898
 #. Keep the {placeholders}; their order may change.
 msgid "SAM shows your home folder read-only to this app because {place}, a folder SAM protects, is not a real folder but a shortcut to your whole home folder. Another app may have made this shortcut. If you did not make it yourself, delete the shortcut {place}; your files stay where they are. In a file manager, Ctrl+H shows hidden folders, whose names begin with a dot."
 msgstr ""
 
-#: crates/sam-core/src/places.rs:1638
+#: crates/sam-core/src/places.rs:1651
 #. Keep the {placeholders}; their order may change.
 msgid "SAM leaves out the writable folder {path} for this app because the way there leads through the link {link}, which lies in a folder the app can change, to a place the home, the user folders and the extra read-only folders let the app read at most: the app may have made that link. The app still sees what its other folders show there. If you made the link yourself, list the place it leads to as an extra folder instead of this one."
 msgstr ""
 
-#: crates/sam-core/src/places.rs:1642
+#: crates/sam-core/src/places.rs:1655
 #. Keep the {placeholders}; their order may change.
 msgid "SAM leaves out the writable user folder {path} for this app because the way there leads through the link {link}, which lies in a folder the app can change, to a place the home does not show writable or one inside another user folder or an extra folder set read-only: the app may have made that link. The app still sees what its other folders show there. If you made the link yourself, set this user folder to the place it leads to in ~/.config/user-dirs.dirs."
 msgstr ""
 
-#: crates/sam-core/src/places.rs:1646
+#: crates/sam-core/src/places.rs:1659
 #. Keep the {placeholders}; their order may change.
 msgid "SAM does not bind {path} for this app on its own because the way there leads through the link {link}, which lies in a folder the app can change, to a place the home and the user folders do not show: the app may have made that link. The app still sees what its other folders show there. If you made the link yourself, add the place it leads to as an extra folder: SAM still leaves out {path} then, but where the app's other folders show the link, the app reaches that place through it."
 msgstr ""
 
-#: crates/sam-core/src/places.rs:1650
+#: crates/sam-core/src/places.rs:1663
 #. Keep the {placeholders}; their order may change.
 msgid "SAM leaves out the extra folder {path} for this app because the way there leads through the link {link}, which lies in a folder the app can change, to a place the home and the user folders do not show: the app may have made that link. The app still sees what its other folders show there. If you made the link yourself, list the place it leads to as an extra folder instead of this one."
 msgstr ""
 
-#: crates/sam-core/src/places.rs:1654
+#: crates/sam-core/src/places.rs:1667
 #. Keep the {placeholders}; their order may change.
 msgid "SAM leaves out the user folder {path} for this app because the way there leads through the link {link}, which lies in a folder the app can change, to a place the home does not show: the app may have made that link. The app still sees what its other folders show there. If you made the link yourself, set this user folder to the place it leads to in ~/.config/user-dirs.dirs."
 msgstr ""
 
-#: crates/sam-core/src/places.rs:1663
+#: crates/sam-core/src/places.rs:1676
 #. Keep the {placeholders}; their order may change.
 msgid "SAM leaves out the writable folder {path} for this app because it leads through a link to {place}, where programs outside the sandbox listen: through them the app could run commands outside the sandbox. The app still sees what its other folders show there."
 msgstr ""
 
-#: crates/sam-core/src/places.rs:1667
+#: crates/sam-core/src/places.rs:1680
 #. Keep the {placeholders}; their order may change.
 msgid "SAM leaves out the writable user folder {path} for this app because it leads through a link to {place}, where programs outside the sandbox listen: through them the app could run commands outside the sandbox. The app still sees what its other folders show there."
 msgstr ""
 
-#: crates/sam-core/src/places.rs:1671
+#: crates/sam-core/src/places.rs:1684
 #. Keep the {placeholders}; their order may change.
 msgid "SAM does not bind {path} for this app on its own because it leads through a link to {place}, where programs outside the sandbox listen: through them the app could run commands outside the sandbox. The app still sees what its other folders show there."
 msgstr ""
 
-#: crates/sam-core/src/places.rs:1675
+#: crates/sam-core/src/places.rs:1688
 #. Keep the {placeholders}; their order may change.
 msgid "SAM leaves out the extra folder {path} for this app because it leads through a link to {place}, where programs outside the sandbox listen: through them the app could run commands outside the sandbox. The app still sees what its other folders show there."
 msgstr ""
 
-#: crates/sam-core/src/places.rs:1679
+#: crates/sam-core/src/places.rs:1692
 #. Keep the {placeholders}; their order may change.
 msgid "SAM leaves out the user folder {path} for this app because it leads through a link to {place}, where programs outside the sandbox listen: through them the app could run commands outside the sandbox. The app still sees what its other folders show there."
 msgstr ""
 
-#: crates/sam-core/src/places.rs:1690
+#: crates/sam-core/src/places.rs:1703
 #. Keep the {placeholders}; their order may change.
 msgid "SAM does not bind {path} for this app on its own because it leads to {place}, which is or holds your home folder, your keys or passwords, a place SAM protects or SAM's own files. The app still sees what its other folders show there."
 msgstr ""
 
-#: crates/sam-core/src/places.rs:1694
+#: crates/sam-core/src/places.rs:1707
 #. Keep the {placeholders}; their order may change.
 msgid "SAM leaves out {path} for this app because it leads to {place}, which is or holds your home folder, your keys or passwords, a place SAM protects or SAM's own files. The app still sees what its other folders show there."
 msgstr ""

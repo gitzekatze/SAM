@@ -5886,14 +5886,17 @@ mod guard_tests {
         let plain =
             protected_places_with(home, Some(home.join(".config")), Some("/elsewhere".into()));
         assert_eq!(plain.len(), PROTECTED_RO.len());
-        // A config folder that is the home itself adds nothing either.
+        // A config folder that is the home itself adds only the file SAM
+        // reads the user folders from, never the other start places at the
+        // top of the home (`~/autostart`), nor the home itself.
         let same = protected_places_with(home, Some(home.to_path_buf()), None);
         assert_eq!(
             same.len(),
-            PROTECTED_RO.len(),
+            PROTECTED_RO.len() + 1,
             "{:?}",
             &same[PROTECTED_RO.len()..]
         );
+        assert_eq!(&same[PROTECTED_RO.len()..], ["user-dirs.dirs"]);
     }
 
     /// Start places follow `XDG_CONFIG_HOME` and `XDG_DATA_HOME` also when

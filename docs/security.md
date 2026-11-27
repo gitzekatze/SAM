@@ -616,8 +616,16 @@ places are locked there, and none of them is shared as a file named on the
 command line (`credential_stores_follow_other_config_and_data_folders`).
 Where one of them names the home itself, the stores sit at the top of the
 home (`~/git/credentials`, `~/gh`, `~/keyrings`) and are hidden there in
-the same way. Not covered: the start places are not locked at the top of
-the home then (`~/autostart`), so an app with the whole home writable can
+the same way. Of the start places, only `~/user-dirs.dirs` is locked
+there, the file SAM then reads to find Documents, Downloads and the other
+user folders: like `~/.config/user-dirs.dirs`, it is read-only and cannot
+be renamed away, and when it is missing, one the app creates there does
+not stay after the start, so an app cannot point its own user folders
+elsewhere for its next start
+(`the_user_folders_file_is_protected_wherever_sam_reads_it_in_the_home`,
+`the_user_folders_file_stays_locked_when_the_config_folder_is_the_home`).
+Not covered: the other start places are not locked at the top of the
+home then (`~/autostart`), so an app with the whole home writable can
 change them there. Such a folder outside the home is shown only when you
 grant it, and SAM does not hide the stores in it then.
 

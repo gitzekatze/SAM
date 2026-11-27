@@ -10,6 +10,11 @@
 //!   the other user folders are (`~/.config/user-dirs.dirs`) stays
 //!   read-only: rewritten, it could point the person's file dialogs at a
 //!   folder the app chose (threat model row 44).
+//! - with `XDG_CONFIG_HOME` naming the home itself, the file SAM then
+//!   reads the user folders from (`~/user-dirs.dirs`) stays read-only with
+//!   the whole home writable, and one the app creates there when it is
+//!   missing does not stay: rewritten, SAM showed other folders as the
+//!   app's Documents at its next start.
 //! - a writable extra folder inside a start place (`~/.config/fish/conf.d`)
 //!   stays read-only, without, with a read-only and with a writable whole
 //!   home, while an ordinary writable extra folder takes the app's file
@@ -437,4 +442,119 @@ fn a_start_file_linked_into_a_read_only_user_folder_stays_locked_with_a_writable
         .unwrap()
         .file_type()
         .is_symlink());
+}
+
+const USER_DIRS_ATTACK: &str = r#"#!/bin/sh
+H="$HOME"
+( echo 'XDG_DOCUMENTS_DIR="$HOME/.ssh"' >> "$H/user-dirs.dirs" ) 2>/dev/null && echo USERDIRS=written || echo USERDIRS=refused
+if [ -e "$H/TRY_MOVE" ]; then
+  mv "$H/user-dirs.dirs" "$H/user-dirs.old" 2>/dev/null && echo USERDIRS_MOVE=done || echo USERDIRS_MOVE=refused
+fi
+( echo x > "$H/ok.txt" ) 2>/dev/null && echo HOME_WRITE=yes || echo HOME_WRITE=no
+echo END=1
+"#;
+
+/// With `XDG_CONFIG_HOME` naming the home itself, SAM reads where
+/// Documents and the other user folders are from `~/user-dirs.dirs`.
+/// Attacked from inside a real sandbox with the whole home writable, that
+/// file can be neither changed nor renamed away, and one the app creates
+/// there while it is missing does not stay after the start: SAM still
+/// finds Documents where it was. Before, only `~/.config/user-dirs.dirs`
+/// was locked, which SAM does not read then, and the app could point its
+/// own Documents at `~/.ssh` for its next start.
+#[test]
+fn the_user_folders_file_stays_locked_when_the_config_folder_is_the_home() {
+    let _one = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let host = HostInfo::probe();
+    if host.tools.bwrap.is_none() || sam_runner::doctor::bwrap_functional(&host).is_err() {
+        sam_runner::contracts::skip("bubblewrap is not functional here")
+            .unwrap_or_else(|e| panic!("{e}"));
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    sam_runner::testenv::isolate_this_process(root);
+    let home = root.join("home/tester");
+    fs::create_dir_all(home.join("Documents")).unwrap();
+    fs::create_dir_all(home.join(".config")).unwrap();
+    let user_dirs = "XDG_DOCUMENTS_DIR=\"$HOME/Documents\"\n";
+    fs::write(home.join("user-dirs.dirs"), user_dirs).unwrap();
+    fs::write(home.join("TRY_MOVE"), "").unwrap();
+    std::env::set_var("HOME", &home);
+    std::env::set_var("XDG_CONFIG_HOME", &home);
+    std::env::set_var("XDG_DATA_HOME", home.join(".local/share"));
+    let documents = || {
+        sam_runner::testenv::test_host(HostInfo::probe())
+            .xdg_dir("documents")
+            .map(Path::to_path_buf)
+    };
+    assert_eq!(
+        documents(),
+        Some(home.join("Documents")),
+        "the test's own: SAM reads the file at the top of the home"
+    );
+
+    let img = root.join("Dirs-1.0-x86_64.AppImage");
+    let mut spec = FixtureSpec::hello("Dirs");
+    spec.apprun = USER_DIRS_ATTACK.into();
+    build(&img, &spec).unwrap();
+    let app = Sam::with_paths(Paths::rooted(&root.join("sam"))).unwrap();
+    let id = app
+        .add(
+            &img,
+            &AddOptions {
+                accept: true,
+                launcher: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .entry
+        .id;
+    let start = || {
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.home = true;
+        p.filesystem.home_access = Access::Rw;
+        let mut e = app.set_permissions(&id, p).unwrap();
+        let rec = run(
+            &mut e,
+            &LaunchOptions {
+                quiet: true,
+                owd: Some(home.clone()),
+                ..Default::default()
+            },
+            &app.config,
+            &app.paths,
+            &sam_runner::testenv::test_host(HostInfo::probe()),
+        )
+        .unwrap();
+        let r = parse(rec.log_file.as_ref().unwrap());
+        assert_eq!(r.get("END").map(String::as_str), Some("1"), "{r:?}");
+        assert_eq!(
+            r["HOME_WRITE"], "yes",
+            "control: the home is writable: {r:?}"
+        );
+        r
+    };
+
+    // The file is there: read-only, and it cannot be renamed away.
+    let r = start();
+    assert_eq!(r["USERDIRS"], "refused", "{r:?}");
+    assert_eq!(r["USERDIRS_MOVE"], "refused", "{r:?}");
+    assert_eq!(
+        fs::read_to_string(home.join("user-dirs.dirs")).unwrap(),
+        user_dirs
+    );
+    assert_eq!(documents(), Some(home.join("Documents")));
+
+    // The file is missing: what the app creates there does not stay.
+    fs::remove_file(home.join("user-dirs.dirs")).unwrap();
+    fs::remove_file(home.join("TRY_MOVE")).unwrap();
+    let _ = start();
+    assert!(
+        !home.join("user-dirs.dirs").exists(),
+        "the app's user-dirs.dirs stayed at the top of the home"
+    );
+    assert_eq!(documents(), Some(home.join("Documents")));
+    std::env::set_var("XDG_CONFIG_HOME", home.join(".config"));
 }

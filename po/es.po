@@ -1052,7 +1052,7 @@ msgstr ""
 "entorno aislado."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:403
+#: crates/sam-core/src/places.rs:416
 msgid ""
 "SAM shows {path} read-only to this app because {place}, a folder SAM "
 "protects, is not a real folder but a shortcut to your home folder or a "
@@ -1070,7 +1070,7 @@ msgstr ""
 "punto."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:408
+#: crates/sam-core/src/places.rs:421
 msgid ""
 "{path} is inside {place}, which SAM protects because changing it can make "
 "your computer run programs or change what SAM does; SAM shows it read-only."
@@ -1080,7 +1080,7 @@ msgstr ""
 "como de solo lectura."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:413
+#: crates/sam-core/src/places.rs:426
 msgid ""
 "{path} is a place SAM protects because changing it can make your computer "
 "run programs or change what SAM does; SAM shows it read-only."
@@ -1090,7 +1090,7 @@ msgstr ""
 "de solo lectura."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:580
+#: crates/sam-core/src/places.rs:593
 msgid ""
 "The {keys} folders are all set to {path}, some read and write, some read-"
 "only. The stricter setting wins: the app sees {path} read-only. To let it "
@@ -1103,7 +1103,7 @@ msgstr ""
 "carpetas en lectura y escritura, o dales lugares propios."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:596
+#: crates/sam-core/src/places.rs:609
 msgid ""
 "{key} folder is set to {path}, where programs outside the sandbox listen; "
 "not bound. The app sees its own empty /tmp there instead, and what it saves "
@@ -1116,7 +1116,7 @@ msgstr ""
 "propia, como /tmp/{key}, para conservar lo que guarda la aplicación."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:607
+#: crates/sam-core/src/places.rs:620
 msgid ""
 "{key} folder is set to {path}, whose way leads through the link {link} in a "
 "folder the app can change, so the app may have put it there; not bound"
@@ -1126,7 +1126,7 @@ msgstr ""
 "ahí; no se enlaza"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:841
+#: crates/sam-core/src/places.rs:854
 msgid ""
 "{path} lies inside SAM's own folders, which apps never see; SAM does not "
 "show it."
@@ -1135,7 +1135,7 @@ msgstr ""
 "SAM no lo muestra."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:885
+#: crates/sam-core/src/places.rs:898
 msgid ""
 "SAM shows your home folder read-only to this app because {place}, a folder "
 "SAM protects, is not a real folder but a shortcut to your whole home folder. "
@@ -1151,7 +1151,7 @@ msgstr ""
 "Ctrl+H muestra las carpetas ocultas, cuyos nombres empiezan por un punto."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:1638
+#: crates/sam-core/src/places.rs:1651
 msgid ""
 "SAM leaves out the writable folder {path} for this app because the way there "
 "leads through the link {link}, which lies in a folder the app can change, to "
@@ -1170,7 +1170,7 @@ msgstr ""
 "esta."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:1642
+#: crates/sam-core/src/places.rs:1655
 msgid ""
 "SAM leaves out the writable user folder {path} for this app because the way "
 "there leads through the link {link}, which lies in a folder the app can "
@@ -1190,7 +1190,7 @@ msgstr ""
 "esta carpeta de usuario al lugar al que lleva en ~/.config/user-dirs.dirs."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:1646
+#: crates/sam-core/src/places.rs:1659
 msgid ""
 "SAM does not bind {path} for this app on its own because the way there leads "
 "through the link {link}, which lies in a folder the app can change, to a "
@@ -1211,7 +1211,7 @@ msgstr ""
 "él."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:1650
+#: crates/sam-core/src/places.rs:1663
 msgid ""
 "SAM leaves out the extra folder {path} for this app because the way there "
 "leads through the link {link}, which lies in a folder the app can change, to "
@@ -1229,7 +1229,7 @@ msgstr ""
 "lugar de esta."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:1654
+#: crates/sam-core/src/places.rs:1667
 msgid ""
 "SAM leaves out the user folder {path} for this app because the way there "
 "leads through the link {link}, which lies in a folder the app can change, to "
@@ -1246,7 +1246,7 @@ msgstr ""
 "dirs.dirs."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:1663
+#: crates/sam-core/src/places.rs:1676
 msgid ""
 "SAM leaves out the writable folder {path} for this app because it leads "
 "through a link to {place}, where programs outside the sandbox listen: "
@@ -1260,7 +1260,7 @@ msgstr ""
 "carpetas muestran allí."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:1667
+#: crates/sam-core/src/places.rs:1680
 msgid ""
 "SAM leaves out the writable user folder {path} for this app because it leads "
 "through a link to {place}, where programs outside the sandbox listen: "
@@ -1274,7 +1274,7 @@ msgstr ""
 "que sus otras carpetas muestran allí."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:1671
+#: crates/sam-core/src/places.rs:1684
 msgid ""
 "SAM does not bind {path} for this app on its own because it leads through a "
 "link to {place}, where programs outside the sandbox listen: through them the "
@@ -1288,7 +1288,7 @@ msgstr ""
 "muestran allí."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:1675
+#: crates/sam-core/src/places.rs:1688
 msgid ""
 "SAM leaves out the extra folder {path} for this app because it leads through "
 "a link to {place}, where programs outside the sandbox listen: through them "
@@ -1302,7 +1302,7 @@ msgstr ""
 "carpetas muestran allí."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:1679
+#: crates/sam-core/src/places.rs:1692
 msgid ""
 "SAM leaves out the user folder {path} for this app because it leads through "
 "a link to {place}, where programs outside the sandbox listen: through them "
@@ -1316,7 +1316,7 @@ msgstr ""
 "carpetas muestran allí."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:1690
+#: crates/sam-core/src/places.rs:1703
 msgid ""
 "SAM does not bind {path} for this app on its own because it leads to "
 "{place}, which is or holds your home folder, your keys or passwords, a place "
@@ -1329,7 +1329,7 @@ msgstr ""
 "viendo lo que sus otras carpetas muestran allí."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:1694
+#: crates/sam-core/src/places.rs:1707
 msgid ""
 "SAM leaves out {path} for this app because it leads to {place}, which is or "
 "holds your home folder, your keys or passwords, a place SAM protects or "
