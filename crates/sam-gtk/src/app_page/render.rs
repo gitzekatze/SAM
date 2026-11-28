@@ -1256,7 +1256,7 @@ impl AppPage {
         let update = adw::ActionRow::builder()
             .title(tr("Updates"))
             .subtitle(esc(&if checked == 0 {
-                crate::i18n::tr("Not checked yet. Checking contacts the update source this AppImage names (GitHub or its own server).")
+                crate::i18n::tr("Not checked yet. Checking contacts the update source this AppImage names (GitHub or its own server) and the servers it points to.")
             } else {
                 crate::i18n::trf(
                     "{detail} (checked {time})",

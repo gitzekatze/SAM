@@ -252,8 +252,9 @@ pub struct Config {
     pub updates: Updates,
 }
 
-/// Update checks. SAM contacts the internet only for these, and by default
-/// only when asked (a check button, `sam-jail updates`).
+/// Update checks. SAM goes online only for update checks, updates and its
+/// own update, and by default only when asked (a check button,
+/// `sam-jail updates`); docs/security.md, "Network use by SAM itself".
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct Updates {

@@ -597,7 +597,7 @@ impl AppPage {
                 .map(|e| util::str_of(&e, "update.latest").to_string())
                 .filter(|s| !s.is_empty())
                 .unwrap_or_else(|| crate::i18n::tr("the newest version"));
-            let body = crate::i18n::trf("SAM downloads {version} from the address the AppImage names, checks it against the published checksum, and puts it in place of the current file. The current version is kept, so you can go back. Settings and files stay.", &[("version", &util::plain(&latest))]);
+            let body = crate::i18n::trf("SAM downloads {version} from where the update source publishes it, checks it against the published checksum, and puts it in place of the current file. The current version is kept, so you can go back. Settings and files stay.", &[("version", &util::plain(&latest))]);
             if !window::confirm(&app.window, &tr("Update Now?"), &body, &tr("Update"), false).await
             {
                 return;

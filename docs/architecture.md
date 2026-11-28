@@ -34,9 +34,9 @@ untrusted: it reads and unpacks the file itself and never runs it outside a
 sandbox. The sandbox is built by Bubblewrap from the kernel's namespaces,
 with a syscall filter and Landlock on top. Desktop services reach the app
 only through filters: xdg-dbus-proxy for the session bus, a Wayland security
-context for the compositor, and pasta for "this computer only". SAM contacts
-the internet only when the user checks for updates, and only the addresses
-the AppImage names.
+context for the compositor, and pasta for "this computer only". SAM goes
+online only when the user asks for an update check or an update
+([Network use by SAM itself](security.md#network-use-by-sam-itself)).
 
 ## Level 2: Containers
 

@@ -197,7 +197,8 @@ pub(crate) enum Cmd {
     Version,
     /// Check whether newer versions are published (one app, or all).
     /// Contacts the update source each AppImage names (GitHub or its own
-    /// server); nothing is downloaded or replaced.
+    /// server) and the servers it points to; nothing is downloaded or
+    /// replaced.
     Updates {
         app: Option<String>,
         /// Only if `updates.check_on_start` is on, and only apps not checked

@@ -322,7 +322,7 @@ pub fn preferences(app: &Rc<App>) -> adw::NavigationPage {
 
     let g = adw::PreferencesGroup::builder()
         .title(tr("Updates"))
-        .description(tr("SAM goes online only for update checks. Each check asks the source an AppImage names (GitHub or the app's own server) whether a newer version is published; nothing is downloaded."))
+        .description(tr("SAM goes online only when you ask: for update checks and updates. Each check asks the source an AppImage names (GitHub or the app's own server) whether a newer version is published."))
         .build();
     switch(
         &g,
