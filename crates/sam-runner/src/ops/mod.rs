@@ -205,6 +205,16 @@ impl Sam {
         Registry::new(&self.paths)
     }
 
+    /// Sets the fields `change` sets on the record of `id` as it is on
+    /// disk now, under the record lock ([`Registry::update`]): what other
+    /// SAM processes saved meanwhile stays. An error when the
+    /// record is gone.
+    pub fn update_record(&self, id: &str, change: impl FnOnce(&mut AppEntry)) -> Result<AppEntry> {
+        self.registry()
+            .update(id, change)?
+            .with_context(|| sam_core::i18n::trf("no registered app '{id}'", &[("id", &id)]))
+    }
+
     pub fn host(&self) -> HostInfo {
         HostInfo::probe()
     }

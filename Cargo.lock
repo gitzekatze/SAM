@@ -1182,6 +1182,7 @@ name = "sam-storage"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "libc",
  "sam-core",
  "sam-test-guard",
  "serde",
