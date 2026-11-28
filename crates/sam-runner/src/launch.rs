@@ -699,7 +699,14 @@ pub fn prepare(
         // aside at once (review B2 R52).
         sam_sandbox::prepare_home_protection_alongside(&ctx, &others);
         // After the folders above are made, so they do not count as new.
-        home_watch = sam_sandbox::HomeWatch::before_alongside(&ctx, &others);
+        // Only with the shared records open: `writes_start_places` reads
+        // links on disk, so asking it a second time could answer otherwise,
+        // and a watch without a record would take no last look in its turn.
+        home_watch = if shared.is_some() {
+            sam_sandbox::HomeWatch::before_alongside(&ctx, &others)
+        } else {
+            None
+        };
         if let (Some(s), Some(w)) = (&shared, &home_watch) {
             let name = format!(
                 "{}-{}",
@@ -709,10 +716,12 @@ pub fn prepare(
                     .unwrap_or_default(),
                 app.id
             );
-            home_record = Some(s.register(&name, w, &home_aside)?);
+            let record = s.register(&name, w, &home_aside)?;
             // What a running app planted in a place this launch takes over
-            // as empty, or in place of a link, goes before this one starts.
-            moved_at_start = crate::home_shared::Turns::of(paths).settle(w, &home_aside);
+            // as empty, or in place of a link, goes before this one starts
+            // (in this launch's turn).
+            moved_at_start = record.first_look();
+            home_record = Some(record);
         }
         drop(shared);
         if perms.dbus.session.mode == DbusMode::Filtered
@@ -1465,11 +1474,12 @@ fn run_once(
     // appeared while it ran; one last look now catches the rest.
     let mut found = std::mem::take(&mut prepared.moved_at_start);
     found.extend(live_watch.map(|l| l.finish()).unwrap_or_default());
-    if let Some(w) = &prepared.home_watch {
-        found.extend(crate::home_shared::Turns::of(paths).settle(w, &aside));
-    }
+    // In this launch's turn. A launch has a home watch exactly when it has
+    // a record (`prepare` makes the watch only with the shared records
+    // open, and keeps a record for every watch), so the record's look is
+    // the look of every watched launch.
     if let Some(r) = prepared.home_record.take() {
-        r.finish();
+        found.extend(r.last_look());
     }
     let moved: Vec<String> = found.iter().map(describe_moved).collect();
     // Best effort: a full disk (which the app may have caused on purpose)
