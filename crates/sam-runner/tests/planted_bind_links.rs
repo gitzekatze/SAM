@@ -66,9 +66,10 @@ static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
 /// `plant`: put a link at each place in `SAM_TEST_LINK` to the place at
 /// the same position in `SAM_TEST_TARGET`, as an app with the folder
 /// writable can. Then connect to every socket in
-/// `SAM_TEST_SOCKETS`, read every file in `SAM_TEST_FILES` and create
-/// every file in `SAM_TEST_WRITES` (each list split by `|`), saying for
-/// each what happened.
+/// `SAM_TEST_SOCKETS`, read every file in `SAM_TEST_FILES`, rename each
+/// `from>to` pair in `SAM_TEST_MOVES` and create every file in
+/// `SAM_TEST_WRITES` (each list split by `|`), saying for each what
+/// happened.
 const PROBE_PY: &str = r#"
 import os, socket
 if os.environ.get("SAM_TEST_STEP") == "plant":
@@ -92,6 +93,12 @@ for i, path in enumerate(p for p in os.environ.get("SAM_TEST_FILES", "").split("
             print("READ%d=%s" % (i, f.read().strip()))
     except OSError as e:
         print("READ%d=%d" % (i, e.errno))
+for i, pair in enumerate(p for p in os.environ.get("SAM_TEST_MOVES", "").split("|") if p):
+    src, dst = pair.split(">")
+    try:
+        os.rename(src, dst); print("MOVE%d=ok" % i)
+    except OSError as e:
+        print("MOVE%d=%d" % (i, e.errno))
 for i, path in enumerate(p for p in os.environ.get("SAM_TEST_WRITES", "").split("|") if p):
     try:
         with open(path, "x") as f:
@@ -1156,7 +1163,7 @@ fn a_home_kept_behind_a_link_keeps_its_fonts_in_a_real_sandbox() {
 }
 
 /// A link at a protected name never knocks out the read-only bind of the
-/// fonts settings: in a private home with hidden files on and an extra
+/// fonts settings: with the home read-only, hidden files on and an extra
 /// writable `~/.config`, `~/.config/vivaldi` made a link to
 /// `~/.config/fontconfig` (an app with that folder writable can make it)
 /// left the fonts settings writable through the extra folder, so the app
@@ -1164,7 +1171,10 @@ fn a_home_kept_behind_a_link_keeps_its_fonts_in_a_real_sandbox() {
 /// home kept behind a link, that extra folder is shown at its real place,
 /// and the fonts settings were writable there even without the planted
 /// link. The app cannot write there; elsewhere in the extra folder it
-/// can, so a refused write would have been seen.
+/// can, so a refused write would have been seen. In a private home the
+/// hidden-files switch does not count, so SAM hides `~/.config/vivaldi`
+/// where its link leads: whatever the app writes there never reaches the
+/// fonts settings.
 #[test]
 fn a_protected_link_never_knocks_out_the_read_only_font_settings_in_a_real_sandbox() {
     let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
@@ -1175,6 +1185,8 @@ fn a_protected_link_never_knocks_out_the_read_only_font_settings_in_a_real_sandb
     fs::create_dir_all(config.join("fontconfig")).unwrap();
     symlink(config.join("fontconfig"), config.join("vivaldi")).unwrap();
     let mut p = PermissionSet::strict_gui();
+    p.filesystem.home = true;
+    p.filesystem.home_access = Access::Ro;
     p.filesystem.hidden_files = true;
     p.filesystem.custom_write = vec![s(&config)];
     let writes = format!(
@@ -1182,21 +1194,30 @@ fn a_protected_link_never_knocks_out_the_read_only_font_settings_in_a_real_sandb
         s(&config.join("fontconfig/x.conf")),
         s(&config.join("other.txt"))
     );
-    let (r, text) = rig.start(&p, &[("SAM_TEST_WRITES", writes)]);
+    let (r, text) = rig.start(&p, &[("SAM_TEST_WRITES", writes.clone())]);
     assert_eq!(
         r["WRITE0"], "30",
         "the fonts settings stay read-only: {text}"
     );
     assert_eq!(r["WRITE1"], "ok", "control, the extra folder: {text}");
     fs::remove_file(config.join("other.txt")).unwrap();
+
+    // A private home: the planted link is hidden where it leads.
+    let mut private = p.clone();
+    private.filesystem.home = false;
+    let (r, text) = rig.start(&private, &[("SAM_TEST_WRITES", writes)]);
+    assert_eq!(r["WRITE1"], "ok", "private home, control: {text}");
+    assert!(
+        !config.join("fontconfig/x.conf").exists(),
+        "private home, nothing reaches the fonts settings: {text}"
+    );
+    fs::remove_file(config.join("other.txt")).unwrap();
     fs::remove_file(config.join("vivaldi")).unwrap();
 
     // The home kept behind a link: the extra folder is shown at its real
     // place, and the fonts settings stay read-only there, with and
-    // without the planted link. Under the home's name they are read-only
-    // without it; with it SAM binds nothing there (the private home would
-    // show them anew), and a write there lands in the app's private home,
-    // never in your fonts settings (checked last).
+    // without the planted link, and under the home's name, which the
+    // read-only home shows.
     let real = rig.home.parent().unwrap().join("tester-real");
     fs::rename(&rig.home, &real).unwrap();
     symlink(&real, &rig.home).unwrap();
@@ -1212,9 +1233,7 @@ fn a_protected_link_never_knocks_out_the_read_only_font_settings_in_a_real_sandb
         );
         let (r, text) = rig.start(&p, &[("SAM_TEST_WRITES", writes)]);
         assert_eq!(r["WRITE0"], "30", "planted {planted}, real place: {text}");
-        if !planted {
-            assert_ne!(r["WRITE1"], "ok", "home's name: {text}");
-        }
+        assert_ne!(r["WRITE1"], "ok", "planted {planted}, home's name: {text}");
         assert_eq!(r["WRITE2"], "ok", "planted {planted}, control: {text}");
         fs::remove_file(real.join(".config/other.txt")).unwrap();
     }
@@ -1324,7 +1343,7 @@ fn a_credential_linked_into_the_font_settings_stays_hidden_behind_a_linked_home(
 /// A link you made, in a folder the app cannot change, to fonts settings
 /// that a writable folder shows: with the home read-only, `~/dotfiles` an
 /// extra writable folder and `~/.config/fontconfig` a relative link to
-/// `../dotfiles/fontconfig` (GNU Stow), SAM keeps that target read-only
+/// `../dotfiles/fontconfig`, directly below that folder, SAM keeps that target read-only
 /// where the writable folder shows it, and says so. The bind only takes
 /// write access away. Without it, the app could write font rules that
 /// programs outside the sandbox load. Elsewhere in `~/dotfiles` the app
@@ -1361,6 +1380,57 @@ fn a_link_you_made_into_a_writable_folder_keeps_the_font_settings_read_only() {
             && text.contains("SAM keeps ~/dotfiles/fontconfig read-only"),
         "the start says so: {text}"
     );
+}
+
+/// GNU Stow's own layout puts the target deeper: with the home read-only,
+/// `~/dotfiles` an extra writable folder and `~/.config/fontconfig` a
+/// link to `../dotfiles/fontconfig/.config/fontconfig`, SAM keeps that
+/// target read-only and pins the folders between it and `~/dotfiles`, so
+/// the app cannot rename `~/dotfiles/fontconfig` away with the read-only
+/// bind inside and write new font rules at the old place, which programs
+/// outside the sandbox would load through the link. The control: a
+/// folder beside it in `~/dotfiles` can be renamed.
+#[test]
+fn a_folder_above_a_font_place_kept_read_only_cannot_be_renamed_away() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(rig) = Rig::new("StowDeep") else {
+        return;
+    };
+    let h = &rig.home;
+    fs::create_dir_all(h.join("dotfiles/fontconfig/.config/fontconfig")).unwrap();
+    fs::create_dir_all(h.join("dotfiles/other")).unwrap();
+    symlink(
+        "../dotfiles/fontconfig/.config/fontconfig",
+        h.join(".config/fontconfig"),
+    )
+    .unwrap();
+    let mut p = PermissionSet::strict_gui();
+    p.filesystem.home = true;
+    p.filesystem.home_access = Access::Ro;
+    p.filesystem.custom_write = vec![s(&h.join("dotfiles"))];
+    let moves = format!(
+        "{}>{}|{}>{}|{}>{}",
+        s(&h.join("dotfiles/fontconfig")),
+        s(&h.join("dotfiles/moved")),
+        s(&h.join("dotfiles/fontconfig/.config")),
+        s(&h.join("dotfiles/fontconfig/moved")),
+        s(&h.join("dotfiles/other")),
+        s(&h.join("dotfiles/other2")),
+    );
+    let writes = s(&h.join("dotfiles/fontconfig/.config/fontconfig/fonts.conf"));
+    let (r, text) = rig.start(
+        &p,
+        &[("SAM_TEST_MOVES", moves), ("SAM_TEST_WRITES", writes)],
+    );
+    assert_eq!(r["MOVE0"], "16", "the top folder stays: {text}");
+    assert_eq!(r["MOVE1"], "16", "the folder between stays: {text}");
+    assert_eq!(r["MOVE2"], "ok", "control, a folder beside it: {text}");
+    assert_ne!(r["WRITE0"], "ok", "no new font rules: {text}");
+    assert!(h.join("dotfiles/fontconfig/.config/fontconfig").is_dir());
+    assert!(!h.join("dotfiles/moved").exists());
+    assert!(!h
+        .join("dotfiles/fontconfig/.config/fontconfig/fonts.conf")
+        .exists());
 }
 
 /// With the home read-only, a credential kept as a link into a fonts

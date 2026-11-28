@@ -2700,6 +2700,9 @@ impl Section<'_> {
         let shown = |at: &Path| !self.views.seen_at(at).is_empty();
         let shown_at_name = |at: &Path| self.views.visible(at);
         let mut own_bound: Vec<PathBuf> = Vec::new();
+        // The places kept read-only behind a link (`lock` below): the
+        // folders above each are pinned like those above a guarded place.
+        let mut own_locked: Vec<PathBuf> = Vec::new();
         let mut bound_rels: Vec<&str> = Vec::new();
         let mut skipped: Vec<sam_core::places::OwnLinkSkipped> = Vec::new();
         let mut kept: Vec<PathBuf> = Vec::new();
@@ -2759,6 +2762,7 @@ impl Section<'_> {
                 }
                 if lock {
                     mount(&at, &|m| m.lock(&at));
+                    own_locked.push(at.clone());
                 } else {
                     mount(&at, &|m| m.ro(&at));
                 }
@@ -2901,6 +2905,14 @@ impl Section<'_> {
         // writable (review of finding R63). That start has the same pins,
         // so the rename fails.
         guarded.extend(own_mounts);
+        // And a place SAM keeps read-only behind a font or theme link
+        // ([`Views::read_only_targets`]), strictly inside a writable grant:
+        // renaming a folder between the grant and it (`mv
+        // ~/dotfiles/fontconfig ~/dotfiles/x` with `~/.config/fontconfig` a
+        // link to `../dotfiles/fontconfig/.config/fontconfig`) carried the
+        // read-only bind away, and the app put new font rules at the old
+        // place, which programs outside the sandbox load through the link.
+        guarded.extend(own_locked);
         guarded.extend(fsp.custom_read.iter().map(|c| grant_path(c)));
         guarded.extend(
             self.writes
