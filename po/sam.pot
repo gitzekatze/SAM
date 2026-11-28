@@ -407,7 +407,7 @@ msgid "Bluetooth"
 msgstr ""
 
 #: crates/sam-core/src/permissions.rs:1245
-msgid "Lets the app open Bluetooth connections to nearby devices; other apps cannot. Pairing and the Bluetooth service itself also need the system D-Bus."
+msgid "Lets the app open Bluetooth connections to nearby devices; other apps cannot, except an app whose start program is 32-bit (the security page says why). Pairing and the Bluetooth service itself also need the system D-Bus."
 msgstr ""
 
 #: crates/sam-core/src/permissions.rs:1247 crates/sam-core/src/risk.rs:331 crates/sam-runner/src/verify.rs:527

@@ -8,8 +8,9 @@
   added to the draft stops the signing instead of getting SAM's signature.
 - The SBOM gets GitHub's build provenance too, from a job that runs no
   third-party action.
-- The release script runs the test suite with the sandbox required: a
-  sandbox test that cannot run fails the release instead of passing.
+- The release script asks for the test suite with the sandbox required:
+  the program that runs the tests gets the setting that makes a sandbox
+  test that cannot run fail the release instead of passing.
 - CI checks more of its own rules in a required job: actions pinned to a
   full commit, checkouts without their token, read-only workflows, checked
   downloads, every script linted, and every test run that may not skip the

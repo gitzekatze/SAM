@@ -164,7 +164,8 @@ their 64-bit twins, so the filter stays on for 32-bit AppImages
 switched off for them, which let any app choose to run without it by
 making its start program 32-bit. One gap remains, as in Flatpak: a 32-bit
 socket or socket pair made through the old `socketcall` call is not
-limited to the listed types, because its type sits where no filter can
+limited to the listed types (so it can be a Bluetooth socket even without
+the *Bluetooth* switch), because its type sits where no filter can
 read it. Other apps keep ending at a 32-bit call, so a 64-bit program
 cannot use the 32-bit doors.
 
@@ -629,6 +630,13 @@ the same way. Not covered: the start places are not locked at the top of
 the home then (`~/autostart`), so an app with the whole home writable can
 change them there. Such a folder outside the home is shown only when you
 grant it, and SAM does not hide the stores in it then.
+The switches that allow them count only with the whole home
+(`filesystem.home`): stored on without it (an old profile, a
+hand-edited file), they hide the keys and stores as if off, also where a
+granted extra folder shows them
+(`key_switches_without_the_whole_home_hide_the_keys`, and
+`places_behind_links_stay_protected_and_the_app_still_starts` from a real
+sandbox).
 
 **Hidden whenever anything would show them:** SAM's own folders
 (configuration, data and unpacked apps, wherever they are, and the folders
@@ -1211,7 +1219,21 @@ How these stay protected with the home writable:
   time SAM looks at the running apps (the window, `sam-jail stop`, any
   start) it takes that look and writes what it moved into that launch's
   log. A record from before the computer was restarted is dropped without
-  that look.
+  that look. Launches take turns to look at the home: a look waits at most
+  about a second for its turn while another launch looks, then looks
+  anyway, so two looks can then overlap. So something an app leaves in a
+  place that several launches watch is normally moved aside and reported
+  once, in the record of the launch whose look found it: that may be the
+  other app's record, since SAM cannot tell which app made it. When two
+  looks overlap, and while a launch of an older SAM still runs, the second
+  look may also report a link of yours that the first look had just put
+  back. A known limit: a start, and the look for a
+  launcher that was ended (from the window, `sam-jail stop` or a start),
+  first wait to read the records of the running apps, one launch at a time,
+  and that wait has no time limit yet. A launcher stopped while it starts
+  an app (Ctrl+Z) holds the records, so later starts wait until it goes on
+  or ends; the watches of apps that already run keep moving files aside
+  meanwhile.
 - **Key folders that are links** (dotfiles managed with `stow`, for example)
   are hidden where they point, also when only the folder they point into is
   granted (`~/.gnupg` a link to `~/Sync/gnupg`, and `~/Sync` granted);
@@ -1234,7 +1256,10 @@ home, an app can still change other files that programs outside the sandbox
 read: settings of programs not in the table above, scripts in project
 folders. SAM protects the places that make a computer run something by
 themselves; it cannot know every program's settings. And a file the app
-creates in a watched place exists for a moment (usually well under a second)
+creates in a watched place exists for a moment (usually well under a second;
+while another app's launch is looking at the home, up to about a second
+longer, because a look waits at most about a second for its turn, then
+looks anyway, so two looks can then overlap)
 before SAM moves it aside: a program outside that reads it in exactly that
 moment would see it. So full home access is meant only for apps you trust,
 and SAM warns when you grant it.

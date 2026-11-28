@@ -9,14 +9,25 @@
 //! - a launch whose launcher was killed (SIGKILL, a crash) still gets its
 //!   last look: its record is no longer locked, and the next look moves
 //!   aside what the app left, before anything can act on it (F2). Before,
-//!   the watch lived only in the launcher's memory.
+//!   the watch lived only in the launcher's memory;
+//! - launches take turns to look at the home ([`Turns`]): a look waits at
+//!   most about a second for its turn, then looks anyway, so two looks can
+//!   then overlap. A file one app plants in a place several launches watch
+//!   is therefore normally moved aside and reported once. Looking anyway
+//!   keeps the live watches and final looks of running launches moving
+//!   files aside while another launcher is stopped in the middle of its
+//!   look (Ctrl+Z). That bound is only for the turn (`.settle`): a start,
+//!   and the last look for a killed launcher, also need `.lock`, the
+//!   records of the running apps, which [`Shared::open`] waits for with no
+//!   time limit yet, so they wait while a launcher is stopped in its start
+//!   look. And a look on a home that hangs (a network home) hangs as well.
 
 use std::fs;
 use std::io::Write;
 use std::os::fd::AsRawFd;
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
 use sam_core::Paths;
@@ -93,11 +104,89 @@ fn try_lock(file: &fs::File) -> bool {
     unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) == 0 }
 }
 
+/// How long a look waits for another launch's look before it looks anyway.
+const TURN_WAIT: Duration = Duration::from_secs(1);
+
+/// Where launches take turns to look at the home (`<records>/.settle`), and
+/// how long one waits. A file of its own, not `.lock`: the start look and
+/// the look for a killed launcher hold `.lock` already in this process, and
+/// a second lock on it would wait for itself. Always taken after `.lock`,
+/// never the other way round.
+#[derive(Debug, Clone)]
+pub struct Turns {
+    dir: PathBuf,
+    wait: Duration,
+}
+
+impl Turns {
+    /// The turns of the launches of this SAM.
+    pub fn of(paths: &Paths) -> Turns {
+        Turns::at(&folder(paths))
+    }
+
+    fn at(dir: &Path) -> Turns {
+        Turns {
+            dir: dir.to_path_buf(),
+            wait: TURN_WAIT,
+        }
+    }
+
+    /// Turns in `dir` that wait up to `wait`: for tests.
+    #[cfg(test)]
+    pub(crate) fn waiting(dir: &Path, wait: Duration) -> Turns {
+        Turns {
+            dir: dir.to_path_buf(),
+            wait,
+        }
+    }
+
+    /// [`HomeWatch::settle`] in this launch's turn: the look waits at most
+    /// `wait` (about a second for SAM's launches) for its turn, then looks
+    /// anyway, so two looks can then overlap. Within that wait, two
+    /// launches watching one place do not both act on the same file, so it
+    /// is normally moved and reported once (before, the second look
+    /// reported it as deleted or as still there, or moved aside a link of
+    /// the person's that the first had just put back). The look always happens: after
+    /// the wait, also when the turn could not be had (a launcher stopped
+    /// mid-look) or the lock file cannot be opened. The watch is the
+    /// protection; the turn only keeps the reports right.
+    pub fn settle(&self, watch: &HomeWatch, aside: &Path) -> Vec<MovedAside> {
+        // `std::fs` opens with O_CLOEXEC: no program SAM starts keeps it.
+        let lock = fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(self.dir.join(".settle"))
+            .ok();
+        let end = Instant::now() + self.wait;
+        let turn = lock.filter(|f| loop {
+            if try_lock(f) {
+                break true;
+            }
+            if Instant::now() >= end {
+                break false;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        });
+        let moved = watch.settle(aside);
+        if let Some(f) = &turn {
+            // Ended now, not when the file is closed: a program started in
+            // this moment shares the open file until it runs its own, and
+            // would keep the turn that long.
+            // SAFETY: `f` is open; flock only takes its descriptor.
+            unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_UN) };
+        }
+        moved
+    }
+}
+
 /// The records' folder, locked for this process until dropped: one launch
 /// at a time looks at the others and adds its own.
 pub struct Shared {
     dir: PathBuf,
     _lock: fs::File,
+    /// Where the looks take turns.
+    turns: Turns,
 }
 
 impl Shared {
@@ -109,7 +198,9 @@ impl Shared {
         let lock = fs::File::create(dir.join(".lock"))
             .with_context(|| format!("creating {}", dir.join(".lock").display()))?;
         // SAFETY: `lock` is open; flock only takes its descriptor. Waits for
-        // the launch that holds it (a moment: it only looks and writes).
+        // the launch that holds it, with no time limit yet: normally a
+        // moment (it only looks and writes), but a launcher stopped in its
+        // start look (Ctrl+Z) holds it until it goes on or ends.
         while unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) } != 0 {
             if std::io::Error::last_os_error().kind() != std::io::ErrorKind::Interrupted {
                 anyhow::bail!(
@@ -119,7 +210,11 @@ impl Shared {
                 );
             }
         }
-        Ok(Shared { dir, _lock: lock })
+        Ok(Shared {
+            turns: Turns::at(&dir),
+            dir,
+            _lock: lock,
+        })
     }
 
     /// The watches of the launches that run now, oldest first. Records of
@@ -146,7 +241,7 @@ impl Shared {
             }
             // Its launcher is gone without its last look.
             if let Some(r) = record.filter(|r| r.boot == boot) {
-                let moved = r.watch.settle(&r.aside);
+                let moved = self.turns.settle(&r.watch, &r.aside);
                 if let Some(log) = r.log.filter(|_| !moved.is_empty()) {
                     note_in_log(&log, &moved);
                 }
@@ -195,6 +290,7 @@ impl Shared {
             watch: watch.clone(),
             aside: aside.to_path_buf(),
             armed: false,
+            turns: self.turns.clone(),
         })
     }
 }
@@ -235,6 +331,8 @@ pub struct Registration {
     watch: HomeWatch,
     aside: PathBuf,
     armed: bool,
+    /// Where its last look takes its turn.
+    turns: Turns,
 }
 
 impl Registration {
@@ -255,7 +353,7 @@ impl Registration {
 impl Drop for Registration {
     fn drop(&mut self) {
         if self.armed {
-            self.watch.settle(&self.aside);
+            self.turns.settle(&self.watch, &self.aside);
         }
         // Removed while still locked: nobody takes it for a killed launch.
         let _ = fs::remove_file(&self.path);
@@ -291,6 +389,217 @@ mod tests {
         let w = HomeWatch::before_alongside(&ctx_for(&full_rw(), home), &shared.running()).unwrap();
         let r = shared.register(name, &w, aside).unwrap();
         (w, r)
+    }
+
+    /// The lock of the turns in `dir`, held by the test until dropped, as
+    /// another launch in the middle of its look holds it.
+    fn hold_turn(dir: &Path) -> fs::File {
+        fs::create_dir_all(dir).unwrap();
+        let f = fs::File::create(dir.join(".settle")).unwrap();
+        assert!(try_lock(&f), "the turn is free at first");
+        f
+    }
+
+    /// A start of a launch that may write the whole home, on `home`.
+    fn watch_of(home: &Path) -> HomeWatch {
+        HomeWatch::before(&ctx_for(&full_rw(), home)).unwrap()
+    }
+
+    /// Launches normally take turns to look at a home: a look waits while
+    /// another launch's look holds the turn, and goes on as soon as that
+    /// look ends, here well before its bound (SAM's launches wait at most
+    /// about a second, then look anyway, so two looks can then overlap).
+    /// Before, both looked at once and the second reported a file the first
+    /// had just moved as deleted or as still there. (`Turns` is new with
+    /// this rule; the mutant that does not wait moves the file before the
+    /// first check.)
+    #[test]
+    fn launches_take_turns_to_look_at_a_home() {
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path().join("home");
+        fs::create_dir_all(&home).unwrap();
+        let w = watch_of(&home);
+        let dir = t.path().join("records");
+        let aside = t.path().join("aside");
+        let held = hold_turn(&dir);
+        fs::write(home.join(".bash_profile"), "plant").unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let turns = Turns::waiting(&dir, Duration::from_secs(30));
+        let (w2, aside2) = (w.clone(), aside.clone());
+        let look = std::thread::spawn(move || {
+            let _ = tx.send(turns.settle(&w2, &aside2));
+        });
+        std::thread::sleep(Duration::from_millis(300));
+        assert!(
+            home.join(".bash_profile").exists(),
+            "looked while another launch had its turn"
+        );
+        assert!(rx.try_recv().is_err(), "the look did not wait");
+        drop(held);
+        let moved = rx
+            .recv_timeout(Duration::from_secs(10))
+            .expect("the look went on once the turn was free");
+        look.join().unwrap();
+        assert_eq!(moved.len(), 1, "{moved:?}");
+        assert_eq!(moved[0].place, ".bash_profile");
+        assert_eq!(moved[0].how, sam_sandbox::Aside::Moved);
+        assert_eq!(fs::read_to_string(&moved[0].to).unwrap(), "plant");
+        assert!(!home.join(".bash_profile").exists());
+    }
+
+    /// A look waits for another launch's turn at most its bound (about a
+    /// second for SAM's launches: at least 0.9 and at most 2 seconds here),
+    /// then looks anyway, so two looks can then overlap, and a launcher
+    /// stopped in the middle of its look (Ctrl+Z) does not keep the live
+    /// watches of running launches from moving a planted file aside; and a
+    /// look also happens when the turn's lock cannot be opened. This covers only the wait for the turn: a start,
+    /// and the last look for a killed launcher, also wait for the records
+    /// of the running apps, and that wait has no time limit yet. (The
+    /// mutants that wait without a bound, not at all or for several
+    /// seconds, or skip the look, fail here.)
+    #[test]
+    fn a_look_never_waits_long_for_another_launch() {
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path().join("home");
+        fs::create_dir_all(&home).unwrap();
+        let w = watch_of(&home);
+        let dir = t.path().join("records");
+        let aside = t.path().join("aside");
+        let _held = hold_turn(&dir);
+        // In a thread with a time limit: a look that waited without a
+        // bound would hang the test.
+        let look = |turns: Turns, text: &str| -> Vec<MovedAside> {
+            fs::write(home.join(".bash_profile"), text).unwrap();
+            let (tx, rx) = std::sync::mpsc::channel();
+            let (w2, aside2) = (w.clone(), aside.clone());
+            std::thread::spawn(move || {
+                let _ = tx.send(turns.settle(&w2, &aside2));
+            });
+            let moved = rx
+                .recv_timeout(Duration::from_secs(5))
+                .unwrap_or_else(|_| panic!("the look waited too long ({text})"));
+            assert!(
+                fs::symlink_metadata(home.join(".bash_profile")).is_err(),
+                "the planted file stayed ({text})"
+            );
+            moved
+        };
+        let m = look(Turns::waiting(&dir, Duration::from_millis(200)), "one");
+        assert_eq!(m.len(), 1, "{m:?}");
+        assert_eq!(fs::read_to_string(&m[0].to).unwrap(), "one");
+        // SAM's own bound: it really waits for its turn, about a second.
+        let started = std::time::Instant::now();
+        let m = look(Turns::at(&dir), "two");
+        let waited = started.elapsed();
+        assert!(
+            waited >= Duration::from_millis(900),
+            "SAM's launch did not wait for its turn: it looked after {waited:?}"
+        );
+        assert!(
+            waited <= Duration::from_secs(2),
+            "SAM's launch waited longer than about a second for its turn: {waited:?}"
+        );
+        assert_eq!(m.len(), 1, "{m:?}");
+        assert_eq!(fs::read_to_string(&m[0].to).unwrap(), "two");
+        // The lock cannot be opened: its folder is a file.
+        let not_a_folder = t.path().join("not-a-folder");
+        fs::write(&not_a_folder, "").unwrap();
+        let m = look(
+            Turns::waiting(&not_a_folder, Duration::from_millis(200)),
+            "three",
+        );
+        assert_eq!(m.len(), 1, "{m:?}");
+        assert_eq!(fs::read_to_string(&m[0].to).unwrap(), "three");
+    }
+
+    /// The last look for a launch whose launcher was killed takes its turn
+    /// like any other look: it waits for its turn while another launch is
+    /// looking, up to its bound.
+    /// (Fails when that look calls the watch directly, as before.)
+    #[test]
+    fn a_last_look_for_a_killed_launcher_takes_its_turn() {
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path().join("home");
+        fs::create_dir_all(&home).unwrap();
+        let paths = Paths::rooted(&t.path().join("sam"));
+        let aside = t.path().join("aside");
+        let (_, mut r) = start(&paths, &home, "killed", &aside);
+        r.arm(&t.path().join("launch.log"));
+        fs::write(home.join(".bash_profile"), "plant").unwrap();
+        // Its launcher is gone: the record stays, no longer locked (as in
+        // `a_start_file_left_by_a_killed_launcher_is_still_moved_aside`).
+        drop(r.file.take());
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while !try_lock(&fs::File::open(&r.path).unwrap()) {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the record stayed locked"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        std::mem::forget(r);
+
+        let held = hold_turn(&folder(&paths));
+        let mut shared = Shared::open(&paths).unwrap();
+        shared.turns = Turns::waiting(&folder(&paths), Duration::from_secs(30));
+        let (tx, rx) = std::sync::mpsc::channel();
+        let look = std::thread::spawn(move || {
+            let _ = tx.send(shared.running().len());
+        });
+        std::thread::sleep(Duration::from_millis(300));
+        assert!(
+            home.join(".bash_profile").exists(),
+            "looked while another launch had its turn"
+        );
+        drop(held);
+        assert_eq!(
+            rx.recv_timeout(Duration::from_secs(10))
+                .expect("the look went on once the turn was free"),
+            0,
+            "no launch runs"
+        );
+        look.join().unwrap();
+        assert!(fs::symlink_metadata(home.join(".bash_profile")).is_err());
+        assert_eq!(
+            fs::read_to_string(aside.join(".bash_profile")).unwrap(),
+            "plant"
+        );
+    }
+
+    /// The look a record takes when it is dropped without its last look
+    /// takes its turn too. (Fails when the drop calls the watch directly,
+    /// as before.)
+    #[test]
+    fn a_dropped_record_takes_its_turn() {
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path().join("home");
+        fs::create_dir_all(&home).unwrap();
+        let paths = Paths::rooted(&t.path().join("sam"));
+        let aside = t.path().join("aside");
+        let (_, mut r) = start(&paths, &home, "dropped", &aside);
+        r.arm(&t.path().join("launch.log"));
+        r.turns = Turns::waiting(&folder(&paths), Duration::from_secs(30));
+        fs::write(home.join(".bash_profile"), "plant").unwrap();
+        let held = hold_turn(&folder(&paths));
+        let (tx, rx) = std::sync::mpsc::channel();
+        let look = std::thread::spawn(move || {
+            drop(r);
+            let _ = tx.send(());
+        });
+        std::thread::sleep(Duration::from_millis(300));
+        assert!(
+            home.join(".bash_profile").exists(),
+            "looked while another launch had its turn"
+        );
+        drop(held);
+        rx.recv_timeout(Duration::from_secs(10))
+            .expect("the look went on once the turn was free");
+        look.join().unwrap();
+        assert!(fs::symlink_metadata(home.join(".bash_profile")).is_err());
+        assert_eq!(
+            fs::read_to_string(aside.join(".bash_profile")).unwrap(),
+            "plant"
+        );
     }
 
     /// Review 2026-11-23 F1: app M plants `~/.bash_profile` (a link to its
