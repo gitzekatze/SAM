@@ -1,7 +1,7 @@
-//! `sam-jail uninstall`: lists first, then removes every trace of SAM (a
-//! sandbox, its menu entry, SAM's own entry and icon, settings and data),
-//! restores the menu entry SAM hid, and never touches the AppImage. Uses a
-//! fake `$HOME`; needs no Bubblewrap (nothing is started).
+//! `sam-jail uninstall`: lists first, then removes a sandbox, its menu
+//! entry, SAM's own entry and icon, and the settings and data folders,
+//! restores the menu entry SAM hid, and leaves the AppImage. Uses a fake
+//! `$HOME`; needs no Bubblewrap (nothing is started).
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
 
 use std::fs;
@@ -13,7 +13,9 @@ use sam_runner::ops::{AddOptions, Sam};
 /// Both tests change $HOME: one at a time.
 static HOME_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-/// Uninstalling SAM removes all of its files and restores the menu entries it had hidden.
+/// Uninstalling SAM removes the app's menu entry, SAM's own entry and icon,
+/// and the settings and data folders, restores the menu entry it had hidden,
+/// and leaves the AppImage.
 #[test]
 fn uninstall_removes_everything_and_restores_menus() {
     let _one = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());

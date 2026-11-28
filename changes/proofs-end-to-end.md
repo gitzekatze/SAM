@@ -10,6 +10,7 @@
 - A hostile name in an AppImage's desktop file adds no line to SAM's menu
   entry.
 - With the whole home writable, the file that says where Documents and the
-  other user folders are stays read-only.
+  other user folders are is kept read-only; the security page's *Full home
+  access* names the limits.
 - Nested sandboxes stay refused with the syscall filter switched off, and
   the app has no capabilities at all, not even ones it could gain later.
