@@ -973,14 +973,11 @@ How these stay protected with the home writable:
     home, the OCI tool reads `~/config`, so no file in the home is shared;
   - that is or lies inside one of SAM's folders.
 
-  A folder is also not shared when it holds the home or one of these
-  places other than SAM's own folders (a dotfiles folder holding the real
-  `.bashrc`, `~/.cargo`, or `~/d` while `XDG_CONFIG_HOME` is `~/d/cfg`),
-  or when it lies outside the home and off the drives (`/media`, `/mnt`,
-  `/run/media`). A folder that holds one of SAM's folders is shared, with
-  SAM's folder hidden inside it, as for a user folder (`~/Games` while
-  SAM keeps its files in `~/Games/sam`;
-  `keys_start_places_and_sams_files_are_never_opened`). SAM uses the
+  A folder is also not shared when it holds the home, one of the places
+  the third item lists, or the place one of them really leads to (a
+  dotfiles folder holding the real `.bashrc`, `~/.cargo`, or `~/d` while
+  `XDG_CONFIG_HOME` is `~/d/cfg`), or when it lies outside the home and
+  off the drives (`/media`, `/mnt`, `/run/media`). SAM uses the
   `XDG_CONFIG_HOME` and `XDG_DATA_HOME` of its own environment
   (`opened_files_are_refused_wherever_a_protected_place_is_named_or_leads`,
   `opened_files_are_also_refused_where_a_listed_place_leads`,
