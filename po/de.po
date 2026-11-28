@@ -3509,7 +3509,7 @@ msgstr "Einstellungen bestätigen"
 
 #. Keep the {placeholders}; their order may change.
 #: crates/sam-gtk/src/app_page/render.rs:493
-#: crates/sam-runner/src/ops/profiles.rs:680
+#: crates/sam-runner/src/ops/profiles.rs:694
 msgid ""
 "{app} changed since this page showed it. Look at it again, then confirm."
 msgstr ""
@@ -5979,7 +5979,7 @@ msgstr ""
 #: crates/sam-runner/src/ops/maintain.rs:493
 #: crates/sam-runner/src/ops/maintain.rs:510
 #: crates/sam-runner/src/ops/mod.rs:215
-#: crates/sam-runner/src/ops/profiles.rs:198
+#: crates/sam-runner/src/ops/profiles.rs:212
 msgid "no registered app '{id}'"
 msgstr "keine registrierte App „{id}“"
 
@@ -7777,13 +7777,13 @@ msgstr ""
 #. Keep the {placeholders}; their order may change.
 #: crates/sam-runner/src/ops/add.rs:73
 #: crates/sam-runner/src/ops/overview.rs:352
-#: crates/sam-runner/src/ops/profiles.rs:427
+#: crates/sam-runner/src/ops/profiles.rs:441
 msgid "{file} does not exist"
 msgstr "{file} existiert nicht"
 
 #. Keep the {placeholders}; their order may change.
 #: crates/sam-runner/src/ops/add.rs:78
-#: crates/sam-runner/src/ops/profiles.rs:432
+#: crates/sam-runner/src/ops/profiles.rs:446
 msgid "{file} is not a file"
 msgstr "{file} ist keine Datei"
 
@@ -8376,15 +8376,27 @@ msgstr ""
 "starte die App dann erneut."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/profiles.rs:108
+#: crates/sam-runner/src/ops/profiles.rs:103
 msgid ""
 "SAM did not start {app}: its folder {folder} is not a folder, is a link or "
 "others can open it, so another program may have made or changed it. Remove "
 "{folder}, or take it out of the app's folders, then start the app again."
-msgstr "SAM hat {app} nicht gestartet: Der Ordner {folder} der App ist kein Ordner, ist ein Link oder andere können ihn öffnen, daher hat ihn vielleicht ein anderes Programm angelegt oder verändert. Entferne {folder} oder nimm ihn aus den Ordnern der App heraus und starte die App dann erneut."
+msgstr ""
+"SAM hat {app} nicht gestartet: Der Ordner {folder} der App ist kein Ordner, "
+"ist ein Link oder andere können ihn öffnen, daher hat ihn vielleicht ein "
+"anderes Programm angelegt oder verändert. Entferne {folder} oder nimm ihn "
+"aus den Ordnern der App heraus und starte die App dann erneut."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/profiles.rs:259
+#: crates/sam-runner/src/ops/profiles.rs:118
+msgid ""
+"SAM did not start {app}: the folder {grant} does not lead to the app's own "
+"folder {folder}. Take {grant} out of the app's folders and give it {folder} "
+"instead."
+msgstr "SAM hat {app} nicht gestartet: Der Ordner {grant} führt nicht zum eigenen Ordner {folder} der App. Nimm {grant} aus den Ordnern der App heraus und gib ihr stattdessen {folder}."
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-runner/src/ops/profiles.rs:273
 msgid ""
 "{settings} of {app} changed elsewhere in the meantime. Nothing was changed: "
 "look at the settings as they are now and make the change again."
@@ -8393,34 +8405,34 @@ msgstr ""
 "geändert: Sieh dir die Einstellungen an, wie sie jetzt sind, und nimm die "
 "Änderung noch einmal vor."
 
-#: crates/sam-runner/src/ops/profiles.rs:304
+#: crates/sam-runner/src/ops/profiles.rs:318
 msgid ""
 "compatibility mode is disabled in settings (compatibility.behavior = never)"
 msgstr ""
 "der Kompatibilitätsmodus ist in den Einstellungen abgeschaltet "
 "(compatibility.behavior = never)"
 
-#: crates/sam-runner/src/ops/profiles.rs:369
+#: crates/sam-runner/src/ops/profiles.rs:383
 msgid "checking the sandbox before starting"
 msgstr "die Sandbox wird vor dem Start geprüft"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/profiles.rs:374
+#: crates/sam-runner/src/ops/profiles.rs:388
 msgid "sandbox check failed: {list}"
 msgstr "Sandbox-Prüfung fehlgeschlagen: {list}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/profiles.rs:614
+#: crates/sam-runner/src/ops/profiles.rs:628
 msgid "the repair step '{step_id}' is not applied"
 msgstr "der Reparaturschritt „{step_id}“ ist nicht angewendet"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/profiles.rs:644
+#: crates/sam-runner/src/ops/profiles.rs:658
 msgid "no repair steps to undo for {app}"
 msgstr "keine Reparaturschritte zum Rückgängigmachen für {app}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/profiles.rs:718
+#: crates/sam-runner/src/ops/profiles.rs:732
 msgid ""
 "the preset “{preset}” changed after it was checked; nothing was applied. "
 "Check it again."
@@ -8429,7 +8441,7 @@ msgstr ""
 "angewendet. Prüfe sie noch einmal."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/ops/profiles.rs:727
+#: crates/sam-runner/src/ops/profiles.rs:741
 msgid "applying the preset “{preset}”"
 msgstr "die Vorlage „{preset}“ wird angewendet"
 

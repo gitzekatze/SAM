@@ -96,18 +96,32 @@ pub(crate) fn make_own_tmp_folder_in(
         )
         .into());
     }
-    // The place the sandbox mounts for each grant is the folder checked
-    // here: `/tmp/x/../sam-<id>` with `/tmp/x` a link leads elsewhere.
-    let own = found.is_some_and(|m| m.file_type().is_dir() && m.mode() & 0o077 == 0)
-        && grants
-            .iter()
-            .all(|g| sam_core::places::resolve(g) == folder);
+    let own = found.is_some_and(|m| m.file_type().is_dir() && m.mode() & 0o077 == 0);
     if !own {
         return Err(sam_core::error::CodedError::new(
             "own-tmp-folder-unsafe",
             sam_core::i18n::trf(
                 "SAM did not start {app}: its folder {folder} is not a folder, is a link or others can open it, so another program may have made or changed it. Remove {folder}, or take it out of the app's folders, then start the app again.",
                 &[("app", &app), ("folder", &shown)],
+            ),
+        )
+        .into());
+    }
+    // The place the sandbox mounts for each grant is the folder checked
+    // here: `/tmp/x/../sam-<id>` with `/tmp/x` a link leads elsewhere.
+    if let Some(g) = grants
+        .iter()
+        .find(|g| sam_core::places::resolve(g) != folder)
+    {
+        return Err(sam_core::error::CodedError::new(
+            "own-tmp-folder-unsafe",
+            sam_core::i18n::trf(
+                "SAM did not start {app}: the folder {grant} does not lead to the app's own folder {folder}. Take {grant} out of the app's folders and give it {folder} instead.",
+                &[
+                    ("app", &app),
+                    ("grant", &sam_core::util::display_safe(&g.display().to_string(), 200)),
+                    ("folder", &shown),
+                ],
             ),
         )
         .into());
@@ -1941,7 +1955,8 @@ mod tmp_grant_tests {
             .expect_err("a grant through a link");
         assert_eq!(code_of(&err), Some("own-tmp-folder-unsafe"), "{err:#}");
         assert!(
-            err.to_string().contains("is not a folder, is a link"),
+            err.to_string()
+                .contains("does not lead to the app's own folder"),
             "{err}"
         );
         // The same folder named plainly is fine.

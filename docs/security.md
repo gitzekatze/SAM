@@ -1288,8 +1288,10 @@ How these stay protected with the home writable:
   app that still has an older grant of `/tmp`, and so can the app itself,
   which can also open its folder to others (the next start then stops).
   Such a program can also swap the checked folder for a link between
-  SAM's look and Bubblewrap's mount; this stays open until SAM binds
-  these places through a folder it opened. The folder's name can be seen
+  SAM's look and Bubblewrap's mount, and so can another account that owns
+  a folder on the way of a grant written with `..` (which asks first, as
+  *Dangerous*); this stays open until SAM binds these places through a
+  folder it opened. The folder's name can be seen
   by every account on this computer, so it tells them which apps you use,
   and another account can make that folder first and so stop the app from
   starting until it is gone.
