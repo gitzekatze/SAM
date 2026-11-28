@@ -794,10 +794,7 @@ one that a program outside the sandbox creates while the app runs is
 visible until the next start. A key folder (`~/.ssh`, `~/.gnupg`) missing
 when the app starts is moved aside when it appears only in a start that
 shows a start place or key folder writable; in other starts, one created
-while the app runs is visible until the next start. A store kept as a file
-is hidden by covering that file: a program outside the sandbox that
-replaces the file while the app runs (by writing a new file and renaming
-it over the old one) leaves the new file visible until the next start. A
+while the app runs is visible until the next start. A
 second name of a store, made with a hard link, is shown like any file. SAM
 reads `XDG_CONFIG_HOME` and `XDG_DATA_HOME` from the environment of each
 start, so a start whose environment does not name the folder a variable
@@ -891,9 +888,8 @@ its own program in their place: the next click on a menu entry would have
 run its program unsandboxed. SAM keeps only the programs of the copy that
 runs read-only this way: another copy of SAM that your menu entries run (an
 older AppImage in `~/Downloads`) gets no such lock in starts that this copy
-makes. A fix is planned. When SAM updates itself, it puts the new AppImage
-in place without locking it for apps that already run: such an app can
-change the new file where it can write that folder. A second name of SAM's
+makes. A fix is planned. After SAM updates itself, its new AppImage is
+locked only in starts that SAM makes after it has restarted. A second name of SAM's
 AppImage, made with a hard link in a folder the app may write, is not
 locked either.
 
@@ -1225,7 +1221,12 @@ How these stay protected with the home writable:
   hidden key or make a start file writable again. Grants are checked where
   they really lead: a granted link (or a home folder that is itself a link)
   is followed, and the protections apply wherever the app sees these
-  places.
+  places. SAM sets them up when the app starts, and does not promise that
+  they follow a change a program outside the sandbox makes while the app
+  runs: a file or folder it creates, replaces, or removes and makes again
+  in one of these places may be visible or writable to the app until its
+  next start. The places SAM watches while the app runs (see *Files whose
+  mere presence changes behaviour*) are the exception.
 - **Extra folders are rated where they lead.** `.`, `..` and doubled `/`
   count for nothing, so `/.` is the whole computer and `~/..` the folder
   above the home, both *Dangerous*; a folder that holds the home counts as
@@ -1540,11 +1541,11 @@ C4 are added after every grant (see *No grant undoes these protections*).
   *Not given yet:* stores in a settings or data folder outside the home;
   a key folder or store that its own variable moves (`GNUPGHOME`); a store
   missing when the app starts, and a key folder missing then in a start
-  that shows no start place writable; a store file that a program outside
-  the sandbox replaces while the app runs; a start whose environment does
+  that shows no start place or key folder writable; a change a program
+  outside the sandbox makes while the app runs; a start whose environment does
   not name the settings or data folder that holds the stores; a second
   name made with a hard link (see *Hidden unless you allow them
-  explicitly*).
+  explicitly* and *No grant undoes these protections*).
 - **C2, SAM's own folders are hidden.** SAM's folders, and folders named
   like them, are hidden wherever anything would show them (see *Hidden
   whenever anything would show them*).
@@ -1564,7 +1565,7 @@ C4 are added after every grant (see *No grant undoes these protections*).
   *Not given yet:* `~/.vim`, `~/.config/vim`, `~/.local/share/nvim` and
   `~/.config/hg`; what a link inside a start place leads to
   (`~/.config/tmux/plugins`); what a start file names to run; a start file
-  that another program replaces while the app runs; a second name made
+  that a program outside the sandbox replaces while the app runs; a second name made
   with a hard link; start places in a settings or data folder outside the
   home, at the top of the home where a variable is set to the home itself,
   or in a start whose environment does not name that folder; the user
@@ -1580,9 +1581,10 @@ C4 are added after every grant (see *No grant undoes these protections*).
   anything would show them writable*).
 
   *Not given yet:* another copy of SAM that your menu entries run; the new
-  AppImage of SAM's update of itself, for apps that already run; a second
-  name made with a hard link (see *Read-only whenever anything would show
-  them writable*).
+  AppImage of SAM's update of itself, until SAM has restarted; a change a
+  program outside the sandbox makes while the app runs; a second name made
+  with a hard link (see *Read-only whenever anything would show them
+  writable* and *No grant undoes these protections*).
 
 ---
 
