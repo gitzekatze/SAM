@@ -6,6 +6,8 @@
 
 pub mod config;
 pub mod error;
+#[cfg(test)]
+mod file_rules_doc;
 pub mod format;
 pub mod host;
 pub mod i18n;
