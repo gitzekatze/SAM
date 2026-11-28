@@ -275,9 +275,13 @@ impl AppPage {
                         None
                     };
                     app.toast(&match (failed, started) {
-                        (0, Some(true)) => crate::i18n::tr("Test passed: every setting applies, and the app started"),
-                        (0, Some(false)) => crate::i18n::tr("Every setting applies, but the app did not keep running; see Test below"),
-                        (0, None) => crate::i18n::tr("Test passed: every setting applies"),
+                        // No claim that every setting applies: a passed test can
+                        // carry a note (the summary below says so).
+                        (0, Some(true)) => crate::i18n::tr("Test passed, and the app started"),
+                        (0, Some(false)) => crate::i18n::tr(
+                            "Test passed, but the app did not keep running; see Test below",
+                        ),
+                        (0, None) => crate::i18n::tr("Test passed"),
                         (n, _) => crate::i18n::trn(
                             "Test: {n} setting does not apply; see Test below.",
                             "Test: {n} settings do not apply; see Test below.",

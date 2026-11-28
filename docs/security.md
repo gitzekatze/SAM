@@ -330,7 +330,7 @@ its kernel objects: `process_vm_readv`, `process_vm_writev`,
 (`the_strict_filter_blocks_every_call_its_text_names`).
 
 Compared with Flatpak's default filter, the baseline also blocks
-`io_uring`, BPF, `userfaultfd`, `kexec`, keyrings and the rare socket types
+`io_uring`, BPF, `userfaultfd`, `kexec`, keyrings and the rare socket families
 above, and leaves `ptrace`, `personality` (Flatpak refuses only values
 other than plain Linux) and `modify_ldt` (Flatpak refuses it only for apps
 without 32-bit support) to the strict filter or allowed: crash reporters

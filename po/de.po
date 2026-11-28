@@ -9745,6 +9745,34 @@ msgstr ""
 "SAM hat {app} nicht gestartet: Eine Verknüpfung in ihrem Home-Ordner hat "
 "sich geändert, während SAM den Start vorbereitet hat. Starte sie noch einmal."
 
+#: crates/sam-core/src/permissions.rs:1268
+msgid ""
+"Lets the app open Bluetooth sockets, which reach nearby devices only with "
+"full network access. Without it, the app's syscall filter refuses them while "
+"the filter is on, except for an app whose start program is 32-bit (the "
+"security page says why). An app that may reach the Bluetooth service on the "
+"system D-Bus can use Bluetooth devices through it, with or without this "
+"switch."
+msgstr ""
+"Erlaubt der App, Bluetooth-Sockets zu öffnen, die Geräte in der Nähe nur mit "
+"vollem Netzwerkzugang erreichen. Ohne den Schalter lehnt der Systemaufruf-"
+"Filter der App sie ab, solange der Filter an ist, außer bei einer App, deren "
+"Startprogramm ein 32-Bit-Programm ist (die Sicherheitsseite erklärt, warum). "
+"Eine App, die den Bluetooth-Dienst auf dem System-D-Bus erreichen darf, kann "
+"über ihn Bluetooth-Geräte nutzen, mit oder ohne diesen Schalter."
+
+#: crates/sam-gtk/src/app_page/wiring.rs:280
+msgid "Test passed, and the app started"
+msgstr "Test bestanden, und die App ist gestartet"
+
+#: crates/sam-gtk/src/app_page/wiring.rs:281
+msgid "Test passed, but the app did not keep running; see Test below"
+msgstr "Test bestanden, aber die App lief nicht weiter; siehe „Test“ unten"
+
+#: crates/sam-gtk/src/app_page/wiring.rs:284
+msgid "Test passed"
+msgstr "Test bestanden"
+
 #~ msgid ""
 #~ "Lets the app open Bluetooth connections to nearby devices; other apps "
 #~ "cannot, except an app whose start program is 32-bit (the security page "
