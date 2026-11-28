@@ -1,7 +1,7 @@
 //! The app page (`sam-jail evaluate APP`, the window's editor) and
 //! `sam-jail info APP` name the incomplete socket limit of a 32-bit app:
 //! its syscall filter has a 32-bit part with one gap, as in Flatpak, the
-//! old socketcall call (review R72). The note follows the settings being
+//! old socketcall call. The note follows the settings being
 //! looked at, not only the stored ones, and the global filter setting.
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
 
@@ -38,6 +38,8 @@ fn codes(w: &[sam_core::Warning]) -> Vec<&str> {
     w.iter().map(|w| w.code.as_str()).collect()
 }
 
+/// The app page and `sam-jail info` name the socket note of a 32-bit app
+/// exactly when the settings being looked at load the filter's 32-bit part.
 #[test]
 fn the_app_page_names_the_incomplete_socket_limit_of_a_32_bit_app() {
     // Outside /tmp: SAM's rules treat places there specially.
@@ -105,7 +107,7 @@ fn the_app_page_names_the_incomplete_socket_limit_of_a_32_bit_app() {
         codes(&page)
     );
 
-    // (f) A 64-bit app, and settings looked at without an app: no note.
+    // (e) A 64-bit app, and settings looked at without an app: no note.
     let e64 = entry("x86_64", stored.clone());
     let page = sam.evaluate(&stored, Some(&e64), &host).warnings;
     assert!(
@@ -116,7 +118,8 @@ fn the_app_page_names_the_incomplete_socket_limit_of_a_32_bit_app() {
     let page = sam.evaluate(&stored, None, &host).warnings;
     assert!(!codes(&page).contains(&NOTE), "no app: {:?}", codes(&page));
 
-    // (e) The filter off for every app (and no strict switch): no note.
+    // (f) The filter off for every app (and no strict switch): no note.
+    // Last, because it changes the config every case above shares.
     sam.config.security.baseline_seccomp = false;
     let page = sam.evaluate(&stored, Some(&e), &host).warnings;
     assert!(

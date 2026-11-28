@@ -316,7 +316,7 @@ fn the_filter_decides_every_call_as_recorded() {
 }
 
 /// The app page's and the sandbox check's socket note for 32-bit apps
-/// (`SeccompSpec::socketcall_unlimited`, review R72) says what the built
+/// (`SeccompSpec::socketcall_unlimited`) says what the built
 /// filter does: under each of the 16 settings, the note appears exactly
 /// where the program allows a 32-bit x86 socketcall (number 102) that opens
 /// a socket (`SYS_SOCKET`, 1, in argument 0). A later filter that refuses

@@ -930,9 +930,94 @@ impl CreationProgress {
     }
 }
 
+/// A check's results hold a note SAM adds ([`sam_core::CHECK_NOTE_IDS`]),
+/// such as the incomplete socket limit of a 32-bit app: then a passed check
+/// does not mean that every setting applies in full.
+fn check_has_note(results: &[Value]) -> bool {
+    results
+        .iter()
+        .any(|r| sam_core::CHECK_NOTE_IDS.contains(&util::str_of(r, "id")))
+}
+
+/// What a passed check says: its title, the subtitle under it and the
+/// tooltip of its badge. `when` is the time of a stored test; `None` is a
+/// check of an AppImage without a sandbox, which is not stored. `noted`:
+/// the check holds a note SAM adds, so no text says that every setting
+/// applies in full.
+fn passed_check_texts(total: u64, when: Option<&str>, noted: bool) -> (String, String, String) {
+    use crate::i18n::{trf, trn};
+    match (when, noted) {
+        (Some(when), false) => (
+            trn("The setting applies", "All {n} settings apply", total, &[]),
+            trf("Tested {when}.", &[("when", &when)]),
+            tr("The test confirmed that every setting applies; see Test below"),
+        ),
+        (Some(when), true) => (
+            trn(
+                "The setting applies, with a note",
+                "All {n} settings apply, with a note",
+                total,
+                &[],
+            ),
+            trf(
+                "Tested {when}. Every setting applies, except where a note of the test says otherwise.",
+                &[("when", &when)],
+            ),
+            tr("The test confirmed every setting, except where a note says otherwise; see Test below"),
+        ),
+        (None, false) => (
+            trn("The check passed", "All {n} checks passed", total, &[]),
+            tr("Every setting below applies. Not stored: the sandbox does not exist yet."),
+            tr("The sandbox check confirmed that every setting applies; see Sandbox Check below"),
+        ),
+        (None, true) => (
+            trn("The check passed", "All {n} checks passed", total, &[]),
+            tr("Every setting below applies, except where a note below says otherwise. Not stored: the sandbox does not exist yet."),
+            tr("The sandbox check confirmed every setting, except where a note says otherwise; see Sandbox Check below"),
+        ),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
+
+    /// A passed check with a note SAM adds never says, in its title,
+    /// subtitle or badge tooltip, that every setting applies in full; one
+    /// without a note does, both for a stored test and for a check of an
+    /// AppImage without a sandbox.
+    #[test]
+    fn a_passed_check_with_a_note_says_so_in_every_text() {
+        for when in [Some("today"), None] {
+            let (title, subtitle, tooltip) = super::passed_check_texts(20, when, true);
+            let plain = super::passed_check_texts(20, when, false);
+            for t in [&subtitle, &tooltip] {
+                assert!(t.contains("except where a note"), "{when:?}: {t}");
+            }
+            for t in [&plain.1, &plain.2] {
+                assert!(!t.contains("note"), "{when:?}: {t}");
+            }
+            assert!(plain.2.contains("every setting applies"), "{}", plain.2);
+            if when.is_some() {
+                assert_eq!(title, "All 20 settings apply, with a note");
+                assert_eq!(plain.0, "All 20 settings apply");
+                assert!(subtitle.contains("today") && plain.1.contains("today"));
+            } else {
+                assert!(subtitle.contains("Not stored") && plain.1.contains("Not stored"));
+            }
+        }
+    }
+
+    /// The window qualifies "every setting applies" exactly when the check
+    /// holds a note SAM adds, not for a check that could not run.
+    #[test]
+    fn a_passed_check_with_a_note_is_not_called_complete() {
+        let passed = json!({"id": "userns", "ok": true});
+        let not_here = json!({"id": "webcam", "ok": null});
+        let note = json!({"id": "seccomp-32-bit-sockets", "ok": null});
+        assert!(!super::check_has_note(&[passed.clone(), not_here.clone()]));
+        assert!(super::check_has_note(&[passed, note, not_here]));
+    }
 
     /// "Confirm Settings" names the note of an update's needs, which the
     /// page hides meanwhile but confirming accepts (review L4).

@@ -1,5 +1,5 @@
 //! The sandbox check of a 32-bit app says that its socket limit is
-//! incomplete (review R72). Its filter has a 32-bit part with one gap, as
+//! incomplete. Its filter has a 32-bit part with one gap, as
 //! in Flatpak: the old socketcall call. The test program inside the
 //! sandbox makes only 64-bit calls, so it cannot try the gap; SAM adds the
 //! note outside the sandbox, neither passed nor failed, under the probe's
@@ -8,7 +8,9 @@
 //! whole test process.
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
 
-/// The filter's 32-bit part exists only on x86-64.
+/// A real sandbox check of a 32-bit app adds the socket note under
+/// Security and counts it as a note, not as not applicable; a 64-bit app
+/// gets no note. The filter's 32-bit part exists only on x86-64.
 #[cfg(target_arch = "x86_64")]
 #[test]
 fn the_sandbox_check_of_a_32_bit_app_says_its_socket_limit_is_incomplete() {
@@ -103,6 +105,27 @@ fn the_sandbox_check_of_a_32_bit_app_says_its_socket_limit_is_incomplete() {
         "nothing failed: {:?}",
         out.record.failed
     );
+    // The record counts the note as a note, not as a check that could not
+    // run ("not applicable" in `sam-jail verify`).
+    let count = |f: &dyn Fn(&sam_runner::probe::ProbeResult) -> bool| {
+        results.iter().filter(|r| f(r)).count()
+    };
+    assert_eq!(
+        (
+            out.record.passed,
+            out.record.failed.len(),
+            out.record.skipped,
+            out.record.notes
+        ),
+        (
+            count(&|r| r.ok == Some(true)),
+            0,
+            count(&|r| r.ok.is_none()) - 1,
+            1
+        ),
+        "passed, failed, not applicable, notes: {:?}",
+        out.record
+    );
 
     // A 64-bit start program: no note.
     if let Some(d) = e.detection.as_mut() {
@@ -117,4 +140,5 @@ fn the_sandbox_check_of_a_32_bit_app_says_its_socket_limit_is_incomplete() {
         "a 64-bit app: {:?}",
         out.report.results
     );
+    assert_eq!(out.record.notes, 0, "a 64-bit app: {:?}", out.record);
 }

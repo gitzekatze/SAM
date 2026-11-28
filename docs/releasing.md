@@ -21,9 +21,11 @@ the steps; the list says what it does and what stays a person's job.
 3. **Real apps:** the 120-AppImage test set runs without a new failure
    (`tests/real-apps/run.sh`, see [testing](testing.md)).
 4. **Upgrades work:** `tests/upgrade/run.sh vLAST target/upgrade-test` builds
-   the last released version, creates apps, settings and a preset with it, and
-   checks that this version keeps them and still starts the apps.
-   `scripts/new-version.sh` runs it by itself.
+   this checkout's SAM and the last released version, creates apps, settings
+   and a preset with the last one, and checks that this checkout's build
+   keeps them and still starts the apps.
+   `scripts/new-version.sh` hands it to the program
+   `SAM_RELEASE_UPGRADE_COMMAND` names (see below).
 5. **Translations are complete:** `python3 scripts/i18n.py check`.
 5a. **The outside world is fine:** no open `early-warning` issue for a
     distribution SAM supports, and `sam-jail doctor --contracts` shows no
@@ -51,6 +53,7 @@ After the checks above, one command does the rest, up to the last click:
 
 ```sh
 export SAM_RELEASE_TEST_COMMAND=/path/to/run-tests-in-a-container
+export SAM_RELEASE_UPGRADE_COMMAND=/path/to/run-the-upgrade-test-in-a-container
 scripts/new-version.sh X.Y.Z --dry-run   # only checks that everything is ready
 scripts/new-version.sh X.Y.Z
 ```
@@ -58,7 +61,31 @@ scripts/new-version.sh X.Y.Z
 It checks that the version is new, the tree is clean, a program to run the
 tests is named (`SAM_RELEASE_TEST_COMMAND`, or `SKIP_TESTS=1` after the
 tests passed elsewhere on this commit), `main` matches GitHub, the last CI
-run on it passed and the release key is here. It asks once for
+run on it passed and the release key is here, and that data made by the
+last released version still works.
+
+The script never runs that upgrade test itself: the upgrade test builds
+this checkout's SAM and the last release and starts SAM's programs and
+sandboxes, so the script hands it to the program
+`SAM_RELEASE_UPGRADE_COMMAND` names, which should run it in a container or
+under a separate account. The script does not check where the program runs
+it. The program gets the checkout's path and the last release's tag (for
+example `v0.1.0`) as its two arguments. It should run
+`tests/upgrade/run.sh TAG WORKDIR` in that checkout, which builds the
+checkout's own `sam-jail` first (into `CARGO_TARGET_DIR` when that is set)
+and checks with that build, and pass on the output. Give the program's
+absolute path, without arguments. Only exit status 0 together with the
+test's line `RESULT pass` counts as passed; otherwise the script stops,
+names the program and its exit status and keeps the output in
+`target/upgrade-test.log`. The program must leave the checkout clean
+(`target/` is ignored), or the script stops. Without that variable the
+script stops before it changes anything, unless `SKIP_UPGRADE_TEST=1` says
+the upgrade test already passed elsewhere on this commit; `SKIP_TESTS=1`
+does not skip it. When no release tag is reachable from the checkout, the
+script asks GitHub: if GitHub has one (a shallow clone or a missing tag),
+it stops; otherwise there is no earlier release and nothing to check.
+
+It asks once for
 the key's passphrase and keeps GnuPG from forgetting it during the release.
 Then it makes a branch `release-X.Y.Z` (`main` is protected and takes
 changes only through pull requests), runs `scripts/release.sh` there (set

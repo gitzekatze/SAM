@@ -338,7 +338,7 @@ fn seccomp_spec(app: &AppEntry) -> kernel::SeccompSpec {
 
 /// A start of `app` with `perms` gets the syscall filter with its 32-bit
 /// part, whose socket limit has a gap: a 32-bit socket made through the
-/// old `socketcall` call can be of any type
+/// old `socketcall` call can be of a family the filter would refuse
 /// ([`kernel::SeccompSpec::socketcall_unlimited`]). The app page and the
 /// sandbox check say so. `perms` are the settings being looked at, which
 /// on the app page may differ from the stored ones.
@@ -700,6 +700,20 @@ pub fn prepare(
         sam_sandbox::prepare_home_protection_alongside(&ctx, &others);
         // After the folders above are made, so they do not count as new.
         home_watch = sam_sandbox::HomeWatch::before_alongside(&ctx, &others);
+        // `writes_start_places` reads links on disk, so asked again here it
+        // can answer otherwise than when the shared records were opened
+        // above: a link changed meanwhile. A watch without a record would
+        // take no last look in its turn, and no watch would leave the app
+        // unwatched, so such a start does not go on.
+        if home_watch.is_some() && shared.is_none() {
+            bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "SAM did not start {app}: a link in its home changed while SAM prepared the start. Start it again.",
+                    &[("app", &sam_core::util::display_safe(app.display_name(), 80))]
+                )
+            );
+        }
         if let (Some(s), Some(w)) = (&shared, &home_watch) {
             let name = format!(
                 "{}-{}",
@@ -709,10 +723,12 @@ pub fn prepare(
                     .unwrap_or_default(),
                 app.id
             );
-            home_record = Some(s.register(&name, w, &home_aside)?);
+            let record = s.register(&name, w, &home_aside)?;
             // What a running app planted in a place this launch takes over
-            // as empty, or in place of a link, goes before this one starts.
-            moved_at_start = crate::home_shared::Turns::of(paths).settle(w, &home_aside);
+            // as empty, or in place of a link, goes before this one starts
+            // (in this launch's turn).
+            moved_at_start = record.first_look();
+            home_record = Some(record);
         }
         drop(shared);
         if perms.dbus.session.mode == DbusMode::Filtered
@@ -1465,11 +1481,12 @@ fn run_once(
     // appeared while it ran; one last look now catches the rest.
     let mut found = std::mem::take(&mut prepared.moved_at_start);
     found.extend(live_watch.map(|l| l.finish()).unwrap_or_default());
-    if let Some(w) = &prepared.home_watch {
-        found.extend(crate::home_shared::Turns::of(paths).settle(w, &aside));
-    }
+    // In this launch's turn. A launch has a home watch exactly when it has
+    // a record (`prepare` keeps a record for every watch and does not start
+    // an app with a watch but without the shared records), so the record's
+    // look is the look of every watched launch.
     if let Some(r) = prepared.home_record.take() {
-        r.finish();
+        found.extend(r.last_look());
     }
     let moved: Vec<String> = found.iter().map(describe_moved).collect();
     // Best effort: a full disk (which the app may have caused on purpose)
@@ -2919,7 +2936,7 @@ mod tests {
         assert!(!seccomp_spec(&AppEntry::default()).i386, "not analyzed");
     }
 
-    /// The app page's and the check's socket note (review R72) appears
+    /// The app page's and the check's socket note appears
     /// exactly where a start loads the filter with its 32-bit part, whose
     /// socket limit has the socketcall gap: a 32-bit start program with the
     /// filter wanted, by the baseline or by the strict switch alone. Never

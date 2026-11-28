@@ -287,10 +287,10 @@ blocks:
   `clone` into a new user namespace, and `clone3`, whose flags no filter
   can read, answers "not implemented" so programs fall back to `clone`, as
   in Flatpak (`without_nested_sandboxes_clone_cannot_make_a_user_namespace`);
-- every socket type except local, internet and netlink (the kernel's status
+- every socket family except local, internet and netlink (the kernel's status
   channel): no virtual-machine (`AF_VSOCK`, which no network setting
   stops), raw-packet or kernel-crypto sockets. Bluetooth sockets only with
-  the *Bluetooth* switch. As in Flatpak, a refused type answers "not
+  the *Bluetooth* switch. As in Flatpak, a refused family answers "not
   supported", so programs fall back. The same limit holds for pairs of
   sockets (`socketpair`, which makes its sockets the same way;
   `a_socket_pair_opens_only_the_listed_families_too`);
@@ -304,9 +304,9 @@ their 64-bit twins, so the filter stays on for 32-bit AppImages
 switched off for them, which let any app choose to run without it by
 making its start program 32-bit. One gap remains, as in Flatpak: a 32-bit
 socket or socket pair made through the old `socketcall` call is not
-limited to the listed types (so it can be a Bluetooth socket even without
-the *Bluetooth* switch), because its type sits where no filter can
-read it. Other apps keep ending at a 32-bit call, so a 64-bit program
+limited to the listed families (so it can be a Bluetooth socket even
+without the *Bluetooth* switch), because its family sits where no filter
+can read it. Other apps keep ending at a 32-bit call, so a 64-bit program
 cannot use the 32-bit doors.
 
 This includes Bluetooth sockets: such an app with full network access can
@@ -330,7 +330,7 @@ its kernel objects: `process_vm_readv`, `process_vm_writev`,
 (`the_strict_filter_blocks_every_call_its_text_names`).
 
 Compared with Flatpak's default filter, the baseline also blocks
-`io_uring`, BPF, `userfaultfd`, `kexec`, keyrings and the rare socket types
+`io_uring`, BPF, `userfaultfd`, `kexec`, keyrings and the rare socket families
 above, and leaves `ptrace`, `personality` (Flatpak refuses only values
 other than plain Linux) and `modify_ldt` (Flatpak refuses it only for apps
 without 32-bit support) to the strict filter or allowed: crash reporters
@@ -2044,7 +2044,16 @@ unpacked all come from that copy. Another program with access to the
 AppImage's folder can no longer swap the file between SAM's check and the
 unpacking, so SAM never records one file and unpacks another
 (`what_is_unpacked_is_what_sam_checked_even_if_the_file_is_swapped`). A
-file swapped there afterwards is noticed like any changed AppImage. Moving such a
+file swapped there afterwards is noticed like any changed AppImage, also
+for an app whose first unpack failed: the change check and relocating keep
+the checksum of the file it was added with, so the first unpack of a
+swapped file is marked
+(`a_swapped_appimage_of_a_never_unpacked_app_is_marked_when_it_is_unpacked`),
+and such an app is neither checked for updates nor updated
+(`a_never_unpacked_app_is_not_updated`). SAM does not promise this mark
+when an earlier SAM version already saw the swapped file of such an app:
+its record then names that file, and the app page shows that file's
+checksum. Moving such a
 file elsewhere does not pass it off as the app's own: SAM follows a moved
 AppImage only when its content is what SAM unpacked for the app; another
 file is added as an app of its own
@@ -2190,9 +2199,11 @@ was easily misread.
   that the page showed what it confirms; `sam-jail review` without
   `--seen` confirms what the record holds when it gets the lock. When the
   AppImage changed other than through a SAM update, *Unpack Again* saves
-  that mark before it unpacks, so the new copy does not start unconfirmed
-  when the closing save fails; SAM does not promise this when you confirm
-  the app while it unpacks. The start's warning about a changed AppImage
+  that mark before it unpacks and unpacks nothing when it cannot save it
+  (`new_content_is_not_unpacked_when_its_mark_cannot_be_saved`), so the
+  new copy does not start unconfirmed when SAM stops before its closing
+  save or that save fails; SAM does not promise this when you confirm the
+  app while it unpacks. The start's warning about a changed AppImage
   says that the unpacked copy SAM starts may not be that file. Limits: a
   SAM version from before this lock does not take it, so while it runs at
   the same time as this one (an old window left open after an update), one

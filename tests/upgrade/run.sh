@@ -3,18 +3,27 @@
 #
 #   tests/upgrade/run.sh [OLD_REF] WORKDIR     (OLD_REF defaults to v0.1.0)
 #
-# Builds the older version from git into WORKDIR, uses it to create two
-# sandboxed apps, custom permissions, a preset and a setting, then checks
-# with this build (target/debug/sam-jail) that all of it is still there
-# and that the apps still pass the sandbox check and start. Prints one line
-# per check and "RESULT pass" or "RESULT fail". Needs bwrap and cargo; uses
+# Builds this checkout's sam-jail first (into CARGO_TARGET_DIR when that is
+# set, as cargo does, else target/), so the test never checks an older
+# build left there. Builds the older version from git into WORKDIR, uses it
+# to create two sandboxed apps, custom permissions, a preset and a setting,
+# then checks with this checkout's build that all of it is still there and
+# that the apps still pass the sandbox check and start. Prints one line per
+# check and "RESULT pass" or "RESULT fail". Needs bwrap and cargo; uses
 # only WORKDIR (and its own SAM_* folders) for data.
 set -eu
 here=$(cd "$(dirname "$0")/../.." && pwd)
 if [ $# -ge 2 ]; then ref=$1; shift; else ref=v0.1.0; fi
 work=$(mkdir -p "${1:?usage: run.sh [OLD_REF] WORKDIR}" && cd "$1" && pwd)
-new="$here/target/debug/sam-jail"
-[ -x "$new" ] || { echo "build SAM first (cargo build)"; exit 2; }
+# This checkout's sam-jail, built now: a build left in the build folder
+# may come from another commit. A relative CARGO_TARGET_DIR counts from
+# the checkout, where cargo runs here.
+echo "== building this SAM"
+(cd "$here" && cargo build -q --locked -p sam-jail-cli)
+target=${CARGO_TARGET_DIR:-target}
+case $target in /*) ;; *) target="$here/$target" ;; esac
+new="$target/debug/sam-jail"
+[ -x "$new" ] || { echo "the build left no $new"; exit 2; }
 
 echo "== building SAM $ref"
 rm -rf "$work/old" "$work/data" "$work/apps"
