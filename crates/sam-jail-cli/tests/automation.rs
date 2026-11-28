@@ -1853,29 +1853,100 @@ fn the_release_script_runs_no_tests_itself() {
     }
 }
 
-/// The one-command release (`scripts/new-version.sh`) checks in its ready
-/// checks that a program to run the tests is named, because
-/// `scripts/release.sh` stops without one: with neither
-/// SAM_RELEASE_TEST_COMMAND nor SKIP_TESTS=1, the dry run fails and names
-/// both instead of saying "ready", and the real run stops before it makes
-/// the branch release-X.Y.Z. With either one set, the same dry run is ready,
-/// so the stand-ins (gh, gpg, a local origin) let every other check pass.
+/// The one-command release (`scripts/new-version.sh`) runs no test itself
+/// and skips none unasked: its ready checks stop and name both ways when
+/// neither SAM_RELEASE_TEST_COMMAND nor SKIP_TESTS=1 is set and, once a
+/// version was released, when neither SAM_RELEASE_UPGRADE_COMMAND nor
+/// SKIP_UPGRADE_TEST=1 is set (SKIP_TESTS=1 is not enough), and it hands the
+/// upgrade test to that program with the checkout's path and the last
+/// release's tag and counts it as passed only when the program exits 0
+/// with the test's line "RESULT pass"; where that program runs the test is
+/// not checked, by the script or by this test. A failing program stops the
+/// ready checks with the program, its exit status and the log; the real run
+/// stops before it makes the branch release-X.Y.Z. With the settings it
+/// needs, the same dry run is ready, so the stand-ins (gh, gpg, a local
+/// origin) let every other check pass.
 #[test]
 fn the_release_command_checks_for_a_test_program_before_it_starts() {
-    for (setting, dry, ready) in [
-        (None, true, false),
-        (None, false, false),
+    const TESTS: (&str, &str) = ("SAM_RELEASE_TEST_COMMAND", "/opt/run-the-tests");
+    const SKIP: (&str, &str) = ("SKIP_TESTS", "1");
+    const NO_TESTS: &[&str] = &["SAM_RELEASE_TEST_COMMAND=<program>", "SKIP_TESTS=1"];
+    const NO_UPGRADE: &[&str] = &[
+        "SAM_RELEASE_UPGRADE_COMMAND=<program>",
+        "SKIP_UPGRADE_TEST=1",
+    ];
+    // (settings, the upgrade program: its exit status and whether it ends
+    // with the line "RESULT pass", a released version v0.1.0, dry run,
+    // ready, what the output names)
+    type Case<'a> = (
+        &'a [(&'a str, &'a str)],
+        Option<(i32, bool)>,
+        bool,
+        bool,
+        bool,
+        &'a [&'a str],
+    );
+    let cases: &[Case] = &[
+        (&[], None, false, true, false, NO_TESTS),
+        (&[], None, false, false, false, NO_TESTS),
+        (&[TESTS], None, false, true, true, &[]),
+        (&[SKIP], None, false, true, true, &[]),
+        // With a released version the upgrade test is due as well.
+        (&[TESTS], None, true, true, false, NO_UPGRADE),
+        (&[TESTS], None, true, false, false, NO_UPGRADE),
+        (&[SKIP], None, true, true, false, NO_UPGRADE),
         (
-            Some(("SAM_RELEASE_TEST_COMMAND", "/opt/run-the-tests")),
+            &[TESTS, ("SKIP_UPGRADE_TEST", "1")],
+            None,
             true,
             true,
+            true,
+            &["is skipped (SKIP_UPGRADE_TEST=1"],
         ),
-        (Some(("SKIP_TESTS", "1")), true, true),
-    ] {
-        let case = format!("{setting:?}, dry run {dry}");
+        (
+            &[TESTS],
+            Some((0, true)),
+            true,
+            true,
+            true,
+            &["upgrade checks passed: 1"],
+        ),
+        (
+            &[TESTS],
+            Some((3, true)),
+            true,
+            true,
+            false,
+            &[
+                "SAM_RELEASE_UPGRADE_COMMAND=",
+                "exit status 3",
+                "target/upgrade-test.log",
+                "FAIL a check",
+            ],
+        ),
+        (
+            &[TESTS],
+            Some((0, false)),
+            true,
+            true,
+            false,
+            &[
+                "SAM_RELEASE_UPGRADE_COMMAND=",
+                "'RESULT pass'",
+                "target/upgrade-test.log",
+            ],
+        ),
+    ];
+    for &(settings, upgrade, released, dry, ready, says) in cases {
+        let case = format!(
+            "{settings:?}, upgrade program {upgrade:?}, released {released}, dry run {dry}"
+        );
         let tmp = tempfile::tempdir().unwrap();
         let t = tmp.path();
         let repo = release_checkout(t);
+        if released {
+            git(&repo, t, &["tag", "v0.1.0"]);
+        }
         let key = "AFE940EDA5A0C5C4B94B0A3FB1764CFD72A238E6";
         let key_file = repo.join("crates/sam-runner/src/release_key.rs");
         fs::create_dir_all(key_file.parent().unwrap()).unwrap();
@@ -1889,6 +1960,16 @@ fn the_release_command_checks_for_a_test_program_before_it_starts() {
             repo.join("scripts/new-version.sh"),
         )
         .unwrap();
+        // The upgrade test of the checkout is a stand-in that passes and
+        // leaves a mark: the mark says it ran on this computer.
+        let ran_here = t.join("upgrade-test-ran-here");
+        write_exec(
+            &repo.join("tests/upgrade/run.sh"),
+            &format!(
+                "#!/bin/sh\ntouch '{}'\necho 'ok   a check'\necho 'RESULT pass'\n",
+                ran_here.display()
+            ),
+        );
         git(&repo, t, &["add", "-A"]);
         git(&repo, t, &["commit", "-q", "-m", "new-version"]);
         git(t, t, &["init", "-q", "--bare", "origin.git"]);
@@ -1912,14 +1993,34 @@ fn the_release_command_checks_for_a_test_program_before_it_starts() {
             .current_dir(&repo)
             .env_remove("SKIP_TESTS")
             .env_remove("SAM_RELEASE_TEST_COMMAND")
+            .env_remove("SKIP_UPGRADE_TEST")
+            .env_remove("SAM_RELEASE_UPGRADE_COMMAND")
             .env("RELEASE_SAM", t.join("release-sam-jail"))
             .env("CARGO_CALLS", t.join("cargo-calls"))
             .env("HOME", t)
             .env("GIT_CONFIG_GLOBAL", t.join("gitconfig"))
             .env("GIT_CONFIG_NOSYSTEM", "1")
             .env("PATH", path_with(&t.join("bin")));
-        if let Some((name, value)) = setting {
+        for (name, value) in settings {
             cmd.env(name, value);
+        }
+        // The upgrade program records its arguments and answers as told.
+        let calls = t.join("upgrade-program-calls");
+        if let Some((code, result)) = upgrade {
+            let program = t.join("bin-tests/run-the-upgrade-test");
+            let says = match (code, result) {
+                (_, false) => "echo 'running 0 tests'",
+                (0, true) => "echo 'ok   a check'; echo 'RESULT pass'",
+                _ => "echo \"FAIL a check: expected 'yes', got 'no'\"; echo 'RESULT fail'",
+            };
+            write_exec(
+                &program,
+                &format!(
+                    "#!/bin/sh\nprintf '%s|%s|%s\\n' \"$#\" \"$1\" \"$2\" >> '{}'\n{says}\nexit {code}\n",
+                    calls.display()
+                ),
+            );
+            cmd.env("SAM_RELEASE_UPGRADE_COMMAND", &program);
         }
         let out = run(cmd, 120);
         let (stdout, stderr) = (text(&out.stdout), text(&out.stderr));
@@ -1934,12 +2035,44 @@ fn the_release_command_checks_for_a_test_program_before_it_starts() {
                 stdout.contains("Dry run: nothing was changed."),
                 "{case}:\n{stdout}"
             );
-        } else {
+        }
+        let all = format!("{stdout}{stderr}");
+        for word in says {
             assert!(
-                stderr.contains("SAM_RELEASE_TEST_COMMAND=<program>")
-                    && stderr.contains("SKIP_TESTS=1"),
-                "{case}: the message names no way to test:\n{stderr}"
+                all.contains(word),
+                "{case}: the output does not name {word:?}:\n{stdout}\n{stderr}"
             );
+        }
+        assert!(
+            !ran_here.exists(),
+            "{case}: new-version.sh ran the upgrade test itself:\n{stdout}\n{stderr}"
+        );
+        let cargo = fs::read_to_string(t.join("cargo-calls")).unwrap_or_default();
+        assert!(
+            !cargo.contains("sam-jail-cli"),
+            "{case}: new-version.sh built SAM here for the upgrade test:\n{cargo}"
+        );
+        let got = fs::read_to_string(&calls).unwrap_or_default();
+        if upgrade.is_some() {
+            let mut parts = got.trim_end().splitn(3, '|');
+            let (n, path, tag) = (parts.next(), parts.next(), parts.next());
+            assert_eq!(
+                n,
+                Some("2"),
+                "{case}: the upgrade program did not run once with two arguments: {got:?}\n{stderr}"
+            );
+            assert_eq!(
+                path.and_then(|p| fs::canonicalize(p).ok()),
+                fs::canonicalize(&repo).ok(),
+                "{case}: the upgrade program got {path:?}, not the checkout"
+            );
+            assert_eq!(
+                tag,
+                Some("v0.1.0"),
+                "{case}: the upgrade program got {got:?}"
+            );
+        } else {
+            assert_eq!(got, "", "{case}: an upgrade program ran");
         }
         assert_eq!(
             git_says(&repo, t, &["branch", "--list", "release-0.2.0"]),

@@ -68,6 +68,8 @@ split into `sam-jail-cli` and `sam-jail`. It downloads the two release files
 from GitHub, checks them, and builds offline from the vendored crates.
 
 Releases are made with one command, `scripts/new-version.sh X.Y.Z`. It
+hands the upgrade test to the program `SAM_RELEASE_UPGRADE_COMMAND` names,
+which should run it in a container or under a separate account, and it
 runs `scripts/release.sh` (version everywhere, dated changelog, man pages,
 clippy, every test handed to the program `SAM_RELEASE_TEST_COMMAND` names,
 which should run them in a container or under a separate account, signed
