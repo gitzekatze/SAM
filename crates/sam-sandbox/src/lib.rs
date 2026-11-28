@@ -2745,8 +2745,8 @@ impl Section<'_> {
                         if !targets.is_empty() && !kept.contains(&target) {
                             kept.push(target);
                         }
-                        // Pinned only where the app cannot change the
-                        // folder that holds the link: where it can (the
+                        // Pinned where the app cannot change the folder
+                        // that holds the link: where it can (the
                         // whole home writable), it can replace the link
                         // itself, and pins there only made `mv ~/dotfiles`
                         // fail.
