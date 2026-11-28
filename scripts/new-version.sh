@@ -8,7 +8,10 @@
 #    tests is named (SAM_RELEASE_TEST_COMMAND, or SKIP_TESTS=1 after they
 #    passed elsewhere), main matches GitHub, the last CI run on it passed,
 #    the release key is here, gh is signed in, and data made by the last
-#    released version still works (tests/upgrade/run.sh).
+#    released version still works: the upgrade test (tests/upgrade/run.sh)
+#    runs through the program SAM_RELEASE_UPGRADE_COMMAND names, or
+#    SKIP_UPGRADE_TEST=1 after it passed elsewhere (this script runs no
+#    tests itself).
 # 2. Asks once for the release key's passphrase and keeps GnuPG from
 #    forgetting it while the release runs (GnuPG forgets after 10 minutes
 #    without use; a tiny signature every 5 minutes keeps it).
@@ -96,6 +99,25 @@ git rev-parse -q --verify "refs/heads/$branch" >/dev/null && die "the branch $br
 if [ "${SKIP_TESTS:-}" != 1 ] && [ -z "${SAM_RELEASE_TEST_COMMAND:-}" ]; then
     die "scripts/release.sh does not run the test suite itself: set SAM_RELEASE_TEST_COMMAND=<program> to name the program that runs it (it gets this checkout's path; run the tests in a container or under a separate account), or SKIP_TESTS=1 after the tests passed elsewhere"
 fi
+# Data made by the last released version must still work. The upgrade test
+# builds this checkout's SAM and the last release and starts SAM's programs
+# and sandboxes, so this script never runs it itself either: it hands it to
+# the program SAM_RELEASE_UPGRADE_COMMAND names, which should run it in a
+# container or under a separate account (this script does not check
+# where). Checked here, so the dry run says so and the real run stops
+# before it changes anything. SKIP_TESTS=1 does not skip it.
+last=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
+upgrade_command=${SAM_RELEASE_UPGRADE_COMMAND:-}
+if [ -z "$last" ]; then
+    # No release tag here: a first release, or a clone that lacks the tags
+    # (a shallow clone, a tag not fetched). GitHub tells them apart.
+    remote_tags=$(git ls-remote --tags origin 'v*') || die "the tags on GitHub could not be listed, so this script cannot tell whether an upgrade test is due"
+    [ -z "$remote_tags" ] || die "GitHub has release tags, but none is reachable from this checkout (a shallow clone or a missing tag), so the upgrade test would be skipped: fetch them first (git fetch --tags origin; git fetch --unshallow origin in a shallow clone)"
+    echo "No earlier release: there is no upgrade test to run."
+elif [ "${SKIP_UPGRADE_TEST:-}" != 1 ]; then
+    [ -n "$upgrade_command" ] || die "this script does not run the upgrade test (tests/upgrade/run.sh) itself: set SAM_RELEASE_UPGRADE_COMMAND=<program> to name the program that runs it (it gets this checkout's path and the tag $last; run it in a container or under a separate account), or SKIP_UPGRADE_TEST=1 after it passed elsewhere on this commit"
+    command -v -- "$upgrade_command" >/dev/null 2>&1 || die "the upgrade program SAM_RELEASE_UPGRADE_COMMAND=$upgrade_command was not found: give the program's absolute path, without arguments"
+fi
 command -v gh >/dev/null || die "the GitHub command line (gh) is not installed"
 gh auth status >/dev/null 2>&1 || die "gh is not signed in: run 'gh auth login'"
 git fetch -q origin main
@@ -105,17 +127,29 @@ ci=$(gh run list --workflow ci.yml --branch main --commit "$(git rev-parse HEAD)
 [ "$ci" = success ] || die "the CI run for the current commit has not passed (status: ${ci:-none yet}); wait for it or fix it first"
 gpg --batch --list-secret-keys "$key" >/dev/null 2>&1 || die "the release key $key is not on this computer (import it from your backup: gpg --import; see docs/handbook/care.md)"
 python3 scripts/changes.py has-notes || die "nothing to release: no notes in changes/ and none under '## Unreleased' in CHANGELOG.md"
-# Data made by the last released version must still work.
-last=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
-if [ -n "$last" ]; then
-    step "Checking that data from SAM $last still works (a few minutes)"
-    cargo build -q --locked -p sam-jail-cli
+# The upgrade test, handed to the program SAM_RELEASE_UPGRADE_COMMAND names
+# (see above). The program gets this checkout's path and the last release's
+# tag, and should run `tests/upgrade/run.sh TAG WORKDIR` in that checkout,
+# which builds the checkout's own sam-jail before it checks with it, and
+# pass on its output. Only its exit status 0 together with the test's own
+# "RESULT pass" line counts as passed, so a program that ends without that
+# line (one that ran no test, for example) stops the release too. The
+# checkout must still be clean afterwards: the release starts from it.
+if [ -n "$last" ] && [ "${SKIP_UPGRADE_TEST:-}" = 1 ]; then
+    echo "The upgrade test from SAM $last is skipped (SKIP_UPGRADE_TEST=1: it passed elsewhere on this commit)."
+elif [ -n "$last" ]; then
+    step "Checking that data from SAM $last still works (the program SAM_RELEASE_UPGRADE_COMMAND names; a few minutes)"
     mkdir -p "$root/target"
-    if ! sh tests/upgrade/run.sh "$last" "$root/target/upgrade-test" >"$root/target/upgrade-test.log" 2>&1; then
-        grep -E '^(FAIL|RESULT)' "$root/target/upgrade-test.log" || tail -n 20 "$root/target/upgrade-test.log"
-        die "data from SAM $last does not work with this version (target/upgrade-test.log); tell Claude"
+    log="$root/target/upgrade-test.log"
+    status=0
+    "$upgrade_command" "$root" "$last" >"$log" 2>&1 || status=$?
+    if [ "$status" != 0 ] || ! grep -q '^RESULT pass' "$log"; then
+        grep -E '^(FAIL|RESULT)' "$log" || tail -n 20 "$log"
+        [ "$status" != 0 ] || die "the upgrade program SAM_RELEASE_UPGRADE_COMMAND=$upgrade_command ended without the upgrade test's line 'RESULT pass', so the test does not count as passed (log: target/upgrade-test.log); tell Claude"
+        die "the upgrade program SAM_RELEASE_UPGRADE_COMMAND=$upgrade_command failed (exit status $status): data from SAM $last may not work with this version (log: target/upgrade-test.log); tell Claude"
     fi
-    grep -c '^ok' "$root/target/upgrade-test.log" | sed 's/^/upgrade checks passed: /'
+    [ -z "$(git status --porcelain)" ] || die "the upgrade program SAM_RELEASE_UPGRADE_COMMAND=$upgrade_command changed the checkout (see git status); the release starts only from a clean checkout: undo the changes, and keep the program's files outside the checkout or in target/"
+    grep -c '^ok' "$log" | sed 's/^/upgrade checks passed: /'
 fi
 echo "Version $old -> $new, release key $key: ready."
 if [ "$dry" = --dry-run ]; then
