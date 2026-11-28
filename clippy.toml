@@ -88,6 +88,7 @@ disallowed-methods = [
     { path = "sam_runner::updates::newest", reason = "a way SAM could reach the network or start a program: list it in crates/sam-jail-cli/tests/network_use.rs" },
     { path = "sam_runner::updates::download_update", reason = "a way SAM could reach the network or start a program: list it in crates/sam-jail-cli/tests/network_use.rs" },
     { path = "sam_runner::updates::download_update_within", reason = "a way SAM could reach the network or start a program: list it in crates/sam-jail-cli/tests/network_use.rs" },
+    { path = "sam_runner::updates::curl_command", reason = "a way SAM could reach the network or start a program: list it in crates/sam-jail-cli/tests/network_use.rs" },
     { path = "sam_runner::ops::Sam::check_updates", reason = "a way SAM could reach the network or start a program: list it in crates/sam-jail-cli/tests/network_use.rs" },
     { path = "sam_runner::ops::Sam::update", reason = "a way SAM could reach the network or start a program: list it in crates/sam-jail-cli/tests/network_use.rs" },
     { path = "sam_runner::ops::Sam::update_in", reason = "a way SAM could reach the network or start a program: list it in crates/sam-jail-cli/tests/network_use.rs" },

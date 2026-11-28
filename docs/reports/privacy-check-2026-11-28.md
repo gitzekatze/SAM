@@ -35,10 +35,10 @@ The claim, copied from the security page, where it is kept up to date
 > about you, this computer or your other apps. SAM refuses an update
 > address that holds a login.
 
-Nothing was found that goes online unasked. One finding is named as a
+Nothing was found that goes online unasked. CI later found one more thing,
+which is fixed: see "Found after the first run". One finding is named as a
 limit below: `curl --version`, which the contract check and the bug report
-run, looks up the user's account and this computer's name through the
-system's name service.
+run, looks up the user's account through the system's name service.
 
 ## Checked once by reading (at 57946533)
 
@@ -116,10 +116,13 @@ Each test's own description says exactly what it proves; together:
    and `doctor --contracts` must also show a program that proves they did
    their work (an unpack tool or SAM's own extractor, Bubblewrap, GnuPG).
    No process may make an internet connection: none may open an internet
-   socket, set up io_uring or connect to a name-service socket. The two
+   socket, set up io_uring or connect to a name-service socket. The three
    exceptions are pasta's probe socket, which is opened and connects
-   nowhere on the internet, and `curl --version`'s connect to nscd (see
-   Limits). Two controls show the tracer sees an update check (curl, and
+   nowhere on the internet, and, inside curl's sandbox only,
+   `curl --version`'s connect to nscd and glibc's address-order check (see
+   Limits). Each
+   command runs under a host name no name service knows, so a lookup of
+   this computer's name would be seen wherever the test runs. Two controls show the tracer sees an update check (curl, and
    an internet connect only to the address the app names) and follows into
    an app's sandbox (getent's own socket). Every command of `sam-jail` is
    either traced or named as untraced. **Does not prove:** the untraced
@@ -155,7 +158,8 @@ default.
 ## Observed in the traced run
 
 The test prints this for every command; the run of 2026-11-28 in the test
-container:
+container (E15-E17 as seen again after the fix of "Found after the first
+run"):
 
 | Command | Exit | Programs it ran | Unix sockets it connected to | Internet socket |
 |---|---|---|---|---|
@@ -168,10 +172,45 @@ container:
 | E12 `verify` | 0 | sam-jail, bwrap, sam-jail-run | none | none |
 | E13 `doctor` | 0 | sam-jail, bwrap, true, pasta, pipewire, strace, unsquashfs, bsdtar, xdg-dbus-proxy (version options) | `/dev/log` (pasta's log, absent) | pasta's probe only, connected nowhere on the internet |
 | E14 `doctor <id>` | 0 | as E13 without pasta and the test sandbox (true) | none | none |
-| E15 `doctor --contracts`, E16 `report`, E17 `report <id>` | 3, 0, 0 | as E13, plus curl, gpg, gpgv, gpg-agent, dbus-daemon (version options and the GnuPG check) | `/dev/log`, the throwaway GnuPG home's agent, nscd's socket (curl, absent) | pasta's probe only, connected nowhere on the internet |
+| E15 `doctor --contracts`, E16 `report`, E17 `report <id>` | 3, 0, 0 | as E13, plus curl, gpg, gpgv, gpg-agent, dbus-daemon (version options and the GnuPG check) | `/dev/log`, the throwaway GnuPG home's agent, nscd's socket (curl, absent) | pasta's probe and, since curl runs in its sandbox, glibc's address-order check in it; neither connected anywhere on the internet |
 
 Exit 3 of `doctor --contracts` means a contract does not hold in the
 container; the GnuPG programs in its trace show it ran.
+
+## Found after the first run
+
+- **What CI showed.** On a GitHub runner whose `/etc/hosts` did not know
+  the runner's name, `everyday_commands_make_no_internet_connection` failed:
+  `curl --version` sent DNS queries for this computer's name. The libraries
+  linked into curl (here OpenLDAP and Cyrus SASL in Ubuntu's libcurl) look
+  up the computer's full name when they load. So on every computer whose
+  own name is not answered locally and whose curl loads these libraries,
+  every curl SAM ran sent that name to the DNS server: in the contract
+  check and the bug report, and in every update check and update.
+- **The fix.** SAM runs every curl in a small Bubblewrap sandbox
+  (`crates/sam-runner/src/updates.rs`, `curl_command`): the computer
+  read-only apart from its own `/dev` and an empty `/tmp` (curl itself, a
+  certificate setting and `CURL_HOME` below `/tmp` are bound back
+  read-only), and a host name of its own, `localhost`, which `/etc/hosts`
+  answers. Update requests share the network; the version probe has none.
+  Without Bubblewrap, or when the sandbox cannot start, SAM runs no curl
+  and the update request stops with an error that says so; the version
+  probe then leaves curl's version unknown (its record has no field for
+  the reason, so the reason is not shown).
+- **Tests.** `curl_runs_in_a_sandbox_with_its_own_host_name` fixes the
+  sandbox's arguments word for word;
+  `an_update_request_without_curls_sandbox_sends_nothing` shows that no
+  curl runs without its sandbox; the traced run now runs each command under
+  a host name no name service knows, with a test-made `/etc/hosts` and
+  `/etc/nsswitch.conf` (`hosts: files dns`), and first checks inside the
+  same wrapper that the host name is not answered and `localhost` is, so
+  this lookup fails the test wherever it runs (it did, without the fix, in
+  the test container too). The contract check and the bug report must
+  start curl inside its sandbox.
+- **A gap closed.** The traced run did not trace `sendmmsg`, through which
+  the resolver sends its queries; it saw this case only through its
+  socket rule. `sendmmsg` is traced now, and counts as sending on a probe's
+  socket.
 
 ## Limits
 
@@ -181,15 +220,23 @@ container; the GnuPG programs in its trace show it ran.
   was installed; GitHub sees every GitHub-hosted app a check of all apps
   asks about; the DNS server, a proxy and the network path see the
   servers' names.
-- **`curl --version`'s name lookups.** The contract check and the bug
-  report run `curl --version`. In the traced run it connects to nscd's
-  socket. A separate trace of its file openings, made while preparing this
-  check, showed it then reads `/etc/passwd` and `/etc/hosts`: its libraries
-  look up the user's account and this computer's name (**likely**, from
-  that trace, not from the tests). Where the name service asks a server
-  (accounts from a network directory, or a computer name not found
-  locally), this lookup may leave the computer. Without `--disable`, this
-  curl also reads a `~/.curlrc` (**likely**); SAM's update requests do not.
+- **`curl --version`'s account lookup.** The contract check and the bug
+  report run `curl --version`, in its sandbox without network. In the
+  traced run it connects to nscd's socket; a separate trace of its file
+  openings showed it then reads `/etc/passwd`: its libraries look up the
+  user's account (**likely**, from that trace, not from the tests). Where
+  the name service asks a server (accounts from a network directory), this
+  lookup may leave the computer. Without `--disable`, this curl also reads
+  a `~/.curlrc` (**likely**); SAM's update requests do not.
+- **glibc's address-order check in curl's sandbox.** In its sandbox, curl's
+  libraries look up `localhost`; glibc then opens a UDP socket to
+  `127.0.0.1` and one to `::1`, each with port 0, to sort the addresses.
+  The test allows this only for curl started by the sandbox's Bubblewrap,
+  and such a curl may connect to no other internet address and send
+  nothing but netlink requests, whatever the descriptor. Its nscd connect
+  is allowed only there too; the traced run's outer Bubblewrap hides nscd's
+  sockets, so that connect fails on every computer, and a request sent to
+  nscd would count as a send.
 - **pasta's probe socket.** `pasta --help` and `--version`, which doctor
   runs, open one TCP socket to read the kernel's buffer sizes; the test
   allows this only for a program of that file name after a successful

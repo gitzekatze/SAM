@@ -583,6 +583,7 @@ const GATED: &[&str] = &[
     "sam_runner::updates::newest",
     "sam_runner::updates::download_update",
     "sam_runner::updates::download_update_within",
+    "sam_runner::updates::curl_command",
     "sam_runner::ops::Sam::check_updates",
     "sam_runner::ops::Sam::update",
     "sam_runner::ops::Sam::update_in",
@@ -1099,12 +1100,6 @@ const WAYS_OUT: &[(&str, &str, &str, &str)] = &[
         "Downloads an update within the update's time limit; through download_update only.",
     ),
     (
-        "crates/sam-runner/src/updates.rs",
-        "#[expect(clippy::disallowed_methods, reason = \"way out: curl, for an update request\")]",
-        "let mut cmd = Command::new(curl);",
-        "curl with curl_args: SAM's one way off this computer; an update check or an update the person asked for (or the daily check, off by default); sends the address, the server's name, SAM's user agent, Accept and, for part of a file, Range.",
-    ),
-    (
         "crates/sam-runner/src/verify.rs",
         "#[expect(clippy::disallowed_methods, reason = \"way out: bwrap, the sandbox check\")]",
         "let mut command = Command::new(&cmd.program);",
@@ -1193,6 +1188,24 @@ const WAYS_OUT: &[(&str, &str, &str, &str)] = &[
         "#[expect(clippy::disallowed_methods, reason = \"way out: the terminal GIO picks\")]",
         "let launched = info.launch(&[], gio::AppLaunchContext::NONE);",
         "Starts the terminal emulator GIO picks, running sam-jail-run for a terminal app; when the person starts it; runs on this computer.",
+    ),
+    (
+        "crates/sam-runner/src/contracts.rs",
+        "#[expect(clippy::disallowed_methods, reason = \"way out: curl in its sandbox, no network\")]",
+        "let mut cmd = crate::updates::curl_command(false).ok()?;",
+        "curl --version in its sandbox without network, for the contract check's list of versions (doctor --contracts and the bug report); runs on this computer.",
+    ),
+    (
+        "crates/sam-runner/src/updates.rs",
+        "#[expect(clippy::disallowed_methods, reason = \"way out: curl in its sandbox\")]",
+        "let mut cmd = Command::new(bwrap);",
+        "bwrap around curl (curl_command): curl sees the computer read-only, an empty /tmp and its own host name localhost, so its libraries never send this computer's name to a DNS server; SAM's one way off this computer for update requests, which send the address, the server's name, SAM's user agent, Accept and, for part of a file, Range.",
+    ),
+    (
+        "crates/sam-runner/src/updates.rs",
+        "#[expect(clippy::disallowed_methods, reason = \"way out: curl in its sandbox, for an update request\")]",
+        "let mut cmd = curl_command(true)?;",
+        "curl in its sandbox with the shared network, for an update check or an update the person asked for (or the daily check, off by default); sends what curl_args builds.",
     ),
 ];
 
@@ -2396,7 +2409,8 @@ fn the_library_check_sees_a_new_name_or_source() {
 /// What strace records: every process SAM starts (`-f`), the programs they
 /// run and every socket they open or connect. Without `--seccomp-bpf`, so a
 /// call SAM's own filter refuses is still seen.
-const TRACED_CALLS: &str = "trace=socket,connect,sendto,sendmsg,io_uring_setup,execve,execveat";
+const TRACED_CALLS: &str =
+    "trace=socket,connect,sendto,sendmsg,sendmmsg,io_uring_setup,execve,execveat,clone,clone3,fork,vfork";
 
 /// Name-service sockets: a connect to one is a name or account lookup that
 /// can leave this computer (resolved, nscd, SSSD, Avahi, nslcd, winbind,
@@ -2415,20 +2429,23 @@ const NAME_SERVICE_SOCKETS: &[&str] = &[
     "/run/avahi-daemon/socket",
 ];
 
-/// The two things a traced command may do that look like a way out but
-/// are not, each seen in the first traced run and named in the privacy
-/// report's limits. Each holds only for a process whose last successful
-/// `execve` ran a program with this file name (the last part of the path
-/// it ran; for pasta also `pasta.*`, its builds for one processor) and
-/// exactly these arguments:
+/// Two of the three things a traced command may do that look like a way
+/// out but are not, each named in the privacy report's limits (the third,
+/// glibc's address-order check inside curl's sandbox, is
+/// [`in_curls_sandbox`]). Each holds only for a process whose last
+/// successful `execve` ran a program with this file name (the last part of
+/// the path it ran; for pasta also `pasta.*`, its builds for one
+/// processor) and exactly these arguments:
 /// - pasta's `--help` and `--version` open one TCP socket to read the
 ///   kernel's buffer sizes; that process may connect nowhere and send
 ///   nothing (checked);
-/// - `curl --version`, which doctor's contracts and the bug report run,
-///   loads libraries that look up the user's account and this computer's
-///   name through the name service; its connects to nscd's socket are
-///   allowed, nothing else.
-fn allowed(ran: &(String, Vec<String>), line: &str) -> bool {
+/// - `curl --version` inside its sandbox (`sandboxed`), which doctor's
+///   contracts and the bug report run, loads libraries that look up the
+///   user's account through the name service; its connects to nscd's
+///   socket are allowed (the traced run's outer Bubblewrap hides nscd, so
+///   they fail; a request sent to nscd would count as a send), nothing
+///   else.
+fn allowed(ran: &(String, Vec<String>), sandboxed: bool, line: &str) -> bool {
     let (path, argv) = ran;
     let name = path.rsplit('/').next().unwrap_or(path);
     // pasta starts itself again as pasta.avx2 (or another build for this
@@ -2442,13 +2459,40 @@ fn allowed(ran: &(String, Vec<String>), line: &str) -> bool {
     let probe = rest == ["--help"] || rest == ["--version"];
     match prog {
         Some("pasta") if probe => line.contains("socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)"),
-        Some("curl") if rest == ["--version"] => {
+        Some("curl") if sandboxed && rest == ["--version"] => {
             line.contains("connect(")
                 && (line.contains("sun_path=\"/run/nscd/socket\"")
                     || line.contains("sun_path=\"/var/run/nscd/socket\""))
         }
         _ => false,
     }
+}
+
+/// Whether a process runs curl in the sandbox SAM starts it in
+/// (`updates::curl_command`): its program's file name is `curl`, and its
+/// parent ran Bubblewrap with that sandbox's own host name. There glibc
+/// checks the order of `localhost`'s two addresses: a UDP socket connected
+/// to `127.0.0.1` or `::1` with port 0, which sends nothing (the third
+/// exception [`read_trace`] makes; such a process may connect to no other
+/// internet address and send nothing but netlink requests).
+fn in_curls_sandbox(ran: &(String, Vec<String>), parent: Option<&(String, Vec<String>)>) -> bool {
+    let name = |p: &str| p.rsplit('/').next().unwrap_or(p).to_string();
+    let Some((ppath, pargs)) = parent else {
+        return false;
+    };
+    name(&ran.0) == "curl"
+        && name(ppath) == "bwrap"
+        && pargs
+            .windows(2)
+            .any(|w| w[0] == "--hostname" && w[1] == "localhost")
+        && pargs.iter().any(|a| a == "--unshare-uts")
+}
+
+/// Whether an argument list is the test's own outer Bubblewrap, whose host
+/// name [`unknown_host_name`] made.
+fn outer_wrapper(argv: &[String]) -> bool {
+    argv.windows(2)
+        .any(|w| w[0] == "--hostname" && w[1].starts_with("sam-unknown-"))
 }
 
 /// The argument list of an `execve(...)` line as strace writes it.
@@ -2493,6 +2537,8 @@ struct Seen {
     inet_socket: bool,
     /// The processes that opened one.
     inet_socket_pids: Vec<String>,
+    /// Whether curl started inside its sandbox.
+    sandboxed_curl: bool,
     problems: Vec<String>,
 }
 
@@ -2509,10 +2555,17 @@ fn read_trace(cmd: &str, log: &str) -> Seen {
     let mut pending: BTreeMap<String, (String, Vec<String>, String)> = BTreeMap::new();
     // The probe sockets: (process, descriptor).
     let mut probes: Vec<(String, String)> = Vec::new();
+    // Each process's parent, from the clone, fork and vfork results.
+    let mut parent: BTreeMap<String, String> = BTreeMap::new();
+    let mut cloning: Vec<String> = Vec::new();
+    // glibc's address-order check in curl's sandbox: (process, descriptor)
+    // of each UDP socket it opens, until the descriptor is used again.
+    let mut order_checks: Vec<(String, String)> = Vec::new();
     for line in log.lines() {
         let (pid, call) = line.trim_start().split_once(' ').unwrap_or(("?", line));
         let call = call.trim_start();
         let who = argv.get(pid).cloned().unwrap_or_default();
+        let sandboxed = in_curls_sandbox(&who, parent.get(pid).and_then(|p| argv.get(p)));
         let named = || {
             if who.1.is_empty() {
                 format!("process {pid} (SAM's own)")
@@ -2525,17 +2578,53 @@ fn read_trace(cmd: &str, log: &str) -> Seen {
             if call.ends_with("<unfinished ...>") {
                 pending.insert(pid.to_string(), (path, exec_argv(call), call.to_string()));
             } else if call.trim_end().ends_with(") = 0") {
-                argv.insert(pid.to_string(), (path, exec_argv(call)));
-                seen.execs.push((pid.to_string(), call.to_string()));
+                let a = exec_argv(call);
+                // The test's own outer Bubblewrap (its unknown host name) is
+                // no program SAM ran.
+                if !outer_wrapper(&a) {
+                    seen.execs.push((pid.to_string(), call.to_string()));
+                }
+                argv.insert(pid.to_string(), (path, a));
+                let ran = argv.get(pid).cloned().unwrap_or_default();
+                if in_curls_sandbox(&ran, parent.get(pid).and_then(|p| argv.get(p))) {
+                    seen.sandboxed_curl = true;
+                }
             }
             continue;
         }
         if call.starts_with("<... execve resumed>") || call.starts_with("<... execveat resumed>") {
             if let Some((path, a, first)) = pending.remove(pid) {
                 if call.trim_end().ends_with("= 0") {
+                    if !outer_wrapper(&a) {
+                        seen.execs.push((pid.to_string(), first));
+                    }
                     argv.insert(pid.to_string(), (path, a));
-                    seen.execs.push((pid.to_string(), first));
+                    let ran = argv.get(pid).cloned().unwrap_or_default();
+                    if in_curls_sandbox(&ran, parent.get(pid).and_then(|p| argv.get(p))) {
+                        seen.sandboxed_curl = true;
+                    }
                 }
+            }
+            continue;
+        }
+        let forks = ["clone(", "clone3(", "fork(", "vfork("];
+        let resumed = [
+            "<... clone resumed>",
+            "<... clone3 resumed>",
+            "<... fork resumed>",
+            "<... vfork resumed>",
+        ];
+        if forks.iter().any(|f| call.starts_with(f)) || resumed.iter().any(|r| call.starts_with(r))
+        {
+            if call.ends_with("<unfinished ...>") {
+                cloning.push(pid.to_string());
+            } else if let Some(child) = call
+                .rsplit("= ")
+                .next()
+                .and_then(|c| c.trim().parse::<u32>().ok())
+            {
+                cloning.retain(|c| c != pid);
+                parent.insert(child.to_string(), pid.to_string());
             }
             continue;
         }
@@ -2543,14 +2632,25 @@ fn read_trace(cmd: &str, log: &str) -> Seen {
             seen.problems
                 .push(format!("{cmd}: {} set up io_uring: {line}", named()));
         }
+        let fd_of = |c: &str| c.split(['(', ',']).nth(1).unwrap_or("").trim().to_string();
         if let Some(rest) = call.strip_prefix("socket(") {
+            let fd = call.rsplit("= ").next().unwrap_or("").trim().to_string();
+            order_checks.retain(|(p, f)| !(p == pid && *f == fd));
+            if sandboxed
+                && (rest.starts_with("AF_INET, SOCK_DGRAM")
+                    || rest.starts_with("AF_INET6, SOCK_DGRAM"))
+            {
+                seen.inet_socket = true;
+                order_checks.push((pid.to_string(), fd));
+                continue;
+            }
             let family = rest.split([',', ' ']).next().unwrap_or("");
             if !matches!(family, "AF_UNIX" | "AF_LOCAL" | "AF_NETLINK") {
                 if family.starts_with("AF_INET") {
                     seen.inet_socket = true;
                     seen.inet_socket_pids.push(pid.to_string());
                 }
-                if allowed(&who, call) {
+                if allowed(&who, sandboxed, call) {
                     let fd = call.rsplit("= ").next().unwrap_or("").trim().to_string();
                     probes.push((pid.to_string(), fd));
                 } else {
@@ -2561,10 +2661,53 @@ fn read_trace(cmd: &str, log: &str) -> Seen {
                 }
             }
         }
+        let checked = order_checks
+            .iter()
+            .any(|(p, f)| p == pid && *f == fd_of(call));
+        let sends = ["sendto(", "sendmsg(", "sendmmsg("]
+            .iter()
+            .any(|c| call.starts_with(c));
+        let loopback_port_0 = call.contains("sin_port=htons(0), sin_addr=inet_addr(\"127.0.0.1\")")
+            || (call.contains("sin6_port=htons(0)")
+                && call.contains("inet_pton(AF_INET6, \"::1\""));
+        // curl in its sandbox, whatever the descriptor: no internet connect
+        // but the order check's, and no send but a netlink request.
+        if sandboxed
+            && call.starts_with("connect(")
+            && call.contains("sa_family=AF_INET")
+            && !loopback_port_0
+        {
+            seen.problems.push(format!(
+                "{cmd}: {}, curl in its sandbox, connected to the internet: {line}",
+                named()
+            ));
+        }
+        if sandboxed && sends && !call.contains("sa_family=AF_NETLINK") {
+            seen.problems.push(format!(
+                "{cmd}: {}, curl in its sandbox, sent something: {line}",
+                named()
+            ));
+        }
+        if checked && sends && !sandboxed {
+            seen.problems.push(format!(
+                "{cmd}: {}, which may only check the order of addresses, sent on it: {line}",
+                named()
+            ));
+        }
+        if checked && call.starts_with("connect(") {
+            if !loopback_port_0 && !sandboxed {
+                seen.problems.push(format!(
+                    "{cmd}: {}, which may only check the order of addresses, connected elsewhere: {line}",
+                    named()
+                ));
+            }
+            continue;
+        }
         if call.starts_with("connect(") {
             if let Some(p) = call.split("sun_path=\"").nth(1) {
                 let path = p.split('"').next().unwrap_or("").to_string();
-                if NAME_SERVICE_SOCKETS.iter().any(|n| path.starts_with(n)) && !allowed(&who, call)
+                if NAME_SERVICE_SOCKETS.iter().any(|n| path.starts_with(n))
+                    && !allowed(&who, sandboxed, call)
                 {
                     seen.problems.push(format!(
                         "{cmd}: {} connected to the name service: {line}",
@@ -2597,7 +2740,7 @@ fn read_trace(cmd: &str, log: &str) -> Seen {
         let (pid, call) = line.trim_start().split_once(' ').unwrap_or(("?", line));
         let call = call.trim_start();
         let on = |fd: &str| {
-            ["connect(", "sendto(", "sendmsg("]
+            ["connect(", "sendto(", "sendmsg(", "sendmmsg("]
                 .iter()
                 .any(|c| call.starts_with(&format!("{c}{fd},")))
         };
@@ -2615,23 +2758,29 @@ fn read_trace(cmd: &str, log: &str) -> Seen {
 }
 
 /// The trace check reads strace's lines as strace writes them: an internet
-/// socket, io_uring and a name-service connect are found in any process;
-/// pasta's probe socket and `curl --version`'s nscd connect pass only for
-/// a program of that file name after a successful execve, with those
-/// arguments, and the probe's process may not use its socket (its log
-/// lines to a closed descriptor are no use).
+/// socket, io_uring and a name-service connect are found in any process,
+/// except three: pasta's probe socket (for a program of that file name
+/// after a successful execve, with those arguments, and its process may
+/// not use the socket; its log lines to a closed descriptor are no use),
+/// `curl --version`'s nscd connect inside curl's sandbox, and the UDP
+/// address-order check inside curl's sandbox (loopback, port 0, nothing
+/// sent, whatever the descriptor). The test's own outer Bubblewrap is no
+/// program SAM ran.
 #[test]
 fn the_trace_check_reads_strace_lines() {
     let log = r#"10 execve("/usr/bin/pasta.avx2", ["/usr/bin/pasta", "--help"], 0x1 /* 3 vars */) = 0
 10 socket(AF_INET, SOCK_STREAM, IPPROTO_TCP) = 4
 10 sendto(-1, "<6> : Usage", 15, 0, NULL, 0) = -1 EBADF (Bad file descriptor)
+9 execve("/usr/bin/bwrap", ["/usr/bin/bwrap", "--unshare-uts", "--hostname", "localhost", "--", "/usr/bin/curl", "--version"], 0x1 /* 3 vars */) = 0
+9 clone3({flags=CLONE_NEWUSER|CLONE_NEWUTS, exit_signal=SIGCHLD}, 88) = 11
 11 execve("/usr/bin/curl", ["/usr/bin/curl", "--version"], 0x1 /* 3 vars */) = 0
 11 connect(3, {sa_family=AF_UNIX, sun_path="/var/run/nscd/socket"}, 110) = -1 ENOENT (No such file or directory)
 12 connect(3, {sa_family=AF_UNIX, sun_path="/run/user/1000/bus"}, 110) = 0
 "#;
     let seen = read_trace("x", log);
     assert!(seen.problems.is_empty(), "{:?}", seen.problems);
-    assert_eq!(seen.execs.len(), 2);
+    assert_eq!(seen.execs.len(), 3);
+    assert!(seen.sandboxed_curl);
     assert!(seen.unix.contains("/run/user/1000/bus"));
     for bad in [
         "13 socket(AF_INET6, SOCK_DGRAM, IPPROTO_IP) = 5",
@@ -2651,10 +2800,49 @@ fn the_trace_check_reads_strace_lines() {
     // itself, and only after an execve that succeeded.
     let renamed = log.replace("execve(\"/usr/bin/curl\"", "execve(\"/tmp/x\"");
     assert_eq!(read_trace("x", &renamed).problems.len(), 1);
-    let failed = "20 execve(\"/usr/bin/curl\", [\"/usr/bin/curl\", \"--version\"], 0x1 /* 3 vars */ <unfinished ...>\n20 <... execve resumed>) = -1 ENOENT (No such file or directory)\n20 connect(3, {sa_family=AF_UNIX, sun_path=\"/var/run/nscd/socket\"}, 110) = -1 ENOENT\n";
+    // curl --version outside its sandbox may not ask nscd.
+    let plain = log.replace("9 clone3(", "8 clone3(");
+    assert_eq!(read_trace("x", &plain).problems.len(), 1);
+    assert!(!read_trace("x", &plain).sandboxed_curl);
+    let failed = "19 execve(\"/usr/bin/bwrap\", [\"/usr/bin/bwrap\", \"--unshare-uts\", \"--hostname\", \"localhost\", \"--\", \"/usr/bin/curl\", \"--version\"], 0x1 /* 3 vars */) = 0\n19 clone3({flags=CLONE_NEWUSER}, 88) = 20\n20 execve(\"/usr/bin/curl\", [\"/usr/bin/curl\", \"--version\"], 0x1 /* 3 vars */ <unfinished ...>\n20 <... execve resumed>) = -1 ENOENT (No such file or directory)\n20 connect(3, {sa_family=AF_UNIX, sun_path=\"/var/run/nscd/socket\"}, 110) = -1 ENOENT\n";
     assert_eq!(read_trace("x", failed).problems.len(), 1);
     let resumed = failed.replace(") = -1 ENOENT (No such file or directory)", ") = 0");
     assert!(read_trace("x", &resumed).problems.is_empty());
+    // curl in its sandbox may check the order of localhost's addresses
+    // (UDP, port 0, nothing sent); nothing else, and nowhere else.
+    let sandboxed = r#"30 execve("/usr/bin/bwrap", ["/usr/bin/bwrap", "--ro-bind", "/", "/", "--unshare-uts", "--hostname", "localhost", "--", "/usr/bin/curl", "--version"], 0x1 /* 3 vars */) = 0
+30 clone3({flags=CLONE_NEWUSER|CLONE_NEWUTS, exit_signal=SIGCHLD}, 88) = 31
+31 execve("/usr/bin/curl", ["/usr/bin/curl", "--version"], 0x1 /* 3 vars */) = 0
+31 socket(AF_INET, SOCK_DGRAM|SOCK_CLOEXEC, IPPROTO_IP) = 3
+31 connect(3, {sa_family=AF_INET, sin_port=htons(0), sin_addr=inet_addr("127.0.0.1")}, 16) = 0
+31 socket(AF_INET6, SOCK_DGRAM|SOCK_CLOEXEC, IPPROTO_IP) = 3
+31 connect(3, {sa_family=AF_INET6, sin6_port=htons(0), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, "::1", &sin6_addr), sin6_scope_id=0}, 28) = 0
+"#;
+    let seen = read_trace("x", sandboxed);
+    assert!(seen.problems.is_empty(), "{:?}", seen.problems);
+    assert!(seen.inet.is_empty());
+    for bad in [
+        "31 sendmmsg(3, [{msg_hdr={}}], 2, MSG_NOSIGNAL) = 2",
+        "31 connect(3, {sa_family=AF_INET6, sin6_port=htons(53), sin6_flowinfo=htonl(0), inet_pton(AF_INET6, \"::1\", &sin6_addr), sin6_scope_id=0}, 28) = 0",
+        // Whatever the descriptor (strace may split the socket line).
+        "31 connect(7, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr(\"192.0.2.53\")}, 16) = 0",
+        "31 sendto(9, \"q\", 1, MSG_NOSIGNAL, NULL, 0) = 1",
+        // A request to nscd, where a connect to it succeeds, is a send.
+        "31 connect(5, {sa_family=AF_UNIX, sun_path=\"/var/run/nscd/socket\"}, 110) = 0\n31 sendto(5, \"\\2\\0\\0\\0\", 12, MSG_NOSIGNAL, NULL, 0) = 12",
+    ] {
+        let seen = read_trace("x", &format!("{sandboxed}{bad}\n"));
+        assert_eq!(seen.problems.len(), 1, "{bad}: {:?}", seen.problems);
+    }
+    assert!(seen.sandboxed_curl);
+    // The test's own outer Bubblewrap is no program SAM ran.
+    let outer = format!(
+        "40 execve(\"/usr/bin/bwrap\", [\"/usr/bin/bwrap\", \"--dev-bind\", \"/\", \"/\", \"--unshare-uts\", \"--hostname\", \"{}\", \"--\", \"/x/sam-jail\"], 0x1 /* 3 vars */) = 0\n",
+        unknown_host_name()
+    );
+    assert!(read_trace("x", &outer).execs.is_empty());
+    // The same without the sandbox's host name is an internet socket.
+    let outside = sandboxed.replace("\"--hostname\", \"localhost\", ", "");
+    assert_eq!(read_trace("x", &outside).problems.len(), 2);
     let seen = read_trace(
         "x",
         "16 connect(3, {sa_family=AF_INET, sin_port=htons(8443), sin_addr=inet_addr(\"127.0.0.1\")}, 16) = 0\n",
@@ -2679,6 +2867,98 @@ fn bwrap_works() -> bool {
         .is_ok_and(|s| s.success())
 }
 
+/// The outer Bubblewrap the traced commands run in, up to its `--`: the
+/// computer as it is, a host name of its own that no name service knows,
+/// and a test-made `/etc/hosts` (only `localhost`, for 127.0.0.1 and ::1)
+/// and `/etc/nsswitch.conf` (`hosts: files dns`), so the result does not
+/// depend on this computer's name service: a lookup of the host name goes
+/// to the DNS server, a lookup of `localhost` is answered from the file.
+/// It also hides nscd's sockets (`/run/nscd`, `/var/run/nscd`) under empty
+/// folders, so a connect to nscd fails on every computer.
+/// Before its first use in this test process, `getent` inside the same
+/// wrapper must fail for the host name and answer `localhost`; otherwise
+/// the test fails here, naming what does not hold. (Once: a lookup of the
+/// unknown name waits for the DNS server.)
+fn outer_wrapper_args(root: &Path) -> Vec<std::ffi::OsString> {
+    let hosts = root.join("outer-hosts");
+    let nss = root.join("outer-nsswitch.conf");
+    fs::write(&hosts, "127.0.0.1 localhost\n::1 localhost\n").unwrap();
+    fs::write(
+        &nss,
+        "passwd: files\ngroup: files\nshadow: files\nhosts: files dns\nnetworks: files\nprotocols: files\nservices: files\nethers: files\nrpc: files\nnetgroup: files\n",
+    )
+    .unwrap();
+    static NAME: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    static CHECKED: std::sync::Once = std::sync::Once::new();
+    let name = NAME.get_or_init(unknown_host_name).clone();
+    let mut args: Vec<std::ffi::OsString> = vec![sam_core::util::which("bwrap").unwrap().into()];
+    args.extend(["--dev-bind", "/", "/", "--ro-bind"].map(Into::into));
+    args.extend([
+        hosts.into_os_string(),
+        "/etc/hosts".into(),
+        "--ro-bind".into(),
+    ]);
+    args.extend([nss.into_os_string(), "/etc/nsswitch.conf".into()]);
+    // nscd's sockets are hidden, so no traced command reaches nscd on any
+    // computer (where nscd runs, a connect to it would succeed and its
+    // request would count as a send by curl in its sandbox).
+    let mut hidden: Vec<PathBuf> = Vec::new();
+    for dir in ["/run/nscd", "/var/run/nscd"] {
+        if let Ok(real) = fs::canonicalize(dir) {
+            if real.is_dir() && !hidden.contains(&real) {
+                args.extend(["--tmpfs".into(), real.clone().into_os_string()]);
+                hidden.push(real);
+            }
+        }
+    }
+    args.extend(["--unshare-uts", "--hostname"].map(Into::into));
+    args.push(name.clone().into());
+    args.push("--".into());
+    // Each lookup ends within two minutes, as a traced command does.
+    let getent = |what: &str| {
+        let mut child = std::process::Command::new(&args[0])
+            .args(&args[1..])
+            .args(["getent", "hosts", what])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let start = std::time::Instant::now();
+        loop {
+            if let Some(st) = child.try_wait().unwrap() {
+                break st.success();
+            }
+            if start.elapsed() > std::time::Duration::from_secs(120) {
+                child.kill().ok();
+                child.wait().ok();
+                panic!("precondition of the traced run: `getent hosts {what}` still ran after two minutes");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+    };
+    CHECKED.call_once(|| {
+        assert!(
+            !getent(&name),
+            "precondition of the traced run: inside its outer Bubblewrap, `getent hosts {name}` must fail (no name service may answer the unknown host name), but it answered"
+        );
+        assert!(
+            getent("localhost"),
+            "precondition of the traced run: inside its outer Bubblewrap, `getent hosts localhost` must answer from the test-made /etc/hosts, but it did not"
+        );
+    });
+    args
+}
+
+/// A host name no name service answers: `sam-unknown-` and digits that
+/// differ for each run.
+fn unknown_host_name() -> String {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0);
+    format!("sam-unknown-{}-{nanos}", std::process::id())
+}
+
 /// What a traced command left: its exit status, output and trace.
 struct Ran {
     status: Option<i32>,
@@ -2689,7 +2969,10 @@ struct Ran {
 
 /// Runs `sam-jail ARGS` under strace with its own folders and home, no
 /// desktop session and no proxy variables, `input` on stdin. A command
-/// still running after two minutes fails the test.
+/// still running after two minutes fails the test. It runs inside an outer
+/// Bubblewrap ([`outer_wrapper_args`]) whose host name no name service on
+/// this computer knows, so a lookup of this computer's name goes to the DNS
+/// server wherever the test runs, and the trace sees it.
 fn traced(root: &Path, args: &[&str], input: Option<&str>) -> Ran {
     use std::io::{Read, Write};
     use std::process::{Command, Stdio};
@@ -2697,6 +2980,7 @@ fn traced(root: &Path, args: &[&str], input: Option<&str>) -> Ran {
     let log = root.join("trace.log");
     let _ = fs::remove_file(&log);
     let strace = sam_core::util::which("strace").unwrap();
+    let outer = outer_wrapper_args(root);
     let mut cmd = Command::new(strace);
     cmd.args([
         "-f",
@@ -2711,6 +2995,7 @@ fn traced(root: &Path, args: &[&str], input: Option<&str>) -> Ran {
     ])
     .arg(&log)
     .arg("--")
+    .args(&outer)
     .arg(env!("CARGO_BIN_EXE_sam-jail"))
     .args(args)
     .env("SAM_CONFIG_DIR", root.join("config"))
@@ -3132,11 +3417,16 @@ fn every_command_is_traced_or_named_untraced() {
 /// for `run`, `verify` and `doctor`, GnuPG for `doctor --contracts`), and
 /// no process SAM started made an internet connection: none opened an
 /// internet socket, set up io_uring or connected to a name-service socket,
-/// other than the two named in [`allowed`] (pasta's probe socket, which
-/// connects nowhere on the internet, and `curl --version`'s connect to
-/// nscd). Only these commands must show a program: `add`, `run`, `verify`,
-/// `doctor` and `doctor --contracts`; exit status 3 ("not passed") counts
-/// as ran for `verify` and the doctor commands. The programs each command
+/// other than the three exceptions: pasta's probe socket, which connects
+/// nowhere on the internet, and, inside curl's sandbox, `curl --version`'s
+/// connect to nscd and glibc's UDP address-order check (loopback, port 0,
+/// nothing sent). Only these commands must show a program: `add`, `run`,
+/// `verify`, `doctor` and `doctor --contracts` (the test's own outer
+/// Bubblewrap does not count), and `doctor --contracts` and the two
+/// `report` commands must start curl inside its sandbox; exit status 3
+/// ("not passed") counts as ran for `verify` and the doctor commands. Each
+/// command runs under a host name no name service knows, with a test-made
+/// `/etc/hosts` and `/etc/nsswitch.conf`. The programs each command
 /// ran and the Unix sockets it connected to are printed for the privacy
 /// report.
 #[test]
@@ -3183,6 +3473,11 @@ fn everyday_commands_make_no_internet_connection() {
             {
                 problems.push(format!(
                     "{label} `{name}` ran none of {marker:?}, so the trace does not show it did its work"
+                ));
+            }
+            if ["E15", "E16", "E17"].contains(&label) && !ran.seen.sandboxed_curl {
+                problems.push(format!(
+                    "{label} `{name}` started no curl inside its sandbox (a curl whose parent ran Bubblewrap with the host name localhost)"
                 ));
             }
             problems.extend(ran.seen.problems.iter().cloned());

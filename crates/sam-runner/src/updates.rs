@@ -16,7 +16,7 @@
 
 use std::fs::File;
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
@@ -156,18 +156,100 @@ fn curl_args(req: &Request, max_secs: u64) -> Result<Vec<String>> {
     Ok(args)
 }
 
-/// curl, ready to send `req` within `max_secs`.
+/// curl, ready to send `req` within `max_secs`, in its sandbox
+/// ([`curl_command`]) with the shared network.
 fn curl(req: &Request, max_secs: u64) -> Result<Command> {
     let args = curl_args(req, max_secs)?;
-    let curl = sam_core::util::which("curl")
-        .context(sam_core::i18n::tr("curl is not installed, so SAM cannot check for or download updates. Install the package curl."))?;
     #[expect(
         clippy::disallowed_methods,
-        reason = "way out: curl, for an update request"
+        reason = "way out: curl in its sandbox, for an update request"
     )]
-    let mut cmd = Command::new(curl);
+    let mut cmd = curl_command(true)?;
     cmd.args(args);
     Ok(cmd)
+}
+
+/// Bubblewrap's arguments around curl (owner decision D of 2026-11-28):
+/// a read-only view of the computer apart from its own `/tmp` (empty) and
+/// `/dev`, and a host name of
+/// its own, `localhost`, so the libraries curl loads look up that name,
+/// which `/etc/hosts` answers, and never send this computer's name to a
+/// DNS server (on a computer whose own name is not known locally they did,
+/// at every curl start). The network is shared for update requests
+/// (`network`) and cut off otherwise. The certificate files and folders in
+/// `keep` (those curl's environment names below `/tmp`) are bound back
+/// read-only, so a setting like `CURL_CA_BUNDLE` keeps working. Then
+/// `curl` and what follows.
+fn curl_sandbox_args(curl: &Path, network: bool, keep: &[PathBuf]) -> Vec<std::ffi::OsString> {
+    let mut v: Vec<std::ffi::OsString> = [
+        "--ro-bind",
+        "/",
+        "/",
+        "--dev",
+        "/dev",
+        "--proc",
+        "/proc",
+        "--tmpfs",
+        "/tmp",
+        "--unshare-uts",
+        "--hostname",
+        "localhost",
+    ]
+    .map(Into::into)
+    .into();
+    for k in keep {
+        v.extend(["--ro-bind-try".into(), k.clone().into(), k.clone().into()]);
+    }
+    if !network {
+        v.push("--unshare-net".into());
+    }
+    v.extend(["--die-with-parent", "--new-session", "--"].map(Into::into));
+    v.push(curl.as_os_str().to_owned());
+    v
+}
+
+/// curl in its sandbox ([`curl_sandbox_args`]), its arguments still to be
+/// added. Every curl SAM runs starts here: update requests (`network`) and
+/// the contract check's version probe (without network). Without
+/// Bubblewrap SAM runs no curl at all, so nothing is sent; a sandbox that
+/// cannot start ends with Bubblewrap's error before curl runs. curl and
+/// the certificate settings below `/tmp` stay reachable in the sandbox.
+pub fn curl_command(network: bool) -> Result<Command> {
+    let curl = sam_core::util::which("curl")
+        .context(sam_core::i18n::tr("curl is not installed, so SAM cannot check for or download updates. Install the package curl."))?;
+    let bwrap = sam_core::util::which("bwrap").context(sam_core::i18n::tr(
+        "SAM runs curl only in a small sandbox, and Bubblewrap is not installed, so SAM sent nothing. Install the package bubblewrap.",
+    ))?;
+    #[expect(clippy::disallowed_methods, reason = "way out: curl in its sandbox")]
+    let mut cmd = Command::new(bwrap);
+    // curl by its real path (a link to it may lie below `/tmp`, which the
+    // sandbox replaces), bound back read-only if it lies there itself.
+    let curl = std::fs::canonicalize(&curl).unwrap_or(curl);
+    let mut keep = certificates_in_tmp();
+    if curl.starts_with("/tmp") {
+        keep.push(curl.clone());
+    }
+    cmd.args(curl_sandbox_args(&curl, network, &keep));
+    Ok(cmd)
+}
+
+/// The certificate files and folders and the curl settings folder that
+/// curl's environment names (`CURL_CA_BUNDLE`, `SSL_CERT_FILE`,
+/// `SSL_CERT_DIR`, `CURL_HOME`) and that lie below `/tmp`, which curl's
+/// sandbox replaces with an empty folder; so curl sees what it saw outside
+/// the sandbox.
+fn certificates_in_tmp() -> Vec<PathBuf> {
+    [
+        "CURL_CA_BUNDLE",
+        "SSL_CERT_FILE",
+        "SSL_CERT_DIR",
+        "CURL_HOME",
+    ]
+    .iter()
+    .filter_map(std::env::var_os)
+    .map(PathBuf::from)
+    .filter(|p| p.is_absolute() && p.starts_with("/tmp"))
+    .collect()
 }
 
 /// Checks `appimage` against its published version, whatever file it is,
@@ -763,12 +845,21 @@ fn read_range(mut cmd: Command, limit: Duration, want: usize) -> Result<Vec<u8>>
     let mut child = cmd
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .process_group(0)
         .spawn()
         .context(sam_core::i18n::tr("starting curl"))?;
-    // The whole group, so that nothing curl (or a stand-in) started keeps
-    // the output open.
+    // What curl's sandbox (or curl) says on stderr, for the error.
+    let errors = child.stderr.take().map(|mut e| {
+        std::thread::spawn(move || {
+            let mut text = String::new();
+            let _ = (&mut e).take(64 << 10).read_to_string(&mut text);
+            text
+        })
+    });
+    // The whole group: Bubblewrap, which curl's sandbox runs as. curl
+    // itself runs in a session of its own (`--new-session`) and ends with
+    // Bubblewrap (`--die-with-parent`), so nothing keeps the output open.
     let stop = |child: &mut std::process::Child| {
         if let Ok(g) = i32::try_from(child.id()) {
             // SAFETY: kill(2) with a negative pid signals the process group
@@ -830,11 +921,17 @@ fn read_range(mut cmd: Command, limit: Duration, want: usize) -> Result<Vec<u8>>
         std::thread::sleep(Duration::from_millis(20));
     };
     if !status.success() {
+        let said = errors.and_then(|h| h.join().ok()).unwrap_or_default();
+        let reason = if said.trim().is_empty() {
+            format!("curl {status}")
+        } else {
+            curl_error(&said)
+        };
         bail!(
             "{}",
             sam_core::i18n::trf(
                 "downloading the changed parts failed: {reason}",
-                &[("reason", &format!("curl {status}"))]
+                &[("reason", &reason)]
             )
         );
     }
@@ -944,6 +1041,13 @@ fn save_capped(mut cmd: Command, dest: &Path, cap: u64) -> Result<()> {
 /// curl's error, in words: HTTP status codes become sentences.
 fn curl_error(stderr: &str) -> String {
     let e = stderr.trim();
+    // Bubblewrap could not build curl's sandbox: curl never started.
+    if let Some(why) = e.strip_prefix("bwrap: ") {
+        return sam_core::i18n::trf(
+            "SAM could not start curl's sandbox, so it sent nothing: {error}",
+            &[("error", &sam_core::util::display_safe(why, 200))],
+        );
+    }
     let status = e
         .rsplit("error: ")
         .next()
@@ -1637,6 +1741,57 @@ mod tests {
         for (req, rest) in cases {
             assert_eq!(curl_args(&req, 30).unwrap(), with(rest), "{req:?}");
         }
+    }
+
+    /// Every curl SAM runs starts in Bubblewrap with exactly these
+    /// arguments: the computer read-only, an empty `/tmp` (with a
+    /// certificate setting below it bound back read-only), its own host
+    /// name `localhost` (so curl's libraries never look up this computer's
+    /// name), the network shared for update requests and cut off for the
+    /// version probe, then curl.
+    #[test]
+    fn curl_runs_in_a_sandbox_with_its_own_host_name() {
+        let curl = Path::new("/usr/bin/curl");
+        let words = |v: Vec<std::ffi::OsString>| -> Vec<String> {
+            v.into_iter()
+                .map(|w| w.to_string_lossy().into_owned())
+                .collect()
+        };
+        let head = [
+            "--ro-bind",
+            "/",
+            "/",
+            "--dev",
+            "/dev",
+            "--proc",
+            "/proc",
+            "--tmpfs",
+            "/tmp",
+            "--unshare-uts",
+            "--hostname",
+            "localhost",
+        ];
+        let tail = ["--die-with-parent", "--new-session", "--", "/usr/bin/curl"];
+        let with = |middle: &[&str]| -> Vec<String> {
+            head.iter()
+                .chain(middle)
+                .chain(&tail)
+                .map(|s| s.to_string())
+                .collect()
+        };
+        assert_eq!(words(curl_sandbox_args(curl, true, &[])), with(&[]));
+        assert_eq!(
+            words(curl_sandbox_args(curl, false, &[])),
+            with(&["--unshare-net"])
+        );
+        assert_eq!(
+            words(curl_sandbox_args(
+                curl,
+                true,
+                &[PathBuf::from("/tmp/t/cert.pem")]
+            )),
+            with(&["--ro-bind-try", "/tmp/t/cert.pem", "/tmp/t/cert.pem"])
+        );
     }
 
     /// The GitHub release description SAM asks for is exactly this address,

@@ -4,7 +4,7 @@
 # here is renewed in the review that checks the change against
 # docs/security.md, "Network use by SAM itself". This file is not protected:
 # renewing a hash is routine review, not a change of the promise.
-update_module = "76511700aa29af3cc565704de1b854515af49dbb76d2bc695e82b34076a2915d"
+update_module = "3e77afa07bf3c82791a58ad626be186ef4dc94796b0ba9251e0b508329058379"
 apprun = "d9015dfc7470d7c75d37c51b26608ae90e5e8afb6c0f0fab545ab25e5c44183e"
 
 [window_start]
