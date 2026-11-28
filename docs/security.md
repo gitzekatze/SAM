@@ -1232,14 +1232,54 @@ How these stay protected with the home writable:
   above the home, both *Dangerous*; a folder that holds the home counts as
   the home, and a relative path or one with `..` is *Dangerous* too
   (`a_path_with_dots_or_double_slashes_is_rated_where_it_leads`).
-- **A folder hands over the programs listening in it.** Connecting to a
-  socket file needs no write access, so even a read-only folder lets the
-  app talk to the programs that listen there: `/tmp` holds the sockets of
-  tmux, SSH connections and the X server (without systemd also the session
-  bus and the sound server), and a tmux socket runs commands
-  outside the sandbox. A grant of `/tmp`, or of those places in it, is
-  rated *Dangerous* and warned about
+- **SAM gives no app new access to `/tmp`.** Connecting to a socket file
+  needs no write access, so even a read-only folder lets the app talk to
+  the programs that listen there: `/tmp` holds the sockets of tmux, SSH
+  connections and the X server (without systemd also the session bus and
+  the sound server), and a tmux socket runs commands outside the sandbox.
+  A grant of `/tmp`, or of those places in it, is rated *Dangerous* and
+  warned about
   (`a_grant_of_tmp_or_its_listening_places_is_dangerous_even_read_only`).
+  SAM refuses such a grant whenever the app did not have it before,
+  read-only or writable, however the path is written and also when a
+  link leads there, and no yes lifts the refusal (code
+  `tmp-grant-refused`): for every change of an app's settings, a preset
+  applied, saved or imported, and an app added with adjusted settings or
+  a preset
+  (`a_new_grant_of_tmp_is_refused_however_it_is_written`,
+  `a_link_that_leads_to_tmp_is_refused_as_a_new_grant`,
+  `the_gate_refuses_a_new_tmp_grant_even_after_a_yes`,
+  `every_way_to_change_settings_refuses_a_new_tmp_grant`,
+  `a_preset_holding_tmp_is_not_saved`,
+  `set_refuses_tmp_even_with_yes_and_names_a_folder_of_its_own`). SAM
+  offers a folder of the app's own instead, `/tmp/sam-<app id>`
+  (`the_folder_of_its_own_is_never_refused_nor_a_socket_folder`,
+  `the_editor_offers_a_folder_of_its_own_instead_of_tmp`). When the app's
+  folders name it, SAM makes it at each start, for you only; when `/tmp`
+  does not belong to root with the sticky bit, or the folder is a link,
+  belongs to another account or others can open it, the start stops (code
+  `own-tmp-folder-unsafe`) and SAM changes and removes nothing
+  (`the_folder_of_its_own_is_made_for_you_only_at_each_start`,
+  `a_folder_of_its_own_that_others_can_open_or_that_is_a_link_stops_the_start`).
+  An older grant stays and is shown to the app as before until you
+  replace it; it may become read-only, never writable
+  (`an_older_tmp_grant_may_stay_or_be_narrowed_but_not_widened`,
+  `turning_compatibility_off_and_undoing_keep_an_older_tmp_grant`). SAM
+  warns about it, diagnostics name the app, and the hint `tmp-own-folder`
+  replaces it with the folder of the app's own; no undo brings the
+  replaced grant back
+  (`an_older_tmp_grant_gets_a_hint_to_a_folder_of_its_own`,
+  `no_undo_brings_tmp_back`, `doctor_names_apps_with_an_older_tmp_grant`).
+  Not covered: `/var/tmp` and `/` are rated *Dangerous* and asked about,
+  not refused; a socket folder in `/tmp` by another name (such as
+  `/tmp/tmate-1000`) is not refused; `sam-jail selftest` does not make the
+  folder of the app's own, and a missing one is not shown to the app. A
+  program running as you (such as another app that still has an older
+  writable grant of `/tmp`) can swap the checked folder for a link
+  between SAM's look and Bubblewrap's mount; this stays open until SAM
+  binds these places through a folder it opened. The folder's name can be
+  seen by every account on this computer, so it tells them which apps you
+  use.
 - **Links never take a bind where it must not lead.** SAM binds each
   extra folder and each granted user folder where its links lead. (Your
   fonts and theme files are never bound where a link leads on its own:
@@ -1324,8 +1364,9 @@ How these stay protected with the home writable:
   leads to is bound; the link itself stays as changeable as the folder
   that holds it), and an extra folder you
   name by its real place is shown as written and rated by its name: `/tmp`
-  itself, the known socket folders in it (`/tmp/tmux-1000` named so) and
-  anything in `/var/tmp` (as part of `/var`) are rated *Dangerous* and
+  itself and the known socket folders in it (`/tmp/tmux-1000` named so)
+  are refused as new grants (see *SAM gives no app new access to `/tmp`*),
+  anything in `/var/tmp` (as part of `/var`) is rated *Dangerous* and
   warned about; any other place in `/tmp` (such as `/tmp/tmate-1000`) is
   rated *Some access* when read-only, so SAM adds it without asking first,
   and *Think twice* when writable. If you made a link that leads out of

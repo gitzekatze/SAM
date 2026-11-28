@@ -1601,9 +1601,10 @@ mod tmp_grant_tests {
     }
 
     /// An older grant of /tmp stays through every change that puts back
-    /// what the record held: compatibility mode on and off, a repair step
-    /// and its undo, an undo of all steps, and another setting changed. A
-    /// reset takes SAM's recommendation, which names no extra folder.
+    /// what the record held: compatibility mode on and off (also when the
+    /// grant was taken out while it was on), a repair step and its undo,
+    /// an undo of all steps, and another setting changed. A reset takes
+    /// SAM's recommendation, which names no extra folder.
     #[test]
     fn turning_compatibility_off_and_undoing_keep_an_older_tmp_grant() {
         let t = tempfile::tempdir().unwrap();
@@ -1625,6 +1626,14 @@ mod tmp_grant_tests {
         still("compatibility mode on");
         sam.set_compat(ID, false).unwrap();
         still("compatibility mode off");
+        // Taken out while compatibility mode is on, the grant comes back
+        // with the settings from before when it is turned off: that is no
+        // new grant, and refusing it would keep the app in that mode.
+        sam.set_compat(ID, true).unwrap();
+        sam.set_permission(ID, "filesystem.custom_read", "")
+            .unwrap();
+        sam.set_compat(ID, false).unwrap();
+        still("the settings from before compatibility mode");
         sam.set_permission(ID, "devices.gpu", "true").unwrap();
         still("another setting");
         let step = Suggestion {
