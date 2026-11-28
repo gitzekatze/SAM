@@ -1853,8 +1853,8 @@ was easily misread.
   `network.app_ports` to restrict it further.
 - **Hostname:** the sandbox keeps the computer's hostname, because changing
   it is blocked on some hardened systems.
-- **App records and an older SAM.** Every save of an app record takes one
-  short record lock (the file `.records.lock` in SAM's apps folder), held
+- **App records saved by two SAM processes at once.** Every save of an app
+  record takes one short record lock (the file `.records.lock` in SAM's apps folder), held
   only while the record is read, changed and written. Each save writes only
   what it changes onto the record as it is then; when two saves change the
   same field, the later one wins (a list, such as the granted folders,
@@ -1863,7 +1863,7 @@ was easily misread.
   it first" mark. A confirmation from the app's page checks under the lock
   that the page showed what it confirms; `sam-jail review` without
   `--seen` confirms what the record holds when it gets the lock. When the
-  AppImage changed other than through a SAM update, "unpack again" saves
+  AppImage changed other than through a SAM update, *Unpack Again* saves
   that mark before it unpacks, so the new copy does not start unconfirmed
   when the closing save fails; SAM does not promise this when you confirm
   the app while it unpacks. The start's warning about a changed AppImage
@@ -1872,7 +1872,7 @@ was easily misread.
   the same time as this one (an old window left open after an update), one
   of its saves can still undo a change this SAM saved. A save that does
   not get the lock within 10 seconds stops with an error and saves
-  nothing; work done before it stays (after an "unpack again", the newly
+  nothing; work done before it stays (after *Unpack Again*, the newly
   unpacked copy, which the record then does not describe). A start writes
   the app's state and last error as it read or set them, so it can replace
   a notice another process saved there while the app ran. SAM does not
