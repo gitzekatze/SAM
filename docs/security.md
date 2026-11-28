@@ -626,10 +626,27 @@ places are locked there, and none of them is shared as a file named on the
 command line (`credential_stores_follow_other_config_and_data_folders`).
 Where one of them names the home itself, the stores sit at the top of the
 home (`~/git/credentials`, `~/gh`, `~/keyrings`) and are hidden there in
-the same way. Not covered: the start places are not locked at the top of
-the home then (`~/autostart`), so an app with the whole home writable can
-change them there. Such a folder outside the home is shown only when you
-grant it, and SAM does not hide the stores in it then.
+the same way. Of the places locked under `~/.config`, only the file SAM
+reads Documents, Downloads and the other user folders from is locked at
+the top of the home as well, where `XDG_CONFIG_HOME` names the home
+(`~/user-dirs.dirs`). Like `~/.config/user-dirs.dirs`, and
+`~/cfg/user-dirs.dirs` where the variable names `~/cfg`, it is read-only
+and cannot be renamed away, and when it is missing, SAM creates it empty
+before a start that shows it writable
+(`the_user_folders_file_is_protected_wherever_sam_reads_it_in_the_home`,
+`the_user_folders_file_stays_locked_when_the_config_folder_is_the_home`).
+SAM promises this only when neither the file nor a folder on the way to it
+from the home (`~/cfg`) is a link. Not covered: while another app runs
+that saw the file missing, SAM leaves it missing (see *Folders are created
+empty first* below). SAM reads `XDG_CONFIG_HOME` from the environment of
+each start, so a start whose environment does not set it leaves
+`~/user-dirs.dirs` (or `~/cfg/user-dirs.dirs`) unlocked; set the variable
+in the desktop session's environment, not only in a shell's startup file.
+Not covered either: where either variable names the home, the start places
+are not locked at the top of the home (`~/autostart`, `~/applications`),
+so an app with the whole home writable can change them there. A folder
+outside the home that either variable names is shown only when you grant
+it, and SAM does not hide the stores in it then.
 The switches that allow them count only with the whole home
 (`filesystem.home`): stored on without it (an old profile, a
 hand-edited file), they hide the keys and stores as if off, also where a

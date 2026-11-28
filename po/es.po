@@ -1054,7 +1054,7 @@ msgstr ""
 "entorno aislado."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:403
+#: crates/sam-core/src/places.rs:415
 msgid ""
 "SAM shows {path} read-only to this app because {place}, a folder SAM "
 "protects, is not a real folder but a shortcut to your home folder or a "
@@ -1072,7 +1072,7 @@ msgstr ""
 "punto."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:408
+#: crates/sam-core/src/places.rs:420
 msgid ""
 "{path} is inside {place}, which SAM protects because changing it can make "
 "your computer run programs or change what SAM does; SAM shows it read-only."
@@ -1082,7 +1082,7 @@ msgstr ""
 "como de solo lectura."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:413
+#: crates/sam-core/src/places.rs:425
 msgid ""
 "{path} is a place SAM protects because changing it can make your computer "
 "run programs or change what SAM does; SAM shows it read-only."
@@ -1092,7 +1092,7 @@ msgstr ""
 "de solo lectura."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:580
+#: crates/sam-core/src/places.rs:592
 msgid ""
 "The {keys} folders are all set to {path}, some read and write, some read-"
 "only. The stricter setting wins: the app sees {path} read-only. To let it "
@@ -1105,7 +1105,7 @@ msgstr ""
 "carpetas en lectura y escritura, o dales lugares propios."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:596
+#: crates/sam-core/src/places.rs:608
 msgid ""
 "{key} folder is set to {path}, where programs outside the sandbox listen; "
 "not bound. The app sees its own empty /tmp there instead, and what it saves "
@@ -1118,7 +1118,7 @@ msgstr ""
 "propia, como /tmp/{key}, para conservar lo que guarda la aplicación."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:607
+#: crates/sam-core/src/places.rs:619
 msgid ""
 "{key} folder is set to {path}, whose way leads through the link {link} in a "
 "folder the app can change, so the app may have put it there; not bound"
@@ -1128,7 +1128,7 @@ msgstr ""
 "ahí; no se enlaza"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:841
+#: crates/sam-core/src/places.rs:853
 msgid ""
 "{path} lies inside SAM's own folders, which apps never see; SAM does not "
 "show it."
@@ -1137,7 +1137,7 @@ msgstr ""
 "SAM no lo muestra."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:885
+#: crates/sam-core/src/places.rs:897
 msgid ""
 "SAM shows your home folder read-only to this app because {place}, a folder "
 "SAM protects, is not a real folder but a shortcut to your whole home folder. "
@@ -1153,7 +1153,7 @@ msgstr ""
 "Ctrl+H muestra las carpetas ocultas, cuyos nombres empiezan por un punto."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:1638
+#: crates/sam-core/src/places.rs:1650
 msgid ""
 "SAM leaves out the writable folder {path} for this app because the way there "
 "leads through the link {link}, which lies in a folder the app can change, to "
@@ -1172,7 +1172,7 @@ msgstr ""
 "esta."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:1642
+#: crates/sam-core/src/places.rs:1654
 msgid ""
 "SAM leaves out the writable user folder {path} for this app because the way "
 "there leads through the link {link}, which lies in a folder the app can "
@@ -1192,7 +1192,7 @@ msgstr ""
 "esta carpeta de usuario al lugar al que lleva en ~/.config/user-dirs.dirs."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:1646
+#: crates/sam-core/src/places.rs:1658
 msgid ""
 "SAM does not bind {path} for this app on its own because the way there leads "
 "through the link {link}, which lies in a folder the app can change, to a "
@@ -1213,7 +1213,7 @@ msgstr ""
 "él."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:1650
+#: crates/sam-core/src/places.rs:1662
 msgid ""
 "SAM leaves out the extra folder {path} for this app because the way there "
 "leads through the link {link}, which lies in a folder the app can change, to "
@@ -1231,7 +1231,7 @@ msgstr ""
 "lugar de esta."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:1654
+#: crates/sam-core/src/places.rs:1666
 msgid ""
 "SAM leaves out the user folder {path} for this app because the way there "
 "leads through the link {link}, which lies in a folder the app can change, to "
@@ -1248,7 +1248,7 @@ msgstr ""
 "dirs.dirs."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:1663
+#: crates/sam-core/src/places.rs:1675
 msgid ""
 "SAM leaves out the writable folder {path} for this app because it leads "
 "through a link to {place}, where programs outside the sandbox listen: "
@@ -1262,7 +1262,7 @@ msgstr ""
 "carpetas muestran allí."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:1667
+#: crates/sam-core/src/places.rs:1679
 msgid ""
 "SAM leaves out the writable user folder {path} for this app because it leads "
 "through a link to {place}, where programs outside the sandbox listen: "
@@ -1276,7 +1276,7 @@ msgstr ""
 "que sus otras carpetas muestran allí."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:1671
+#: crates/sam-core/src/places.rs:1683
 msgid ""
 "SAM does not bind {path} for this app on its own because it leads through a "
 "link to {place}, where programs outside the sandbox listen: through them the "
@@ -1290,7 +1290,7 @@ msgstr ""
 "muestran allí."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:1675
+#: crates/sam-core/src/places.rs:1687
 msgid ""
 "SAM leaves out the extra folder {path} for this app because it leads through "
 "a link to {place}, where programs outside the sandbox listen: through them "
@@ -1304,7 +1304,7 @@ msgstr ""
 "carpetas muestran allí."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:1679
+#: crates/sam-core/src/places.rs:1691
 msgid ""
 "SAM leaves out the user folder {path} for this app because it leads through "
 "a link to {place}, where programs outside the sandbox listen: through them "
@@ -1318,7 +1318,7 @@ msgstr ""
 "carpetas muestran allí."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:1690
+#: crates/sam-core/src/places.rs:1702
 msgid ""
 "SAM does not bind {path} for this app on its own because it leads to "
 "{place}, which is or holds your home folder, your keys or passwords, a place "
@@ -1331,7 +1331,7 @@ msgstr ""
 "viendo lo que sus otras carpetas muestran allí."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-core/src/places.rs:1694
+#: crates/sam-core/src/places.rs:1706
 msgid ""
 "SAM leaves out {path} for this app because it leads to {place}, which is or "
 "holds your home folder, your keys or passwords, a place SAM protects or "
@@ -1705,7 +1705,7 @@ msgstr ""
 msgid "User namespaces unavailable"
 msgstr "Espacios de nombres de usuario no disponibles"
 
-#: crates/sam-core/src/warnings.rs:511 crates/sam-sandbox/src/lib.rs:2947
+#: crates/sam-core/src/warnings.rs:511 crates/sam-sandbox/src/lib.rs:2962
 msgid "Wayland socket not available"
 msgstr "Socket de Wayland no disponible"
 
@@ -1717,7 +1717,7 @@ msgstr ""
 "El socket de Wayland no está disponible. Activa X11 o inicia sesión en una "
 "sesión de Wayland."
 
-#: crates/sam-core/src/warnings.rs:518 crates/sam-sandbox/src/lib.rs:2967
+#: crates/sam-core/src/warnings.rs:518 crates/sam-sandbox/src/lib.rs:2982
 msgid "X11 display not available"
 msgstr "Pantalla X11 no disponible"
 
@@ -5839,7 +5839,7 @@ msgstr "Iniciar de todos modos"
 
 #. Keep the {placeholders}; their order may change.
 #: crates/sam-jail-cli/src/bin/sam-jail-run.rs:241
-#: crates/sam-sandbox/src/lib.rs:2220 crates/sam-sandbox/src/lib.rs:2286
+#: crates/sam-sandbox/src/lib.rs:2235 crates/sam-sandbox/src/lib.rs:2301
 msgid ""
 "SAM cannot pass on {path}: its name is not valid text. Rename it, then start "
 "the app again."
@@ -6870,7 +6870,7 @@ msgstr ""
 "sonido con «Sonido sin el intermediario de SAM», que le permite cargar "
 "código en el servidor de sonido fuera del entorno aislado"
 
-#: crates/sam-runner/src/doctor.rs:311 crates/sam-sandbox/src/lib.rs:3020
+#: crates/sam-runner/src/doctor.rs:311 crates/sam-sandbox/src/lib.rs:3035
 msgid "No sound server found. Audio may not work."
 msgstr ""
 "No se encontró ningún servidor de sonido. Puede que el audio no funcione."
@@ -9347,12 +9347,12 @@ msgstr ""
 "el archivo ensamblado no coincide con la suma de verificación publicada"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:1410
+#: crates/sam-sandbox/src/lib.rs:1425
 msgid "{key} folder does not exist on the host; not bound"
 msgstr "La carpeta {key} no existe en el sistema; no se vinculó"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:1414
+#: crates/sam-sandbox/src/lib.rs:1429
 msgid ""
 "{key} folder is set to {path}, which shows more than a user folder (the "
 "home, a folder above it, a system or SAM folder, or a protected place); not "
@@ -9362,17 +9362,17 @@ msgstr ""
 "(la carpeta personal, una carpeta por encima, una carpeta del sistema o de "
 "SAM, o un lugar protegido); no se enlaza"
 
-#: crates/sam-sandbox/src/lib.rs:2165
+#: crates/sam-sandbox/src/lib.rs:2180
 msgid "Bubblewrap is not installed. Install the 'bubblewrap' package."
 msgstr "Bubblewrap no está instalado. Instala el paquete «bubblewrap»."
 
-#: crates/sam-sandbox/src/lib.rs:2173
+#: crates/sam-sandbox/src/lib.rs:2188
 msgid "xdg-dbus-proxy not found: filtered session D-Bus will be disabled"
 msgstr ""
 "no se encontró xdg-dbus-proxy: se desactivará el D-Bus de sesión filtrado"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2197
+#: crates/sam-sandbox/src/lib.rs:2212
 msgid ""
 "the extra Bubblewrap arguments end with {option}, which needs more values; "
 "SAM does not start the app until the setting is complete"
@@ -9381,7 +9381,7 @@ msgstr ""
 "más valores; SAM no inicia la aplicación hasta que el ajuste esté completo"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2201
+#: crates/sam-sandbox/src/lib.rs:2216
 msgid ""
 "the extra Bubblewrap arguments hold {word} where an option belongs, which "
 "Bubblewrap would run instead of the app; SAM does not start the app until "
@@ -9392,7 +9392,7 @@ msgstr ""
 "aplicación hasta que el ajuste esté corregido"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2205
+#: crates/sam-sandbox/src/lib.rs:2220
 msgid ""
 "the extra Bubblewrap arguments hold {option}, an option SAM does not know; "
 "SAM does not start the app until the setting is changed"
@@ -9401,7 +9401,7 @@ msgstr ""
 "SAM no conoce; SAM no inicia la aplicación hasta que el ajuste cambie"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2228
+#: crates/sam-sandbox/src/lib.rs:2243
 msgid ""
 "SAM cannot pass on {path}: its name holds \"..\". Set the folder without \".."
 "\", then start the app again."
@@ -9410,7 +9410,7 @@ msgstr ""
 "\"..\" y vuelve a iniciar la app."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2240
+#: crates/sam-sandbox/src/lib.rs:2255
 msgid ""
 "the home folder is not set (HOME is \"{home}\"); SAM does not start apps "
 "without one"
@@ -9418,12 +9418,12 @@ msgstr ""
 "la carpeta personal no está definida (HOME es «{home}»); SAM no inicia "
 "aplicaciones sin ella"
 
-#: crates/sam-sandbox/src/lib.rs:2251
+#: crates/sam-sandbox/src/lib.rs:2266
 msgid "bubblewrap (bwrap) is not installed"
 msgstr "bubblewrap (bwrap) no está instalado"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2773
+#: crates/sam-sandbox/src/lib.rs:2788
 msgid ""
 "{path} lies inside {folder}, which the app can already change, so SAM does "
 "not bind it a second time."
@@ -9432,17 +9432,17 @@ msgstr ""
 "lo vincula una segunda vez."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2806
+#: crates/sam-sandbox/src/lib.rs:2821
 msgid "granted access to the opened folder {path}"
 msgstr "acceso concedido a la carpeta abierta {path}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2811
+#: crates/sam-sandbox/src/lib.rs:2826
 msgid "granted access to the opened file {path}"
 msgstr "acceso concedido al archivo abierto {path}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:2819
+#: crates/sam-sandbox/src/lib.rs:2834
 msgid ""
 "did not share {path}, named when starting the app: files you open with this "
 "app are set to No access"
@@ -9450,7 +9450,7 @@ msgstr ""
 "no se ha compartido {path}, indicado al iniciar la aplicación: los archivos "
 "que abres con esta aplicación están en Sin acceso"
 
-#: crates/sam-sandbox/src/lib.rs:3018
+#: crates/sam-sandbox/src/lib.rs:3033
 msgid ""
 "SAM's sound relay is not running, so the app has no sound (the sound "
 "server's own connection would let it load code outside the sandbox). The "
@@ -9461,7 +9461,7 @@ msgstr ""
 "código fuera del entorno aislado). El mensaje de inicio dice por qué."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:3081
+#: crates/sam-sandbox/src/lib.rs:3096
 msgid ""
 "Not shown as game controllers, as they also report themselves as a keyboard "
 "or mouse: {nodes}"
@@ -9470,7 +9470,7 @@ msgstr ""
 "{nodes}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:3087
+#: crates/sam-sandbox/src/lib.rs:3102
 msgid ""
 "Not shown as game controllers, as udev has no record of what they are: "
 "{nodes}"
@@ -9478,7 +9478,7 @@ msgstr ""
 "No se muestran como mandos porque udev no tiene registro de lo que son: "
 "{nodes}"
 
-#: crates/sam-sandbox/src/lib.rs:3093
+#: crates/sam-sandbox/src/lib.rs:3108
 msgid ""
 "No game controller is plugged in; controllers connected later are not seen "
 "until the app restarts"
@@ -9486,19 +9486,19 @@ msgstr ""
 "No hay ningún mando conectado; los mandos que se conecten después no se "
 "verán hasta reiniciar la aplicación"
 
-#: crates/sam-sandbox/src/lib.rs:3106
+#: crates/sam-sandbox/src/lib.rs:3121
 msgid "Bluetooth needs the system D-Bus; not granted"
 msgstr "Bluetooth necesita el D-Bus del sistema; no concedido"
 
-#: crates/sam-sandbox/src/lib.rs:3119
+#: crates/sam-sandbox/src/lib.rs:3134
 msgid "Input method needs the session D-Bus; not granted"
 msgstr "El método de entrada necesita el D-Bus de sesión; no concedido"
 
-#: crates/sam-sandbox/src/lib.rs:3142
+#: crates/sam-sandbox/src/lib.rs:3157
 msgid "session D-Bus socket not found"
 msgstr "no se encontró el socket del D-Bus de sesión"
 
-#: crates/sam-sandbox/src/lib.rs:3151
+#: crates/sam-sandbox/src/lib.rs:3166
 msgid ""
 "filtered D-Bus requested but no proxy is running (install xdg-dbus-proxy); "
 "session bus disabled"
@@ -9507,7 +9507,7 @@ msgstr ""
 "proxy); bus de sesión desactivado"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:3206
+#: crates/sam-sandbox/src/lib.rs:3221
 msgid ""
 "{path} is reached through a link in a folder the app can change; it is not "
 "passed into the sandbox. List the socket by its real place."
@@ -9517,7 +9517,7 @@ msgstr ""
 "ubicación real."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:3220
+#: crates/sam-sandbox/src/lib.rs:3235
 msgid ""
 "{path} lies below a folder the app can change, so the app could swap it for "
 "another socket during the start; this setting does not pass it in. Where the "
@@ -9529,12 +9529,12 @@ msgstr ""
 "socket allí."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:3227
+#: crates/sam-sandbox/src/lib.rs:3242
 msgid "{path} is not a socket; it is not passed into the sandbox"
 msgstr "{path} no es un socket; no se pasa al entorno aislado"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-sandbox/src/lib.rs:3243
+#: crates/sam-sandbox/src/lib.rs:3258
 msgid ""
 "{path} leads elsewhere: {why}. It is not passed into the sandbox; list that "
 "socket by its real place if the app needs it."

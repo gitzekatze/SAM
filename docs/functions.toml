@@ -281,6 +281,8 @@ promise = "Keys, passwords and the files of your other apps stay hidden, even wi
 code = ["sam-sandbox/src/lib.rs", "sam-core/src/risk.rs", "sam-core/src/paths.rs", "sam-core/src/places.rs"]
 tests = ["a_grant_inside_sams_folder_does_not_show_it", "opened_files_are_judged_by_name_and_by_where_they_lead", "keys_start_places_and_sams_files_are_never_opened", "start_places_and_credential_stores_count_as_sensitive", "grants_of_parts_of_the_home_never_reach_start_places_or_secrets", "sams_own_folders_stay_hidden_inside_an_opened_folder", "key_and_system_folders_count_as_sensitive", "every_breakout_attempt_from_a_real_sandbox_fails", "every_hostile_appimage_fails_to_escape", "credential_files_and_folders_in_the_home_are_masked", "home_protection_is_prepared_only_for_a_writable_home", "sams_own_folders_stay_hidden_inside_a_granted_folder",
   "user_folder_locations_stay_read_only_with_a_writable_home",
+  "the_user_folders_file_is_protected_wherever_sam_reads_it_in_the_home",
+  "the_user_folders_file_stays_locked_when_the_config_folder_is_the_home",
   "a_linked_key_folder_is_hidden_also_when_only_its_target_is_granted",
   "key_switches_without_the_whole_home_hide_the_keys",
   "places_behind_links_stay_protected_and_the_app_still_starts",

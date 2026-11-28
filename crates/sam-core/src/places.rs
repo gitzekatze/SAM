@@ -154,12 +154,22 @@ pub const PROTECTED_RO: &[&str] = &[
     ".config/openbox",
 ];
 
+/// The protected places that follow `XDG_CONFIG_HOME` also where it names
+/// the home itself, to the top of the home: the file SAM reads the user
+/// folders from (`~/user-dirs.dirs` then, [`crate::host::xdg_user_dirs`]).
+/// Unlocked there, an app with the whole home writable rewrote it, and at
+/// its next start SAM showed other folders as its Documents or Downloads.
+/// The start places do not follow there ([`sensitive_places`] says why).
+const PROTECTED_AT_HOME_TOO: &[&str] = &[".config/user-dirs.dirs"];
+
 /// The protected places relative to the home: `PROTECTED_RO`, and the same
 /// places under `XDG_CONFIG_HOME` and `XDG_DATA_HOME` when those point to
 /// other folders inside the home (desktops and programs follow them, so
 /// `~/cfg/autostart` starts programs as `~/.config/autostart` does; audit
-/// S-F6). Shared by the sandbox, which locks them, and the warnings, which
-/// say when a grant inside one is shown read-only.
+/// S-F6), and `~/user-dirs.dirs` when `XDG_CONFIG_HOME` names the home
+/// itself ([`PROTECTED_AT_HOME_TOO`]). Shared by the sandbox, which locks
+/// them, and the warnings, which say when a grant inside one is shown
+/// read-only.
 pub fn protected_places(home: &Path) -> Vec<String> {
     let var = |v: &str| std::env::var_os(v).map(PathBuf::from);
     protected_places_with(home, var("XDG_CONFIG_HOME"), var("XDG_DATA_HOME"))
@@ -171,7 +181,7 @@ pub fn protected_places_with(
     config: Option<PathBuf>,
     data: Option<PathBuf>,
 ) -> Vec<String> {
-    places_following(PROTECTED_RO, home, config, data, false)
+    places_following(PROTECTED_RO, home, config, data, PROTECTED_AT_HOME_TOO)
 }
 
 /// The credential stores relative to the home: `SENSITIVE_DOTFILES`, and
@@ -187,7 +197,9 @@ pub fn protected_places_with(
 /// and the GitHub tool its token in `~/gh`, which an app with the whole
 /// home read while only the usual places were hidden. Hiding more is the
 /// safe side; locking the start places at the top of the home too would
-/// lock folders such as `~/autostart` that the person may use otherwise.
+/// lock folders such as `~/autostart` that the person may use otherwise,
+/// so of the protected places only the file SAM reads the user folders
+/// from follows there ([`PROTECTED_AT_HOME_TOO`]).
 /// Shared by the sandbox, which hides them, and the files opened for a
 /// start, which never share them.
 pub fn sensitive_places(home: &Path) -> Vec<String> {
@@ -201,19 +213,19 @@ pub fn sensitive_places_with(
     config: Option<PathBuf>,
     data: Option<PathBuf>,
 ) -> Vec<String> {
-    places_following(SENSITIVE_DOTFILES, home, config, data, true)
+    places_following(SENSITIVE_DOTFILES, home, config, data, SENSITIVE_DOTFILES)
 }
 
 /// `list`, and each of its places under `.config/` or `.local/share/`
 /// again under `config` and `data` where those are other folders inside
-/// the home, and with `home_itself` also where they are the home itself
-/// (the places then sit at the top of the home: `git/credentials`).
+/// the home, and those of them in `at_home` also where they are the home
+/// itself (the places then sit at the top of the home: `git/credentials`).
 fn places_following(
     list: &[&str],
     home: &Path,
     config: Option<PathBuf>,
     data: Option<PathBuf>,
-    home_itself: bool,
+    at_home: &[&str],
 ) -> Vec<String> {
     let mut out: Vec<String> = list.iter().map(|p| p.to_string()).collect();
     // Compared as written and by where they lead: the variable may name
@@ -239,16 +251,16 @@ fn places_following(
                     continue;
                 };
                 let r = r.trim_end_matches('/').to_string();
-                if (home_itself || !r.is_empty())
-                    && format!("{r}/") != default
-                    && !rels.contains(&r)
-                {
+                if format!("{r}/") != default && !rels.contains(&r) {
                     rels.push(r);
                 }
             }
         }
         for rel in rels {
             for p in list {
+                if rel.is_empty() && !at_home.contains(p) {
+                    continue;
+                }
                 if let Some(rest) = p.strip_prefix(default) {
                     let alt = if rel.is_empty() {
                         rest.to_string()
@@ -1944,6 +1956,45 @@ mod tests {
             );
         }
         assert_eq!(sensitive_places_with(&home, None, None), SENSITIVE_DOTFILES);
+    }
+
+    /// The file SAM reads the user folders from (`user-dirs.dirs` in the
+    /// config folder, as [`crate::host::xdg_user_dirs`] finds it) is a
+    /// protected place wherever `XDG_CONFIG_HOME` puts it in the home: by
+    /// default, in another folder inside the home, and at the top of the
+    /// home when the variable names the home itself, as named, with a
+    /// trailing `/` and by the home's real place. Not locked there, an app
+    /// with the whole home writable rewrote `~/user-dirs.dirs`, and at its
+    /// next start SAM showed other folders as its Documents or Downloads.
+    #[test]
+    fn the_user_folders_file_is_protected_wherever_sam_reads_it_in_the_home() {
+        let t = scratch();
+        let root = std::fs::canonicalize(t.path()).unwrap();
+        let real = root.join("data/u");
+        std::fs::create_dir_all(&real).unwrap();
+        std::fs::create_dir_all(root.join("home")).unwrap();
+        let home = root.join("home/u");
+        std::os::unix::fs::symlink(&real, &home).unwrap();
+        for config in [
+            None,
+            Some(home.join(".config")),
+            Some(home.join("cfg")),
+            Some(home.clone()),
+            Some(PathBuf::from(format!("{}/", home.display()))),
+            Some(real.clone()),
+        ] {
+            let read = crate::host::config_home(config.clone().map(Into::into), &home)
+                .join("user-dirs.dirs");
+            let places = protected_places_with(&home, config.clone(), None);
+            assert!(
+                places
+                    .iter()
+                    .any(|p| resolve(&home.join(p)) == resolve(&read)),
+                "{config:?}: {} is not protected: {:?}",
+                read.display(),
+                &places[PROTECTED_RO.len()..]
+            );
+        }
     }
 
     /// A place named like SAM's folders counts as SAM's, hidden wherever the
