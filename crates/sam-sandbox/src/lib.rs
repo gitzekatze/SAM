@@ -1465,16 +1465,6 @@ fn home_shows_exactly(views: &Views, home: &Path, real: &Path, rw: bool) -> bool
         .is_some_and(|(g, g_rw)| g == home && *g_rw == rw)
 }
 
-/// A host path SAM never shows on its own (a system folder, the home, a
-/// key or credential store, a start place): the risk words call it
-/// dangerous. Compared with the home as it is named and as it is reached
-/// (a home under a link).
-fn refused_host_path(p: &Path, home: &Path) -> bool {
-    let p = p.to_string_lossy();
-    sam_core::risk::is_sensitive_path_in(&p, home)
-        || sam_core::risk::is_sensitive_path_in(&p, &resolve(home))
-}
-
 /// Whether `real` (a resolved path) is one of SAM's folders in this start
 /// ([`sams_folders`]) or inside one. A folder that only holds one may be
 /// shown: SAM's folder is hidden inside it, wherever the sandbox shows it.
@@ -2009,15 +1999,22 @@ fn guard_home(a: &mut Args, home: &Path, fsp: &FilesystemPerms, views: &Views, s
 /// With "No access" (`none`) nothing is granted this way.
 /// Relative names count from the folder the app was started in.
 ///
-/// Never granted this way: options (`-x`), sensitive paths (keys and
-/// credential stores, `~/.config`, `~/.local`, system folders), files and
-/// folders that can make the desktop run something outside the sandbox
-/// (start files of shells and the session, menu entries), SAM's own
-/// folders wherever they are, the root, the home folder or a folder that
-/// contains it, and folders outside the home folder and mounted drives.
-/// Each is compared as named and as reached through links: with
-/// `~/.bashrc` a link into `~/dotfiles`, opening `~/dotfiles` would share
-/// the real start file (audit D-M2, S-F13).
+/// Never granted this way: options (`-x`), a path
+/// [`sam_core::places::RefusedForOpened`] refuses (docs/security.md,
+/// *Files named on the command line*: the home or a folder above it, a
+/// system folder, a key folder, a start place, a credential store,
+/// `~/.config`, `~/.local` and the folders `XDG_CONFIG_HOME` and
+/// `XDG_DATA_HOME` name, as written, where it leads and at each link on its
+/// way, also where a key folder, start place or credential store really
+/// leads: one leading to the home or a folder above it refuses all of
+/// it), anything inside SAM's own folders wherever they are; and a
+/// folder also never when it holds such a place or the home, or lies
+/// outside the home and the mounted drives. Each is judged on one walk,
+/// and the path judged is the one bound: with `~/.bashrc` a link into
+/// `~/dotfiles`, opening `~/dotfiles` would share the real start file
+/// (audit D-M2, S-F13). Bubblewrap follows that path again when it
+/// mounts it; a second program that swaps a part of the way for a link
+/// in between is not covered (docs/security.md).
 pub fn opened_paths(ctx: &LaunchContext) -> Vec<(PathBuf, bool)> {
     opened_paths_in(ctx, &Views::base(ctx))
 }
@@ -2102,27 +2099,35 @@ fn withheld_opened_paths_in(ctx: &LaunchContext, views: &Views) -> Vec<PathBuf> 
 /// (the rules of [`opened_paths`]), each with `rw`; what the setting
 /// allows of them decides the caller.
 fn shareable_paths_in(ctx: &LaunchContext, views: &Views, rw: bool) -> Vec<(PathBuf, bool)> {
+    let refused = sam_core::places::refused_for_opened(&ctx.host.home);
+    shareable_paths_with(ctx, views, rw, &refused)
+}
+
+/// [`shareable_paths_in`] against the places `refused`, built once per
+/// call.
+fn shareable_paths_with(
+    ctx: &LaunchContext,
+    views: &Views,
+    rw: bool,
+    refused: &sam_core::places::RefusedForOpened,
+) -> Vec<(PathBuf, bool)> {
     let home = &ctx.host.home;
     let on_drive = |p: &Path| {
         ["/media", "/mnt", "/run/media"]
             .iter()
             .any(|d| p.starts_with(d))
     };
-    // Every place never shared, as named and where it really is. A folder
-    // holding one of SAM's folders may be opened (SAM's folder is hidden
-    // inside it); one holding a start place or a credential store not.
-    let both = |p: PathBuf| {
-        let r = resolve(&p);
-        [p, r]
-    };
-    let keep_out: Vec<PathBuf> = protected_places(home)
-        .iter()
-        .chain(&sensitive_places(home))
-        .map(String::as_str)
-        .chain([".ssh", ".gnupg"])
-        .flat_map(|p| both(home.join(p)))
+    // SAM's folders, as named and where they really are. A folder holding
+    // one of them may be opened (SAM's folder is hidden inside it); one
+    // holding a start place, a credential store or the home not
+    // (`refused.holds`).
+    let sam: Vec<PathBuf> = sams_folders(ctx)
+        .into_iter()
+        .flat_map(|p| {
+            let r = resolve(&p);
+            [p, r]
+        })
         .collect();
-    let sam: Vec<PathBuf> = sams_folders(ctx).into_iter().flat_map(both).collect();
     let mut out: Vec<(PathBuf, bool)> = Vec::new();
     for arg in &ctx.args {
         if arg.is_empty() || arg.starts_with('-') {
@@ -2134,23 +2139,20 @@ fn shareable_paths_in(ctx: &LaunchContext, views: &Views, rw: bool) -> Vec<(Path
         } else {
             ctx.owd.join(given)
         };
-        let Ok(real) = fs::canonicalize(&joined) else {
+        // One walk: the path judged is the path bound (Bubblewrap
+        // follows it again when it mounts it).
+        let way = sam_core::places::follow(&joined);
+        if refused.refuses(&joined, &way) {
             continue;
-        };
+        }
+        let real = way.leads;
         let Ok(meta) = fs::metadata(&real) else {
             continue;
         };
-        if refused_host_path(&joined, home)
-            || refused_host_path(&real, home)
-            || views.visible(&real)
+        if views.visible(&real)
+            || sam.iter().any(|d| real.starts_with(d))
+            || (meta.is_dir() && refused.holds(&real))
         {
-            continue;
-        }
-        let kept_out = keep_out
-            .iter()
-            .any(|p| real.starts_with(p) || (meta.is_dir() && p.starts_with(&real)))
-            || sam.iter().any(|d| real.starts_with(d));
-        if kept_out {
             continue;
         }
         if meta.is_dir() {
@@ -6405,6 +6407,251 @@ mod guard_tests {
             opened(&mut ctx, home.join("Documents/b.txt")),
             vec![],
             "already shown by the Documents grant"
+        );
+    }
+
+    /// Files and folders named on the command line are not shared wherever
+    /// SAM refuses a place for them (docs/security.md, *Files named on the
+    /// command line*), with `XDG_CONFIG_HOME` given to the refused places
+    /// and the process's own left alone:
+    /// - with the variable at the home, two start places and a store at
+    ///   the top of the home (`~/autostart/x.desktop`, `~/git/...`,
+    ///   `~/gh/hosts.yml`), which are shared without it;
+    /// - with it at `~/cfg`, anything in that folder; with it outside the
+    ///   home (`/data/cfg`), its start places and stores, read and write or
+    ///   read-only, and the folder itself; a file beside it is shared;
+    /// - with `XDG_DATA_HOME` outside the home (`/share`), a store in it;
+    /// - with either variable at `/`, the start places and stores at the
+    ///   top of the root (`/autostart/x.desktop`, `/gh/hosts.yml`,
+    ///   `/applications/x.desktop`, `/keyrings/login.keyring`), judged by
+    ///   their names alone, so they need not exist; a file in the home is
+    ///   still shared;
+    /// - a file reached through a link in `~/.config` (`~/x`), or through a
+    ///   start place's own link to a file elsewhere;
+    /// - a file where a start place really leads when the settings folder
+    ///   outside the home, or the start place in it, is a link;
+    /// - a file where a settings folder outside the home really is when the
+    ///   folder that holds it is a link (`/data6` a link to `/disk6`);
+    /// - a file reached through a link that lies where a start place really
+    ///   leads;
+    /// - a file written with `..` after a link (`~/up/../.bashrc`), by its
+    ///   written name, while the file it leads to is shared when named so;
+    /// - a folder holding a moved settings folder, also one kept as a link,
+    ///   or a credential store (`~/.cargo`); an ordinary folder is shared.
+    ///
+    /// Known gaps (each assertion flips when its gap is closed): a file a
+    /// link inside `~/.config/fish` points to, named by its real place, and
+    /// one in a folder an unlisted `~/.config/helix` leads to, are shared.
+    #[test]
+    fn opened_files_are_refused_wherever_a_protected_place_is_named_or_leads() {
+        let t = scratch();
+        let base = fs::canonicalize(t.path()).unwrap();
+        let home = base.join("home/ann");
+        for d in [
+            "autostart",
+            "git/proj",
+            "gh",
+            "work",
+            "cfg/fish",
+            "cfg/helix",
+            ".config/fish",
+            "dotfiles/fish",
+            "dotfiles/helix",
+            "d/cfg",
+            ".cargo",
+            "e",
+            "work/sub",
+        ] {
+            fs::create_dir_all(home.join(d)).unwrap();
+        }
+        for d in [
+            "data/cfg/autostart",
+            "data/cfg/gh",
+            "data/cfg/fish",
+            "disk4/cfg/autostart",
+            "data4",
+            "data5/auto",
+            "data5/cfg",
+            "far/cfg",
+            "disk6/cfg",
+            "share/keyrings",
+        ] {
+            fs::create_dir_all(base.join(d)).unwrap();
+        }
+        for f in [
+            "autostart/x.desktop",
+            "git/proj/a.rs",
+            "gh/hosts.yml",
+            ".bashrc",
+            "work/a.txt",
+            "cfg/fish/config.fish",
+            "cfg/helix/config.toml",
+            "dotfiles/fish/config.fish",
+            "dotfiles/helix/config.toml",
+            ".cargo/credentials",
+            "work/.bashrc",
+        ] {
+            fs::write(home.join(f), "x").unwrap();
+        }
+        for f in [
+            "data/cfg/autostart/x.desktop",
+            "data/cfg/gh/hosts.yml",
+            "data/cfg/fish/config.fish",
+            "data/notes.txt",
+            "disk4/cfg/autostart/x.desktop",
+            "data5/auto/x.desktop",
+            "disk6/cfg/notes.txt",
+            "share/keyrings/login.keyring",
+        ] {
+            fs::write(base.join(f), "x").unwrap();
+        }
+        let link = |to: PathBuf, at: PathBuf| std::os::unix::fs::symlink(to, at).unwrap();
+        link(home.join("work/a.txt"), home.join(".config/lnk"));
+        link(home.join(".config/lnk"), home.join("x"));
+        link(
+            home.join("dotfiles/fish/config.fish"),
+            home.join(".config/fish/config.fish"),
+        );
+        link(home.join("dotfiles/helix"), home.join(".config/helix"));
+        link(base.join("disk4/cfg"), base.join("data4/cfg"));
+        link(base.join("data5/auto"), base.join("data5/cfg/autostart"));
+        link(base.join("far/cfg"), home.join("e/cfg"));
+        link(base.join("disk6"), base.join("data6"));
+        link(base.join("data/notes.txt"), base.join("data5/auto/lnk"));
+        link(home.join("work/sub"), home.join("up"));
+        let shared = |config: Option<PathBuf>, arg: PathBuf, rw: bool| {
+            let mut p = PermissionSet::strict_gui();
+            p.filesystem.opened_files = Access::Rw;
+            let mut ctx = ctx_for(&p, &home);
+            ctx.owd = home.clone();
+            ctx.args = vec![arg.to_string_lossy().into_owned()];
+            let refused = sam_core::places::refused_for_opened_with(&home, config, None);
+            !shareable_paths_with(&ctx, &Views::base(&ctx), rw, &refused).is_empty()
+        };
+        let at_home = || Some(home.clone());
+        for f in ["autostart/x.desktop", "git/proj/a.rs", "gh/hosts.yml"] {
+            assert!(
+                !shared(at_home(), home.join(f), true),
+                "{f}, the variable at the home"
+            );
+            assert!(shared(None, home.join(f), true), "{f} without the variable");
+        }
+        assert!(!shared(at_home(), home.join(".bashrc"), true));
+        assert!(shared(at_home(), home.join("work/a.txt"), true), "control");
+        for f in ["cfg/fish/config.fish", "cfg/helix/config.toml"] {
+            assert!(!shared(Some(home.join("cfg")), home.join(f), true), "{f}");
+        }
+        let data = || Some(base.join("data/cfg"));
+        for (f, rw) in [
+            ("data/cfg/autostart/x.desktop", true),
+            ("data/cfg/gh/hosts.yml", false),
+            ("data/cfg/fish/config.fish", true),
+            ("data/cfg", true),
+        ] {
+            assert!(!shared(data(), base.join(f), rw), "{f}");
+            assert!(
+                f == "data/cfg" || shared(None, base.join(f), rw),
+                "{f} without the variable"
+            );
+        }
+        assert!(shared(data(), base.join("data/notes.txt"), true), "control");
+        let keyring = base.join("share/keyrings/login.keyring");
+        let opened_with_data = |data: Option<PathBuf>| {
+            let mut p = PermissionSet::strict_gui();
+            p.filesystem.opened_files = Access::Rw;
+            let mut ctx = ctx_for(&p, &home);
+            ctx.args = vec![keyring.to_string_lossy().into_owned()];
+            let refused = sam_core::places::refused_for_opened_with(&home, None, data);
+            !shareable_paths_with(&ctx, &Views::base(&ctx), false, &refused).is_empty()
+        };
+        assert!(!opened_with_data(Some(base.join("share"))), "{keyring:?}");
+        assert!(opened_with_data(None), "{keyring:?} without the variable");
+        let root = || Some(PathBuf::from("/"));
+        for (config, data, f) in [
+            (root(), None, "/autostart/x.desktop"),
+            (root(), None, "/gh/hosts.yml"),
+            (None, root(), "/applications/x.desktop"),
+            (None, root(), "/keyrings/login.keyring"),
+        ] {
+            let refused = sam_core::places::refused_for_opened_with(&home, config, data);
+            let f = Path::new(f);
+            assert!(
+                refused.refuses(f, &sam_core::places::follow(f)),
+                "{f:?} with a variable at /"
+            );
+        }
+        assert!(
+            shared(root(), home.join("work/a.txt"), true),
+            "control: the variable at /"
+        );
+        assert!(!shared(None, home.join("x"), true), "a link in ~/.config");
+        assert!(!shared(None, home.join(".config/fish/config.fish"), true));
+        assert!(
+            !shared(
+                Some(base.join("data4/cfg")),
+                base.join("disk4/cfg/autostart/x.desktop"),
+                true
+            ),
+            "where a linked settings folder leads"
+        );
+        assert!(
+            !shared(
+                Some(base.join("data5/cfg")),
+                base.join("data5/auto/x.desktop"),
+                true
+            ),
+            "where a linked start place leads"
+        );
+        assert!(
+            shared(None, base.join("data5/auto/x.desktop"), true),
+            "data5/auto/x.desktop without the variable"
+        );
+        assert!(
+            !shared(
+                Some(base.join("data5/cfg")),
+                base.join("data5/auto/lnk"),
+                true
+            ),
+            "through a link where a linked start place leads"
+        );
+        assert!(
+            !shared(
+                Some(base.join("data6/cfg")),
+                base.join("disk6/cfg/notes.txt"),
+                true
+            ),
+            "where a settings folder in a linked folder really is"
+        );
+        assert!(
+            shared(None, base.join("disk6/cfg/notes.txt"), true),
+            "disk6/cfg/notes.txt without the variable"
+        );
+        assert!(
+            !shared(None, home.join("up/../.bashrc"), true),
+            "~/up/../.bashrc by its written name"
+        );
+        assert!(shared(None, home.join("work/.bashrc"), true), "control");
+        assert!(
+            !shared(Some(home.join("d/cfg")), home.join("d"), true),
+            "~/d"
+        );
+        assert!(
+            shared(None, home.join("d"), true),
+            "~/d without the variable"
+        );
+        assert!(
+            !shared(Some(home.join("e/cfg")), home.join("e"), true),
+            "~/e"
+        );
+        assert!(!shared(None, home.join(".cargo"), true), "~/.cargo");
+        assert!(shared(None, home.join("work"), true), "control");
+        assert!(
+            shared(None, home.join("dotfiles/fish/config.fish"), true),
+            "known gap: a file a link inside ~/.config/fish points to"
+        );
+        assert!(
+            shared(None, home.join("dotfiles/helix/config.toml"), true),
+            "known gap: a file where an unlisted ~/.config/helix leads"
         );
     }
 

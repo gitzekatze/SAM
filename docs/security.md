@@ -623,7 +623,10 @@ the app read it (`git_credentials_under_config_git_stay_hidden`). Where
 (`~/cfg`), the stores kept under `~/.config` or `~/.local/share` are hidden
 there as well (`~/cfg/git/credentials`, `~/cfg/keepassxc`), as the start
 places are locked there, and none of them is shared as a file named on the
-command line (`credential_stores_follow_other_config_and_data_folders`).
+command line (`credential_stores_follow_other_config_and_data_folders`;
+which places SAM refuses for such files, also where these variables point
+outside the home or to the home itself, is under *Files named on the
+command line*).
 Where one of them names the home itself, the stores sit at the top of the
 home (`~/git/credentials`, `~/gh`, `~/keyrings`) and are hidden there in
 the same way. Of the places locked under `~/.config`, only the file SAM
@@ -948,10 +951,90 @@ How these stay protected with the home writable:
   binds a user folder with an access of its own at its real place, as it
   binds extra folders, while the app still reaches it through the home at
   the home's access, and the sandbox check reports this.
-- **Files named on the command line** are checked where they really lead:
-  never a key or credential store, a start place (also through a link: a
-  dotfiles folder holding the real `.bashrc` is not shared), or anything
-  inside SAM's folders. With files opened with the app set to *No access*
+- **Files named on the command line** (and files you open with the app)
+  are judged on one walk: as written (with `..` taken back), where they
+  lead and at each link on the way; SAM then binds the path it judged
+  (Bubblewrap follows that path again when it mounts it; see *Not
+  covered* below). SAM does not share a file or folder:
+  - that is the home or a folder above it;
+  - that leads into a system folder, or whose way passes a link in one:
+    `/etc`, `/usr`, `/boot`, `/root`, `/var`, `/proc`, `/sys`, `/dev` and
+    `/run` (but not `/run/media` and the drives in it), where they are
+    not part of the home and not a link on the way to it. With the home
+    kept there (`/home/ann` a link to `/var/home/ann`), the files in the
+    home are shared. Other folders, such as `/opt` and `/srv`, are not
+    system folders;
+  - that is or lies inside one of these places, leads into one, or whose
+    way passes a link that is or lies inside one: the key folders
+    `~/.ssh` and `~/.gnupg`, every place on the lists `PROTECTED_RO`
+    (start places) and `SENSITIVE_DOTFILES` (credential stores) in
+    `crates/sam-core/src/places.rs`, and the folders `~/.config` and
+    `~/.local`, under the home as named and where it really is; the start
+    places and stores kept in `~/.config` or `~/.local/share` also where
+    `XDG_CONFIG_HOME` or `XDG_DATA_HOME` puts them: in another folder in
+    the home (`~/cfg/autostart`), outside the home (`/data/cfg/autostart`,
+    `/data/cfg/gh`), or at the top of the home when a variable names the
+    home itself (`~/autostart`, `~/git`, `~/gh`), or at the top of the
+    root when a variable names `/` (`/autostart`, `/gh`); and the folders
+    the two variables name, as a whole, unless one names the home or a
+    folder above it. A settings or data folder named this way is taken as
+    written and in the folder that really holds it (`/data` a link to
+    `/disk/data`);
+  - that leads into, or whose way passes a link inside, the place a key
+    folder, start place or credential store really leads to: with
+    `~/.bashrc` a link to `~/dotfiles/bashrc`, the file
+    `~/dotfiles/bashrc` is not shared, and with `/data/cfg/autostart` a
+    link to `/data/auto` while `XDG_CONFIG_HOME` is `/data/cfg`, neither
+    is `/data/auto/x.desktop`. A key folder, start place or credential
+    store that leads to the home or a folder above it refuses all of it:
+    with `~/.config/fish` a link to the home, fish reads `~/config.fish`
+    and `~/conf.d` outside the sandbox, and with `~/.oci` a link to the
+    home, the OCI tool reads `~/config`, so no file in the home is shared;
+  - that is or lies inside one of SAM's folders.
+
+  A folder is also not shared when it holds the home, one of the places
+  the third item lists, or the place one of them really leads to (a
+  dotfiles folder holding the real `.bashrc`, `~/.cargo`, or `~/d` while
+  `XDG_CONFIG_HOME` is `~/d/cfg`), or when it lies outside the home and
+  off the drives (`/media`, `/mnt`, `/run/media`). SAM uses the
+  `XDG_CONFIG_HOME` and `XDG_DATA_HOME` of its own environment
+  (`opened_files_are_refused_wherever_a_protected_place_is_named_or_leads`,
+  `opened_files_are_also_refused_where_a_listed_place_leads`,
+  `opened_files_count_system_folders_only_outside_the_home`, and from a
+  real sandbox `opened_files_at_moved_start_places_in_a_real_sandbox`).
+  Not covered: a file that a link *inside* a protected place points to is
+  refused only when it is reached through that link: with
+  `~/.config/fish/config.fish` a link to `~/dotfiles/fish/config.fish`
+  (GNU Stow does this when `~/.config/fish` already exists), the file
+  `~/dotfiles/fish/config.fish` is shared when you name it so; the same
+  holds for a folder in `~/.config` on no list (`~/.config/helix` a link
+  to `~/dotfiles/helix`). A second name for a start file or store, made
+  with a hard link or a bind mount, is not recognised: SAM compares
+  paths, not files. An app that can write where a credential store or a
+  settings folder is named (a missing `~/.oci`, or `/data/cfg` in a
+  writable `/data`) can make it a link to another folder; a file you
+  open in that folder's start places and stores, or anywhere in it for a
+  store, is then not shared, and neither is a folder you open that holds
+  that place; an app that makes a start place, key folder or credential
+  store a link to the home makes every file in the home unshared. SAM
+  binds the path it judged, not the file it found: a second program that
+  can write a folder on the way to a file or folder you open (another
+  sandbox, or a running copy of the app with that folder writable; starts
+  of one app may run side by side) can swap a part of the way for a link
+  in the short time between SAM's look and Bubblewrap's mount, and
+  Bubblewrap follows that link, so a start file could be shared writable
+  at the place you opened. This race is older than this list; checking
+  each bound place inside the finished sandbox before the app starts, and
+  binding through an open handle, which close it, are planned. A file SAM
+  does not share for these reasons is not named at the start; the app
+  reports it as missing, unless another grant shows it. SAM only does not
+  hand such a file over itself: a grant that shows it (the whole home, or
+  a granted folder that holds it) still shows it as that grant does. With
+  `XDG_CONFIG_HOME` set to `~/cfg` and the whole home granted, the app
+  still sees `~/cfg/helix/config.toml`, and with read and write it can
+  change it.
+
+  With files opened with the app set to *No access*
   (`filesystem.opened_files = "none"`, also an old profile's `false`), none
   is shared, not even read-only; the app then starts in its private home,
   and a terminal app's start line and the launch log name each file SAM did
@@ -1317,7 +1400,8 @@ as its working folder. Named folders must be inside your home folder or on a
 mounted drive; your home folder itself, the folders above it, sensitive
 paths (keys, `~/.config`, `~/.local`) and files that make the desktop run
 something (shell start files, menu entries, SAM's settings) are never shared
-this way. Files it saves anywhere else stay in its private home. Each start
+this way (the full list, also where `XDG_CONFIG_HOME` or `XDG_DATA_HOME`
+moves these places, is under *Files named on the command line*). Files it saves anywhere else stay in its private home. Each start
 shows one line with what it can see, and the app's page shows the same
 warning.
 
