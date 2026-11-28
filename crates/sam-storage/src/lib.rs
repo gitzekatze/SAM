@@ -1632,10 +1632,10 @@ mod tests {
     }
 
     /// A writer that worked on a copy read a while ago saves only what it
-    /// changed: what others saved meanwhile stays, an "unpack again"'s new
-    /// unpacked copy, its marks and notices and a switch changed in the
-    /// window included (before, the whole copy was written back). An
-    /// app removed meanwhile stays removed.
+    /// changed: what others saved meanwhile in other fields stays, an
+    /// "unpack again"'s new unpacked copy, its marks and notices and a
+    /// switch changed in the window included (before, the whole copy was
+    /// written back). An app removed meanwhile stays removed.
     #[test]
     fn a_save_of_changes_keeps_what_others_saved_meanwhile() {
         use sam_core::permissions::NetworkMode;
@@ -1693,8 +1693,7 @@ mod tests {
 
     /// An "unpack again" of new content that read the record with the
     /// "look at it first" marks already set, and sets them again, keeps
-    /// them when the person confirms the older content while it unpacks:
-    /// the record never names content nobody looked at without the marks.
+    /// them when the person confirms the older content while it unpacks.
     #[test]
     fn a_mark_set_again_for_new_content_survives_a_confirmation_meanwhile() {
         let tmp = tempfile::tempdir().unwrap();

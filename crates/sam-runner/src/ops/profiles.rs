@@ -165,11 +165,10 @@ impl Sam {
     }
 
     /// Puts SAM's recommended settings back and forgets the repair steps,
-    /// on the record as it is under the record lock. An argument a listed
-    /// step added (`--no-sandbox`) goes with its step, so no argument stays
-    /// on once no step names it. Worked out on a copy read before the lock,
-    /// a step another SAM process applied meanwhile kept its argument while
-    /// the reset cleared the lists that named it.
+    /// on the record as it is under the record lock. It also takes off each
+    /// argument (`--no-sandbox`) that a step listed with its own record
+    /// added. Steps applied by SAM 0.1.0 are listed by name only, so their
+    /// arguments are not covered.
     pub fn reset_profile(&self, query: &str) -> Result<AppEntry> {
         let id = self.resolve(query)?.id;
         self.change_profile(&id, |e| {
@@ -482,11 +481,9 @@ impl Sam {
     /// without the steps' own records fall back to that copy.
     pub fn undo_repairs(&self, query: &str) -> Result<AppEntry> {
         let id = self.resolve(query)?.id;
-        // On the record as it is under the record lock, as for one step: a
-        // step another SAM process applied meanwhile is turned back with
-        // the others. Worked out on a copy read before the lock, its
-        // argument (`--no-sandbox`) stayed while the lists no longer named
-        // it.
+        // On the record as it is under the record lock, as for one step:
+        // a step another SAM process applied meanwhile, with its own
+        // record, is turned back too.
         self.change_profile(&id, |e| {
             if !e.applied_repairs.is_empty() {
                 for r in e.applied_repairs.clone().iter().rev() {
@@ -1183,12 +1180,11 @@ mod record_lock_tests {
     }
 
     /// Two repair steps applied at the same time (the window and
-    /// `sam-jail repair` from a terminal) are both applied and both listed,
-    /// so a failed start or "Undo repairs" can turn each back. Before, the
-    /// switches were saved one by one but the list of applied steps as one
-    /// value: the later save's list replaced the earlier one, and the
-    /// syscall filter stayed off with no record of the step that turned
-    /// it off.
+    /// `sam-jail repair` from a terminal) are both applied and both
+    /// listed. Before, the switches were saved one by one but the list of
+    /// applied steps as one value: the later save's list replaced the
+    /// earlier one, and the syscall filter stayed off with no record of the
+    /// step that turned it off.
     #[test]
     fn two_repair_steps_applied_at_once_are_both_listed() {
         let t = tempfile::tempdir().unwrap();
@@ -1257,10 +1253,10 @@ mod record_lock_tests {
 
     /// "Undo repairs" and a reset made while another SAM process applies a
     /// repair step that adds an argument (`--no-sandbox`, which turns off
-    /// the app's own Chromium sandbox) never leave that argument on with no
-    /// step naming it. Before, both worked on a copy read before that step
-    /// was saved: the argument on disk stayed, the lists that named the
-    /// step were saved empty, and nothing offered to turn it back.
+    /// the app's own Chromium sandbox) also take off that step's argument.
+    /// Before, both worked on a copy read before that step was saved: the
+    /// argument on disk stayed, and the lists that named the step were
+    /// saved empty.
     #[test]
     fn undoing_repairs_or_a_reset_turns_back_an_argument_a_step_added_meanwhile() {
         let no_sandbox = || Suggestion {

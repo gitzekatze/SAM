@@ -1853,37 +1853,31 @@ was easily misread.
   `network.app_ports` to restrict it further.
 - **Hostname:** the sandbox keeps the computer's hostname, because changing
   it is blocked on some hardened systems.
-- **App records and an older SAM.** SAM's processes (the window, the
-  `sam-jail` commands, a start that stores its result) save an app's
-  record under one short record lock. Unpacking again, a refresh, a new
-  detection, an update step and a change of the settings save only the
-  fields they changed: a save keeps what others saved in other fields; for
-  the same field the later save wins (a list, such as the granted folders,
-  counts as one field). A change that replaces the whole set of settings
-  (a preset, a reset, the compatibility mode, a whole set you confirm)
-  saves that set as one value. Applying or undoing one repair step works
-  on the record as it is under the lock, so a step another process applied
-  meanwhile stays applied and listed. Undoing all repair steps and a reset
-  also work on the record as it is under the lock, so a step another
-  process applied meanwhile is undone with the others; a reset also takes
-  off an argument a listed step added (`--no-sandbox`). A
-  "look at it first" mark is never cleared by such a save. A start that stores its
-  result writes the app's state and last error as the start read or set
-  them, so a notice another process saved there while the app ran can be
-  replaced. When a save waits more than 10 seconds for the lock, it stops
-  with an error and saves nothing; work done before it stays (after an
-  "unpack again", the newly unpacked copy, which the record then does not
-  describe). When the AppImage changed outside SAM, "unpack again" saves
-  the "look at it first" mark before it unpacks, so that copy does not
-  start until you confirm it, unless you confirmed the app while the
-  unpacking still ran. The warning about a changed AppImage says only that
-  the unpacked copy SAM starts may not be that file, because after such a
-  failed save it already is. Confirming from the app's page checks what the page
-  showed under the lock; `sam-jail review` without `--seen` confirms what
-  is there when it gets the lock. A SAM version from before this lock does not take it: while
-  it runs at the same time as this one (an old window left open after an
-  update), one of its saves can still undo a change this SAM saved. Close
-  old SAM windows after updating SAM.
+- **App records and an older SAM.** Every save of an app record takes one
+  short record lock (the file `.records.lock` in SAM's apps folder), held
+  only while the record is read, changed and written. Each save writes only
+  what it changes onto the record as it is then; when two saves change the
+  same field, the later one wins (a list, such as the granted folders,
+  counts as one field, and a change that replaces the whole set of settings
+  writes that set as one value). Only your confirmation clears a "look at
+  it first" mark. A confirmation from the app's page checks under the lock
+  that the page showed what it confirms; `sam-jail review` without
+  `--seen` confirms what the record holds when it gets the lock. When the
+  AppImage changed other than through a SAM update, "unpack again" saves
+  that mark before it unpacks, so the new copy does not start unconfirmed
+  when the closing save fails; SAM does not promise this when you confirm
+  the app while it unpacks. The start's warning about a changed AppImage
+  says that the unpacked copy SAM starts may not be that file. Limits: a
+  SAM version from before this lock does not take it, so while it runs at
+  the same time as this one (an old window left open after an update), one
+  of its saves can still undo a change this SAM saved. A save that does
+  not get the lock within 10 seconds stops with an error and saves
+  nothing; work done before it stays (after an "unpack again", the newly
+  unpacked copy, which the record then does not describe). A start writes
+  the app's state and last error as it read or set them, so it can replace
+  a notice another process saved there while the app ran. SAM does not
+  promise any of this for a record it cannot read. Close old SAM windows
+  after updating SAM.
 
 ---
 
