@@ -19,6 +19,116 @@ pub(super) enum SetChange {
     WholeSet,
 }
 
+/// Whether a change of an app's settings may hold a grant of `/tmp` or of
+/// a known socket folder in it (tmux, SSH, the X server …) that the
+/// record did not hold before, for [`Sam::save_profile`]: every writer
+/// names it, so none lets such a grant in by mistake (owner decision 10
+/// of 2026-11-23).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(super) enum Grants {
+    /// Refused with the code `tmp-grant-refused`
+    /// ([`crate::gate::refuse_tmp_grants`]): every change the person or a
+    /// step makes.
+    Refused,
+    /// Not checked: the change puts back what the record held (turning
+    /// compatibility mode off, an undo of repair steps) or takes SAM's
+    /// recommendation, which names no extra folder. Refusing these would
+    /// keep an app in compatibility mode or its steps applied.
+    PutBack,
+}
+
+/// Makes `folder`, a folder of an app's own directly in `base`, for the
+/// account `uid` only, and checks it. `base` must be a real folder owned
+/// by `base_owner` (root for `/tmp`) with the sticky bit, so no other
+/// account can rename or remove a folder this account owns there. The
+/// folder is made with mode 0700 and never through a link (an existing
+/// one is kept); then it must be a real folder, owned by `uid`, that no
+/// other account can open, and each of the app's grants of it (`grants`,
+/// `~` written out) must lead there as the sandbox resolves it
+/// ([`sam_core::places::resolve`]), not through a link on the way to
+/// another place. Otherwise the start stops with the code
+/// `own-tmp-folder-unsafe` and nothing is changed or removed. `app` is
+/// the app's name for the message.
+pub(crate) fn make_own_tmp_folder_in(
+    base: &Path,
+    base_owner: u32,
+    uid: u32,
+    folder: &Path,
+    grants: &[PathBuf],
+    app: &str,
+) -> Result<()> {
+    use std::os::unix::fs::{DirBuilderExt, MetadataExt};
+    let app = sam_core::util::display_safe(app, 80);
+    let shown = folder.display().to_string();
+    let unsafe_base = || -> anyhow::Error {
+        sam_core::error::CodedError::new(
+            "own-tmp-folder-unsafe",
+            sam_core::i18n::trf(
+                "SAM did not start {app}: /tmp does not keep each user's folders apart on this computer, so the app's folder {folder} cannot be kept safe there. Take {folder} out of the app's folders, then start the app again.",
+                &[("app", &app), ("folder", &shown)],
+            ),
+        )
+        .into()
+    };
+    let base_ok = fs::symlink_metadata(base)
+        .is_ok_and(|m| m.file_type().is_dir() && m.uid() == base_owner && m.mode() & 0o1000 != 0);
+    if !base_ok || folder.parent() != Some(base) {
+        return Err(unsafe_base());
+    }
+    match fs::DirBuilder::new().mode(0o700).create(folder) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(e) => {
+            return Err(e)
+                .with_context(|| sam_core::i18n::trf("making {folder}", &[("folder", &shown)]))
+        }
+    }
+    let found = fs::symlink_metadata(folder).ok();
+    // Another account's folder cannot be removed by you in a sticky /tmp:
+    // a message of its own says what helps.
+    if found.as_ref().is_some_and(|m| m.uid() != uid) {
+        return Err(sam_core::error::CodedError::new(
+            "own-tmp-folder-unsafe",
+            sam_core::i18n::trf(
+                "SAM did not start {app}: its folder {folder} belongs to another account, which may have made it to stop the app or to see its files. Take {folder} out of the app's folders, or ask the computer's administrator to remove it, then start the app again.",
+                &[("app", &app), ("folder", &shown)],
+            ),
+        )
+        .into());
+    }
+    let own = found.is_some_and(|m| m.file_type().is_dir() && m.mode() & 0o077 == 0);
+    if !own {
+        return Err(sam_core::error::CodedError::new(
+            "own-tmp-folder-unsafe",
+            sam_core::i18n::trf(
+                "SAM did not start {app}: its folder {folder} is not a folder, is a link or others can open it, so another program may have made or changed it. Remove {folder}, or take it out of the app's folders, then start the app again.",
+                &[("app", &app), ("folder", &shown)],
+            ),
+        )
+        .into());
+    }
+    // The place the sandbox mounts for each grant is the folder checked
+    // here: `/tmp/x/../sam-<id>` with `/tmp/x` a link leads elsewhere.
+    if let Some(g) = grants
+        .iter()
+        .find(|g| sam_core::places::resolve(g) != folder)
+    {
+        return Err(sam_core::error::CodedError::new(
+            "own-tmp-folder-unsafe",
+            sam_core::i18n::trf(
+                "SAM did not start {app}: the folder {grant} does not lead to the app's own folder {folder}. Take {grant} out of the app's folders and give it {folder} instead.",
+                &[
+                    ("app", &app),
+                    ("grant", &sam_core::util::display_safe(&g.display().to_string(), 200)),
+                    ("folder", &shown),
+                ],
+            ),
+        )
+        .into());
+    }
+    Ok(())
+}
+
 /// The moment between a writer's read and its save, where a test lets
 /// another SAM process save; outside tests nothing happens here. A function
 /// of its own, so the translation collector skips only it as test code.
@@ -44,9 +154,10 @@ impl Sam {
         read: &AppEntry,
         entry: &mut AppEntry,
         kind: SetChange,
+        grants: Grants,
     ) -> Result<()> {
         let id = entry.id.clone();
-        let saved = self.change_profile(&id, |now| {
+        let saved = self.change_profile(&id, grants, |now| {
             sam_storage::apply_changes(now, read, entry)?;
             if kind == SetChange::WholeSet {
                 // A preset, the compatibility mode or a whole set the
@@ -68,15 +179,22 @@ impl Sam {
     /// now: a repair step changes switches and the list of applied steps
     /// together, so another process's step saved meanwhile stays in both
     /// (merged field by field, a switch and the list that names its step
-    /// could come from two different saves).
+    /// could come from two different saves). With [`Grants::Refused`], a
+    /// change that gives the app a new grant of `/tmp` is refused and
+    /// nothing is saved, judged on the record as it is under the lock.
     fn change_profile(
         &self,
         id: &str,
+        grants: Grants,
         change: impl FnOnce(&mut AppEntry) -> Result<()>,
     ) -> Result<AppEntry> {
         before_save();
         let saved = self.registry().try_update(id, |now| {
+            let before = now.profile.permissions.clone();
             change(now)?;
+            if grants == Grants::Refused {
+                crate::gate::refuse_tmp_grants(Some(&*now), &before, &now.profile.permissions)?;
+            }
             now.profile.user_modified = now.profile.permissions != now.recommended;
             // The note of an update's needs keeps what is not granted yet: a
             // changed switch is not the person seeing it (review L5).
@@ -100,7 +218,7 @@ impl Sam {
         let read = e.clone();
         e.profile.permissions.set_key(key, value)?;
         e.profile.preset = None;
-        self.save_profile(&read, &mut e, SetChange::Switches)?;
+        self.save_profile(&read, &mut e, SetChange::Switches, Grants::Refused)?;
         Ok(e)
     }
 
@@ -133,7 +251,7 @@ impl Sam {
         } else {
             SetChange::Switches
         };
-        self.save_profile(&read, &mut e, kind)?;
+        self.save_profile(&read, &mut e, kind, Grants::Refused)?;
         Ok(e)
     }
 
@@ -171,7 +289,7 @@ impl Sam {
     /// arguments are not covered.
     pub fn reset_profile(&self, query: &str) -> Result<AppEntry> {
         let id = self.resolve(query)?.id;
-        self.change_profile(&id, |e| {
+        self.change_profile(&id, Grants::PutBack, |e| {
             let added_args: Vec<String> = e
                 .applied_repairs
                 .iter()
@@ -219,7 +337,9 @@ impl Sam {
                 .unwrap_or_else(|| e.recommended.clone());
         }
         e.profile.compatibility_mode = on;
-        self.save_profile(&read, &mut e, SetChange::WholeSet)?;
+        // Turning it off puts back the settings from before.
+        let grants = if on { Grants::Refused } else { Grants::PutBack };
+        self.save_profile(&read, &mut e, SetChange::WholeSet, grants)?;
         Ok(e)
     }
 
@@ -246,6 +366,7 @@ impl Sam {
     /// when a setting does not apply. Every way of starting an app (menu,
     /// window, `sam-jail run`) calls this, so none can skip it.
     pub fn check_before_start(&self, entry: &mut AppEntry, host: &HostInfo) -> Result<()> {
+        self.make_own_tmp_folder(entry)?;
         if !self.config.security.check_before_launch {
             return Ok(());
         }
@@ -270,6 +391,40 @@ impl Sam {
         }
         entry.last_check = Some(out.record);
         Ok(())
+    }
+
+    /// Makes the folder of the app's own in `/tmp`
+    /// ([`sam_core::places::own_tmp_folder`]) when its extra folders name
+    /// it, at each start before the sandbox is set up, as
+    /// [`make_own_tmp_folder_in`] makes it in `/tmp` for this account. A
+    /// folder that is no folder, is a link, belongs to another account or
+    /// others can open, or a grant of it that leads elsewhere through a
+    /// link, stops the start (code `own-tmp-folder-unsafe`); nothing is changed or
+    /// removed (owner decision 10 of 2026-11-23). `sam-jail selftest` calls
+    /// it too.
+    pub fn make_own_tmp_folder(&self, e: &AppEntry) -> Result<()> {
+        let folder = sam_core::places::own_tmp_folder(&e.id);
+        let home = sam_core::util::home_dir();
+        // Every grant that names it as written (`/tmp/x/../sam-<id>` too);
+        // each must lead to the folder checked, as the sandbox resolves it.
+        let grants: Vec<PathBuf> =
+            sam_core::places::own_tmp_folder_grants(&e.profile.permissions, &folder, &home)
+                .iter()
+                .map(|g| sam_core::util::expand_home(g))
+                .collect();
+        if grants.is_empty() {
+            return Ok(());
+        }
+        // SAFETY: getuid has no preconditions and cannot fail.
+        let uid = unsafe { libc::getuid() };
+        make_own_tmp_folder_in(
+            Path::new("/tmp"),
+            0,
+            uid,
+            &folder,
+            &grants,
+            e.display_name(),
+        )
     }
 
     /// Sandbox check for an AppImage that has no sandbox yet, with the
@@ -401,7 +556,7 @@ impl Sam {
         // the record and this computer's settings; its one slower check
         // (whether overlays work here, a short Bubblewrap run) is made
         // once per process.
-        self.change_profile(&id, |e| {
+        self.change_profile(&id, Grants::Refused, |e| {
             crate::gate::confirm(
                 &crate::gate::Change::Apply {
                     e: &*e,
@@ -414,9 +569,14 @@ impl Sam {
             if as_repair && e.repair_backup.is_none() {
                 e.repair_backup = Some(e.profile.clone());
             }
+            // A step that replaces a grant SAM no longer gives is a safety
+            // step, judged at once: never on trial, so a failed start
+            // neither undoes it nor reports it undone (owner decision 10 of
+            // 2026-11-23; its undo never brings the grant back).
+            let safety = matches!(sug.action, FixAction::Replace { .. });
             let mut undo = sam_core::model::AppliedRepair {
                 step: Some(sug.clone()),
-                on_trial: as_repair,
+                on_trial: as_repair && !safety,
                 ..Default::default()
             };
             crate::repair::apply_step(e, sug, &mut undo)?;
@@ -459,7 +619,7 @@ impl Sam {
         let id = self.resolve(query)?.id;
         // On the record as it is under the record lock, as for applying a
         // step: a step applied meanwhile keeps its entry in the list.
-        self.change_profile(&id, |e| {
+        self.change_profile(&id, Grants::PutBack, |e| {
             let i = e
                 .applied_repairs
                 .iter()
@@ -484,7 +644,7 @@ impl Sam {
         // On the record as it is under the record lock, as for one step:
         // a step another SAM process applied meanwhile, with its own
         // record, is turned back too.
-        self.change_profile(&id, |e| {
+        self.change_profile(&id, Grants::PutBack, |e| {
             if !e.applied_repairs.is_empty() {
                 for r in e.applied_repairs.clone().iter().rev() {
                     crate::repair::revert_step(e, r)?;
@@ -575,6 +735,14 @@ impl Sam {
                 )
             );
         }
+        // Refused before any question: no yes lifts it.
+        crate::gate::refuse_tmp_grants(Some(&e), &e.profile.permissions, &preset.permissions)
+            .with_context(|| {
+                sam_core::i18n::trf(
+                    "applying the preset “{preset}”",
+                    &[("preset", &preset.name)],
+                )
+            })?;
         let check = check_change(&e, &preset.permissions);
         if check.needs_confirmation() && !confirm {
             return Ok(PresetApply {
@@ -588,7 +756,7 @@ impl Sam {
         e.profile.preset = Some(preset.name.clone());
         // The whole set is the preset the person picked.
         e.reviewed = true;
-        self.save_profile(&read, &mut e, SetChange::WholeSet)?;
+        self.save_profile(&read, &mut e, SetChange::WholeSet, Grants::Refused)?;
         Ok(PresetApply {
             preset: preset.name,
             check,
@@ -666,6 +834,9 @@ impl Sam {
             let e = self.resolve(id)?;
             let mut new = e.profile.permissions.clone();
             new.set_key(key, value)?;
+            // All apps or none: refused before the first one is saved, and
+            // shown by a dry run as well.
+            crate::gate::refuse_tmp_grants(Some(&e), &e.profile.permissions, &new)?;
             entries.push((e, new));
         }
         for (mut e, new) in entries {
@@ -691,7 +862,7 @@ impl Sam {
                     std::mem::replace(&mut e.profile.permissions, new),
                 );
                 e.profile.preset = None;
-                self.save_profile(&read, &mut e, SetChange::Switches)?;
+                self.save_profile(&read, &mut e, SetChange::Switches, Grants::Refused)?;
             }
         }
         Ok(out)
@@ -1115,7 +1286,7 @@ mod record_lock_tests {
         .unwrap();
         let mut changed = read.clone();
         changed.profile.permissions.devices.gpu = true;
-        sam.save_profile(&read, &mut changed, SetChange::Switches)
+        sam.save_profile(&read, &mut changed, SetChange::Switches, Grants::Refused)
             .unwrap();
         let back = sam.registry().get(&e.id).unwrap().unwrap();
         assert!(back.profile.permissions.devices.gpu, "the change is saved");
@@ -1338,5 +1509,478 @@ mod record_lock_tests {
         let back = sam.resolve(ID).unwrap();
         assert!(back.content_changed_outside, "the mark stays");
         assert!(!back.reviewed, "nothing is confirmed");
+    }
+}
+
+#[cfg(test)]
+mod tmp_grant_tests {
+    use super::*;
+    use sam_core::error::code_of;
+
+    const ID: &str = "appimage-grants-1a2b";
+
+    /// A confirmed record with SAM's strict settings and these extra
+    /// folders, saved as an older record would be (no check on the way).
+    fn app(sam: &Sam, read: &[&str], write: &[&str]) -> AppEntry {
+        let mut e = AppEntry {
+            id: ID.into(),
+            name: "Grants".into(),
+            recommended: PermissionSet::strict_gui(),
+            ..Default::default()
+        };
+        e.profile.permissions = PermissionSet::strict_gui();
+        let f = &mut e.profile.permissions.filesystem;
+        f.custom_read = read.iter().map(|x| x.to_string()).collect();
+        f.custom_write = write.iter().map(|x| x.to_string()).collect();
+        sam.registry().save_confirmed(&mut e).unwrap();
+        sam.resolve(ID).unwrap()
+    }
+
+    fn refused<T: std::fmt::Debug>(what: &str, r: Result<T>) {
+        let err = r.expect_err(what);
+        assert_eq!(code_of(&err), Some("tmp-grant-refused"), "{what}: {err:#}");
+    }
+
+    fn with_tmp(p: &PermissionSet, path: &str) -> PermissionSet {
+        let mut p = p.clone();
+        p.filesystem.custom_read.push(path.into());
+        p
+    }
+
+    /// Every way to change an app's settings refuses a new grant of /tmp
+    /// or of a known socket folder in it (tmux, SSH, the X server …),
+    /// also after a yes, and changes nothing: one setting, a whole set, a
+    /// change of some, several apps at once and their undo, a preset, a
+    /// hint, and adding an app with adjusted settings or a preset (owner
+    /// decision 10 of 2026-11-23).
+    #[test]
+    fn every_way_to_change_settings_refuses_a_new_tmp_grant() {
+        let t = tempfile::tempdir().unwrap();
+        let sam = Sam::with_paths(Paths::rooted(t.path())).unwrap();
+        let e = app(&sam, &["/a"], &[]);
+        let start = e.profile.permissions.clone();
+        let unchanged = |what: &str| {
+            assert_eq!(
+                sam.resolve(ID).unwrap().profile.permissions,
+                start,
+                "{what}"
+            );
+        };
+        refused(
+            "set",
+            sam.set_permission(ID, "filesystem.custom_read", "/a, /tmp"),
+        );
+        unchanged("set");
+        refused(
+            "profile set",
+            sam.set_permissions(ID, with_tmp(&start, "/tmp/.X11-unix")),
+        );
+        unchanged("profile set");
+        refused(
+            "profile change",
+            sam.change_permissions(ID, with_tmp(&start, "//tmp")),
+        );
+        unchanged("profile change");
+        refused(
+            "group set",
+            sam.group_change(
+                "filesystem.custom_write",
+                "/tmp/tmux-1000",
+                &[ID.into()],
+                false,
+            ),
+        );
+        refused(
+            "group set, dry run",
+            sam.group_change(
+                "filesystem.custom_write",
+                "/tmp/tmux-1000",
+                &[ID.into()],
+                true,
+            ),
+        );
+        unchanged("group set");
+        let mut undo = BTreeMap::new();
+        undo.insert(
+            ID.to_string(),
+            PermissionChange {
+                from: start.clone(),
+                to: with_tmp(&start, "/tmp"),
+            },
+        );
+        refused("group restore", sam.group_restore(undo.clone(), |_| Ok(())));
+        refused(
+            "group restore after a yes",
+            sam.group_restore(undo, |c| crate::gate::confirm(c, true)),
+        );
+        unchanged("group restore");
+        let preset = Preset {
+            name: "Shares tmp".into(),
+            permissions: with_tmp(&start, "/tmp"),
+            ..Default::default()
+        };
+        fs::create_dir_all(sam.paths.presets_dir()).unwrap();
+        fs::write(
+            sam.paths.presets_dir().join("shares-tmp.toml"),
+            sam_storage::preset_to_toml(&preset).unwrap(),
+        )
+        .unwrap();
+        let err = sam.apply_preset(ID, "Shares tmp", true, None).unwrap_err();
+        assert_eq!(code_of(&err), Some("tmp-grant-refused"), "{err:#}");
+        assert!(format!("{err:#}").contains("Shares tmp"), "{err:#}");
+        unchanged("preset apply");
+        let hint = Suggestion {
+            id: "folder".into(),
+            title: "folder".into(),
+            explanation: String::new(),
+            action: FixAction::Add {
+                key: "filesystem.custom_read".into(),
+                value: "/tmp".into(),
+            },
+            risk: RiskLevel::Dangerous,
+            from_app_output: false,
+        };
+        refused("a hint", sam.apply_suggestion(ID, &hint, true, true));
+        unchanged("a hint");
+        let missing = t.path().join("New.AppImage");
+        let adjusted = AddOptions {
+            permissions: Some(with_tmp(&PermissionSet::strict_gui(), "/tmp")),
+            ..Default::default()
+        };
+        refused("add with settings", sam.add(&missing, &adjusted));
+        let with_preset = AddOptions {
+            preset: Some("Shares tmp".into()),
+            ..Default::default()
+        };
+        refused("add with a preset", sam.add(&missing, &with_preset));
+        assert_eq!(sam.registry().list().unwrap().len(), 1, "nothing added");
+        // A new folder written relative is refused by its own code.
+        let err = sam
+            .set_permission(ID, "filesystem.custom_read", "/a, ../../../../tmp")
+            .unwrap_err();
+        assert_eq!(code_of(&err), Some("relative-grant-refused"), "{err:#}");
+        unchanged("a relative folder");
+        // Another folder in /tmp is no such grant.
+        sam.set_permission(ID, "filesystem.custom_read", "/a, /tmp/exchange")
+            .unwrap();
+    }
+
+    /// An older grant of /tmp stays through every change that puts back
+    /// what the record held: compatibility mode on and off (also when the
+    /// grant was taken out while it was on, by the switch or as a repair
+    /// step undone), a repair step and its undo, an undo of all steps (also
+    /// of an older record that keeps only its whole profile), and another
+    /// setting changed. A reset takes SAM's recommendation, which names no
+    /// extra folder.
+    #[test]
+    fn turning_compatibility_off_and_undoing_keep_an_older_tmp_grant() {
+        let t = tempfile::tempdir().unwrap();
+        let sam = Sam::with_paths(Paths::rooted(t.path())).unwrap();
+        app(&sam, &["/tmp"], &[]);
+        let still = |what: &str| {
+            let back = sam.resolve(ID).unwrap();
+            assert!(
+                back.profile
+                    .permissions
+                    .filesystem
+                    .custom_read
+                    .contains(&"/tmp".to_string()),
+                "{what}: {:?}",
+                back.profile.permissions.filesystem
+            );
+        };
+        sam.set_compat(ID, true).unwrap();
+        still("compatibility mode on");
+        sam.set_compat(ID, false).unwrap();
+        still("compatibility mode off");
+        // Taken out while compatibility mode is on, the grant comes back
+        // with the settings from before when it is turned off: that is no
+        // new grant, and refusing it would keep the app in that mode.
+        sam.set_compat(ID, true).unwrap();
+        sam.set_permission(ID, "filesystem.custom_read", "")
+            .unwrap();
+        sam.set_compat(ID, false).unwrap();
+        still("the settings from before compatibility mode");
+        sam.set_permission(ID, "devices.gpu", "true").unwrap();
+        still("another setting");
+        let step = Suggestion {
+            id: "userns".into(),
+            title: "userns".into(),
+            explanation: String::new(),
+            action: FixAction::Set {
+                key: "advanced.allow_userns".into(),
+                value: "true".into(),
+            },
+            risk: RiskLevel::Medium,
+            from_app_output: false,
+        };
+        sam.apply_suggestion(ID, &step, true, true).unwrap();
+        sam.undo_repair_step(ID, "userns").unwrap();
+        still("one step undone");
+        sam.apply_suggestion(ID, &step, true, true).unwrap();
+        sam.undo_repairs(ID).unwrap();
+        still("all steps undone");
+        // Compatibility mode as a repair step, the grant taken out while it
+        // is on, then that step undone: the settings from before come back.
+        sam.apply_suggestion(ID, &crate::repair::compat_step(), true, true)
+            .unwrap();
+        sam.set_permission(ID, "filesystem.custom_read", "")
+            .unwrap();
+        sam.undo_repair_step(ID, "compat").unwrap();
+        still("the compatibility step undone");
+        // An older record that keeps only its whole profile from before the
+        // first step: undoing all steps puts it back.
+        let mut e = sam.resolve(ID).unwrap();
+        e.repair_backup = Some(e.profile.clone());
+        e.applied_repairs.clear();
+        e.repairs_applied.clear();
+        e.profile.permissions.filesystem.custom_read.clear();
+        sam.registry().save_confirmed(&mut e).unwrap();
+        sam.undo_repairs(ID).unwrap();
+        still("an older record's undo of all steps");
+        let back = sam.reset_profile(ID).unwrap();
+        let f = &back.profile.permissions.filesystem;
+        assert!(
+            f.custom_read.is_empty() && f.custom_write.is_empty(),
+            "{f:?}"
+        );
+        let rec = sam_profile::recommend(&Default::default(), "New.AppImage", None).permissions;
+        assert!(rec.filesystem.custom_read.is_empty() && rec.filesystem.custom_write.is_empty());
+    }
+
+    /// Once an older grant of /tmp is replaced by the folder of the app's
+    /// own, no undo brings it back: not the step's own undo, not an undo of
+    /// all steps (also of an older record), not a failed start (the step is
+    /// never on trial, and nothing is reported undone), and not turning
+    /// compatibility mode off.
+    #[test]
+    fn no_undo_brings_tmp_back() {
+        let t = tempfile::tempdir().unwrap();
+        let sam = Sam::with_paths(Paths::rooted(t.path())).unwrap();
+        let own = sam_core::places::own_tmp_folder(ID)
+            .to_string_lossy()
+            .into_owned();
+        let check = |e: &AppEntry, what: &str| {
+            let f = &e.profile.permissions.filesystem;
+            assert_eq!(f.custom_write, vec![own.clone()], "{what}");
+        };
+        let replace = |sam: &Sam| {
+            let e = sam.resolve(ID).unwrap();
+            let hint = crate::repair::first_run_hints(&e)
+                .into_iter()
+                .find(|h| h.id == "tmp-own-folder")
+                .expect("the hint");
+            sam.apply_suggestion(ID, &hint, true, true).unwrap()
+        };
+        app(&sam, &[], &["/tmp"]);
+        replace(&sam);
+        check(
+            &sam.undo_repair_step(ID, "tmp-own-folder").unwrap(),
+            "its undo",
+        );
+        app(&sam, &[], &["/tmp"]);
+        replace(&sam);
+        check(&sam.undo_repairs(ID).unwrap(), "undo of all steps");
+        app(&sam, &[], &["/tmp"]);
+        let mut e = replace(&sam);
+        assert!(
+            e.applied_repairs.iter().all(|r| !r.on_trial),
+            "a safety step is never on trial"
+        );
+        assert!(
+            crate::repair::judge_trials(&mut e, false).is_empty(),
+            "a failed start reports nothing undone"
+        );
+        check(&e, "a failed start");
+        app(&sam, &[], &["/tmp"]);
+        sam.set_compat(ID, true).unwrap();
+        replace(&sam);
+        check(
+            &sam.set_compat(ID, false).unwrap(),
+            "compatibility mode off",
+        );
+        // An older record in compatibility mode that keeps only its whole
+        // profile from before the first step: the hint replaces the grant
+        // there too, so undoing all steps and then turning compatibility
+        // mode off bring nothing back.
+        app(&sam, &[], &["/tmp"]);
+        sam.set_compat(ID, true).unwrap();
+        let mut e = sam.resolve(ID).unwrap();
+        e.repair_backup = Some(e.profile.clone());
+        sam.registry().save_confirmed(&mut e).unwrap();
+        let hint = crate::repair::first_run_hints(&e)
+            .into_iter()
+            .find(|h| h.id == "tmp-own-folder")
+            .unwrap();
+        sam.apply_suggestion(ID, &hint, false, true).unwrap();
+        sam.undo_repairs(ID).unwrap();
+        check(
+            &sam.set_compat(ID, false).unwrap(),
+            "an older record's undo, then compatibility mode off",
+        );
+    }
+
+    /// The folder of an app's own is made for this account only (mode
+    /// 0700) in a base folder with the sticky bit; one that is there and
+    /// only this account can open is kept with what it holds.
+    #[test]
+    fn the_folder_of_its_own_is_made_for_you_only_at_each_start() {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        let t = tempfile::tempdir().unwrap();
+        // Where links on the way are resolved already, as the sandbox
+        // resolves a grant.
+        let base = fs::canonicalize(t.path()).unwrap().join("tmp");
+        fs::create_dir(&base).unwrap();
+        fs::set_permissions(&base, fs::Permissions::from_mode(0o1777)).unwrap();
+        // SAFETY: getuid has no preconditions and cannot fail.
+        let uid = unsafe { libc::getuid() };
+        let folder = base.join("sam-appimage-grants-1a2b");
+        make_own_tmp_folder_in(
+            &base,
+            uid,
+            uid,
+            &folder,
+            std::slice::from_ref(&folder),
+            "Grants",
+        )
+        .unwrap();
+        let m = fs::symlink_metadata(&folder).unwrap();
+        assert!(m.is_dir());
+        assert_eq!(m.mode() & 0o7777, 0o700);
+        assert_eq!(m.uid(), uid);
+        fs::write(folder.join("kept"), "x").unwrap();
+        make_own_tmp_folder_in(
+            &base,
+            uid,
+            uid,
+            &folder,
+            std::slice::from_ref(&folder),
+            "Grants",
+        )
+        .unwrap();
+        assert!(folder.join("kept").exists(), "an existing folder is kept");
+    }
+
+    /// Every start makes the folder of the app's own in /tmp (the
+    /// container's own) when the app's folders name it in any form, for
+    /// this account only, before the sandbox check; an app that does not
+    /// name it gets none.
+    #[test]
+    fn every_start_makes_the_folder_of_its_own_in_tmp() {
+        use std::os::unix::fs::MetadataExt;
+        let t = tempfile::tempdir().unwrap();
+        let mut sam = Sam::with_paths(Paths::rooted(t.path())).unwrap();
+        sam.config.security.check_before_launch = false;
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let id = format!("appimage-starts-{}-{nanos}", std::process::id());
+        let own = sam_core::places::own_tmp_folder(&id);
+        let mut e = AppEntry {
+            id: id.clone(),
+            name: "Starts".into(),
+            ..Default::default()
+        };
+        e.profile.permissions = PermissionSet::strict_gui();
+        e.profile.permissions.filesystem.custom_read = vec!["/tmp/exchange".into()];
+        let host = sam_core::sandbox::sample_context().host;
+        sam.check_before_start(&mut e, &host).unwrap();
+        assert!(!own.exists(), "an app that does not name it gets none");
+        e.profile.permissions.filesystem.custom_write = vec![format!("/tmp//./sam-{id}/")];
+        sam.check_before_start(&mut e, &host).unwrap();
+        let m = fs::symlink_metadata(&own).unwrap();
+        fs::remove_dir(&own).unwrap();
+        assert!(m.is_dir());
+        assert_eq!(m.mode() & 0o7777, 0o700);
+        // SAFETY: getuid has no preconditions and cannot fail.
+        assert_eq!(m.uid(), unsafe { libc::getuid() });
+    }
+
+    /// A folder of the app's own that other accounts can open, one that is
+    /// a link, a grant of it that leads elsewhere through a link on the
+    /// way, one owned by another account, and a base folder without the
+    /// sticky bit or owned by another account each stop the start, and
+    /// nothing is changed or removed.
+    #[test]
+    fn a_folder_of_its_own_that_others_can_open_or_that_is_a_link_stops_the_start() {
+        use std::os::unix::fs::PermissionsExt;
+        let t = tempfile::tempdir().unwrap();
+        // Where links on the way are resolved already, as the sandbox
+        // resolves a grant.
+        let base = fs::canonicalize(t.path()).unwrap().join("tmp");
+        fs::create_dir(&base).unwrap();
+        fs::set_permissions(&base, fs::Permissions::from_mode(0o1777)).unwrap();
+        // SAFETY: getuid has no preconditions and cannot fail.
+        let uid = unsafe { libc::getuid() };
+        let folder = base.join("sam-appimage-grants-1a2b");
+        let stops = |base_owner: u32, uid: u32, what: &str| {
+            let err = make_own_tmp_folder_in(&base, base_owner, uid, &folder, &[], "Grants")
+                .expect_err(what);
+            assert_eq!(
+                code_of(&err),
+                Some("own-tmp-folder-unsafe"),
+                "{what}: {err:#}"
+            );
+            err.to_string()
+        };
+        fs::create_dir(&folder).unwrap();
+        fs::set_permissions(&folder, fs::Permissions::from_mode(0o755)).unwrap();
+        let text = stops(uid, uid, "others can open it");
+        assert!(text.contains(&folder.display().to_string()), "{text}");
+        assert_eq!(
+            fs::metadata(&folder).unwrap().permissions().mode() & 0o777,
+            0o755,
+            "left as it was"
+        );
+        fs::remove_dir(&folder).unwrap();
+        let elsewhere = t.path().join("elsewhere");
+        fs::create_dir(&elsewhere).unwrap();
+        fs::set_permissions(&elsewhere, fs::Permissions::from_mode(0o700)).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, &folder).unwrap();
+        stops(uid, uid, "a link");
+        assert!(fs::symlink_metadata(&folder)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        fs::remove_file(&folder).unwrap();
+        // A grant of it through a link on the way that leads elsewhere
+        // (`base/x/../sam-<id>` with `x` a link to a folder outside base):
+        // the sandbox would mount another place than the folder checked.
+        let deep = elsewhere.join("deep");
+        fs::create_dir(&deep).unwrap();
+        std::os::unix::fs::symlink(&deep, base.join("x")).unwrap();
+        let through = base.join("x/../sam-appimage-grants-1a2b");
+        let err = make_own_tmp_folder_in(&base, uid, uid, &folder, &[through], "Grants")
+            .expect_err("a grant through a link");
+        assert_eq!(code_of(&err), Some("own-tmp-folder-unsafe"), "{err:#}");
+        assert!(
+            err.to_string()
+                .contains("does not lead to the app's own folder"),
+            "{err}"
+        );
+        // The same folder named plainly is fine.
+        make_own_tmp_folder_in(
+            &base,
+            uid,
+            uid,
+            &folder,
+            std::slice::from_ref(&folder),
+            "Grants",
+        )
+        .unwrap();
+        fs::remove_dir(&folder).unwrap();
+        fs::remove_file(base.join("x")).unwrap();
+        let text = stops(uid, uid.wrapping_add(1), "another account's folder");
+        assert!(text.contains("belongs to another account"), "{text}");
+        fs::remove_dir(&folder).unwrap();
+        stops(uid.wrapping_add(1), uid, "a base folder of another account");
+        fs::set_permissions(&base, fs::Permissions::from_mode(0o777)).unwrap();
+        let text = stops(uid, uid, "a base folder without the sticky bit");
+        assert!(
+            text.contains("does not keep each user's folders apart"),
+            "{text}"
+        );
+        assert!(!folder.exists(), "nothing made");
     }
 }

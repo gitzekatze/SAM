@@ -204,6 +204,30 @@ tests = ["app_output_cannot_buy_dangerous_grants",
   "a_step_the_apps_output_raised_stays_its_request_under_a_hints_name",
 ]
 
+[[function]]
+id = 43
+area = "B"
+promise = "SAM never gives an app new access to /tmp or a known socket folder in it (tmux, SSH, the X server …) or a new extra folder written relative, offers a folder of the app's own instead, and keeps an older grant until you replace it."
+code = ["sam-core/src/places.rs", "sam-runner/src/gate.rs", "sam-runner/src/ops/profiles.rs", "sam-runner/src/ops/add.rs", "sam-runner/src/repair.rs", "sam-runner/src/doctor.rs", "sam-storage/src/lib.rs", "sam-gtk/src/perms.rs", "sam-jail-cli/src/main.rs"]
+tests = [
+  "a_new_grant_of_tmp_is_refused_however_it_is_written",
+  "a_link_that_leads_to_tmp_is_refused_as_a_new_grant",
+  "an_older_tmp_grant_may_stay_or_be_narrowed_but_not_widened",
+  "the_folder_of_its_own_is_never_refused_nor_a_socket_folder",
+  "the_gate_refuses_a_new_tmp_grant_even_after_a_yes",
+  "every_way_to_change_settings_refuses_a_new_tmp_grant",
+  "turning_compatibility_off_and_undoing_keep_an_older_tmp_grant",
+  "an_older_tmp_grant_gets_a_hint_to_a_folder_of_its_own",
+  "no_undo_brings_tmp_back",
+  "the_folder_of_its_own_is_made_for_you_only_at_each_start",
+  "a_folder_of_its_own_that_others_can_open_or_that_is_a_link_stops_the_start",
+  "every_start_makes_the_folder_of_its_own_in_tmp",
+  "doctor_names_apps_with_an_older_tmp_grant",
+  "a_preset_holding_tmp_is_not_saved",
+  "set_refuses_tmp_even_with_yes_and_names_a_folder_of_its_own",
+  "the_editor_offers_a_folder_of_its_own_instead_of_tmp",
+]
+
 [[area]]
 id = "C"
 name = "The sandbox"

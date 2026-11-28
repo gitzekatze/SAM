@@ -385,6 +385,12 @@ fn launch(args: Vec<String>, start_anyway: bool) -> Result<i32> {
                     ],
                 ),
             );
+        } else if sam_core::error::code_of(&e) == Some("own-tmp-folder-unsafe") {
+            // The message names the folder and what to do.
+            notify(
+                &sam_core::i18n::trf("{app} was not started", &[("app", &entry.display_name())]),
+                &format!("{e:#}"),
+            );
         }
         return Err(e);
     }

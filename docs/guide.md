@@ -95,7 +95,7 @@ On desktops that support it, SAM tells the compositor that the app is sandboxed,
 
 ### Files
 
-Each personal folder (Documents, Downloads, Pictures, Music, Videos, Desktop) can be *No access*, *Read-only* or *Read & write*. You can add **extra folders**, read-only or writable, and decide whether files you open with the app are shared at all (*No access* shares none) and whether they can be saved. **Full home access** is possible but dangerous; even then your SSH keys, GnuPG keys and sensitive dotfiles stay hidden unless you allow them one by one.
+Each personal folder (Documents, Downloads, Pictures, Music, Videos, Desktop) can be *No access*, *Read-only* or *Read & write*. You can add **extra folders**, read-only or writable, each by its full path (SAM does not add `/tmp` or a known socket folder in it, such as tmux's, SSH's or the X server's, and offers a folder of the app's own in `/tmp` instead; see [security](security.md)), and decide whether files you open with the app are shared at all (*No access* shares none) and whether they can be saved. **Full home access** is possible but dangerous; even then your SSH keys, GnuPG keys and sensitive dotfiles stay hidden unless you allow them one by one.
 
 > **Where do an app's own files go?** Into its private folder. Open it from the app's ⋮ menu → *Files This App Saved*.
 

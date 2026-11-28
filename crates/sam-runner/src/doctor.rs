@@ -391,6 +391,7 @@ pub fn system_report(app: &Sam, host: &HostInfo) -> DiagnosticReport {
             CheckStatus::Ok
         };
         c.push(check("apps", "Registered apps", st, detail));
+        c.push(tmp_grants(&apps));
     }
     // Files SAM could not read and moved aside (see sam_core::format).
     let p = &app.paths;
@@ -977,10 +978,85 @@ fn toml_string<T: serde::Serialize>(v: &T) -> String {
         .unwrap_or_default()
         + "\n"
 }
+/// The apps that see `/tmp` or a known socket folder in it through an
+/// older grant SAM keeps until the person replaces it (owner decision 10
+/// of 2026-11-23): a warning naming them. Judged as written: a grant
+/// through a link to `/tmp` is left out at each start.
+fn tmp_grants(apps: &[AppEntry]) -> DiagnosticCheck {
+    let home = sam_core::util::home_dir();
+    let names: Vec<String> = apps
+        .iter()
+        .filter(|a| {
+            let f = &a.profile.permissions.filesystem;
+            f.custom_write
+                .iter()
+                .chain(&f.custom_read)
+                .any(|p| sam_core::risk::shows_host_sockets_in(p, &home))
+        })
+        .map(|a| sam_core::util::display_safe(a.display_name(), 80))
+        .collect();
+    if names.is_empty() {
+        return check("tmp-grants", "Folders in /tmp", CheckStatus::Ok, "none");
+    }
+    DiagnosticCheck::new(
+        "tmp-grants",
+        &tr("Folders in /tmp"),
+        CheckStatus::Warn,
+        sam_core::i18n::trf(
+            "These apps see /tmp or a known socket folder in it (tmux, SSH, the X server …), where programs outside the sandbox listen: {apps}. Replace each grant with a folder of the app's own on the app's page, or with sam-jail hints APP --apply tmp-own-folder.",
+            &[("apps", &names.join(", "))],
+        ),
+    )
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Diagnostics name each app that sees /tmp or a known socket folder in
+    /// it through an older grant, and no other app (one with a grant
+    /// through a link to /tmp, which each start leaves out, neither);
+    /// without one, the check is fine.
+    #[test]
+    fn doctor_names_apps_with_an_older_tmp_grant() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sam = Sam::with_paths(sam_core::Paths::rooted(tmp.path())).unwrap();
+        let host = sam_core::sandbox::sample_context().host;
+        let check = |sam: &Sam| {
+            system_report(sam, &host)
+                .checks
+                .into_iter()
+                .find(|c| c.id == "tmp-grants")
+                .unwrap()
+        };
+        let mut plain = AppEntry {
+            id: "appimage-plain-1a2b".into(),
+            name: "Plain".into(),
+            ..Default::default()
+        };
+        // A grant through a link to /tmp is left out at each start.
+        let link = tmp.path().join("t");
+        std::os::unix::fs::symlink("/tmp", &link).unwrap();
+        plain.profile.permissions.filesystem.custom_write =
+            vec!["/tmp/exchange".into(), link.display().to_string()];
+        sam.registry().save(&mut plain).unwrap();
+        assert_eq!(check(&sam).status, CheckStatus::Ok);
+        let mut older = AppEntry {
+            id: "appimage-older-1a2b".into(),
+            name: "Older".into(),
+            ..Default::default()
+        };
+        older.profile.permissions.filesystem.custom_read = vec!["/tmp/tmux-1000".into()];
+        sam.registry().save(&mut older).unwrap();
+        let c = check(&sam);
+        assert_eq!(c.status, CheckStatus::Warn, "{}", c.detail);
+        assert!(
+            c.detail.contains("Older") && !c.detail.contains("Plain"),
+            "{}",
+            c.detail
+        );
+        assert!(c.detail.contains("tmp-own-folder"), "{}", c.detail);
+    }
 
     /// A bug report never contains the user's name or home path: both are
     /// replaced before the text is shown for copying.

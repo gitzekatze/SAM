@@ -55,10 +55,78 @@ pub fn changes_something(
             .unwrap_or_default()
             .iter()
             .any(|x| x.as_str() == Some(value)),
+        FixAction::Replace { key, from, .. } => list_of(p, key).iter().any(|x| x == from),
         FixAction::Compat => !compat,
         FixAction::AddArg { value } => !args.contains(value),
         FixAction::None => true,
     }
+}
+
+/// The list permission `key` of `p`; empty when it is none.
+fn list_of(p: &PermissionSet, key: &str) -> Vec<String> {
+    p.get_key(key)
+        .ok()
+        .and_then(|v| serde_json::from_value(v).ok())
+        .unwrap_or_default()
+}
+
+/// Replaces `from` with `to` in the list permission `key` of `p`, or drops
+/// `from` when `to` is there already. Whether `to` was added.
+fn replace_in(p: &mut PermissionSet, key: &str, from: &str, to: &str) -> anyhow::Result<bool> {
+    use anyhow::Context;
+    let mut list: Vec<String> = serde_json::from_value(p.get_key(key)?)
+        .with_context(|| sam_core::i18n::trf("{key} is not a list", &[("key", &key)]))?;
+    if !list.iter().any(|x| x == from) {
+        return Ok(false);
+    }
+    let added = !list.iter().any(|x| x == to);
+    let mut out: Vec<String> = Vec::new();
+    for x in list.drain(..) {
+        let x = if x == from { to.to_string() } else { x };
+        if !out.contains(&x) {
+            out.push(x);
+        }
+    }
+    p.set_key(key, &serde_json::to_string(&out)?)?;
+    Ok(added)
+}
+
+/// The repair step for an older grant of `/tmp` or of a known socket folder in it (tmux, SSH, the X server …): SAM keeps such a grant until the
+/// person replaces it, and offers the folder of the app's own instead
+/// (owner decision 10 of 2026-11-23). The first one found, writable ones
+/// first; after applying it, the next one is offered. Judged as written:
+/// an older grant through a link to `/tmp` is left out at each start
+/// anyway, so the app does not see `/tmp` through it and gets no hint.
+fn tmp_own_folder(e: &AppEntry) -> Option<Suggestion> {
+    let home = sam_core::util::home_dir();
+    let f = &e.profile.permissions.filesystem;
+    let (key, from) = [
+        ("filesystem.custom_write", &f.custom_write),
+        ("filesystem.custom_read", &f.custom_read),
+    ]
+    .into_iter()
+    .find_map(|(key, list)| {
+        list.iter()
+            .find(|p| sam_core::risk::shows_host_sockets_in(p, &home))
+            .map(|p| (key, p.clone()))
+    })?;
+    let to = sam_core::places::own_tmp_folder(&e.id)
+        .to_string_lossy()
+        .into_owned();
+    Some(s(
+        "tmp-own-folder",
+        "The app can reach programs outside its sandbox",
+        sam_core::i18n::trf(
+            "The app sees {path}, where programs outside the sandbox listen, such as terminal sessions, SSH connections and the X server. SAM keeps this older grant until you replace it. Replace it with {folder}, a folder of the app's own that SAM makes at each start, for you only. Files the app keeps in {path} stay there, but the app no longer sees them.",
+            &[("path", &from), ("folder", &to)],
+        ),
+        FixAction::Replace {
+            key: key.into(),
+            from,
+            to,
+        },
+        RiskLevel::Medium,
+    ))
 }
 
 // ------------------------------------------------------------------ hints
@@ -128,6 +196,9 @@ fn hints(e: &AppEntry, chromium_blocked: bool) -> Vec<Suggestion> {
     // A step tried at a start that did not help is not offered again,
     // here either (only the ladder knew, so it came back as a hint).
     out.retain(|st| !e.tried_repairs.contains(&st.id));
+    // Not a step to make the app work but a grant to replace: offered
+    // while one is there, also after a start on trial failed.
+    out.extend(tmp_own_folder(e));
     // A hint is never labelled lower than what applying it adds: the
     // network next to a keyring or home already allowed is Dangerous
     // together ("can send what it reads"), not just Think twice. The
@@ -631,6 +702,10 @@ pub fn effect(s: &Suggestion, p: &PermissionSet) -> String {
             let (title, desc) = words(key);
             sam_core::i18n::trf("Adds {value} to “{setting}”. {explanation}", &[("value", &value), ("setting", &title), ("explanation", &desc)])
         }
+        FixAction::Replace { key, from, to } => {
+            let (title, desc) = words(key);
+            sam_core::i18n::trf("Replaces {from} with {to} in “{setting}”. {explanation}", &[("from", &from), ("to", &to), ("setting", &title), ("explanation", &desc)])
+        }
         FixAction::Compat => {
             let c = compat_changes(p);
             if c.is_empty() {
@@ -699,6 +774,24 @@ pub fn apply_step(
                 .permissions
                 .set_key(key, &serde_json::to_string(&list)?)?;
         }
+        FixAction::Replace { key, from, to } => {
+            if replace_in(&mut e.profile.permissions, key, from, to)? {
+                undo.added = Some(to.clone());
+            }
+            // The settings kept from before compatibility mode and before
+            // the first repair step are replaced too: turning compatibility
+            // mode off or an undo of older records never brings the grant
+            // back.
+            if let Some(p) = e.profile.before_compat.as_mut() {
+                replace_in(p, key, from, to)?;
+            }
+            if let Some(b) = e.repair_backup.as_mut() {
+                replace_in(&mut b.permissions, key, from, to)?;
+                if let Some(p) = b.before_compat.as_mut() {
+                    replace_in(p, key, from, to)?;
+                }
+            }
+        }
         FixAction::Compat => {
             if !e.profile.compatibility_mode {
                 e.profile.before_compat = Some(e.profile.permissions.clone());
@@ -762,6 +855,22 @@ pub fn revert_step(e: &mut AppEntry, r: &sam_core::model::AppliedRepair) -> anyh
                 let mut list: Vec<String> =
                     serde_json::from_value(e.profile.permissions.get_key(key)?)?;
                 list.retain(|x| x != v);
+                e.profile
+                    .permissions
+                    .set_key(key, &serde_json::to_string(&list)?)?;
+            }
+        }
+        FixAction::Replace { key, from, to } => {
+            // Never back to a grant SAM refuses as new (owner decision 10
+            // of 2026-11-23): the folder of the app's own stays.
+            if !sam_core::places::refused_tmp_grant(from, &sam_core::util::home_dir()) {
+                let mut list = list_of(&e.profile.permissions, key);
+                if r.added.as_deref() == Some(to.as_str()) {
+                    list.retain(|x| x != to);
+                }
+                if !list.contains(from) {
+                    list.push(from.clone());
+                }
                 e.profile
                     .permissions
                     .set_key(key, &serde_json::to_string(&list)?)?;
@@ -939,6 +1048,78 @@ mod tests {
     use super::*;
     use crate::gate::{confirm_hint, confirm_step};
     use sam_core::Paths;
+
+    /// An older grant of /tmp or of a known socket folder in it
+    /// gets a hint that replaces it with the folder of the app's own,
+    /// writable ones first, one after the other; it is offered also after
+    /// a failed trial. The writable one asks first (it adds a writable
+    /// folder), the read-only one does not; a grant through a link to /tmp
+    /// gets none (owner decision 10 of 2026-11-23).
+    #[test]
+    fn an_older_tmp_grant_gets_a_hint_to_a_folder_of_its_own() {
+        let mut e = AppEntry {
+            id: "appimage-older-1a2b".into(),
+            ..Default::default()
+        };
+        e.profile.permissions = PermissionSet::strict_gui();
+        let own = "/tmp/sam-appimage-older-1a2b".to_string();
+        let hint = |e: &AppEntry| {
+            hints(e, false)
+                .into_iter()
+                .find(|h| h.id == "tmp-own-folder")
+        };
+        assert!(hint(&e).is_none(), "no grant, no hint");
+        // An older grant through a link to /tmp is left out at each start,
+        // so the app does not see /tmp through it: no hint.
+        let t = tempfile::tempdir().unwrap();
+        let link = t.path().join("t");
+        std::os::unix::fs::symlink("/tmp", &link).unwrap();
+        e.profile.permissions.filesystem.custom_write = vec![link.display().to_string()];
+        assert!(hint(&e).is_none(), "a grant through a link");
+        e.profile.permissions.filesystem.custom_write = vec!["/a".into(), "/tmp".into()];
+        e.profile.permissions.filesystem.custom_read = vec!["/tmp/.X11-unix".into()];
+        e.tried_repairs.push("tmp-own-folder".into());
+        let first = hint(&e).expect("a hint for the writable grant");
+        assert_eq!(
+            first.action,
+            FixAction::Replace {
+                key: "filesystem.custom_write".into(),
+                from: "/tmp".into(),
+                to: own.clone(),
+            }
+        );
+        assert!(first.risk >= RiskLevel::High, "{:?}", first.risk);
+        let err = confirm_hint(&e, &first, false).unwrap_err();
+        assert_eq!(sam_core::error::code_of(&err), Some("hint-needs-yes"));
+        assert!(effect(&first, &e.profile.permissions).starts_with("Replaces /tmp with /tmp/sam-"));
+        apply_step(&mut e, &first, &mut Default::default()).unwrap();
+        assert_eq!(
+            e.profile.permissions.filesystem.custom_write,
+            vec!["/a".to_string(), own.clone()]
+        );
+        let next = hint(&e).expect("then the read-only grant");
+        assert_eq!(
+            next.action,
+            FixAction::Replace {
+                key: "filesystem.custom_read".into(),
+                from: "/tmp/.X11-unix".into(),
+                to: own.clone(),
+            }
+        );
+        assert!(next.risk < RiskLevel::High, "{:?}", next.risk);
+        assert!(confirm_hint(&e, &next, false).is_ok());
+        apply_step(&mut e, &next, &mut Default::default()).unwrap();
+        assert_eq!(
+            e.profile.permissions.filesystem.custom_read,
+            vec![own.clone()]
+        );
+        assert!(hint(&e).is_none(), "nothing left to replace");
+        // The folder of its own is in the list already: the grant goes.
+        e.profile.permissions.filesystem.custom_read = vec![own.clone(), "/tmp".into()];
+        let again = hint(&e).unwrap();
+        apply_step(&mut e, &again, &mut Default::default()).unwrap();
+        assert_eq!(e.profile.permissions.filesystem.custom_read, vec![own]);
+    }
 
     /// Compatibility mode lists only what it actually changes, in the words
     /// of the switches.
