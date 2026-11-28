@@ -590,9 +590,9 @@ impl Sam {
         Ok((entry, problems))
     }
 
-    /// Removes SAM from this computer: closes running apps, removes the
-    /// sandbox of every app whose record it can read (menu entries SAM hid
-    /// come back), SAM's menu entries, its own taskbar entry and icon, its
+    /// Removes SAM from this computer: closes and removes, one after
+    /// another, every app whose record it can read (menu entries SAM hid for
+    /// them come back), SAM's menu entries, its own taskbar entry and icon, its
     /// runtime files and (unless `keep_data`) its settings, data and unpack
     /// folders; docs/guide.md, *Removing SAM*, says what stays. With
     /// `dry_run`, only lists what would be removed.

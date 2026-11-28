@@ -302,8 +302,8 @@ SAM's files carry a format number:
 - A newer SAM migrates older files and keeps the original once
   (`….format0.bak`).
 - An older SAM never changes files written by a newer one.
-- Files SAM cannot read are moved aside as `….damaged-<time>`, never
-  deleted. `sam-jail doctor` lists them.
+- Files SAM cannot read are moved aside as `….damaged-<time>` instead of
+  being deleted. `sam-jail doctor` lists them.
 
 ### Removing SAM
 
@@ -312,9 +312,10 @@ sam-jail uninstall          # list what would be removed
 sam-jail uninstall --yes    # remove it (--keep-data keeps settings and app data)
 ```
 
-This closes running apps and removes the sandboxes and folders that the
-user guide's [Removing SAM](docs/guide.md#removing-sam) lists; menu entries
-SAM hid come back. Afterwards, remove the packages or the AppImage.
+SAM closes each app it removes and removes what the user guide's
+[Removing SAM](docs/guide.md#removing-sam) lists, and brings back the menu
+entries it hid for those apps. Afterwards, remove the packages or the
+AppImage.
 
 ---
 

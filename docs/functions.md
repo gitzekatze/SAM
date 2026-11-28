@@ -47,7 +47,7 @@
 | 31 | [Disk space per app, and freeing space.](#31) | sam-runner | 2 | ✅ 🆕 1 new test since the report |
 | 32 | [Uninstalling SAM removes what the user guide's *Removing SAM* says it removes, and brings back the menu entries it hid for the apps it removes.](#32) | sam-runner, sam-intake | 4 | ✅ 🆕 2 new tests since the report |
 | 33 | [The doctor check finds problems with the system or an app.](#33) | sam-runner, sam-core | 25 | ✅ 🆕 10 new tests since the report |
-| 34 | [Privacy: SAM sends nothing on its own, and a bug report never contains your name, home path, addresses or secrets.](#34) | sam-runner | 10 | ✅ 🆕 1 new test since the report |
+| 34 | [Privacy: SAM sends nothing on its own, and a bug report hides what the security page's *Bug reports* lists, such as your name, home path, IPv4 addresses and secrets.](#34) | sam-runner | 10 | ✅ 🆕 1 new test since the report |
 | 35 | [The overview of all apps, with clear status badges.](#35) | sam-gtk, sam-jail-cli, sam-storage, sam-core | 14 | ✅ 🆕 9 new tests since the report |
 | 36 | [The Permission Manager, for one app or several, with tags in the same colors everywhere.](#36) | sam-gtk, sam-profile | 12 | ✅ |
 | 37 | [SAM speaks English, German, Spanish and French: every text in the window and every message from SAM's core. You can choose SAM's language in the main menu; apps keep the system's.](#37) | sam-gtk, sam-core | 12 | ✅ 🆕 6 new tests since the report |
@@ -1513,13 +1513,13 @@ The components are those of the [architecture](architecture.md#level-3-component
 **Code:** [`sam-runner/src/doctor.rs`](../crates/sam-runner/src/doctor.rs), [`sam-runner/src/bwrap.rs`](../crates/sam-runner/src/bwrap.rs), [`sam-runner/src/dbus_check.rs`](../crates/sam-runner/src/dbus_check.rs), [`sam-core/src/host.rs`](../crates/sam-core/src/host.rs)
 
 <a id="34"></a>
-### 34. Privacy: SAM sends nothing on its own, and a bug report never contains your name, home path, addresses or secrets.
+### 34. Privacy: SAM sends nothing on its own, and a bug report hides what the security page's *Bug reports* lists, such as your name, home path, IPv4 addresses and secrets.
 
 | Test | Promise | Result |
 |---|---|---|
 | [`given_environment_values_are_hidden_in_the_shown_command`](../crates/sam-core/src/sandbox.rs#L383) | Values of variables a person gave the app never reach the shown command; the names and SAM's own variables stay. | ✅ |
 | [`bug_reports_hide_the_user_name_and_home_path`](../crates/sam-runner/src/doctor.rs#L987) | A bug report never contains the user's name or home path: both are replaced before the text is shown for copying. | ✅ |
-| [`bug_reports_hide_names_addresses_and_secrets`](../crates/sam-runner/src/doctor.rs#L1128) | Bug reports hide everything that identifies the user or gives access: a home folder with spaces, other users' folders, short user names, the computer's name, email addresses, logins and tokens in links, IP addresses, and the values of environment variables given to the app. | ✅ |
+| [`bug_reports_hide_names_addresses_and_secrets`](../crates/sam-runner/src/doctor.rs#L1128) | Bug reports hide what identifies the user or gives access: a home folder with spaces, other users' folders, short user names, the computer's name, email addresses, logins and tokens in links, IPv4 addresses, and the values of environment variables given to the app. | ✅ |
 | [`bug_reports_hide_secrets_in_every_spelling`](../crates/sam-runner/src/doctor.rs#L1086) | Secrets whose name goes on after the known word (`GITHUB_TOKEN_2`, `password-hash`, `secret2`), with spaces or quotes around the value, and empty values (mutation run P14: these forms were untested). | ✅ |
 | [`a_bug_report_is_complete_and_redacted`](../crates/sam-runner/src/doctor.rs#L1064) | A whole bug report (the system part) is produced and redacted: it names SAM's version and never the home folder or user name. | ✅ |
 | [`update_checks_stay_off_unless_switched_on`](../crates/sam-core/src/config.rs#L543) | SAM contacts no update source on its own: the daily check when the window opens is off until the user switches it on. | ✅ |

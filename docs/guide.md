@@ -246,25 +246,25 @@ SAM comes as an AppImage that runs on Ubuntu 24.04 and newer, Debian 13, Fedora 
 
 > **Moved the AppImage?** Menu entries SAM made point at the AppImage file. Open SAM once from its new place and it updates them.
 
-**Updating SAM** keeps your settings and sandboxes. If SAM ever finds a file it cannot read, it moves it aside (nothing is deleted) and **☰ → Diagnostics** lists it.
+**Updating SAM** keeps your settings and sandboxes. If SAM ever finds a file it cannot read, it moves it aside instead of deleting it and **☰ → Diagnostics** lists it.
 
 ### Removing SAM
 
 Run `sam-jail uninstall` to see what would be removed, then `sam-jail uninstall --yes`. Afterwards, remove the SAM package or AppImage.
 
-SAM closes running apps first. Then, for each app whose record it can read, it removes the app's sandbox: its record, its menu entry and icon, its unpacked copy when that lies inside the current unpack folder, its temporary files, an update download still waiting for your answer, and half-written copies an interrupted update left next to its AppImage. Menu entries SAM hid for the app come back; a warning names any it cannot put back. In every case SAM also removes every menu entry it made for an app that is still left, its own menu entry and icon when SAM put them there, and its folder of temporary files (by default `/run/user/<id>/sam/`).
+For each app whose record it can read, one after another, SAM closes the app if it runs and then removes its sandbox: its record, its menu entry and icon, its unpacked copy when that lies inside the current unpack folder, its temporary files, an update download still waiting for your answer, and half-written copies an interrupted update left next to its AppImage. Menu entries SAM hid for the app come back; a warning names any it cannot put back. In every case SAM also removes every menu entry it made for an app that is still left, its own menu entry and icon when SAM put them there, and its folder of temporary files (by default `/run/user/<id>/sam/`).
 
 Without `--keep-data`, SAM also removes each app's private home, logs, writable app folder and the earlier version an update replaced, and then these folders, each with everything in it, also files you saved there:
 
-- the settings folder (by default `~/.config/sam/`) and the data folder (by default `~/.local/share/sam/`); they follow `XDG_CONFIG_HOME` and `XDG_DATA_HOME`. The earlier versions that updates replaced, of your apps and of SAM itself, are kept in the data folder, so they go with it;
+- the settings folder (by default `~/.config/sam/`) and the data folder (by default `~/.local/share/sam/`); they follow `XDG_CONFIG_HOME` and `XDG_DATA_HOME` as set where you run the command. The earlier versions that updates replaced, of your apps and of SAM itself, are kept in the data folder, so they go with it;
 - the unpack folder, when it is the default one or holds SAM's marker file `.sam-unpack-folder`. SAM writes that file only into an unpack folder it created or found empty.
 
 With `--keep-data`, the settings folder, the data folder and the unpack folder stay, and with them the apps' private data, their logs and the earlier versions updates replaced; of each app, only its sandbox goes.
 
 - **Links:** when one of these folders is a link, SAM removes at most the link, never the folder behind it; of what is behind it, only the apps' own files go, as listed above.
-- **Never removed:** the home folder, a folder above it, or a folder directly below `/`. When one of SAM's folders is set to such a place, SAM stops with a message before it removes any of these folders.
-- **What stays:** your AppImage files, except those inside a folder SAM removes as a whole; an unpack folder you used before you changed the location, with the copies in it, unless it lies inside a folder SAM removes as a whole; and the empty files and folders SAM created in your home so that apps could not create them there (see *Folders are created empty first* on the [security page](security.md)).
-- **Not covered:** apps whose record SAM cannot read (one from a newer SAM, or a damaged one) are not removed one by one: SAM removes their menu entries, but menu entries it hid for them do not come back, and their other files go only with a folder SAM removes as a whole. When SAM cannot remove an app (for example because it is being changed at that moment), it stops with a message and removes nothing after it; run it again.
+- **Never removed:** SAM never removes the home folder, a folder above it, or a folder directly below `/`. When one of SAM's folders is set to such a place, SAM stops with a message before it removes any of these folders.
+- **What stays:** SAM leaves your AppImage files, except those inside a folder it removes as a whole; an unpack folder you used before you changed the location, with the copies in it, unless it lies inside a folder SAM removes as a whole; and the empty files and folders SAM created in your home so that apps could not create them there (see *Folders are created empty first* on the [security page](security.md)).
+- **Not covered:** apps whose record SAM cannot read (one from a newer SAM, or a damaged one) are not closed or removed one by one: SAM removes their menu entries, but menu entries it hid for them do not come back, and their other files go only with a folder SAM removes as a whole. When SAM cannot remove an app (for example because it is being changed at that moment), it stops with a message and removes nothing after it; run it again. The same holds when removing one of the folders fails: the folders after it stay. A menu entry SAM cannot delete stays without a warning.
 
 ---
 

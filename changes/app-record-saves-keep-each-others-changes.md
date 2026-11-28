@@ -4,9 +4,9 @@
   only what it changes onto the record as it is then. When two saves
   change the same field, the later one wins; a list, such as the granted
   folders, counts as one field, and a change that replaces the whole set
-  of settings writes that set as one value. Before, a save could write back a whole
-  copy it had read earlier and undo what another part of SAM saved
-  meanwhile, such as a "look at it first" mark.
+  of settings writes that set as one value. Before, a save could write
+  back a whole copy it had read earlier and undo what another part of SAM
+  saved meanwhile, such as a "look at it first" mark.
 - Only your confirmation clears a "look at it first" mark.
 - The start's warning about a changed AppImage now says that the unpacked
   copy SAM starts may not be that file.

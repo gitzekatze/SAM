@@ -219,8 +219,8 @@ tested automatically by `sam_jail_run_refuses_a_sandbox_whose_settings_do_not_ap
 old, newer, damaged and deliberately mangled files (truncated at many
 lengths, single bytes changed): old ones are migrated with a backup, newer
 ones are never changed, damaged ones are moved aside and reported, and
-nothing panics. `cargo test -p sam-runner --test uninstall` and `cargo test -p sam-jail-cli
---test uninstall_and_report` check what `sam-jail uninstall --yes` removes
+nothing panics. `cargo test -p sam-runner --test uninstall` and
+`cargo test -p sam-jail-cli --test uninstall_and_report` check what `sam-jail uninstall --yes` removes
 and keeps, with and without `--keep-data`, for SAM's default unpack folder,
 one SAM made, a linked one and an earlier one; that hidden menu entries come
 back; and that SAM refuses folders that are not its own.

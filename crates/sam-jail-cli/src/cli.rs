@@ -155,7 +155,7 @@ pub(crate) enum Cmd {
     #[command(hide = true)]
     Man { dir: PathBuf },
     /// Remove SAM from this computer: the apps' sandboxes (menu entries SAM
-    /// hid come back), SAM's menu entries and, without --keep-data, its
+    /// hid for them come back), SAM's menu entries and, without --keep-data, its
     /// settings and data folders. The user guide's "Removing SAM" says what
     /// stays. Lists what it would remove without --yes.
     Uninstall {

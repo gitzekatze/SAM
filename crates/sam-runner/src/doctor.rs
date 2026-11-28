@@ -1120,9 +1120,9 @@ mod tests {
         }
     }
 
-    /// Bug reports hide everything that identifies the user or gives access:
-    /// a home folder with spaces, other users' folders, short user names,
-    /// the computer's name, email addresses, logins and tokens in links, IP
+    /// Bug reports hide what identifies the user or gives access: a home
+    /// folder with spaces, other users' folders, short user names, the
+    /// computer's name, email addresses, logins and tokens in links, IPv4
     /// addresses, and the values of environment variables given to the app.
     /// Ordinary words, versions and local addresses stay readable.
     #[test]
