@@ -5,5 +5,5 @@
   `--keep-data`, for an unpack folder SAM made, the default one, a linked
   one and an earlier one.
 - A new test checks that a report made with `sam-jail report` after the
-  app ran does not show the home folder, the user name, an email or IP
+  app ran does not show the home folder, the user name, an email or IPv4
   address or the value of a variable given to the app.

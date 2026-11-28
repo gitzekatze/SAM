@@ -92,6 +92,6 @@ sudo make install PREFIX=/usr
 ```
 
 SAM then appears in your application menu. To remove it later, see
-[Removing SAM](../README.md#removing-sam).
+[Removing SAM](guide.md#removing-sam).
 
 </details>

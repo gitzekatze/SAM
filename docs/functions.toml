@@ -1074,7 +1074,7 @@ tests = ["a_swapped_appimage_does_not_start_until_it_is_confirmed", "what_is_unp
 [[area]]
 id = "G"
 name = "Managing"
-about = "Removing an app or SAM deletes only what SAM made, and bug reports contain no personal data."
+about = "Removing an app or SAM deletes what the user guide says it deletes, and bug reports hide what the security page lists."
 
 [[function]]
 id = 30
@@ -1103,7 +1103,7 @@ tests = ["freeing_space_deletes_the_unpacked_copy_and_unpacking_restores_it", "s
 [[function]]
 id = 32
 area = "G"
-promise = "Uninstalling SAM removes everything it created and brings back menu entries it hid."
+promise = "Uninstalling SAM removes what the user guide's *Removing SAM* says it removes, and brings back the menu entries it hid for the apps it removes."
 code = ["sam-runner/src/ops/maintain.rs", "sam-intake/src/menu.rs"]
 tests = ["uninstall_removes_everything_and_restores_menus", "uninstall_refuses_folders_that_are_not_sams",
   "uninstall_removes_only_with_yes", "uninstalling_leaves_only_what_the_person_keeps",
@@ -1128,7 +1128,7 @@ tests = ["a_setuid_bubblewrap_is_told_from_a_normal_one", "the_bubblewrap_option
 [[function]]
 id = 34
 area = "G"
-promise = "Privacy: SAM sends nothing on its own, and a bug report never contains your name, home path, addresses or secrets."
+promise = "Privacy: SAM sends nothing on its own, and a bug report hides what the security page's *Bug reports* lists, such as your name, home path, IPv4 addresses and secrets."
 code = ["sam-runner/src/doctor.rs"]
 tests = ["given_environment_values_are_hidden_in_the_shown_command", "bug_reports_hide_the_user_name_and_home_path", "bug_reports_hide_names_addresses_and_secrets", "bug_reports_hide_secrets_in_every_spelling", "a_bug_report_is_complete_and_redacted", "update_checks_stay_off_unless_switched_on", "the_machine_id_reaches_only_apps_with_dbus", "bug_reports_hide_tokens_in_every_shape", "a_log_cannot_break_out_of_its_code_block", "a_bug_report_removes_the_personal_details_it_promises_to"]
 

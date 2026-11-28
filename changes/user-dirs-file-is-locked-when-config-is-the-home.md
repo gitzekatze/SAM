@@ -11,13 +11,10 @@
   before a start that shows it writable, as it does
   `~/.config/user-dirs.dirs`. SAM does the same for `~/cfg/user-dirs.dirs`
   when `XDG_CONFIG_HOME` names `~/cfg`.
-- SAM promises this only when neither the file nor a folder on the way to
-  it from the home is a link.
-- While another app runs that saw the file missing, SAM leaves it missing.
-- SAM reads `XDG_CONFIG_HOME` from the environment of each start, so a
-  start whose environment does not set it leaves the file unlocked. Set
-  the variable in the desktop session's environment, not only in a
-  shell's startup file.
-- Where `XDG_CONFIG_HOME` or `XDG_DATA_HOME` names the home, the start
-  places at the top of the home (`~/autostart`, `~/applications`) are
-  still not locked.
+- SAM reads `XDG_CONFIG_HOME` from the environment of each start: set it
+  in the desktop session's environment, not only in a shell's startup
+  file.
+- The security page's *Full home access* names where SAM does not promise
+  this: a link on the way to the file, a start whose environment does not
+  set the variable, another app running that saw the file missing, a
+  folder outside the home, and the start places at the top of the home.
