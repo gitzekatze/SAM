@@ -6,4 +6,9 @@
 - For an app whose first unpack failed, checking for changes or pointing
   SAM at another file no longer takes a swapped file for the one you
   added: the first *Unpack Again* of other content marks the app, and it
-  does not start until you have looked at it.
+  does not start until you have looked at it. The app page and
+  `sam-jail info` say that the checksum shown is that of the file you
+  added. SAM does not promise this when an earlier SAM version already saw
+  the swapped file.
+- SAM no longer updates an app whose first unpack failed, as it already
+  did not check it for updates.

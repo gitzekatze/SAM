@@ -150,7 +150,7 @@ impl Sam {
             self.update_record(&entry.id, |f| f.content_changed_outside = true)
                 .with_context(|| {
                     sam_core::i18n::trf(
-                        "SAM did not unpack {app} again: it could not first save in the app's record that its new content must be looked at before it starts. Nothing was unpacked.",
+                        "SAM did not unpack {app} again: it could not first save in the app's record that its new content must be looked at before it starts, so nothing was unpacked",
                         &[("app", &name)],
                     )
                 })?;
@@ -858,8 +858,9 @@ impl Sam {
             // Only the file SAM unpacked is checked: a swapped one would make
             // SAM ask a server of another app's choosing (review B2 S6, R88).
             // An app never unpacked (a first unpack failed) has nothing to
-            // compare with: its record's checksum follows whatever file is
-            // there now, so it is not checked at all.
+            // compare with: its record names the file it was added with, or,
+            // when an earlier SAM saved it, possibly a swapped file its change
+            // check saw, so it is not checked at all.
             let status = match &e.extraction {
                 Some(x) => crate::updates::check_unpacked(&e.source_path, &x.source),
                 None => UpdateStatus {
@@ -964,6 +965,20 @@ impl Sam {
     ) -> Result<AppEntry> {
         use std::os::unix::fs::PermissionsExt;
         let old = entry.source_path.clone();
+        // An app never unpacked (a first unpack failed) has nothing SAM
+        // unpacked to compare with, so its file is not updated, as it is
+        // not checked for updates: a record an earlier SAM saved may name a
+        // swapped file there, whose update information would then decide
+        // what runs with this app's permissions.
+        if entry.extraction.is_none() {
+            bail!(
+                "{}",
+                sam_core::i18n::trf(
+                    "SAM has not unpacked {app} yet, so it does not update it. Use Unpack Again and look at the app first.",
+                    &[("app", &sam_core::util::display_safe(entry.display_name(), 80))]
+                )
+            );
+        }
         // The installed version as SAM checked it. Its update information
         // names where updates come from, so it must be the file SAM
         // unpacked: another app could have put its own AppImage there,
@@ -1962,7 +1977,7 @@ pub(super) struct Checked<'a> {
     pub sams_update: bool,
 }
 
-/// Records `fp` as the file last seen at the app's place. For an app with
+/// Notes `fp`, the file now at the app's place, on the record. For an app with
 /// nothing unpacked yet (its first unpack failed), the record's `source` is
 /// also what a later unpack compares with ([`unpacked_sha256`]): recording
 /// a file with other content there would let *Unpack Again* take a swapped

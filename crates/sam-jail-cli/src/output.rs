@@ -183,7 +183,17 @@ pub(crate) fn info_lines(
             "  (missing)"
         }
     ));
-    out.push(format!("  sha256:      {}", e.source.sha256));
+    // Nothing unpacked yet: the record keeps the checksum of the file that
+    // was added, which a file there now may not match (`note_seen_file`).
+    out.push(format!(
+        "  sha256:      {}{}",
+        e.source.sha256,
+        if e.extraction.is_some() {
+            ""
+        } else {
+            "  (of the file added)"
+        }
+    ));
     out.push(format!("  type:        {}", e.appimage_type.label()));
     if let Some(sig) = &e.signature {
         out.push(format!("  signature:   {}", sig.detail));

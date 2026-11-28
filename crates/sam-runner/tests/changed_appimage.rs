@@ -418,8 +418,10 @@ fn bwrap_or_skip() -> bool {
 /// leave it unpacked and unmarked. Here every save of the app's record
 /// fails (a folder sits at the name of the record's temporary file), so
 /// "Unpack Again" stops before it unpacks, says so, and the app keeps the
-/// unpacked copy and the record it had. Once saving works again, "Unpack
-/// Again" unpacks and marks the new content.
+/// unpacked copy and the record it had. A failure before the unpack (here:
+/// the unpack folder cannot be made) leaves no mark for content that was
+/// never unpacked. Once saving works again, "Unpack Again" unpacks and marks
+/// the new content.
 #[test]
 fn new_content_is_not_unpacked_when_its_mark_cannot_be_saved() {
     use std::os::unix::fs::MetadataExt;
@@ -430,7 +432,7 @@ fn new_content_is_not_unpacked_when_its_mark_cannot_be_saved() {
     let img = tmp.path().join("Tool.AppImage");
     build(&img, &FixtureSpec::hello("Tool")).unwrap();
     let paths = Paths::rooted(&tmp.path().join("sam"));
-    let sam = Sam::with_paths(paths.clone()).unwrap();
+    let mut sam = Sam::with_paths(paths.clone()).unwrap();
     let id = add_tool(&sam, &img).entry.id;
     let appdir = sam.resolve(&id).unwrap().extraction.unwrap().appdir;
     let inode = fs::metadata(&appdir).unwrap().ino();
@@ -438,6 +440,20 @@ fn new_content_is_not_unpacked_when_its_mark_cannot_be_saved() {
     let mut spec = FixtureSpec::hello("Tool");
     spec.comment = "a different file under the same name".into();
     build(&img, &spec).unwrap();
+
+    // The unpack cannot start: no mark for content that was not unpacked.
+    let location = sam.config.extraction.location.clone();
+    let not_a_folder = tmp.path().join("not-a-folder");
+    fs::write(&not_a_folder, "a file").unwrap();
+    sam.config.extraction.location = not_a_folder.join("unpacked").display().to_string();
+    sam.reextract(&id, false)
+        .expect_err("the unpack folder could not be made");
+    assert!(
+        !sam.resolve(&id).unwrap().content_changed_outside,
+        "a mark was saved for an unpack that never started"
+    );
+    assert_eq!(fs::metadata(&appdir).unwrap().ino(), inode);
+    sam.config.extraction.location = location;
 
     let blocker = paths
         .apps_dir()
@@ -459,7 +475,7 @@ fn new_content_is_not_unpacked_when_its_mark_cannot_be_saved() {
     let msg = format!("{err:#}");
     assert!(
         msg.contains("could not first save in the app's record")
-            && msg.contains("Nothing was unpacked")
+            && msg.contains("so nothing was unpacked")
             && msg.contains(&blocker.display().to_string()),
         "the error names the mark save and its cause: {msg}"
     );
@@ -470,8 +486,8 @@ fn new_content_is_not_unpacked_when_its_mark_cannot_be_saved() {
     assert!(e.content_changed_outside, "the new content is marked");
 }
 
-/// Regression: an app whose first unpack failed (consent for the fallback,
-/// or the DwarFS tool missing) has nothing unpacked, so the file it was
+/// An app whose first unpack failed (for example without consent for the
+/// fallback, or without the DwarFS tool) has nothing unpacked, so the file it was
 /// added with is what a later "Unpack Again" compares with. The change
 /// check, or relocate, recorded a swapped file's checksum in its place, and
 /// "Unpack Again" then took the swapped file for the added one and unpacked
@@ -526,4 +542,31 @@ fn a_swapped_appimage_of_a_never_unpacked_app_is_marked_when_it_is_unpacked() {
     sam.relocate(&id, &other).unwrap();
     let e = sam.reextract(&id, false).unwrap();
     assert!(e.content_changed_outside, "marked after relocate too");
+}
+
+/// An app whose first unpack failed is not updated: nothing SAM unpacked
+/// tells whether the file at its place is the one the person added, and a
+/// record an earlier SAM saved may name a swapped file there, whose update
+/// information would then decide what runs with this app's permissions.
+#[test]
+fn a_never_unpacked_app_is_not_updated() {
+    if !bwrap_or_skip() {
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let img = tmp.path().join("Tool.AppImage");
+    build(&img, &FixtureSpec::hello("Tool")).unwrap();
+    let sam = Sam::with_paths(Paths::rooted(&tmp.path().join("sam"))).unwrap();
+    let id = add_tool(&sam, &img).entry.id;
+    sam.registry()
+        .update(&id, |e| e.extraction = None)
+        .unwrap()
+        .expect("the app's record");
+    let err = sam
+        .update(&id, false)
+        .expect_err("a never-unpacked app was updated");
+    assert!(
+        format!("{err:#}").contains("has not unpacked Tool yet, so it does not update it"),
+        "{err:#}"
+    );
 }

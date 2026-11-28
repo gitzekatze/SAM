@@ -1883,7 +1883,11 @@ file swapped there afterwards is noticed like any changed AppImage, also
 for an app whose first unpack failed: the change check and relocating keep
 the checksum of the file it was added with, so the first unpack of a
 swapped file is marked
-(`a_swapped_appimage_of_a_never_unpacked_app_is_marked_when_it_is_unpacked`). Moving such a
+(`a_swapped_appimage_of_a_never_unpacked_app_is_marked_when_it_is_unpacked`),
+and such an app is neither checked for updates nor updated
+(`a_never_unpacked_app_is_not_updated`). SAM does not promise this mark
+when an earlier SAM version already saw the swapped file of such an app:
+its record then names that file. Moving such a
 file elsewhere does not pass it off as the app's own: SAM follows a moved
 AppImage only when its content is what SAM unpacked for the app; another
 file is added as an app of its own
