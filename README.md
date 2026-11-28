@@ -314,8 +314,8 @@ sam-jail uninstall --yes    # remove it (--keep-data keeps settings and app data
 
 SAM closes each app it removes and removes what the user guide's
 [Removing SAM](docs/guide.md#removing-sam) lists, and brings back the menu
-entries it hid for those apps. Afterwards, remove the packages or the
-AppImage.
+entries it hid for those apps (a warning names any it cannot). Afterwards,
+remove the packages or the AppImage.
 
 ---
 

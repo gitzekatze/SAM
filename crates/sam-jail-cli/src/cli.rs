@@ -154,10 +154,11 @@ pub(crate) enum Cmd {
     /// Write man pages (sam-jail.1 and one per command) into a folder.
     #[command(hide = true)]
     Man { dir: PathBuf },
-    /// Remove SAM from this computer: the apps' sandboxes (menu entries SAM
-    /// hid for them come back), SAM's menu entries and, without --keep-data, its
-    /// settings and data folders. The user guide's "Removing SAM" says what
-    /// stays. Lists what it would remove without --yes.
+    /// Remove SAM from this computer: the sandboxes of the apps whose record
+    /// SAM can read (menu entries SAM hid for them come back), SAM's menu
+    /// entries and, without --keep-data, its settings and data folders. The
+    /// user guide's "Removing SAM" says what stays. Lists what it would
+    /// remove without --yes.
     Uninstall {
         /// Keep SAM's settings and the apps' private data.
         #[arg(long)]

@@ -1739,10 +1739,11 @@ SAM keeps what it learns about you on your computer.
   an app (`bug_reports_hide_names_addresses_and_secrets`,
   `bug_reports_hide_tokens_in_every_shape`). SAM does not promise to hide
   anything else, such as IPv6 addresses, a user or computer name of one
-  letter, or a name or IPv4 address joined to another word (`jo_cache`). An app's log stays
-  inside its code block: its own text cannot end the block and add to the
-  report (`a_log_cannot_break_out_of_its_code_block`). Read it once before you
-  paste it anywhere: an app can print personal data SAM cannot recognize.
+  letter, or a name or IPv4 address joined to another word (`jo_cache`).
+  An app's log stays inside its code block: its own text cannot end the
+  block and add to the report (`a_log_cannot_break_out_of_its_code_block`).
+  Read it once before you paste it anywhere: an app can print personal
+  data SAM cannot recognize.
 
 ---
 
