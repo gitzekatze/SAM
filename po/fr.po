@@ -9835,6 +9835,15 @@ msgstr ""
 msgid "unknown flat preset key '{other}'"
 msgstr "clé « {other} » inconnue dans le modèle plat"
 
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-runner/src/launch.rs:711
+msgid ""
+"SAM did not start {app}: a link in its home changed while SAM prepared the "
+"start. Start it again."
+msgstr ""
+"SAM n’a pas démarré {app} : un lien de son dossier personnel a changé "
+"pendant que SAM préparait le démarrage. Relance-la."
+
 #~ msgid ""
 #~ "Lets the app open Bluetooth connections to nearby devices; other apps "
 #~ "cannot, except an app whose start program is 32-bit (the security page "
