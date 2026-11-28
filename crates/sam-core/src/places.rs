@@ -1693,17 +1693,15 @@ pub fn new_tmp_grants(before: &PermissionSet, after: &PermissionSet, home: &Path
     new_grants_where(before, after, home, |p| refused_tmp_grant(p, home))
 }
 
-/// Whether an extra folder is written relative: without a leading `/`,
-/// `~` or `$HOME`. Such a path names a different place at each start (it
-/// counts from the folder the start runs in), so `../../../../tmp` or
-/// `tmp` can reach `/tmp`.
+/// Whether an extra folder is written relative, judged as the start
+/// reads it ([`crate::util::expand_home`]: the text as it is, untrimmed):
+/// not starting with `/`, and not `~`, `~/…` or `$HOME/…`. Such a path
+/// names a different place at each start (it counts from the folder the
+/// start runs in), so `../../../../tmp` or `tmp` can reach `/tmp`; a bare
+/// `$HOME` and a path with leading spaces count as relative too, as the
+/// start reads them.
 pub fn is_relative_grant(path: &str) -> bool {
-    let t = path.trim();
-    !(t.starts_with('/')
-        || t == "~"
-        || t.starts_with("~/")
-        || t == "$HOME"
-        || t.starts_with("$HOME/"))
+    !(path.starts_with('/') || path == "~" || path.starts_with("~/") || path.starts_with("$HOME/"))
 }
 
 /// The extra folders in `after` written relative ([`is_relative_grant`])
@@ -1758,17 +1756,21 @@ pub fn own_tmp_folder(id: &str) -> PathBuf {
     PathBuf::from(format!("/tmp/sam-{id}"))
 }
 
-/// Whether the extra folders of `p` name the folder of the app's own
-/// `own` ([`own_tmp_folder`]) in any form the kernel reaches it by
-/// (`/tmp/x/../sam-<id>`, `~/../../tmp/sam-<id>`), with `~` and `$HOME`
-/// standing for `home`.
-pub fn names_own_tmp_folder(p: &PermissionSet, own: &Path, home: &Path) -> bool {
+/// The extra folders of `p` that name the folder of the app's own `own`
+/// ([`own_tmp_folder`]) in their lexical form (`/tmp/x/../sam-<id>`,
+/// `~/../../tmp/sam-<id>`), with `~` and `$HOME` standing for `home`, as
+/// written. Where a link on the way leads elsewhere, the sandbox mounts
+/// another place; the start checks that ([`crate::util::expand_home`]
+/// and [`resolve`]).
+pub fn own_tmp_folder_grants(p: &PermissionSet, own: &Path, home: &Path) -> Vec<String> {
     let own = own.to_string_lossy();
     let f = &p.filesystem;
     f.custom_write
         .iter()
         .chain(&f.custom_read)
-        .any(|g| !is_relative_grant(g) && crate::risk::grant_lexical(g, home) == own)
+        .filter(|g| !is_relative_grant(g) && crate::risk::grant_lexical(g, home) == own)
+        .cloned()
+        .collect()
 }
 
 /// The list of extra folders `list` with each grant SAM refuses
@@ -5505,8 +5507,18 @@ mod tests {
                 );
             }
         }
-        for path in ["/tmp", "~", "~/x", "$HOME", "$HOME/x"] {
+        for path in ["/tmp", "~", "~/x", "$HOME/x"] {
             assert!(!is_relative_grant(path), "{path}");
+        }
+        // Judged as the start reads it: a bare $HOME and leading spaces
+        // count from the start's folder there.
+        for path in ["$HOME", " ~/x", " /tmp"] {
+            assert!(is_relative_grant(path), "{path:?}");
+            assert_eq!(
+                new_relative_grants(&none, &with_folders(&[path], false), home),
+                vec![path.to_string()],
+                "{path:?}"
+            );
         }
     }
 

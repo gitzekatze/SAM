@@ -43,7 +43,10 @@ pub(super) enum Grants {
 /// account can rename or remove a folder this account owns there. The
 /// folder is made with mode 0700 and never through a link (an existing
 /// one is kept); then it must be a real folder, owned by `uid`, that no
-/// other account can open. Otherwise the start stops with the code
+/// other account can open, and each of the app's grants of it (`grants`,
+/// `~` written out) must lead there as the sandbox resolves it
+/// ([`sam_core::places::resolve`]), not through a link on the way to
+/// another place. Otherwise the start stops with the code
 /// `own-tmp-folder-unsafe` and nothing is changed or removed. `app` is
 /// the app's name for the message.
 pub(crate) fn make_own_tmp_folder_in(
@@ -51,6 +54,7 @@ pub(crate) fn make_own_tmp_folder_in(
     base_owner: u32,
     uid: u32,
     folder: &Path,
+    grants: &[PathBuf],
     app: &str,
 ) -> Result<()> {
     use std::os::unix::fs::{DirBuilderExt, MetadataExt};
@@ -92,12 +96,17 @@ pub(crate) fn make_own_tmp_folder_in(
         )
         .into());
     }
-    let own = found.is_some_and(|m| m.file_type().is_dir() && m.mode() & 0o077 == 0);
+    // The place the sandbox mounts for each grant is the folder checked
+    // here: `/tmp/x/../sam-<id>` with `/tmp/x` a link leads elsewhere.
+    let own = found.is_some_and(|m| m.file_type().is_dir() && m.mode() & 0o077 == 0)
+        && grants
+            .iter()
+            .all(|g| sam_core::places::resolve(g) == folder);
     if !own {
         return Err(sam_core::error::CodedError::new(
             "own-tmp-folder-unsafe",
             sam_core::i18n::trf(
-                "SAM did not start {app}: its folder {folder} is a link or others can open it, so another program may have made or changed it. Remove {folder}, or take it out of the app's folders, then start the app again.",
+                "SAM did not start {app}: its folder {folder} is not a folder, is a link or others can open it, so another program may have made or changed it. Remove {folder}, or take it out of the app's folders, then start the app again.",
                 &[("app", &app), ("folder", &shown)],
             ),
         )
@@ -374,20 +383,34 @@ impl Sam {
     /// ([`sam_core::places::own_tmp_folder`]) when its extra folders name
     /// it, at each start before the sandbox is set up, as
     /// [`make_own_tmp_folder_in`] makes it in `/tmp` for this account. A
-    /// folder that is a link, belongs to another account or others can open
-    /// stops the start (code `own-tmp-folder-unsafe`); nothing is changed or
+    /// folder that is no folder, is a link, belongs to another account or
+    /// others can open, or a grant of it that leads elsewhere through a
+    /// link, stops the start (code `own-tmp-folder-unsafe`); nothing is changed or
     /// removed (owner decision 10 of 2026-11-23). `sam-jail selftest` calls
     /// it too.
     pub fn make_own_tmp_folder(&self, e: &AppEntry) -> Result<()> {
         let folder = sam_core::places::own_tmp_folder(&e.id);
         let home = sam_core::util::home_dir();
-        // In any form the sandbox reaches it by (`/tmp/x/../sam-<id>`).
-        if !sam_core::places::names_own_tmp_folder(&e.profile.permissions, &folder, &home) {
+        // Every grant that names it as written (`/tmp/x/../sam-<id>` too);
+        // each must lead to the folder checked, as the sandbox resolves it.
+        let grants: Vec<PathBuf> =
+            sam_core::places::own_tmp_folder_grants(&e.profile.permissions, &folder, &home)
+                .iter()
+                .map(|g| sam_core::util::expand_home(g))
+                .collect();
+        if grants.is_empty() {
             return Ok(());
         }
         // SAFETY: getuid has no preconditions and cannot fail.
         let uid = unsafe { libc::getuid() };
-        make_own_tmp_folder_in(Path::new("/tmp"), 0, uid, &folder, e.display_name())
+        make_own_tmp_folder_in(
+            Path::new("/tmp"),
+            0,
+            uid,
+            &folder,
+            &grants,
+            e.display_name(),
+        )
     }
 
     /// Sandbox check for an AppImage that has no sandbox yet, with the
@@ -1790,19 +1813,37 @@ mod tmp_grant_tests {
     fn the_folder_of_its_own_is_made_for_you_only_at_each_start() {
         use std::os::unix::fs::{MetadataExt, PermissionsExt};
         let t = tempfile::tempdir().unwrap();
-        let base = t.path().join("tmp");
+        // Where links on the way are resolved already, as the sandbox
+        // resolves a grant.
+        let base = fs::canonicalize(t.path()).unwrap().join("tmp");
         fs::create_dir(&base).unwrap();
         fs::set_permissions(&base, fs::Permissions::from_mode(0o1777)).unwrap();
         // SAFETY: getuid has no preconditions and cannot fail.
         let uid = unsafe { libc::getuid() };
         let folder = base.join("sam-appimage-grants-1a2b");
-        make_own_tmp_folder_in(&base, uid, uid, &folder, "Grants").unwrap();
+        make_own_tmp_folder_in(
+            &base,
+            uid,
+            uid,
+            &folder,
+            std::slice::from_ref(&folder),
+            "Grants",
+        )
+        .unwrap();
         let m = fs::symlink_metadata(&folder).unwrap();
         assert!(m.is_dir());
         assert_eq!(m.mode() & 0o7777, 0o700);
         assert_eq!(m.uid(), uid);
         fs::write(folder.join("kept"), "x").unwrap();
-        make_own_tmp_folder_in(&base, uid, uid, &folder, "Grants").unwrap();
+        make_own_tmp_folder_in(
+            &base,
+            uid,
+            uid,
+            &folder,
+            std::slice::from_ref(&folder),
+            "Grants",
+        )
+        .unwrap();
         assert!(folder.join("kept").exists(), "an existing folder is kept");
     }
 
@@ -1832,7 +1873,7 @@ mod tmp_grant_tests {
         let host = sam_core::sandbox::sample_context().host;
         sam.check_before_start(&mut e, &host).unwrap();
         assert!(!own.exists(), "an app that does not name it gets none");
-        e.profile.permissions.filesystem.custom_write = vec![format!("/tmp/x/../sam-{id}")];
+        e.profile.permissions.filesystem.custom_write = vec![format!("/tmp//./sam-{id}/")];
         sam.check_before_start(&mut e, &host).unwrap();
         let m = fs::symlink_metadata(&own).unwrap();
         fs::remove_dir(&own).unwrap();
@@ -1843,22 +1884,25 @@ mod tmp_grant_tests {
     }
 
     /// A folder of the app's own that other accounts can open, one that is
-    /// a link, one owned by another account, and a base folder without the
+    /// a link, a grant of it that leads elsewhere through a link on the
+    /// way, one owned by another account, and a base folder without the
     /// sticky bit or owned by another account each stop the start, and
     /// nothing is changed or removed.
     #[test]
     fn a_folder_of_its_own_that_others_can_open_or_that_is_a_link_stops_the_start() {
         use std::os::unix::fs::PermissionsExt;
         let t = tempfile::tempdir().unwrap();
-        let base = t.path().join("tmp");
+        // Where links on the way are resolved already, as the sandbox
+        // resolves a grant.
+        let base = fs::canonicalize(t.path()).unwrap().join("tmp");
         fs::create_dir(&base).unwrap();
         fs::set_permissions(&base, fs::Permissions::from_mode(0o1777)).unwrap();
         // SAFETY: getuid has no preconditions and cannot fail.
         let uid = unsafe { libc::getuid() };
         let folder = base.join("sam-appimage-grants-1a2b");
         let stops = |base_owner: u32, uid: u32, what: &str| {
-            let err =
-                make_own_tmp_folder_in(&base, base_owner, uid, &folder, "Grants").expect_err(what);
+            let err = make_own_tmp_folder_in(&base, base_owner, uid, &folder, &[], "Grants")
+                .expect_err(what);
             assert_eq!(
                 code_of(&err),
                 Some("own-tmp-folder-unsafe"),
@@ -1886,6 +1930,32 @@ mod tmp_grant_tests {
             .file_type()
             .is_symlink());
         fs::remove_file(&folder).unwrap();
+        // A grant of it through a link on the way that leads elsewhere
+        // (`base/x/../sam-<id>` with `x` a link to a folder outside base):
+        // the sandbox would mount another place than the folder checked.
+        let deep = elsewhere.join("deep");
+        fs::create_dir(&deep).unwrap();
+        std::os::unix::fs::symlink(&deep, base.join("x")).unwrap();
+        let through = base.join("x/../sam-appimage-grants-1a2b");
+        let err = make_own_tmp_folder_in(&base, uid, uid, &folder, &[through], "Grants")
+            .expect_err("a grant through a link");
+        assert_eq!(code_of(&err), Some("own-tmp-folder-unsafe"), "{err:#}");
+        assert!(
+            err.to_string().contains("is not a folder, is a link"),
+            "{err}"
+        );
+        // The same folder named plainly is fine.
+        make_own_tmp_folder_in(
+            &base,
+            uid,
+            uid,
+            &folder,
+            std::slice::from_ref(&folder),
+            "Grants",
+        )
+        .unwrap();
+        fs::remove_dir(&folder).unwrap();
+        fs::remove_file(base.join("x")).unwrap();
         let text = stops(uid, uid.wrapping_add(1), "another account's folder");
         assert!(text.contains("belongs to another account"), "{text}");
         fs::remove_dir(&folder).unwrap();

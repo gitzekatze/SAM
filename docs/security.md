@@ -1259,8 +1259,10 @@ How these stay protected with the home writable:
   (`the_folder_of_its_own_is_never_refused_nor_a_socket_folder`,
   `the_editor_offers_a_folder_of_its_own_instead_of_tmp`). When the app's
   folders name it, SAM makes it at each start, for you only; when `/tmp`
-  does not belong to root with the sticky bit, or the folder is a link,
-  belongs to another account or others can open it, the start stops (code
+  does not belong to root with the sticky bit, or the folder is not a
+  folder, is a link, belongs to another account or others can open it, or
+  a grant of it leads elsewhere through a link on the way
+  (`/tmp/x/../sam-<app id>` with `/tmp/x` a link), the start stops (code
   `own-tmp-folder-unsafe`) and SAM changes and removes nothing
   (`the_folder_of_its_own_is_made_for_you_only_at_each_start`,
   `a_folder_of_its_own_that_others_can_open_or_that_is_a_link_stops_the_start`,
