@@ -3,11 +3,16 @@
 //! The source comes from the AppImage itself (`.upd_info`, see
 //! [`sam_detect::update_info`]). Every source ends in a `.zsync` file whose
 //! header names the SHA-1 of the published AppImage; when it differs from the
-//! file on this computer, an update is available. Only the header is read
-//! (a few kilobytes), nothing is downloaded or replaced.
+//! file on this computer, an update is available. A check reads only the
+//! start of each update description (16 KiB) and, for a GitHub source, the
+//! release description (whole, up to 16 MiB); it downloads no AppImage and
+//! replaces nothing.
 //!
 //! The network is reached through `curl`: HTTPS only, also for redirects,
-//! short time limits, a generic user agent, nothing about the user sent.
+//! short time limits, a fixed user agent that names SAM instead of curl's.
+//! Every request is a plain GET built by [`curl_args`]: the address, the
+//! server's name, the user agent, what SAM accepts and, for part of a file,
+//! which part. An address that holds a login is refused before curl runs.
 
 use std::fs::File;
 use std::io::Read;
@@ -32,19 +37,81 @@ const MAX_RELEASE_ANSWER: usize = 16 << 20;
 /// The largest update file SAM downloads when the server names no length.
 pub const MAX_DOWNLOAD: u64 = 8 << 30;
 
-/// curl as SAM uses it for every request (one place, so the three uses
-/// cannot drift apart; audit: they had): never the person's ~/.curlrc (which
-/// could switch off certificate checks or send the request elsewhere),
-/// HTTPS only, also after redirects, a few redirects at most, no URL
-/// patterns (`--globoff`: an update address with `[1-99999999]` would
-/// otherwise make curl send that many requests), and a time limit for the
-/// whole transfer, so a server that trickles cannot keep SAM busy forever
-/// (audit U-M7).
-fn curl(max_secs: u64) -> Result<Command> {
-    let curl = sam_core::util::which("curl")
-        .context(sam_core::i18n::tr("curl is not installed, so SAM cannot check for or download updates. Install the package curl."))?;
-    let mut cmd = Command::new(curl);
-    cmd.args([
+/// One request SAM makes to an update source. Every request is one of
+/// these three, so [`curl_args`] is the one place that decides what is sent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Request<'a> {
+    /// An answer: a GitHub release description, or an update description,
+    /// whole or only its first `first_bytes` bytes.
+    Answer {
+        url: &'a str,
+        first_bytes: Option<usize>,
+    },
+    /// Bytes `start..end` of the new file (a partial download).
+    Range { url: &'a str, start: u64, end: u64 },
+    /// The whole new file.
+    Whole { url: &'a str },
+}
+
+impl Request<'_> {
+    fn url(&self) -> &str {
+        match self {
+            Request::Answer { url, .. } | Request::Range { url, .. } | Request::Whole { url } => {
+                url
+            }
+        }
+    }
+}
+
+/// The address of a GitHub release description: the newest release, or
+/// the release `tag`. The owner, repository and tag are plain names
+/// ([`sam_detect::update_info`] refuses anything else).
+fn github_api_url(owner: &str, repo: &str, tag: &str) -> String {
+    if tag == "latest" {
+        format!("https://api.github.com/repos/{owner}/{repo}/releases/latest")
+    } else {
+        format!("https://api.github.com/repos/{owner}/{repo}/releases/tags/{tag}")
+    }
+}
+
+/// curl's arguments for `req`, the same for every request (one place, so
+/// the uses cannot drift apart; audit: they had): never the person's
+/// ~/.curlrc (which could switch off certificate checks or send the request
+/// elsewhere), HTTPS only, also after redirects, a few redirects at most,
+/// no URL patterns (`--globoff`: an update address with `[1-99999999]`
+/// would otherwise make curl send that many requests), a fixed user agent,
+/// and a time limit for the whole transfer, so a server that trickles
+/// cannot keep SAM busy forever (audit U-M7). An address that is not HTTPS,
+/// or whose server part holds a login (`https://name:secret@host/…`, which
+/// curl would send to the server), is refused.
+fn curl_args(req: &Request, max_secs: u64) -> Result<Vec<String>> {
+    let url = req.url();
+    if !url.starts_with("https://") {
+        bail!(
+            "{}",
+            sam_core::i18n::trf(
+                "the update address is not HTTPS ({address})",
+                &[("address", &sam_core::util::display_safe(url, 120))]
+            )
+        );
+    }
+    // The server part: after `https:` and every `/` or `\` that follows it
+    // (curl reads `https:///name:secret@host/` with a login too), up to the
+    // next `/`, `?` or `#`, where curl ends it (a `\` there belongs to the
+    // login, as in `https://a\b@host/`). A login is an `@` there, also
+    // written as `%40`.
+    let server = url["https:".len()..]
+        .trim_start_matches(['/', '\\'])
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or_default();
+    if server.contains('@') || server.to_ascii_lowercase().contains("%40") {
+        bail!(
+            "{}",
+            sam_core::i18n::tr("the update address holds a login, which SAM does not send")
+        );
+    }
+    let mut args: Vec<String> = [
         // First, or curl ignores it.
         "--disable",
         "--silent",
@@ -62,8 +129,44 @@ fn curl(max_secs: u64) -> Result<Command> {
         "15",
         "--user-agent",
         "SAM-AppImage-update-check",
-    ])
-    .args(["--max-time", &max_secs.to_string()]);
+        "--max-time",
+    ]
+    .map(String::from)
+    .into();
+    args.push(max_secs.to_string());
+    match *req {
+        Request::Answer { first_bytes, .. } => {
+            args.extend(["--header", "Accept: application/json, */*"].map(String::from));
+            if let Some(n) = first_bytes {
+                args.extend(["--range".to_string(), format!("0-{}", n.saturating_sub(1))]);
+            }
+        }
+        Request::Range { start, end, .. } => {
+            args.extend(["--speed-limit", "1024", "--speed-time", "60"].map(String::from));
+            args.extend([
+                "--range".to_string(),
+                format!("{}-{}", start, end.saturating_sub(1)),
+            ]);
+        }
+        Request::Whole { .. } => {
+            args.extend(["--speed-limit", "1024", "--speed-time", "60"].map(String::from));
+        }
+    }
+    args.extend(["--".to_string(), url.to_string()]);
+    Ok(args)
+}
+
+/// curl, ready to send `req` within `max_secs`.
+fn curl(req: &Request, max_secs: u64) -> Result<Command> {
+    let args = curl_args(req, max_secs)?;
+    let curl = sam_core::util::which("curl")
+        .context(sam_core::i18n::tr("curl is not installed, so SAM cannot check for or download updates. Install the package curl."))?;
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "way out: curl, for an update request"
+    )]
+    let mut cmd = Command::new(curl);
+    cmd.args(args);
     Ok(cmd)
 }
 
@@ -249,11 +352,7 @@ fn newest_from(local: &str, source: &UpdateSource) -> Result<Option<Published>> 
             tag,
             pattern,
         } => {
-            let api = if tag == "latest" {
-                format!("https://api.github.com/repos/{owner}/{repo}/releases/latest")
-            } else {
-                format!("https://api.github.com/repos/{owner}/{repo}/releases/tags/{tag}")
-            };
+            let api = github_api_url(owner, repo, tag);
             let json: serde_json::Value = serde_json::from_slice(&fetch(&api, None)?)
                 .context(sam_core::i18n::tr("GitHub's answer"))?;
             let tag_name = json
@@ -444,7 +543,9 @@ pub const UPDATE_TIME_LIMIT: Duration = Duration::from_secs(3600);
 /// published SHA-1, and all of it ends within [`UPDATE_TIME_LIMIT`]. Used
 /// for app updates and for SAM's own update.
 pub fn download_update(p: &Published, old: &Path, dest: &Path) -> Result<Fetched> {
-    download_update_within(p, old, dest, UPDATE_TIME_LIMIT)
+    #[expect(clippy::disallowed_methods, reason = "way out: an update download")]
+    let r = download_update_within(p, old, dest, UPDATE_TIME_LIMIT);
+    r
 }
 
 /// [`download_update`] with its time limit (tests use seconds). One
@@ -645,11 +746,7 @@ fn fetch_range(url: &str, start: u64, end: u64, deadline: &Deadline) -> Result<V
     }
     let want = usize::try_from(end.saturating_sub(start))?;
     let limit = deadline.left()?.min(Duration::from_secs(300));
-    let mut cmd = curl(limit.as_secs())?;
-    cmd.args(["--speed-limit", "1024", "--speed-time", "60"])
-        .args(["--range", &format!("{}-{}", start, end.saturating_sub(1))])
-        .arg("--")
-        .arg(url);
+    let cmd = curl(&Request::Range { url, start, end }, limit.as_secs())?;
     read_range(cmd, limit, want)
 }
 
@@ -761,9 +858,8 @@ fn download_inner(p: &Published, dest: &Path, deadline: &Deadline) -> Result<()>
     }
     // What is left of the update's hour (the partial download may have
     // used some); the speed limit ends a stalled one sooner.
-    let mut cmd = curl(deadline.left()?.as_secs())?;
-    cmd.args(["--speed-limit", "1024", "--speed-time", "60"]);
-    cmd.arg("--").arg(&p.file_url);
+    let url = p.file_url.as_str();
+    let cmd = curl(&Request::Whole { url }, deadline.left()?.as_secs())?;
     // The published length (or SAM's ceiling) is the most SAM keeps.
     let cap = p.length.unwrap_or(MAX_DOWNLOAD).min(MAX_DOWNLOAD);
     save_capped(cmd, dest, cap)?;
@@ -945,12 +1041,11 @@ fn fetch_within(url: &str, limit: Option<usize>, max_secs: u64) -> Result<Vec<u8
             )
         );
     }
-    let mut cmd = curl(max_secs)?;
-    cmd.args(["--header", "Accept: application/json, */*"]);
-    if let Some(n) = limit {
-        cmd.args(["--range", &format!("0-{}", n - 1)]);
-    }
-    cmd.arg("--").arg(url);
+    let req = Request::Answer {
+        url,
+        first_bytes: limit,
+    };
+    let cmd = curl(&req, max_secs)?;
     match limit {
         Some(n) => answer_of(cmd, n, false),
         None => answer_of(cmd, MAX_RELEASE_ANSWER, true),
@@ -1454,5 +1549,156 @@ mod tests {
     fn updates_are_downloaded_over_https_only() {
         assert!(fetch("http://example.org/App.zsync", None).is_err());
         assert!(fetch("file:///etc/passwd", None).is_err());
+    }
+
+    /// What every update request sends besides its address. Any change here
+    /// is a change in what SAM tells an update source: review it with
+    /// docs/security.md, "Network use by SAM itself".
+    const EVERY_REQUEST: &[&str] = &[
+        "--disable",
+        "--silent",
+        "--show-error",
+        "--fail",
+        "--location",
+        "--globoff",
+        "--proto",
+        "=https",
+        "--proto-redir",
+        "=https",
+        "--max-redirs",
+        "5",
+        "--connect-timeout",
+        "15",
+        "--user-agent",
+        "SAM-AppImage-update-check",
+        "--max-time",
+        "30",
+    ];
+
+    /// The curl arguments of each kind of update request are exactly these,
+    /// word for word: the same fixed part for every request (no ~/.curlrc,
+    /// HTTPS only, at most five redirects, SAM's user agent, a time limit),
+    /// then only what SAM accepts or which part of the file it asks for,
+    /// then the address. A new option, header or argument fails here.
+    #[test]
+    fn every_update_request_has_exactly_these_curl_arguments() {
+        let url = "https://example.org/App.AppImage.zsync";
+        let with = |rest: &[&str]| -> Vec<String> {
+            EVERY_REQUEST
+                .iter()
+                .chain(rest)
+                .map(|s| s.to_string())
+                .collect()
+        };
+        let cases: [(Request, &[&str]); 4] = [
+            (
+                Request::Answer {
+                    url,
+                    first_bytes: None,
+                },
+                &["--header", "Accept: application/json, */*", "--", url],
+            ),
+            (
+                Request::Answer {
+                    url,
+                    first_bytes: Some(16384),
+                },
+                &[
+                    "--header",
+                    "Accept: application/json, */*",
+                    "--range",
+                    "0-16383",
+                    "--",
+                    url,
+                ],
+            ),
+            (
+                Request::Range {
+                    url,
+                    start: 4096,
+                    end: 8192,
+                },
+                &[
+                    "--speed-limit",
+                    "1024",
+                    "--speed-time",
+                    "60",
+                    "--range",
+                    "4096-8191",
+                    "--",
+                    url,
+                ],
+            ),
+            (
+                Request::Whole { url },
+                &["--speed-limit", "1024", "--speed-time", "60", "--", url],
+            ),
+        ];
+        for (req, rest) in cases {
+            assert_eq!(curl_args(&req, 30).unwrap(), with(rest), "{req:?}");
+        }
+    }
+
+    /// The GitHub release description SAM asks for is exactly this address,
+    /// for the newest release and for a named one: no query, no other path.
+    #[test]
+    fn the_github_address_is_exactly_the_release_address() {
+        assert_eq!(
+            github_api_url("owner", "repo", "latest"),
+            "https://api.github.com/repos/owner/repo/releases/latest"
+        );
+        assert_eq!(
+            github_api_url("owner", "repo", "v1.2"),
+            "https://api.github.com/repos/owner/repo/releases/tags/v1.2"
+        );
+    }
+
+    /// An update address whose server part holds a login is refused before
+    /// curl runs, for every kind of request, so curl never sends it to the
+    /// server. An `@` later in the address (its path) is no login.
+    #[test]
+    fn an_update_address_with_a_login_is_refused() {
+        for url in [
+            "https://name:secret@example.org/App.zsync",
+            "https://name@example.org/App.zsync",
+            "https://name@example.org",
+            "https://name@example.org?x",
+            "https:///name:secret@example.org/App.zsync",
+            "https://\\name:secret@example.org/App.zsync",
+            "https://name%40x:secret%40y@example.org/App.zsync",
+            "https://name%40example.org/App.zsync",
+            "https://name:secret\\x@example.org/App.zsync",
+            "https://a\\b@host/x",
+        ] {
+            for req in [
+                Request::Answer {
+                    url,
+                    first_bytes: None,
+                },
+                Request::Range {
+                    url,
+                    start: 0,
+                    end: 1,
+                },
+                Request::Whole { url },
+            ] {
+                let err = curl_args(&req, 30).unwrap_err().to_string();
+                assert!(err.contains("login"), "{url}: {err}");
+            }
+        }
+        assert!(curl_args(
+            &Request::Whole {
+                url: "https://example.org/files/@latest/App.AppImage"
+            },
+            30
+        )
+        .is_ok());
+        assert!(curl_args(
+            &Request::Whole {
+                url: "http://example.org/App"
+            },
+            30
+        )
+        .is_err());
     }
 }

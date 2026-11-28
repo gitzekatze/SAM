@@ -204,6 +204,30 @@ tests = ["app_output_cannot_buy_dangerous_grants",
   "a_step_the_apps_output_raised_stays_its_request_under_a_hints_name",
 ]
 
+[[function]]
+id = 43
+area = "B"
+promise = "SAM never gives an app new access to /tmp or a known socket folder in it (tmux, SSH, the X server …) or a new extra folder written relative, offers a folder of the app's own instead, and keeps an older grant until you replace it."
+code = ["sam-core/src/places.rs", "sam-runner/src/gate.rs", "sam-runner/src/ops/profiles.rs", "sam-runner/src/ops/add.rs", "sam-runner/src/repair.rs", "sam-runner/src/doctor.rs", "sam-storage/src/lib.rs", "sam-gtk/src/perms.rs", "sam-jail-cli/src/main.rs"]
+tests = [
+  "a_new_grant_of_tmp_is_refused_however_it_is_written",
+  "a_link_that_leads_to_tmp_is_refused_as_a_new_grant",
+  "an_older_tmp_grant_may_stay_or_be_narrowed_but_not_widened",
+  "the_folder_of_its_own_is_never_refused_nor_a_socket_folder",
+  "the_gate_refuses_a_new_tmp_grant_even_after_a_yes",
+  "every_way_to_change_settings_refuses_a_new_tmp_grant",
+  "turning_compatibility_off_and_undoing_keep_an_older_tmp_grant",
+  "an_older_tmp_grant_gets_a_hint_to_a_folder_of_its_own",
+  "no_undo_brings_tmp_back",
+  "the_folder_of_its_own_is_made_for_you_only_at_each_start",
+  "a_folder_of_its_own_that_others_can_open_or_that_is_a_link_stops_the_start",
+  "every_start_makes_the_folder_of_its_own_in_tmp",
+  "doctor_names_apps_with_an_older_tmp_grant",
+  "a_preset_holding_tmp_is_not_saved",
+  "set_refuses_tmp_even_with_yes_and_names_a_folder_of_its_own",
+  "the_editor_offers_a_folder_of_its_own_instead_of_tmp",
+]
+
 [[area]]
 id = "C"
 name = "The sandbox"
@@ -1134,9 +1158,9 @@ tests = ["a_setuid_bubblewrap_is_told_from_a_normal_one", "the_bubblewrap_option
 [[function]]
 id = 34
 area = "G"
-promise = "Privacy: SAM sends nothing on its own, and a bug report hides what the security page's *Bug reports* lists, such as your name, home path, IPv4 addresses and secrets."
-code = ["sam-runner/src/doctor.rs"]
-tests = ["given_environment_values_are_hidden_in_the_shown_command", "bug_reports_hide_the_user_name_and_home_path", "bug_reports_hide_names_addresses_and_secrets", "bug_reports_hide_secrets_in_every_spelling", "a_bug_report_is_complete_and_redacted", "update_checks_stay_off_unless_switched_on", "the_machine_id_reaches_only_apps_with_dbus", "bug_reports_hide_tokens_in_every_shape", "a_log_cannot_break_out_of_its_code_block", "a_bug_report_removes_the_personal_details_it_promises_to"]
+promise = "Privacy: SAM goes online only when you ask (or when you switched on the daily check) and sends nothing about you beyond what each request needs, and a bug report hides what the security page's *Bug reports* lists, such as your name, home path, IPv4 addresses and secrets."
+code = ["sam-runner/src/doctor.rs", "sam-runner/src/updates.rs", "sam-runner/src/ops/maintain.rs", "sam-gtk/src/backend.rs"]
+tests = ["given_environment_values_are_hidden_in_the_shown_command", "bug_reports_hide_the_user_name_and_home_path", "bug_reports_hide_names_addresses_and_secrets", "bug_reports_hide_secrets_in_every_spelling", "a_bug_report_is_complete_and_redacted", "update_checks_stay_off_unless_switched_on", "the_machine_id_reaches_only_apps_with_dbus", "bug_reports_hide_tokens_in_every_shape", "a_log_cannot_break_out_of_its_code_block", "a_bug_report_removes_the_personal_details_it_promises_to", "every_update_request_has_exactly_these_curl_arguments", "the_github_address_is_exactly_the_release_address", "an_update_address_with_a_login_is_refused", "the_window_runs_update_commands_only_through_call_online", "each_listed_call_in_program_code_is_a_listed_place", "the_way_out_parser_reads_what_the_compiler_reads", "the_update_module_the_window_start_and_apprun_are_as_reviewed", "only_listed_libraries_are_part_of_sam", "the_library_check_sees_a_new_name_or_source", "the_trace_check_reads_strace_lines", "every_command_is_traced_or_named_untraced", "everyday_commands_make_no_internet_connection", "the_trace_sees_an_update_check", "the_trace_sees_inside_an_apps_sandbox", "update_requests_carry_nothing_about_the_person_or_their_apps", "a_version_is_found_only_as_a_whole_word", "the_recording_server_records_every_method"]
 
 [[area]]
 id = "H"

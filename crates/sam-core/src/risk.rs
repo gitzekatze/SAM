@@ -775,11 +775,12 @@ const SOCKET_FOLDERS_IN_TMP: &[&str] = &[
 /// sandbox (review SB-3). Only folder grants count: a file in `/tmp`
 /// opened with the app shows no socket.
 pub fn shows_host_sockets(path: &str) -> bool {
-    let home = crate::util::home_dir();
-    let abs = lexical_path(&expand_home_text(
-        path,
-        &lexical_path(&home.to_string_lossy()),
-    ));
+    shows_host_sockets_in(path, &crate::util::home_dir())
+}
+
+/// [`shows_host_sockets`] with `~` and `$HOME` standing for `home`.
+pub fn shows_host_sockets_in(path: &str, home: &std::path::Path) -> bool {
+    let abs = grant_lexical(path, home);
     match abs.strip_prefix("/tmp") {
         Some("") => true,
         Some(rest) => rest.strip_prefix('/').is_some_and(|first| {
@@ -797,6 +798,22 @@ pub fn shows_host_sockets(path: &str) -> bool {
 /// text alone cannot tell where such a grant ends up (review F1).
 pub fn is_dangerous_grant(path: &str) -> bool {
     is_sensitive_path(path) || shows_host_sockets(path) || path.trim().split('/').any(|c| c == "..")
+}
+
+/// A folder grant `path` as the kernel reaches it when no link is on the
+/// way, with `~` and `$HOME` standing for `home`: `/tmp/`, `//tmp` and
+/// `/var/../tmp` all are `/tmp`.
+pub(crate) fn grant_lexical(path: &str, home: &std::path::Path) -> String {
+    lexical_path(&expand_home_text(
+        path,
+        &lexical_path(&home.to_string_lossy()),
+    ))
+}
+
+/// A folder grant `path` with a leading `~` or `$HOME` written out as
+/// `home`, otherwise as written.
+pub(crate) fn grant_expanded(path: &str, home: &std::path::Path) -> String {
+    expand_home_text(path, &lexical_path(&home.to_string_lossy()))
 }
 
 /// `p` with a leading `~` or `$HOME` written out as `home`.
@@ -1432,6 +1449,12 @@ mod tests {
             assert!(!new_risks(&before, &after).is_empty(), "{path}");
             let w = crate::warnings::evaluate(&after, &crate::warnings::WarningContext::default());
             assert!(w.iter().any(|w| w.code == "socket-folder"), "{path}: {w:?}");
+            // The warning names the list the grant is in.
+            assert!(
+                w.iter().any(|w| w.code == "socket-folder"
+                    && w.key.as_deref() == Some("filesystem.custom_read")),
+                "{path}: {w:?}"
+            );
         }
         let mut after = before.clone();
         after.filesystem.custom_read = vec!["/tmp/exchange".into()];

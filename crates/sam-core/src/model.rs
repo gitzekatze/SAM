@@ -351,6 +351,14 @@ pub enum FixAction {
     Compat,
     /// Always pass this argument to the app (e.g. `--no-sandbox`).
     AddArg { value: String },
+    /// Replace one value in a list permission with another (an older grant
+    /// of `/tmp` with a folder of the app's own); `from` is dropped when
+    /// `to` is in the list already.
+    Replace {
+        key: String,
+        from: String,
+        to: String,
+    },
     /// Nothing SAM can change (explanation only).
     None,
 }

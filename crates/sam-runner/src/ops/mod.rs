@@ -618,6 +618,7 @@ fn pidfd_open(pid: u32) -> std::io::Result<std::os::fd::OwnedFd> {
     use std::os::fd::FromRawFd;
     let pid =
         libc::pid_t::try_from(pid).map_err(|_| std::io::Error::from_raw_os_error(libc::ESRCH))?;
+    #[expect(clippy::disallowed_methods, reason = "way out: a syscall, pidfd_open")]
     // SAFETY: pidfd_open takes a process id and flags; it returns a new
     // descriptor or -1.
     let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) };
@@ -632,16 +633,17 @@ fn pidfd_open(pid: u32) -> std::io::Result<std::os::fd::OwnedFd> {
 /// Sends `sig` through a pidfd; a process that has ended only makes it fail.
 fn pidfd_signal(fd: &std::os::fd::OwnedFd, sig: i32) {
     use std::os::fd::AsRawFd;
+    let (nr, fd, info) = (
+        libc::SYS_pidfd_send_signal,
+        fd.as_raw_fd(),
+        std::ptr::null::<libc::siginfo_t>(),
+    );
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "way out: a syscall, pidfd_send_signal"
+    )]
     // SAFETY: a valid pidfd, a signal number, no siginfo, no flags.
-    unsafe {
-        libc::syscall(
-            libc::SYS_pidfd_send_signal,
-            fd.as_raw_fd(),
-            sig,
-            std::ptr::null::<libc::siginfo_t>(),
-            0,
-        )
-    };
+    let _ = unsafe { libc::syscall(nr, fd, sig, info, 0) };
 }
 
 /// A launch's runner that [`Sam::stop`] closes. Its signals go through a

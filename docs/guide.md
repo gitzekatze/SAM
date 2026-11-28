@@ -95,7 +95,7 @@ On desktops that support it, SAM tells the compositor that the app is sandboxed,
 
 ### Files
 
-Each personal folder (Documents, Downloads, Pictures, Music, Videos, Desktop) can be *No access*, *Read-only* or *Read & write*. You can add **extra folders**, read-only or writable, and decide whether files you open with the app are shared at all (*No access* shares none) and whether they can be saved. **Full home access** is possible but dangerous; even then your SSH keys, GnuPG keys and sensitive dotfiles stay hidden unless you allow them one by one.
+Each personal folder (Documents, Downloads, Pictures, Music, Videos, Desktop) can be *No access*, *Read-only* or *Read & write*. You can add **extra folders**, read-only or writable, each by its full path (SAM does not add `/tmp` or a known socket folder in it, such as tmux's, SSH's or the X server's, and offers a folder of the app's own in `/tmp` instead; see [security](security.md)), and decide whether files you open with the app are shared at all (*No access* shares none) and whether they can be saved. **Full home access** is possible but dangerous; even then your SSH keys, GnuPG keys and sensitive dotfiles stay hidden unless you allow them one by one.
 
 > **Where do an app's own files go?** Into its private folder. Open it from the app's ⋮ menu → *Files This App Saved*.
 
@@ -202,6 +202,8 @@ A system check (Bubblewrap, user namespaces, Landlock, the D-Bus proxy, sockets)
 **Updates:** under *Details*, **Check for Updates** asks the update source the AppImage names (GitHub or the app's own server) whether a newer version is published. If so, the page says which one and offers **Update Now**: SAM downloads it, checks it, puts it in place of the old file and unpacks it, keeping your settings. The old version is kept; **Go back to the previous version** under *Troubleshooting* restores it. (**Open Download Page** is there if you prefer to do it yourself.) *Preferences → Updates* can check every app once a day when SAM opens. When an update description is published (most do), only the changed parts are downloaded.
 
 **SAM itself:** if you use SAM's AppImage, *Check for SAM Updates* in the main menu updates SAM the same way. Packages from your distribution update through its package manager.
+
+What SAM sends when it goes online, and what the servers learn: [Network use by SAM itself](security.md#network-use-by-sam-itself).
 
 **Disk space:** an app's page shows, under *Details*, how much space it takes. **Free Space** deletes its unpacked copy; its settings and files stay, and the next start unpacks the AppImage again (a few seconds).
 

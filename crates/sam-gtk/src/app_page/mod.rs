@@ -114,6 +114,11 @@ impl AppPage {
     pub fn new(app: &Rc<App>, app_id: &str, path: &str) -> Rc<AppPage> {
         let catalog = app.state.borrow().catalog.clone();
         let editor = Editor::new(catalog, &app.window);
+        editor.set_own_tmp_folder(Some(
+            sam_core::places::own_tmp_folder(app_id)
+                .to_string_lossy()
+                .into_owned(),
+        ));
 
         // ---- header bar + pinned app header
         let view = adw::ToolbarView::new();

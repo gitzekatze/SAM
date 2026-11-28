@@ -103,6 +103,10 @@ pub(crate) fn isolated(
     writable: &Path,
     tool: &Path,
 ) -> Result<Command> {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "way out: bwrap, the unpack sandbox"
+    )]
     let mut c = Command::new(&iso.bwrap);
     c.args(["--die-with-parent", "--new-session", "--unshare-all"]);
     c.args(NO_NESTED_USERNS);
@@ -305,6 +309,10 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
                                 c.arg(&d);
                                 c
                             }
+                            #[expect(
+                                clippy::disallowed_methods,
+                                reason = "way out: dwarfsextract without the unpack sandbox"
+                            )]
                             None => Command::new(&d),
                         };
                         run_tool(
@@ -390,6 +398,10 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
                                 c.arg(&u);
                                 c
                             }
+                            #[expect(
+                                clippy::disallowed_methods,
+                                reason = "way out: unsquashfs without the unpack sandbox"
+                            )]
                             None => Command::new(&u),
                         };
                         run_tool(
@@ -421,6 +433,10 @@ pub fn extract(req: &ExtractRequest, log: &mut dyn Write) -> Result<ExtractOutco
                                 c.arg(&b);
                                 c
                             }
+                            #[expect(
+                                clippy::disallowed_methods,
+                                reason = "way out: bsdtar without the unpack sandbox"
+                            )]
                             None => Command::new(&b),
                         };
                         run_tool(
@@ -1099,6 +1115,10 @@ fn self_extract_sandboxed(
         }
     };
     let src = src.as_path();
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "way out: bwrap, the unpack sandbox"
+    )]
     let mut cmd = Command::new(&iso.bwrap);
     cmd.args(["--unshare-all", "--die-with-parent", "--new-session"])
         .args(NO_NESTED_USERNS)

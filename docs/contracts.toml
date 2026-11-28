@@ -681,5 +681,9 @@ covers = ["path:/opt/app", "path:/opt/app/", "path:/run/sam", "path:/run/sam/*",
 why = "Paths inside the sandbox that SAM itself creates, or examples in texts."
 
 [[own]]
+covers = ["path:/tmp/sam-"]
+why = "The folder of an app's own in /tmp (/tmp/sam-<app id>), which SAM makes itself at each start; SAM checks at that moment that /tmp belongs to root with the sticky bit and that the folder is a real folder only this account can open, and stops the start otherwise."
+
+[[own]]
 covers = ["option:--no-sandbox"]
 why = "An argument SAM suggests passing to Electron apps; the app decides what it means."

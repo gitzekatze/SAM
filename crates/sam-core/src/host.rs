@@ -83,8 +83,12 @@ pub fn help_lists_option(help: &str, opt: &str) -> bool {
 /// so a distribution's backport counts and an odd version text does no
 /// harm.
 pub fn bwrap_lists_option(bwrap: &std::path::Path, opt: &str) -> bool {
-    std::process::Command::new(bwrap)
-        .arg("--help")
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "way out: bwrap --help, to read its options"
+    )]
+    let mut cmd = std::process::Command::new(bwrap);
+    cmd.arg("--help")
         .stdin(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .output()
@@ -143,8 +147,13 @@ fn try_overlay_with(bwrap: &std::path::Path, dir: &std::path::Path) -> bool {
         && ["lower", "upper", "work"]
             .iter()
             .all(|d| std::fs::create_dir_all(probe.join(d)).is_ok());
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "way out: bwrap with a test overlay"
+    )]
+    let mut cmd = std::process::Command::new(bwrap);
     let works = made
-        && std::process::Command::new(bwrap)
+        && cmd
             .args([
                 "--unshare-user",
                 "--ro-bind",
@@ -534,6 +543,10 @@ fn read_trim(p: &str) -> Option<String> {
 }
 
 fn tool_version(path: &Path, args: &[&str]) -> Option<String> {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "way out: a tool's version option"
+    )]
     let out = Command::new(path).args(args).output().ok()?;
     let text = if out.stdout.is_empty() {
         out.stderr
@@ -936,15 +949,14 @@ pub fn landlock_abi() -> Option<u32> {
     {
         const SYS_LANDLOCK_CREATE_RULESET: libc::c_long = 444;
         const LANDLOCK_CREATE_RULESET_VERSION: u32 = 1;
+        let (nr, version) = (SYS_LANDLOCK_CREATE_RULESET, LANDLOCK_CREATE_RULESET_VERSION);
+        let attr = std::ptr::null::<u8>();
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "way out: a syscall, the Landlock version query"
+        )]
         // SAFETY: asks the kernel for its Landlock version: a null attribute pointer with size 0 is what the version query expects.
-        let r = unsafe {
-            libc::syscall(
-                SYS_LANDLOCK_CREATE_RULESET,
-                std::ptr::null::<u8>(),
-                0usize,
-                LANDLOCK_CREATE_RULESET_VERSION,
-            )
-        };
+        let r = unsafe { libc::syscall(nr, attr, 0usize, version) };
         if r > 0 {
             return Some(r as u32);
         }

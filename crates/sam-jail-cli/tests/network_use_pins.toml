@@ -1,0 +1,20 @@
+# The reviewed texts of the privacy check (crates/sam-jail-cli/tests/network_use.rs,
+# `the_update_module_the_window_start_and_apprun_are_as_reviewed`): SHA-256 of
+# each text without its comment lines. A changed text fails CI until its hash
+# here is renewed in the review that checks the change against
+# docs/security.md, "Network use by SAM itself". This file is not protected:
+# renewing a hash is routine review, not a change of the promise.
+update_module = "76511700aa29af3cc565704de1b854515af49dbb76d2bc695e82b34076a2915d"
+apprun = "d9015dfc7470d7c75d37c51b26608ae90e5e8afb6c0f0fab545ab25e5c44183e"
+
+[window_start]
+"crates/sam-gtk/src/window.rs start" = "a774819c74261b402db0d12b42ba7ef803393dcfafc1e2691d793063a3c018bc"
+"crates/sam-gtk/src/window.rs check_cli_version" = "0c37fc360221ecbb1dc0d3d2c83ed5cde235a4f5ec304bf2382053cbba1e40ee"
+"crates/sam-gtk/src/window.rs load_catalog" = "1a07634c663e65d5630c7a7125d052b345a58fc7dd42b44c154d3fd4a28436a8"
+"crates/sam-gtk/src/window.rs load_config" = "000437eb4b11b4f14e65e864887f1af24a9de22c1422ff62f2e19fcf52ba948a"
+"crates/sam-gtk/src/window.rs refresh_apps" = "e5e1357249c08e8a1a4f977cb5983bd87c39a17ded395739aa433db62b2bb64f"
+"crates/sam-gtk/src/window.rs count_downloads" = "66d3a16e830cdaf7f744b91461c58e10611371dc4d95f16605ae1886983618e9"
+"crates/sam-gtk/src/window.rs refresh_registered" = "b2181b7cdf3ffb0c209d8e29dd02ed28c4ce8e887269233367ff7285ac9d59f3"
+"crates/sam-gtk/src/i18n.rs apply_language_setting" = "aef64072cc09b5970cfbeeea9d3745c4e85932ef15c25f64e67570bb793b0a13"
+"crates/sam-gtk/src/i18n.rs configured_language" = "05eb38743dc640de6404b3be6078fa35dde2c5b56cc483941a60eea4bbf2e628"
+"crates/sam-gtk/src/main.rs main" = "76c0a19f79f3698cff06c09adbea15f3aa2d040b7bf64f82a8e06ce5907b75d5"

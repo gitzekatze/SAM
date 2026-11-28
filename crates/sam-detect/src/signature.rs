@@ -47,6 +47,10 @@ impl GnuPg<'_> {
     fn command(&self, program: &Path, home: &Path) -> Result<Command> {
         match self {
             GnuPg::Sandboxed(wrap) => wrap(program, home),
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "way out: gpg or gpgv without the unpack sandbox"
+            )]
             GnuPg::Direct => Ok(Command::new(program)),
         }
     }
@@ -491,6 +495,10 @@ fn sign_inner(
         sections(&data).context(sam_core::i18n::tr("no signature sections"))?;
     let gpg = sam_core::util::which("gpg").context(sam_core::i18n::tr("gpg missing"))?;
     let gpg_cmd = || {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "way out: gpg to sign with a developer's key"
+        )]
         let mut c = Command::new(&gpg);
         if let Some(h) = gpg_home {
             c.arg("--homedir").arg(h);

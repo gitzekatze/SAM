@@ -11,9 +11,9 @@ results.
   layer, and how it is built.
 - **[Threat model](threat-model.md):** who SAM protects you from, and just as
   clearly, what it does not.
-- **[Functions and their tests](functions.md):** all <!-- fact:functions -->42<!-- /fact -->
+- **[Functions and their tests](functions.md):** all <!-- fact:functions -->43<!-- /fact -->
   functions SAM promises, each with the tests that prove it.
-- **[Test library](test-library.md):** every one of the <!-- fact:tests -->1,267<!-- /fact -->
+- **[Test library](test-library.md):** every one of the <!-- fact:tests -->1,300<!-- /fact -->
   tests and the promise it keeps.
 - **[Real AppImages](reports/real-apps-2026-11-20.md):** how each of the <!-- fact:apps_total -->240<!-- /fact --> test AppImages did in its sandbox.
 - **[Mutation testing](reports/mutants-2026-11-20.md):** <!-- fact:mutants_tested -->1,364<!-- /fact -->

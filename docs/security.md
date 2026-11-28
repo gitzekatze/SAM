@@ -1232,14 +1232,69 @@ How these stay protected with the home writable:
   above the home, both *Dangerous*; a folder that holds the home counts as
   the home, and a relative path or one with `..` is *Dangerous* too
   (`a_path_with_dots_or_double_slashes_is_rated_where_it_leads`).
-- **A folder hands over the programs listening in it.** Connecting to a
-  socket file needs no write access, so even a read-only folder lets the
-  app talk to the programs that listen there: `/tmp` holds the sockets of
-  tmux, SSH connections and the X server (without systemd also the session
-  bus and the sound server), and a tmux socket runs commands
-  outside the sandbox. A grant of `/tmp`, or of those places in it, is
-  rated *Dangerous* and warned about
+- **SAM gives no app new access to `/tmp`.** Connecting to a socket file
+  needs no write access, so even a read-only folder lets the app talk to
+  the programs that listen there: `/tmp` holds the sockets of tmux, SSH
+  connections and the X server (without systemd also the session bus and
+  the sound server), and a tmux socket runs commands outside the sandbox.
+  A grant of `/tmp`, or of those known places in it (tmux, SSH, the X
+  server …), is rated *Dangerous* and warned about
   (`a_grant_of_tmp_or_its_listening_places_is_dangerous_even_read_only`).
+  SAM refuses such a grant whenever the app did not have it before,
+  read-only or writable, however the absolute path is written and also
+  when a link leads there, and no yes lifts the refusal (code
+  `tmp-grant-refused`). A new extra folder written relative (without a
+  leading `/` or `~`, such as `../../../../tmp`) names a different place
+  at each start and is refused too (code `relative-grant-refused`). Both
+  hold for every change of an app's settings (a dry run of a change for
+  several apps shows the refusal), a preset applied, saved or imported,
+  and an app added with adjusted settings or a preset
+  (`a_new_grant_of_tmp_is_refused_however_it_is_written`,
+  `a_link_that_leads_to_tmp_is_refused_as_a_new_grant`,
+  `the_gate_refuses_a_new_tmp_grant_even_after_a_yes`,
+  `every_way_to_change_settings_refuses_a_new_tmp_grant`,
+  `a_preset_holding_tmp_is_not_saved`,
+  `set_refuses_tmp_even_with_yes_and_names_a_folder_of_its_own`). SAM
+  offers a folder of the app's own instead, `/tmp/sam-<app id>`
+  (`the_folder_of_its_own_is_never_refused_nor_a_socket_folder`,
+  `the_editor_offers_a_folder_of_its_own_instead_of_tmp`). When the app's
+  folders name it, SAM makes it at each start, for you only; when `/tmp`
+  does not belong to root with the sticky bit, or the folder is not a
+  folder, is a link, belongs to another account or others can open it, or
+  a grant of it leads elsewhere through a link on the way
+  (`/tmp/x/../sam-<app id>` with `/tmp/x` a link), the start stops (code
+  `own-tmp-folder-unsafe`) and SAM changes and removes nothing
+  (`the_folder_of_its_own_is_made_for_you_only_at_each_start`,
+  `a_folder_of_its_own_that_others_can_open_or_that_is_a_link_stops_the_start`,
+  `every_start_makes_the_folder_of_its_own_in_tmp`); `sam-jail selftest`
+  makes and checks it as well. The command a refusal names grants the
+  folder; for a writable folder it carries `--yes`, as it is rated *Think
+  twice*.
+  An older grant stays and is shown to the app as before until you
+  replace it; it may become read-only, never writable
+  (`an_older_tmp_grant_may_stay_or_be_narrowed_but_not_widened`,
+  `turning_compatibility_off_and_undoing_keep_an_older_tmp_grant`). SAM
+  warns about it, diagnostics name the app, and the hint `tmp-own-folder`
+  replaces it with the folder of the app's own. That step is never on
+  trial: a failed start neither undoes it nor reports it undone, and no
+  undo brings the replaced grant back
+  (`an_older_tmp_grant_gets_a_hint_to_a_folder_of_its_own`,
+  `no_undo_brings_tmp_back`, `doctor_names_apps_with_an_older_tmp_grant`).
+  Not covered: `/var/tmp` and `/` are rated *Dangerous* and asked about,
+  not refused; a socket folder in `/tmp` by another name (such as
+  `/tmp/tmate-1000`) is not refused; an older grant through a link to
+  `/tmp` is left out at each start, so it gets no hint. Any program
+  running as you can open the folder of each app's own, such as another
+  app that still has an older grant of `/tmp`, and so can the app itself,
+  which can also open its folder to others (the next start then stops).
+  Such a program can also swap the checked folder for a link between
+  SAM's look and Bubblewrap's mount, and so can another account that owns
+  a folder on the way of a grant written with `..` (which asks first, as
+  *Dangerous*); this stays open until SAM binds these places through a
+  folder it opened. The folder's name can be seen
+  by every account on this computer, so it tells them which apps you use,
+  and another account can make that folder first and so stop the app from
+  starting until it is gone.
 - **Links never take a bind where it must not lead.** SAM binds each
   extra folder and each granted user folder where its links lead. (Your
   fonts and theme files are never bound where a link leads on its own:
@@ -1324,8 +1379,9 @@ How these stay protected with the home writable:
   leads to is bound; the link itself stays as changeable as the folder
   that holds it), and an extra folder you
   name by its real place is shown as written and rated by its name: `/tmp`
-  itself, the known socket folders in it (`/tmp/tmux-1000` named so) and
-  anything in `/var/tmp` (as part of `/var`) are rated *Dangerous* and
+  itself and the known socket folders in it (`/tmp/tmux-1000` named so)
+  are refused as new grants (see *SAM gives no app new access to `/tmp`*),
+  anything in `/var/tmp` (as part of `/var`) is rated *Dangerous* and
   warned about; any other place in `/tmp` (such as `/tmp/tmate-1000`) is
   rated *Some access* when read-only, so SAM adds it without asking first,
   and *Think twice* when writable. If you made a link that leads out of
@@ -1799,15 +1855,55 @@ metadata. SAM treats both as untrusted.
 
 ## Network use by SAM itself
 
-SAM goes online for one thing only: update checks. A check reads the update
-source an AppImage names (GitHub, or the app's own server) and asks for the
-first few kilobytes of the update description. It runs only when you click
-*Check* or run `sam-jail updates`, or once a day when *Check for updates when
-SAM opens* is on (off by default). It uses `curl`, HTTPS only (redirects
-included), with a generic user agent and without reading a `~/.curlrc`
-(where a setting could switch off certificate checks or send requests
-elsewhere); nothing about you or your apps is sent, and nothing is
-downloaded or installed. Only the AppImage SAM unpacked is checked: SAM
+**SAM goes online only when you ask.** That means an update check, an
+update of an app, or an update of SAM itself. It also means once a day when
+the window opens, if you switched on *Check for updates when SAM opens*,
+which is off by default.
+
+Each time, SAM runs `curl`. For an app whose update information names an
+update description (a `.zsync` address), curl asks for that description,
+then for the file it names. For an app published on GitHub, curl first asks
+`api.github.com` for the description of the newest release (or of the
+release the app names), then for up to four update descriptions that answer
+names, then for the file a description names. That file can be on any HTTPS
+server. curl also follows a server's redirect to another HTTPS address, at
+most five times per request. For these requests, curl never reads a
+`~/.curlrc`, where a setting could switch off certificate checks or send
+requests elsewhere.
+
+Every request is a plain `GET`. It carries only the address, the server's
+name, SAM's fixed user agent (`SAM-AppImage-update-check`), what SAM
+accepts and, for part of a file, which part. It carries nothing else about
+you, this computer or your other apps. SAM refuses an update address that
+holds a login.
+
+**What the servers still learn.** Each server sees your IP address, the
+time, and which app you check, because that is in the address. Partial
+downloads show roughly which version you had. GitHub sees every
+GitHub-hosted app that a check of all apps asks about, one after the other
+from the same address. Your DNS server, a proxy set in your environment,
+and anyone on the network path see the servers' names (in the name lookup
+and in the TLS handshake).
+
+**Links.** A web address SAM shows (a download page, SAM's website, the
+licence, a link in the guide) opens in your browser only when you click it.
+Your browser then loads it; SAM sends nothing itself.
+
+How this is checked, and what the checks do not cover, is in the [privacy
+check](reports/privacy-check-2026-11-28.md). Its build gate is a safety net,
+not a proof: in the code CI's clippy compiles (the debug build for x86_64
+with default features), a new direct call of a function listed in
+clippy.toml fails CI — clippy without an `#[expect]`, the pin test without
+its exact line in the reviewed list. It catches accidental new network or
+program calls in SAM's own code, not code written to get around it; the
+traced run and the request tests are the proof of what SAM does. One of
+the check's limits: the contract check and the bug report run
+`curl --version`, whose libraries look up your account and this computer's
+name through the system's name service; where that service asks a server
+(accounts from a network directory, for example), that lookup may leave
+the computer.
+
+Only the AppImage SAM unpacked is checked: SAM
 reads the file once, compares its checksum with what it unpacked last and
 takes the update address from exactly the bytes it compared. A file
 replaced outside SAM (for example by another app with access to that
@@ -1932,10 +2028,11 @@ line at once, is refused until the first is done
 SAM keeps what it learns about you on your computer.
 
 - **No telemetry.** SAM has no usage statistics, crash reporting or
-  "phone home" of any kind. The only network traffic SAM itself makes is
-  described above: update checks and updates, when you ask for them, and
-  the daily check only if you switch it on
-  (`update_checks_stay_off_unless_switched_on`).
+  "phone home" of any kind. SAM goes online only when you ask, as
+  [Network use by SAM itself](#network-use-by-sam-itself) describes
+  (`update_checks_stay_off_unless_switched_on`,
+  `everyday_commands_make_no_internet_connection`,
+  `update_requests_carry_nothing_about_the_person_or_their_apps`).
 - **What stays on your disk:** SAM's settings, the app records and, per app,
   the last 20 launch logs (Preferences → Diagnostics). A launch log holds
   what the app printed, which can include personal data; it never leaves your

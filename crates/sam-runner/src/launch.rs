@@ -990,7 +990,9 @@ pub fn prepare(
 /// openers).
 fn write_room_standin(runtime_dir: &Path, bwrap: &Path) -> Result<()> {
     use crate::room_service::{plain_version, STANDIN_NAME, STANDIN_TARGET, STANDIN_VERSION_FILE};
-    let version = Command::new(bwrap)
+    #[expect(clippy::disallowed_methods, reason = "way out: bwrap --version")]
+    let mut cmd = Command::new(bwrap);
+    let version = cmd
         .arg("--version")
         .stderr(Stdio::null())
         .output()
@@ -1193,6 +1195,10 @@ fn run_once(
 
     // Start the sandbox.
     let channels = StatusChannels::new(&prepared, host)?;
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "way out: bwrap, an app's sandbox"
+    )]
     let mut cmd = Command::new(&prepared.command.program);
     cmd.args(channels.args.as_ref().unwrap_or(&prepared.command.args));
     // The sandbox dies with this launcher, however the launcher ends (even

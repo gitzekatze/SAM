@@ -150,6 +150,10 @@ impl Sandbox {
     pub fn take_out(&self, path: &Path) -> Result<(), String> {
         let c = CString::new(path.as_os_str().as_bytes()).map_err(|e| e.to_string())?;
         let (user, mnt) = (self.user.as_raw_fd(), self.mnt.as_raw_fd());
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "way out: a fork of the device watcher"
+        )]
         // SAFETY: the child runs only raw system calls (setns, umount2,
         // lstat, _exit), which are async-signal-safe, so forking from this
         // threaded process is sound; it never returns into Rust code.
@@ -230,6 +234,7 @@ fn own_ns(kind: &str) -> Result<u64, String> {
 }
 
 fn pidfd(pid: libc::pid_t) -> Option<OwnedFd> {
+    #[expect(clippy::disallowed_methods, reason = "way out: a syscall, pidfd_open")]
     // SAFETY: pidfd_open takes a pid and flags and returns a new descriptor or -1.
     let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) } as i32;
     // SAFETY: a descriptor just returned by the kernel, owned here alone.
@@ -237,16 +242,17 @@ fn pidfd(pid: libc::pid_t) -> Option<OwnedFd> {
 }
 
 fn signal_kill(pidfd: &OwnedFd) {
+    let (nr, fd, info) = (
+        libc::SYS_pidfd_send_signal,
+        pidfd.as_raw_fd(),
+        std::ptr::null::<libc::siginfo_t>(),
+    );
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "way out: a syscall, pidfd_send_signal"
+    )]
     // SAFETY: a valid pidfd, a signal number, no info, no flags.
-    unsafe {
-        libc::syscall(
-            libc::SYS_pidfd_send_signal,
-            pidfd.as_raw_fd(),
-            libc::SIGKILL,
-            std::ptr::null::<libc::siginfo_t>(),
-            0,
-        )
-    };
+    let _ = unsafe { libc::syscall(nr, fd, libc::SIGKILL, info, 0) };
 }
 
 /// Ends the sandbox the launcher started (`pid`: Bubblewrap, or pasta
