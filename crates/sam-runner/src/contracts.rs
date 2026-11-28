@@ -165,7 +165,23 @@ fn login_and_admin_files_in(etc: &Path) -> (State, String) {
 }
 
 /// Runs `program args`, returning its output (stdout and stderr) when it ran.
+/// curl runs in its sandbox without network, as every curl SAM starts
+/// ([`crate::updates::curl_command`]): its libraries would otherwise look up
+/// this computer's name. Without the sandbox its version stays unknown.
 fn output(program: &str, args: &[&str]) -> Option<String> {
+    if program == "curl" {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "way out: curl in its sandbox, no network"
+        )]
+        let mut cmd = crate::updates::curl_command(false).ok()?;
+        let out = cmd.args(args).stdin(Stdio::null()).output().ok()?;
+        return Some(format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        ));
+    }
     let path = which(program)?;
     #[expect(
         clippy::disallowed_methods,

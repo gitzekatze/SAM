@@ -1869,7 +1869,10 @@ names, then for the file a description names. That file can be on any HTTPS
 server. curl also follows a server's redirect to another HTTPS address, at
 most five times per request. For these requests, curl never reads a
 `~/.curlrc`, where a setting could switch off certificate checks or send
-requests elsewhere.
+requests elsewhere. SAM runs every curl in a small sandbox: curl sees the
+computer read-only and has a host name of its own, `localhost`, so the
+libraries it loads never look up this computer's name.
+Without Bubblewrap, SAM sends no update request.
 
 Every request is a plain `GET`. It carries only the address, the server's
 name, SAM's fixed user agent (`SAM-AppImage-update-check`), what SAM
@@ -1898,10 +1901,10 @@ its exact line in the reviewed list. It catches accidental new network or
 program calls in SAM's own code, not code written to get around it; the
 traced run and the request tests are the proof of what SAM does. One of
 the check's limits: the contract check and the bug report run
-`curl --version`, whose libraries look up your account and this computer's
-name through the system's name service; where that service asks a server
-(accounts from a network directory, for example), that lookup may leave
-the computer.
+`curl --version` (in its sandbox, without network), whose libraries look
+up your account through the system's name service; where that service
+asks a server (accounts from a network directory, for example), that
+lookup may leave the computer.
 
 Only the AppImage SAM unpacked is checked: SAM
 reads the file once, compares its checksum with what it unpacked last and
