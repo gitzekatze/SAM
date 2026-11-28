@@ -477,9 +477,15 @@ impl AppPage {
                         total as u64,
                         &[],
                     ));
-                    self.check_summary.set_subtitle(&crate::i18n::tr(
-                        "Every setting below applies. Not stored: the sandbox does not exist yet.",
-                    ));
+                    // A note SAM adds (the 32-bit socket limit) names a
+                    // limit the check passed over, so the summary says so.
+                    self.check_summary.set_subtitle(&if check_has_note(&results) {
+                        crate::i18n::tr("Every setting below applies, except where a note below says otherwise. Not stored: the sandbox does not exist yet.")
+                    } else {
+                        crate::i18n::tr(
+                            "Every setting below applies. Not stored: the sandbox does not exist yet.",
+                        )
+                    });
                     set_badge_visible(&self.check_badge, true);
                     util::set_badge(&self.check_badge, &crate::i18n::tr("Checked"), "good");
                     self.check_badge

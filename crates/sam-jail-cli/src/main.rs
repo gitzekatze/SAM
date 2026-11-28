@@ -1302,12 +1302,7 @@ fn real_main(cli: Cli) -> Result<()> {
                     };
                     outln!("  {mark} {:<46} {}", res.title, res.observed);
                 }
-                outln!(
-                    "\n{} passed, {} failed, {} not applicable",
-                    out_v.record.passed,
-                    out_v.record.failed.len(),
-                    out_v.record.skipped
-                );
+                outln!("\n{}", verify_summary(&out_v.record));
             });
         }
         Cmd::Args { app: q, stdin } => {
@@ -1682,10 +1677,54 @@ fn selftest_verdict(
     }
 }
 
+/// The last line of `sam-jail verify`: the counts of the record. A note
+/// SAM adds (the incomplete socket limit of a 32-bit app) has its own word,
+/// so an incomplete limit is never called "not applicable".
+fn verify_summary(record: &CheckRecord) -> String {
+    let counts = trf(
+        "{passed} passed, {failed} failed, {skipped} not applicable",
+        &[
+            ("passed", &record.passed),
+            ("failed", &record.failed.len()),
+            ("skipped", &record.skipped),
+        ],
+    );
+    if record.notes == 0 {
+        return counts;
+    }
+    trn(
+        "{counts}, {n} note",
+        "{counts}, {n} notes",
+        record.notes as u64,
+        &[("counts", &counts)],
+    )
+}
+
 #[cfg(test)]
 mod main_tests {
     use super::*;
     use std::time::{Duration, Instant};
+
+    /// `sam-jail verify` names a note with its own word and never counts it
+    /// as not applicable; without a note the line has no note count.
+    #[test]
+    fn the_verify_summary_names_notes_apart_from_not_applicable() {
+        let mut record = CheckRecord {
+            passed: 30,
+            skipped: 2,
+            notes: 1,
+            ..Default::default()
+        };
+        assert_eq!(
+            verify_summary(&record),
+            "30 passed, 0 failed, 2 not applicable, 1 note"
+        );
+        record.notes = 0;
+        assert_eq!(
+            verify_summary(&record),
+            "30 passed, 0 failed, 2 not applicable"
+        );
+    }
 
     /// Each command's errors name the SAM function it carries out
     /// (docs/functions.md), and the commands outside SAM's functions name

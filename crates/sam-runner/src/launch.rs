@@ -338,7 +338,7 @@ fn seccomp_spec(app: &AppEntry) -> kernel::SeccompSpec {
 
 /// A start of `app` with `perms` gets the syscall filter with its 32-bit
 /// part, whose socket limit has a gap: a 32-bit socket made through the
-/// old `socketcall` call can be of any type
+/// old `socketcall` call can be of a family the filter would refuse
 /// ([`kernel::SeccompSpec::socketcall_unlimited`]). The app page and the
 /// sandbox check say so. `perms` are the settings being looked at, which
 /// on the app page may differ from the stored ones.
@@ -2919,7 +2919,7 @@ mod tests {
         assert!(!seccomp_spec(&AppEntry::default()).i386, "not analyzed");
     }
 
-    /// The app page's and the check's socket note (review R72) appears
+    /// The app page's and the check's socket note appears
     /// exactly where a start loads the filter with its 32-bit part, whose
     /// socket limit has the socketcall gap: a 32-bit start program with the
     /// filter wanted, by the baseline or by the strict switch alone. Never

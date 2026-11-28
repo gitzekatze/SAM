@@ -46,7 +46,7 @@ impl Sam {
             warnings.push(Warning::info(
                 "socket-limit-32-bit",
                 "Socket limit incomplete (32-bit)",
-                "This app starts a 32-bit program. SAM's syscall filter limits its 32-bit calls as it limits 64-bit ones, with one gap, as in Flatpak: through the old socketcall call the app can open sockets of any type, because the type sits where no filter can read it. These include virtual-machine and kernel-crypto sockets and, when the app has full network access, Bluetooth sockets even with its Bluetooth switch off.",
+                "This app starts a 32-bit program. SAM's syscall filter limits its 32-bit calls as it limits 64-bit ones, with one gap, as in Flatpak: through the old socketcall call the app can open sockets of families the filter would refuse, because the family sits where no filter can read it. These include virtual-machine and kernel-crypto sockets and, when the app has full network access, Bluetooth sockets even with its Bluetooth switch off.",
             ));
         }
         Evaluation {

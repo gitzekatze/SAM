@@ -1057,7 +1057,7 @@ fn socket_limit_result(app: &AppEntry, cfg: &Config, host: &HostInfo) -> Option<
             title: sam_core::i18n::tr("Socket limit for 32-bit calls"),
             ok: None,
             observed: sam_core::i18n::tr(
-                "incomplete: a 32-bit socket made through the old socketcall call can be of any type, Bluetooth included when the app has full network access, and the test program cannot try 32-bit calls",
+                "incomplete: a 32-bit socket made through the old socketcall call can be of a family the filter would refuse, Bluetooth included when the app has full network access, and the test program cannot try 32-bit calls",
             ),
         }
     })
@@ -1166,14 +1166,25 @@ pub fn verify(app: &AppEntry, cfg: &Config, paths: &Paths, host: &HostInfo) -> R
         r.observed = sam_core::i18n::tr(&r.observed);
     }
     add_outside_results(&mut report, socket_limit_result(app, cfg, host), wayland);
-    let record = CheckRecord {
+    let record = record_of(&report, key);
+    Ok(Outcome { report, record })
+}
+
+/// The record of a finished check. A note SAM adds
+/// ([`sam_core::CHECK_NOTE_IDS`]) is counted as a note, not as a check that
+/// could not run, so `sam-jail verify` never calls an incomplete limit
+/// "not applicable".
+fn record_of(report: &ProbeReport, key: String) -> CheckRecord {
+    let is_note = |r: &&ProbeResult| sam_core::CHECK_NOTE_IDS.contains(&r.id.as_str());
+    let open = || report.results.iter().filter(|r| r.ok.is_none());
+    CheckRecord {
         at: sam_core::util::now(),
         key,
         passed: report.passed(),
         failed: report.failed().iter().map(|r| r.title.clone()).collect(),
-        skipped: report.results.iter().filter(|r| r.ok.is_none()).count(),
-    };
-    Ok(Outcome { report, record })
+        skipped: open().filter(|r| !is_note(r)).count(),
+        notes: open().filter(is_note).count(),
+    }
 }
 
 #[cfg(test)]
@@ -2645,9 +2656,10 @@ mod tests {
         assert!(wayland_context_result(false, false).is_none());
     }
 
-    /// Review R72: for a 32-bit app whose filter has the socketcall gap, the
-    /// check notes that the socket limit is incomplete, neither passed nor
-    /// failed, so a check before each start never refuses the app over it.
+    /// For a 32-bit app whose filter has the socketcall gap, the check
+    /// notes that the socket limit is incomplete, neither passed nor
+    /// failed, so a check before each start never refuses the app over it;
+    /// the record counts it as a note, not as not applicable.
     /// No note for a 64-bit program, a script or with the filter off, nor
     /// on a processor without the filter's 32-bit part. The note stays
     /// under the probe's last heading (Security), before the Wayland
@@ -2710,6 +2722,19 @@ mod tests {
         };
         add_outside_results(&mut report, Some(note), wayland_context_result(true, true));
         assert_eq!(report.passed(), 2, "the probe's result and the context");
+        // The record counts the note as a note, not as a check that could
+        // not run ("not applicable" in `sam-jail verify`).
+        let record = record_of(&report, String::new());
+        assert_eq!(
+            (
+                record.passed,
+                record.failed.len(),
+                record.skipped,
+                record.notes
+            ),
+            (2, 0, 0, 1),
+            "passed, failed, not applicable, notes: {record:?}"
+        );
         assert!(
             report.failed().is_empty(),
             "the note never fails the check: {:?}",

@@ -603,15 +603,11 @@ msgstr "Bluetooth"
 
 #: crates/sam-core/src/permissions.rs:1268
 msgid ""
-"Lets the app open Bluetooth connections to nearby devices; other apps "
-"cannot, except an app whose start program is 32-bit (the security page says "
-"why). Pairing and the Bluetooth service itself also need the system D-Bus."
-msgstr ""
-"Permet à l'app d'ouvrir des connexions Bluetooth vers des appareils "
-"proches ; les autres apps ne le peuvent pas, sauf une app dont le programme "
-"de lancement est en 32 bits (la page sur la sécurité explique pourquoi). "
-"L'appairage et le service Bluetooth lui-même nécessitent aussi le D-Bus "
-"système."
+"Lets the app open Bluetooth connections to nearby devices; other apps cannot "
+"while their syscall filter is on, except an app whose start program is 32-"
+"bit and that has full network access (the security page says why). Pairing "
+"and the Bluetooth service itself also need the system D-Bus."
+msgstr "Permet à l'app d'ouvrir des connexions Bluetooth vers des appareils proches ; les autres apps ne le peuvent pas tant que leur filtre des appels système est activé, sauf une app dont le programme de lancement est en 32 bits et qui a un accès complet au réseau (la page sur la sécurité explique pourquoi). L'appairage et le service Bluetooth lui-même nécessitent aussi le D-Bus système."
 
 #: crates/sam-core/src/permissions.rs:1270 crates/sam-core/src/risk.rs:331
 #: crates/sam-runner/src/verify.rs:531
@@ -3999,7 +3995,7 @@ msgstr ""
 
 #. Keep the {placeholders}; their order may change.
 #: crates/sam-gtk/src/app_page/wiring.rs:387
-#: crates/sam-gtk/src/app_page/wiring.rs:488
+#: crates/sam-gtk/src/app_page/wiring.rs:494
 msgid "{failed} of {n} check failed"
 msgid_plural "{failed} of {n} checks failed"
 msgstr[0] "{failed} vérification sur {n} a échoué"
@@ -4055,18 +4051,24 @@ msgid_plural "All {n} checks passed"
 msgstr[0] "La vérification a réussi"
 msgstr[1] "Les {n} vérifications ont réussi"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:480
+#: crates/sam-gtk/src/app_page/wiring.rs:483
+msgid ""
+"Every setting below applies, except where a note below says otherwise. Not "
+"stored: the sandbox does not exist yet."
+msgstr "Chaque réglage ci-dessous s’applique, sauf là où une note ci-dessous dit autre chose. Non enregistré : le bac à sable n’existe pas encore."
+
+#: crates/sam-gtk/src/app_page/wiring.rs:485
 msgid ""
 "Every setting below applies. Not stored: the sandbox does not exist yet."
 msgstr ""
 "Chaque réglage ci-dessous s’applique. Non enregistré : le bac à sable "
 "n’existe pas encore."
 
-#: crates/sam-gtk/src/app_page/wiring.rs:484
+#: crates/sam-gtk/src/app_page/wiring.rs:490
 msgid "Checked"
 msgstr "Vérifié"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:486
+#: crates/sam-gtk/src/app_page/wiring.rs:492
 msgid ""
 "The sandbox check confirmed that every setting applies; see Sandbox Check "
 "below"
@@ -4075,15 +4077,15 @@ msgstr ""
 "voir « Vérification du bac à sable » ci-dessous"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/wiring.rs:494
+#: crates/sam-gtk/src/app_page/wiring.rs:500
 msgid "Not applied: {settings}."
 msgstr "Non appliqué : {settings}."
 
-#: crates/sam-gtk/src/app_page/wiring.rs:499
+#: crates/sam-gtk/src/app_page/wiring.rs:505
 msgid "Check failed"
 msgstr "Vérification échouée"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:500
+#: crates/sam-gtk/src/app_page/wiring.rs:506
 msgid ""
 "The sandbox check found settings that do not apply; see Sandbox Check below"
 msgstr ""
@@ -4091,25 +4093,25 @@ msgstr ""
 "pas ; voir « Vérification du bac à sable » ci-dessous"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/wiring.rs:552
+#: crates/sam-gtk/src/app_page/wiring.rs:558
 msgid "{n} confirmed setting"
 msgid_plural "{n} confirmed settings"
 msgstr[0] "{n} réglage confirmé"
 msgstr[1] "{n} réglages confirmés"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:558
+#: crates/sam-gtk/src/app_page/wiring.rs:564
 msgid "What the test program found inside the sandbox"
 msgstr "Ce que le programme de test a trouvé dans le bac à sable"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:599
+#: crates/sam-gtk/src/app_page/wiring.rs:605
 msgid "Launch arguments saved"
 msgstr "Arguments de lancement enregistrés"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:612
+#: crates/sam-gtk/src/app_page/wiring.rs:618
 msgid "Turn On Compatibility Mode?"
 msgstr "Activer le mode de compatibilité ?"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:613
+#: crates/sam-gtk/src/app_page/wiring.rs:619
 msgid ""
 "The app gets broad access: the network, all of /usr, X11, the GPU, sound and "
 "the whole session bus. Through the whole session bus it can ask desktop "
@@ -4126,29 +4128,29 @@ msgstr ""
 "\n"
 "Tes réglages actuels sont mémorisés et reviennent quand tu le désactives."
 
-#: crates/sam-gtk/src/app_page/wiring.rs:614
+#: crates/sam-gtk/src/app_page/wiring.rs:620
 msgid "Turn On"
 msgstr "Activer"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:633
+#: crates/sam-gtk/src/app_page/wiring.rs:639
 msgid "Compatibility mode on"
 msgstr "Mode de compatibilité activé"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:635
+#: crates/sam-gtk/src/app_page/wiring.rs:641
 msgid "Compatibility mode off: your previous settings are back"
 msgstr ""
 "Mode de compatibilité désactivé : tes réglages précédents sont de retour"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:661
+#: crates/sam-gtk/src/app_page/wiring.rs:667
 msgid "Type a name for the preset first"
 msgstr "Saisis d’abord un nom pour le modèle"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/wiring.rs:676
+#: crates/sam-gtk/src/app_page/wiring.rs:682
 msgid "Replace “{name}”?"
 msgstr "Remplacer « {name} » ?"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:677
+#: crates/sam-gtk/src/app_page/wiring.rs:683
 msgid ""
 "A preset with this name exists. Its settings are replaced by the ones shown "
 "here. Apps that used it keep their current settings."
@@ -4157,17 +4159,17 @@ msgstr ""
 "affichés ici. Les applications qui l’ont utilisé gardent leurs réglages "
 "actuels."
 
-#: crates/sam-gtk/src/app_page/wiring.rs:680
+#: crates/sam-gtk/src/app_page/wiring.rs:686
 msgid "Replace"
 msgstr "Remplacer"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/wiring.rs:689
+#: crates/sam-gtk/src/app_page/wiring.rs:695
 msgid "Saved from {app}"
 msgstr "Enregistré depuis {app}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/wiring.rs:702
+#: crates/sam-gtk/src/app_page/wiring.rs:708
 msgid ""
 "Saved preset “{name}”. Apply it to other apps from the main menu → My "
 "Presets."
@@ -4677,7 +4679,7 @@ msgid "Remove unused unpacked copies"
 msgstr "Supprimer les copies décompressées inutilisées"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/pages.rs:1064 crates/sam-jail-cli/src/main.rs:1566
+#: crates/sam-gtk/src/pages.rs:1064 crates/sam-jail-cli/src/main.rs:1561
 msgid "Removed {n} unused unpacked copy"
 msgid_plural "Removed {n} unused unpacked copies"
 msgstr[0] "{n} copie décompressée inutilisée supprimée"
@@ -6296,41 +6298,41 @@ msgstr "Mode de compatibilité activé pour {name}"
 msgid "Compatibility mode turned off for {name}"
 msgstr "Mode de compatibilité désactivé pour {name}"
 
-#: crates/sam-jail-cli/src/main.rs:1316
+#: crates/sam-jail-cli/src/main.rs:1311
 msgid "expected a JSON list of strings on stdin"
 msgstr "une liste JSON de chaînes était attendue sur stdin"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:1325
+#: crates/sam-jail-cli/src/main.rs:1320
 msgid "No extra arguments for {app}."
 msgstr "Aucun argument supplémentaire pour {app}."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:1340
+#: crates/sam-jail-cli/src/main.rs:1335
 msgid "{app} marked as reviewed [{state}]"
 msgstr "{app} marquée comme vérifiée [{state}]"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:1369
+#: crates/sam-jail-cli/src/main.rs:1364
 msgid "Dependency detection finished for {app}."
 msgstr "Détection des dépendances terminée pour {app}."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:1399
+#: crates/sam-jail-cli/src/main.rs:1394
 msgid "{app} now points to {file} [{state}]"
 msgstr "{app} pointe désormais vers {file} [{state}]"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:1434
+#: crates/sam-jail-cli/src/main.rs:1429
 msgid "Launcher installed: {path}"
 msgstr "Lanceur installé : {path}"
 
-#: crates/sam-jail-cli/src/main.rs:1436
+#: crates/sam-jail-cli/src/main.rs:1431
 msgid "Launcher removed"
 msgstr "Lanceur supprimé"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:1449
+#: crates/sam-jail-cli/src/main.rs:1444
 msgid ""
 "Starting {app} in diagnostic mode for up to {seconds} s. Use the app "
 "normally, then close it."
@@ -6339,43 +6341,55 @@ msgstr ""
 "l’application normalement, puis ferme-la."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:1459
+#: crates/sam-jail-cli/src/main.rs:1454
 msgid "Diagnostic run: {summary}"
 msgstr "Exécution de diagnostic : {summary}"
 
-#: crates/sam-jail-cli/src/main.rs:1465
+#: crates/sam-jail-cli/src/main.rs:1460
 msgid "No missing resources were detected."
 msgstr "Aucune ressource manquante n’a été détectée."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:1497
+#: crates/sam-jail-cli/src/main.rs:1492
 msgid "The full trace is in {file}."
 msgstr "La trace complète se trouve dans {file}."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:1544
+#: crates/sam-jail-cli/src/main.rs:1539
 msgid "Left behind by {n} app: {size}"
 msgid_plural "Left behind by {n} apps: {size}"
 msgstr[0] "Laissé par {n} application : {size}"
 msgstr[1] "Laissé par {n} applications : {size}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:1551
+#: crates/sam-jail-cli/src/main.rs:1546
 msgid "Removed the data of {n} app: {size}"
 msgid_plural "Removed the data of {n} apps: {size}"
 msgstr[0] "Données de {n} application supprimées : {size}"
 msgstr[1] "Données de {n} applications supprimées : {size}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:1671
+#: crates/sam-jail-cli/src/main.rs:1666
 msgid "kept running for {seconds}s"
 msgstr "s’est maintenue {seconds} s"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:1673
+#: crates/sam-jail-cli/src/main.rs:1668
 msgid "ran in its sandbox and ended by itself ({summary})"
 msgstr ""
 "s’est exécutée dans son bac à sable et s’est terminée d’elle-même ({summary})"
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-jail-cli/src/main.rs:1684
+msgid "{passed} passed, {failed} failed, {skipped} not applicable"
+msgstr "{passed} réussies, {failed} échouées, {skipped} non applicables"
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-jail-cli/src/main.rs:1695
+msgid "{counts}, {n} note"
+msgid_plural "{counts}, {n} notes"
+msgstr[0] "{counts}, {n} note"
+msgstr[1] "{counts}, {n} notes"
 
 #: crates/sam-jail-cli/src/output.rs:243
 msgid "Why this profile"
@@ -8125,18 +8139,11 @@ msgstr "Limite des sockets incomplète (32 bits)"
 msgid ""
 "This app starts a 32-bit program. SAM's syscall filter limits its 32-bit "
 "calls as it limits 64-bit ones, with one gap, as in Flatpak: through the old "
-"socketcall call the app can open sockets of any type, because the type sits "
-"where no filter can read it. These include virtual-machine and kernel-crypto "
-"sockets and, when the app has full network access, Bluetooth sockets even "
-"with its Bluetooth switch off."
-msgstr ""
-"Cette application lance un programme 32 bits. Le filtre des appels système "
-"de SAM limite ses appels 32 bits comme les appels 64 bits, avec une faille, "
-"comme dans Flatpak : par l’ancien appel socketcall, l’application peut "
-"ouvrir des sockets de tout type, car le type se trouve là où aucun filtre ne "
-"peut le lire. Cela comprend les sockets de machines virtuelles et de "
-"cryptographie du noyau et, quand l’application a un accès complet au réseau, "
-"les sockets Bluetooth, même si son interrupteur Bluetooth est désactivé."
+"socketcall call the app can open sockets of families the filter would "
+"refuse, because the family sits where no filter can read it. These include "
+"virtual-machine and kernel-crypto sockets and, when the app has full network "
+"access, Bluetooth sockets even with its Bluetooth switch off."
+msgstr "Cette application lance un programme 32 bits. Le filtre des appels système de SAM limite ses appels 32 bits comme les appels 64 bits, avec une faille, comme dans Flatpak : par l’ancien appel socketcall, l’application peut ouvrir des sockets de familles que le filtre refuserait, car la famille se trouve là où aucun filtre ne peut la lire. Cela comprend les sockets de machines virtuelles et de cryptographie du noyau et, quand l’application a un accès complet au réseau, les sockets Bluetooth, même si son interrupteur Bluetooth est désactivé."
 
 #: crates/sam-runner/src/ops/overview.rs:75
 msgid "Isolation assessment"
@@ -9361,13 +9368,10 @@ msgstr "Limite des sockets pour les appels 32 bits"
 
 #: crates/sam-runner/src/verify.rs:1059
 msgid ""
-"incomplete: a 32-bit socket made through the old socketcall call can be of "
-"any type, Bluetooth included when the app has full network access, and the "
-"test program cannot try 32-bit calls"
-msgstr ""
-"incomplète : un socket 32 bits créé par l’ancien appel socketcall peut être "
-"de tout type, Bluetooth compris quand l’application a un accès complet au "
-"réseau, et le programme de test ne peut pas essayer d’appels 32 bits"
+"incomplete: a 32-bit socket made through the old socketcall call can be of a "
+"family the filter would refuse, Bluetooth included when the app has full "
+"network access, and the test program cannot try 32-bit calls"
+msgstr "incomplète : un socket 32 bits créé par l’ancien appel socketcall peut être d’une famille que le filtre refuserait, Bluetooth compris quand l’application a un accès complet au réseau, et le programme de test ne peut pas essayer d’appels 32 bits"
 
 #: crates/sam-runner/src/verify.rs:1096
 msgid ""
@@ -9752,6 +9756,45 @@ msgstr ""
 #: crates/sam-storage/src/lib.rs:932
 msgid "unknown flat preset key '{other}'"
 msgstr "clé « {other} » inconnue dans le modèle plat"
+
+#~ msgid ""
+#~ "Lets the app open Bluetooth connections to nearby devices; other apps "
+#~ "cannot, except an app whose start program is 32-bit (the security page "
+#~ "says why). Pairing and the Bluetooth service itself also need the system "
+#~ "D-Bus."
+#~ msgstr ""
+#~ "Permet à l'app d'ouvrir des connexions Bluetooth vers des appareils "
+#~ "proches ; les autres apps ne le peuvent pas, sauf une app dont le "
+#~ "programme de lancement est en 32 bits (la page sur la sécurité explique "
+#~ "pourquoi). L'appairage et le service Bluetooth lui-même nécessitent aussi "
+#~ "le D-Bus système."
+
+#~ msgid ""
+#~ "This app starts a 32-bit program. SAM's syscall filter limits its 32-bit "
+#~ "calls as it limits 64-bit ones, with one gap, as in Flatpak: through the "
+#~ "old socketcall call the app can open sockets of any type, because the "
+#~ "type sits where no filter can read it. These include virtual-machine and "
+#~ "kernel-crypto sockets and, when the app has full network access, "
+#~ "Bluetooth sockets even with its Bluetooth switch off."
+#~ msgstr ""
+#~ "Cette application lance un programme 32 bits. Le filtre des appels "
+#~ "système de SAM limite ses appels 32 bits comme les appels 64 bits, avec "
+#~ "une faille, comme dans Flatpak : par l’ancien appel socketcall, "
+#~ "l’application peut ouvrir des sockets de tout type, car le type se trouve "
+#~ "là où aucun filtre ne peut le lire. Cela comprend les sockets de machines "
+#~ "virtuelles et de cryptographie du noyau et, quand l’application a un "
+#~ "accès complet au réseau, les sockets Bluetooth, même si son interrupteur "
+#~ "Bluetooth est désactivé."
+
+#~ msgid ""
+#~ "incomplete: a 32-bit socket made through the old socketcall call can be "
+#~ "of any type, Bluetooth included when the app has full network access, and "
+#~ "the test program cannot try 32-bit calls"
+#~ msgstr ""
+#~ "incomplète : un socket 32 bits créé par l’ancien appel socketcall peut "
+#~ "être de tout type, Bluetooth compris quand l’application a un accès "
+#~ "complet au réseau, et le programme de test ne peut pas essayer d’appels "
+#~ "32 bits"
 
 #~ msgid "Your AppImage files stay. Run again with --yes to remove SAM."
 #~ msgstr ""

@@ -266,7 +266,16 @@ pub struct CheckRecord {
     pub failed: Vec<String>,
     /// Checks that could not run on this computer.
     pub skipped: usize,
+    /// Notes SAM adds to the check ([`CHECK_NOTE_IDS`]): neither passed
+    /// nor failed, and not counted as checks that could not run. Records
+    /// saved before this count existed load with 0 (`serde(default)`).
+    pub notes: usize,
 }
+
+/// The results SAM adds to a sandbox check as notes: they name a limit of
+/// the sandbox that no test program can try, so they are neither passed
+/// nor failed. Today only the incomplete socket limit of a 32-bit app.
+pub const CHECK_NOTE_IDS: &[&str] = &["seccomp-32-bit-sockets"];
 
 /// Per-app sandbox settings.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]

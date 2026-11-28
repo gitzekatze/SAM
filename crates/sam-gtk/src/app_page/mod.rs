@@ -930,9 +930,29 @@ impl CreationProgress {
     }
 }
 
+/// A check's results hold a note SAM adds ([`sam_core::CHECK_NOTE_IDS`]),
+/// such as the incomplete socket limit of a 32-bit app: then a passed check
+/// does not mean that every setting applies in full.
+fn check_has_note(results: &[Value]) -> bool {
+    results
+        .iter()
+        .any(|r| sam_core::CHECK_NOTE_IDS.contains(&util::str_of(r, "id")))
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
+
+    /// The window qualifies "every setting applies" exactly when the check
+    /// holds a note SAM adds, not for a check that could not run.
+    #[test]
+    fn a_passed_check_with_a_note_is_not_called_complete() {
+        let passed = json!({"id": "userns", "ok": true});
+        let not_here = json!({"id": "webcam", "ok": null});
+        let note = json!({"id": "seccomp-32-bit-sockets", "ok": null});
+        assert!(!super::check_has_note(&[passed.clone(), not_here.clone()]));
+        assert!(super::check_has_note(&[passed, note, not_here]));
+    }
 
     /// "Confirm Settings" names the note of an update's needs, which the
     /// page hides meanwhile but confirming accepts (review L4).
