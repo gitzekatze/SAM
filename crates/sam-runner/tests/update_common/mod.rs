@@ -18,7 +18,8 @@ use sam_intake::testkit::{build, FixtureFile, FixtureSpec};
 use sam_runner::ops::{AddOptions, Sam};
 
 const SERVER: &str = r#"
-import http.server, json, ssl, sys, os, threading, time
+import http.server, ssl, sys, os, threading, time
+import json
 root, cert, key, log = sys.argv[1:5]
 class Handler(http.server.SimpleHTTPRequestHandler):
     tag = ""
