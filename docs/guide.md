@@ -256,7 +256,7 @@ For each app whose record it can read, one after another, SAM closes the app if 
 
 Without `--keep-data`, SAM also removes each app's private home, logs, writable app folder and the earlier version an update replaced, and then these folders, each with everything in it, also files you saved there:
 
-- the settings folder (by default `~/.config/sam/`) and the data folder (by default `~/.local/share/sam/`); they follow `XDG_CONFIG_HOME` and `XDG_DATA_HOME` as set where you run the command. The earlier versions that updates replaced, of your apps and of SAM itself, are kept in the data folder, so they go with it;
+- the settings folder (by default `~/.config/sam/`) and the data folder (by default `~/.local/share/sam/`), wherever the environment you run the command in puts them. The earlier versions that updates replaced, of your apps and of SAM itself, are kept in the data folder, so they go with it;
 - the unpack folder, when it is the default one or holds SAM's marker file `.sam-unpack-folder`. SAM writes that file only into an unpack folder it created or found empty.
 
 With `--keep-data`, the settings folder, the data folder and the unpack folder stay, and with them the apps' private data, their logs and the earlier versions updates replaced; of each app, only its sandbox goes.
