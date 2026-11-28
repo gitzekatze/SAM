@@ -888,8 +888,8 @@ its own program in their place: the next click on a menu entry would have
 run its program unsandboxed. SAM keeps only the programs of the copy that
 runs read-only this way: another copy of SAM that your menu entries run (an
 older AppImage in `~/Downloads`) gets no such lock in starts that this copy
-makes. A fix is planned. After SAM updates itself, its new AppImage is
-locked only in starts that SAM makes after it has restarted. A second name of SAM's
+makes. A fix is planned. After SAM updates itself, SAM does not promise
+that its new AppImage is locked until SAM has restarted. A second name of SAM's
 AppImage, made with a hard link in a folder the app may write, is not
 locked either.
 
@@ -1221,12 +1221,12 @@ How these stay protected with the home writable:
   hidden key or make a start file writable again. Grants are checked where
   they really lead: a granted link (or a home folder that is itself a link)
   is followed, and the protections apply wherever the app sees these
-  places. SAM sets them up when the app starts, and does not promise that
-  they follow a change a program outside the sandbox makes while the app
-  runs: a file or folder it creates, replaces, or removes and makes again
-  in one of these places may be visible or writable to the app until its
-  next start. The places SAM watches while the app runs (see *Files whose
-  mere presence changes behaviour*) are the exception.
+  places. SAM sets these protections up when the app starts (the hidden
+  keys and stores, the locked start places, SAM's own folders and
+  programs), and does not promise that they follow a change a program
+  outside the sandbox makes while the app runs: a file or folder it
+  creates, replaces, or removes and makes again there may be visible or
+  writable to the app until its next start.
 - **Extra folders are rated where they lead.** `.`, `..` and doubled `/`
   count for nothing, so `/.` is the whole computer and `~/..` the folder
   above the home, both *Dangerous*; a folder that holds the home counts as

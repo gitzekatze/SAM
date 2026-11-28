@@ -19,7 +19,7 @@
   AppImage of SAM's update of itself until SAM has restarted.
 - The page says once that SAM sets these protections up when the app
   starts and does not promise that they follow a change a program outside
-  the sandbox makes while the app runs, apart from the places it watches.
+  the sandbox makes while the app runs.
 - With files opened with the app set to *No access*, the page now says
   that the app starts in the folder it was started from wherever a grant
   shows that folder, and in its home otherwise.
