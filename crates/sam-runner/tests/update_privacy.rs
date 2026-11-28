@@ -200,12 +200,20 @@ fn update_requests_carry_nothing_about_the_person_or_their_apps() {
                     );
                 }
             }
-            for (s, what) in &secrets {
-                assert!(!names(v, s), "the header {k} of {path} names {what} ({s})");
+            // The messages name the entry's place in the list, never its
+            // value or label: a failure log must not repeat what it guards.
+            for (i, (s, _)) in secrets.iter().enumerate() {
+                assert!(
+                    !names(v, s),
+                    "the header {k} of {path} names entry {i} of the list above"
+                );
             }
         }
-        for (s, what) in &secrets {
-            assert!(!names(line, s), "the request {line} names {what}");
+        for (i, (s, _)) in secrets.iter().enumerate() {
+            assert!(
+                !names(line, s),
+                "the request to {path} names entry {i} of the list above"
+            );
         }
         if path.starts_with("/redirect-https/") {
             redirected += 1;
