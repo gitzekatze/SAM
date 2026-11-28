@@ -324,7 +324,7 @@ pub fn settle_left_behind(paths: &Paths) {
 
 /// One running launch's record. Removed when dropped; when the app had
 /// started ([`Registration::arm`]) and the launch did not look a last time
-/// ([`Registration::finish`]), the last look is taken first.
+/// ([`Registration::last_look`]), the last look is taken first.
 pub struct Registration {
     path: PathBuf,
     file: Option<fs::File>,
@@ -344,9 +344,21 @@ impl Registration {
         }
     }
 
-    /// The launch has taken its last look: the record goes.
-    pub fn finish(mut self) {
+    /// The launch's first look, right after its record is kept, in its
+    /// turn: what a running app planted in a place this launch takes over
+    /// as empty, or in place of a link, is moved aside before this one
+    /// starts. Here, not in the launch, so that a test can hold the turn
+    /// while it looks.
+    pub fn first_look(&self) -> Vec<MovedAside> {
+        self.turns.settle(&self.watch, &self.aside)
+    }
+
+    /// The launch's last look, after its app has ended, in its turn: what
+    /// the app left is moved aside. Then the record goes.
+    pub fn last_look(mut self) -> Vec<MovedAside> {
+        let moved = self.turns.settle(&self.watch, &self.aside);
         self.armed = false;
+        moved
     }
 }
 
@@ -600,6 +612,83 @@ mod tests {
             fs::read_to_string(aside.join(".bash_profile")).unwrap(),
             "plant"
         );
+    }
+
+    /// A launch's first look, right after its record is kept, takes its
+    /// turn: it waits while another launch's look holds the turn, and goes
+    /// on once that look ends. (Fails when the first look calls the watch
+    /// directly.)
+    #[test]
+    fn a_first_look_takes_its_turn() {
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path().join("home");
+        fs::create_dir_all(&home).unwrap();
+        let paths = Paths::rooted(&t.path().join("sam"));
+        let aside = t.path().join("aside");
+        let (_, mut r) = start(&paths, &home, "first", &aside);
+        r.turns = Turns::waiting(&folder(&paths), Duration::from_secs(30));
+        fs::write(home.join(".bash_profile"), "plant").unwrap();
+        let held = hold_turn(&folder(&paths));
+        let (tx, rx) = std::sync::mpsc::channel();
+        let look = std::thread::spawn(move || {
+            let _ = tx.send(r.first_look());
+        });
+        std::thread::sleep(Duration::from_millis(300));
+        assert!(
+            home.join(".bash_profile").exists(),
+            "the first look looked while another launch had its turn"
+        );
+        assert!(rx.try_recv().is_err(), "the first look did not wait");
+        drop(held);
+        let moved = rx
+            .recv_timeout(Duration::from_secs(10))
+            .expect("the first look went on once the turn was free");
+        look.join().unwrap();
+        assert_eq!(moved.len(), 1, "{moved:?}");
+        assert_eq!(moved[0].place, ".bash_profile");
+        assert_eq!(moved[0].how, sam_sandbox::Aside::Moved);
+        assert_eq!(fs::read_to_string(&moved[0].to).unwrap(), "plant");
+        assert!(fs::symlink_metadata(home.join(".bash_profile")).is_err());
+    }
+
+    /// A launch's last look, after its app has ended, takes its turn: it
+    /// waits while another launch's look holds the turn, goes on once that
+    /// look ends, and then removes the launch's record. (Fails when the
+    /// last look calls the watch directly.)
+    #[test]
+    fn a_last_look_takes_its_turn() {
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path().join("home");
+        fs::create_dir_all(&home).unwrap();
+        let paths = Paths::rooted(&t.path().join("sam"));
+        let aside = t.path().join("aside");
+        let (_, mut r) = start(&paths, &home, "last", &aside);
+        r.arm(&t.path().join("launch.log"));
+        r.turns = Turns::waiting(&folder(&paths), Duration::from_secs(30));
+        let record = r.path.clone();
+        fs::write(home.join(".bash_profile"), "plant").unwrap();
+        let held = hold_turn(&folder(&paths));
+        let (tx, rx) = std::sync::mpsc::channel();
+        let look = std::thread::spawn(move || {
+            let _ = tx.send(r.last_look());
+        });
+        std::thread::sleep(Duration::from_millis(300));
+        assert!(
+            home.join(".bash_profile").exists(),
+            "the last look looked while another launch had its turn"
+        );
+        assert!(rx.try_recv().is_err(), "the last look did not wait");
+        drop(held);
+        let moved = rx
+            .recv_timeout(Duration::from_secs(10))
+            .expect("the last look went on once the turn was free");
+        look.join().unwrap();
+        assert_eq!(moved.len(), 1, "{moved:?}");
+        assert_eq!(moved[0].place, ".bash_profile");
+        assert_eq!(moved[0].how, sam_sandbox::Aside::Moved);
+        assert_eq!(fs::read_to_string(&moved[0].to).unwrap(), "plant");
+        assert!(fs::symlink_metadata(home.join(".bash_profile")).is_err());
+        assert!(!record.exists(), "the record went after the last look");
     }
 
     /// Review 2026-11-23 F1: app M plants `~/.bash_profile` (a link to its
