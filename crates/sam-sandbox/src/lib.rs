@@ -211,7 +211,8 @@ const PROTECTED_CREATE_FILES: &[&str] = &[
     ".config/mimeapps.list",
     // An empty one behaves like a missing one (`xdg-user-dir` answers the
     // home folder for both), and an app cannot create its own (checked for
-    // audit S-F16, which assumed otherwise).
+    // audit S-F16, which assumed otherwise). Made also where it follows
+    // `XDG_CONFIG_HOME` ([`prepare_home_protection_alongside`]).
     ".config/user-dirs.dirs",
 ];
 
@@ -255,7 +256,7 @@ fn shown_writable(views: &Views, p: &Path) -> bool {
 /// holding secrets: a browser creating its profile is fine.
 fn watched_places(p: &PermissionSet, home: &Path) -> Vec<String> {
     let fs = &p.filesystem;
-    let keys = [(".ssh", fs.ssh), (".gnupg", fs.gnupg)]
+    let keys = [(".ssh", fs.ssh_given()), (".gnupg", fs.gnupg_given())]
         .into_iter()
         .filter(|(_, granted)| !granted)
         .map(|(k, _)| k.to_string());
@@ -269,8 +270,9 @@ fn watched_places(p: &PermissionSet, home: &Path) -> Vec<String> {
 }
 
 /// Creates the missing protected paths of `PROTECTED_CREATE_*` in the real
-/// home that this start would show writable ([`writes_start_places`]), so
-/// they can be mounted read-only.
+/// home, and `user-dirs.dirs` where it follows `XDG_CONFIG_HOME` inside
+/// the home, that this start would show writable
+/// ([`writes_start_places`]), so they can be mounted read-only.
 pub fn prepare_home_protection(ctx: &LaunchContext) {
     prepare_home_protection_alongside(ctx, &[]);
 }
@@ -308,7 +310,20 @@ pub fn prepare_home_protection_alongside(ctx: &LaunchContext, running: &[HomeWat
             let _ = fs::create_dir_all(&path);
         }
     }
-    for f in PROTECTED_CREATE_FILES {
+    // The file SAM reads the user folders from also where it follows
+    // `XDG_CONFIG_HOME` (`~/cfg/user-dirs.dirs`, or `~/user-dirs.dirs` when
+    // the variable names the home): only an existing one is locked, and
+    // one the app wrote while it was missing told a start running at the
+    // same time where Documents is.
+    let user_dirs = protected_places(home)
+        .into_iter()
+        .filter(|p| Path::new(p).file_name() == Some("user-dirs.dirs".as_ref()));
+    let files: Vec<String> = PROTECTED_CREATE_FILES
+        .iter()
+        .map(|f| f.to_string())
+        .chain(user_dirs)
+        .collect();
+    for f in &files {
         let path = home.join(f);
         if fs::symlink_metadata(&path).is_err()
             && shown_writable(&views, &path)
@@ -604,46 +619,6 @@ impl HomeWatch {
                 .chain([".ssh".to_string(), ".gnupg".to_string()])
                 .collect()
         };
-        // Never gives up silently (regression, audit L-F2: after 1000 names
-        // per place, with SAM's folder on another drive or a full disk, the
-        // file simply stayed, and nothing said so).
-        let put_aside = |rel: &str, may_delete: bool| -> Option<(PathBuf, Aside)> {
-            let from = self.home.join(rel);
-            let name = rel.replace('/', "__");
-            // A free name in `dir`; the same place moved again keeps both.
-            let free = |dir: &Path, base: &str| {
-                (0u64..)
-                    .map(|n| {
-                        dir.join(if n == 0 {
-                            base.to_string()
-                        } else {
-                            format!("{base}.{n}")
-                        })
-                    })
-                    .find(|p| fs::symlink_metadata(p).is_err())
-            };
-            if fs::create_dir_all(aside).is_ok() {
-                if let Some(to) = free(aside, &name) {
-                    if fs::rename(&from, &to).is_ok() {
-                        return Some((to, Aside::Moved));
-                    }
-                }
-            }
-            // SAM's folder cannot take it: a name nothing reads, next to it.
-            if let (Some(dir), Some(base)) = (from.parent(), from.file_name()) {
-                let base = format!("{}.sam-moved-aside", base.to_string_lossy());
-                if let Some(to) = free(dir, &base) {
-                    if fs::rename(&from, &to).is_ok() {
-                        return Some((to, Aside::Renamed));
-                    }
-                }
-            }
-            Some(if may_delete && remove_any(&from) {
-                (from, Aside::Deleted)
-            } else {
-                (from, Aside::Failed)
-            })
-        };
         // A folder on the way to a watched place that is now a link: the app
         // renamed the folder and put a link of its own in its place, so a
         // link it holds with the same text, or a place it made, leads where
@@ -674,7 +649,7 @@ impl HomeWatch {
             }
         }
         for rel in &swapped {
-            if let Some((to, how)) = put_aside(rel, false) {
+            if let Some((to, how)) = put_aside(&self.home, aside, rel, false) {
                 moved.push(MovedAside {
                     place: rel.clone(),
                     to,
@@ -690,7 +665,7 @@ impl HomeWatch {
                     .iter()
                     .any(|o| o != rel && rel.starts_with(&format!("{o}/")))
             {
-                if let Some((to, how)) = put_aside(rel, named.contains(rel)) {
+                if let Some((to, how)) = put_aside(&self.home, aside, rel, named.contains(rel)) {
                     moved.push(MovedAside {
                         place: rel.clone(),
                         to,
@@ -704,7 +679,8 @@ impl HomeWatch {
             let same = fs::read_link(&path).is_ok_and(|t| &t == target);
             if !same {
                 if fs::symlink_metadata(&path).is_ok() {
-                    if let Some((to, how)) = put_aside(rel, named.contains(rel)) {
+                    if let Some((to, how)) = put_aside(&self.home, aside, rel, named.contains(rel))
+                    {
                         moved.push(MovedAside {
                             place: rel.clone(),
                             to,
@@ -717,6 +693,58 @@ impl HomeWatch {
         }
         moved
     }
+}
+
+/// Takes what is at `rel` in `home` out of its place: into `aside`
+/// (keeping its place in the name), else renamed next to it to a name
+/// nothing reads, else (`may_delete`) deleted; `None` when nothing is there
+/// any more. Never gives up silently (regression, audit L-F2: after 1000
+/// names per place, with SAM's folder on another drive or a full disk, the
+/// file simply stayed, and nothing said so). A place that is already empty
+/// when SAM moves it is not reported: another launch's look took it a
+/// moment before, and said so in its own record; before, this look then
+/// reported it as deleted, or as still there in capitals.
+fn put_aside(home: &Path, aside: &Path, rel: &str, may_delete: bool) -> Option<(PathBuf, Aside)> {
+    let from = home.join(rel);
+    let name = rel.replace('/', "__");
+    // A free name in `dir`; the same place moved again keeps both.
+    let free = |dir: &Path, base: &str| {
+        (0u64..)
+            .map(|n| {
+                dir.join(if n == 0 {
+                    base.to_string()
+                } else {
+                    format!("{base}.{n}")
+                })
+            })
+            .find(|p| fs::symlink_metadata(p).is_err())
+    };
+    if fs::create_dir_all(aside).is_ok() {
+        if let Some(to) = free(aside, &name) {
+            if fs::rename(&from, &to).is_ok() {
+                return Some((to, Aside::Moved));
+            }
+        }
+    }
+    // SAM's folder cannot take it: a name nothing reads, next to it.
+    if let (Some(dir), Some(base)) = (from.parent(), from.file_name()) {
+        let base = format!("{}.sam-moved-aside", base.to_string_lossy());
+        if let Some(to) = free(dir, &base) {
+            if fs::rename(&from, &to).is_ok() {
+                return Some((to, Aside::Renamed));
+            }
+        }
+    }
+    // Gone, not refused: only "not found" counts. Any other error (a folder
+    // the app made unreadable) still ends in deleting it or saying so.
+    if matches!(fs::symlink_metadata(&from), Err(e) if e.kind() == std::io::ErrorKind::NotFound) {
+        return None;
+    }
+    Some(if may_delete && remove_any(&from) {
+        (from, Aside::Deleted)
+    } else {
+        (from, Aside::Failed)
+    })
 }
 
 /// The way to `p` as Linux follows it, link by link: every link met (its
@@ -1463,16 +1491,6 @@ fn home_shows_exactly(views: &Views, home: &Path, real: &Path, rw: bool) -> bool
         .is_some_and(|(g, g_rw)| g == home && *g_rw == rw)
 }
 
-/// A host path SAM never shows on its own (a system folder, the home, a
-/// key or credential store, a start place): the risk words call it
-/// dangerous. Compared with the home as it is named and as it is reached
-/// (a home under a link).
-fn refused_host_path(p: &Path, home: &Path) -> bool {
-    let p = p.to_string_lossy();
-    sam_core::risk::is_sensitive_path_in(&p, home)
-        || sam_core::risk::is_sensitive_path_in(&p, &resolve(home))
-}
-
 /// Whether `real` (a resolved path) is one of SAM's folders in this start
 /// ([`sams_folders`]) or inside one. A folder that only holds one may be
 /// shown: SAM's folder is hidden inside it, wherever the sandbox shows it.
@@ -1809,15 +1827,19 @@ fn pins(
 /// under `XDG_CONFIG_HOME` and `XDG_DATA_HOME` inside the home
 /// ([`sensitive_places`]: with `XDG_CONFIG_HOME=~/cfg`, Git's passwords in
 /// `~/cfg/git/credentials` stayed readable with the whole home).
+/// "Given" counts only with the whole home
+/// ([`FilesystemPerms::ssh_given`]): a switch stored "on" without it showed
+/// the keys wherever a granted extra folder showed them, though the window
+/// greys the switch out and the sandbox check expected them hidden.
 fn masked_places(home: &Path, fsp: &FilesystemPerms) -> Vec<String> {
     let mut masks: Vec<String> = Vec::new();
-    if !fsp.ssh {
+    if !fsp.ssh_given() {
         masks.push(".ssh".into());
     }
-    if !fsp.gnupg {
+    if !fsp.gnupg_given() {
         masks.push(".gnupg".into());
     }
-    if !fsp.hidden_files {
+    if !fsp.hidden_files_given() {
         masks.extend(sensitive_places(home));
     }
     masks
@@ -1933,15 +1955,22 @@ fn guard_home(a: &mut Args, home: &Path, fsp: &FilesystemPerms, views: &Views, s
 /// With "No access" (`none`) nothing is granted this way.
 /// Relative names count from the folder the app was started in.
 ///
-/// Never granted this way: options (`-x`), sensitive paths (keys and
-/// credential stores, `~/.config`, `~/.local`, system folders), files and
-/// folders that can make the desktop run something outside the sandbox
-/// (start files of shells and the session, menu entries), SAM's own
-/// folders wherever they are, the root, the home folder or a folder that
-/// contains it, and folders outside the home folder and mounted drives.
-/// Each is compared as named and as reached through links: with
-/// `~/.bashrc` a link into `~/dotfiles`, opening `~/dotfiles` would share
-/// the real start file (audit D-M2, S-F13).
+/// Never granted this way: options (`-x`), a path
+/// [`sam_core::places::RefusedForOpened`] refuses (docs/security.md,
+/// *Files named on the command line*: the home or a folder above it, a
+/// system folder, a key folder, a start place, a credential store,
+/// `~/.config`, `~/.local` and the folders `XDG_CONFIG_HOME` and
+/// `XDG_DATA_HOME` name, as written, where it leads and at each link on its
+/// way, also where a key folder, start place or credential store really
+/// leads: one leading to the home or a folder above it refuses all of
+/// it), anything inside SAM's own folders wherever they are; and a
+/// folder also never when it holds such a place or the home, or lies
+/// outside the home and the mounted drives. Each is judged on one walk,
+/// and the path judged is the one bound: with `~/.bashrc` a link into
+/// `~/dotfiles`, opening `~/dotfiles` would share the real start file
+/// (audit D-M2, S-F13). Bubblewrap follows that path again when it
+/// mounts it; a second program that swaps a part of the way for a link
+/// in between is not covered (docs/security.md).
 pub fn opened_paths(ctx: &LaunchContext) -> Vec<(PathBuf, bool)> {
     opened_paths_in(ctx, &Views::base(ctx))
 }
@@ -2026,27 +2055,35 @@ fn withheld_opened_paths_in(ctx: &LaunchContext, views: &Views) -> Vec<PathBuf> 
 /// (the rules of [`opened_paths`]), each with `rw`; what the setting
 /// allows of them decides the caller.
 fn shareable_paths_in(ctx: &LaunchContext, views: &Views, rw: bool) -> Vec<(PathBuf, bool)> {
+    let refused = sam_core::places::refused_for_opened(&ctx.host.home);
+    shareable_paths_with(ctx, views, rw, &refused)
+}
+
+/// [`shareable_paths_in`] against the places `refused`, built once per
+/// call.
+fn shareable_paths_with(
+    ctx: &LaunchContext,
+    views: &Views,
+    rw: bool,
+    refused: &sam_core::places::RefusedForOpened,
+) -> Vec<(PathBuf, bool)> {
     let home = &ctx.host.home;
     let on_drive = |p: &Path| {
         ["/media", "/mnt", "/run/media"]
             .iter()
             .any(|d| p.starts_with(d))
     };
-    // Every place never shared, as named and where it really is. A folder
-    // holding one of SAM's folders may be opened (SAM's folder is hidden
-    // inside it); one holding a start place or a credential store not.
-    let both = |p: PathBuf| {
-        let r = resolve(&p);
-        [p, r]
-    };
-    let keep_out: Vec<PathBuf> = protected_places(home)
-        .iter()
-        .chain(&sensitive_places(home))
-        .map(String::as_str)
-        .chain([".ssh", ".gnupg"])
-        .flat_map(|p| both(home.join(p)))
+    // SAM's folders, as named and where they really are. A folder holding
+    // one of them may be opened (SAM's folder is hidden inside it); one
+    // holding a start place, a credential store or the home not
+    // (`refused.holds`).
+    let sam: Vec<PathBuf> = sams_folders(ctx)
+        .into_iter()
+        .flat_map(|p| {
+            let r = resolve(&p);
+            [p, r]
+        })
         .collect();
-    let sam: Vec<PathBuf> = sams_folders(ctx).into_iter().flat_map(both).collect();
     let mut out: Vec<(PathBuf, bool)> = Vec::new();
     for arg in &ctx.args {
         if arg.is_empty() || arg.starts_with('-') {
@@ -2058,23 +2095,20 @@ fn shareable_paths_in(ctx: &LaunchContext, views: &Views, rw: bool) -> Vec<(Path
         } else {
             ctx.owd.join(given)
         };
-        let Ok(real) = fs::canonicalize(&joined) else {
+        // One walk: the path judged is the path bound (Bubblewrap
+        // follows it again when it mounts it).
+        let way = sam_core::places::follow(&joined);
+        if refused.refuses(&joined, &way) {
             continue;
-        };
+        }
+        let real = way.leads;
         let Ok(meta) = fs::metadata(&real) else {
             continue;
         };
-        if refused_host_path(&joined, home)
-            || refused_host_path(&real, home)
-            || views.visible(&real)
+        if views.visible(&real)
+            || sam.iter().any(|d| real.starts_with(d))
+            || (meta.is_dir() && refused.holds(&real))
         {
-            continue;
-        }
-        let kept_out = keep_out
-            .iter()
-            .any(|p| real.starts_with(p) || (meta.is_dir() && p.starts_with(&real)))
-            || sam.iter().any(|d| real.starts_with(d));
-        if kept_out {
             continue;
         }
         if meta.is_dir() {
@@ -5440,10 +5474,83 @@ mod guard_tests {
         let a = args_of(&ctx_for(&p, &home));
         let target = home.join("Sync/gnupg").to_string_lossy().into_owned();
         assert!(has_seq(&a, &["--tmpfs", &target]), "{a:?}");
-        // Given the key folder, the app sees it.
+        // Given the key folder with the whole home, the app sees it (the
+        // switch alone counts for nothing:
+        // `key_switches_without_the_whole_home_hide_the_keys`).
         p.filesystem.gnupg = true;
+        p.filesystem.home = true;
         let a = args_of(&ctx_for(&p, &home));
         assert!(!has_seq(&a, &["--tmpfs", &target]), "{a:?}");
+    }
+
+    /// The key and credential switches count only with the whole home
+    /// ([`FilesystemPerms::ssh_given`]): stored "on" without it (an old
+    /// profile, a hand-edited file), `~/.ssh`, `~/.gnupg` and the other
+    /// credential stores stay hidden where a granted extra folder shows
+    /// them, and a key folder there is watched like one not given, as the
+    /// window and the sandbox check say. With the whole home the same
+    /// switches show them.
+    #[test]
+    fn key_switches_without_the_whole_home_hide_the_keys() {
+        let t = scratch();
+        let home = fs::canonicalize(t.path()).unwrap().join("home");
+        for d in ["Sync/ssh", "Sync/gnupg"] {
+            fs::create_dir_all(home.join(d)).unwrap();
+        }
+        fs::write(home.join("Sync/netrc"), "machine example password secret\n").unwrap();
+        let link = |to: &str, at: &str| {
+            std::os::unix::fs::symlink(home.join(to), home.join(at)).unwrap();
+        };
+        link("Sync/ssh", ".ssh");
+        link("Sync/gnupg", ".gnupg");
+        link("Sync/netrc", ".netrc");
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.custom_write = vec![home.join("Sync").display().to_string()];
+        p.filesystem.ssh = true;
+        p.filesystem.gnupg = true;
+        p.filesystem.hidden_files = true;
+        let s = |r: &str| home.join(r).to_string_lossy().into_owned();
+        let ctx = ctx_for(&p, &home);
+        let a = args_of(&ctx);
+        assert!(has_seq(&a, &["--tmpfs", &s("Sync/ssh")]), "SSH keys: {a:?}");
+        assert!(
+            has_seq(&a, &["--tmpfs", &s("Sync/gnupg")]),
+            "GnuPG keys: {a:?}"
+        );
+        assert!(
+            has_seq(&a, &["--ro-bind", "/dev/null", &s("Sync/netrc")]),
+            "the credential store ~/.netrc: {a:?}"
+        );
+        assert!(
+            writes_start_places(&ctx),
+            "the key folders shown writable through ~/Sync are watched"
+        );
+        // Each key folder on its own: the check above holds while either
+        // one is watched, so it alone would miss one switch read raw.
+        let watched = watched_places(&p, &home);
+        for k in [".ssh", ".gnupg"] {
+            assert!(
+                watched.iter().any(|w| w == k),
+                "the key folder ~/{k} is watched while its switch is on without the whole home: {watched:?}"
+            );
+        }
+        // With the whole home, the switches show them.
+        p.filesystem.home = true;
+        let watched = watched_places(&p, &home);
+        for k in [".ssh", ".gnupg"] {
+            assert!(
+                !watched.iter().any(|w| w == k),
+                "the key folder ~/{k} given with the whole home is not watched: {watched:?}"
+            );
+        }
+        let a = args_of(&ctx_for(&p, &home));
+        for (r, what) in [("Sync/ssh", "SSH keys"), ("Sync/gnupg", "GnuPG keys")] {
+            assert!(!has_seq(&a, &["--tmpfs", &s(r)]), "{what}: {a:?}");
+        }
+        assert!(
+            !has_seq(&a, &["--ro-bind", "/dev/null", &s("Sync/netrc")]),
+            "{a:?}"
+        );
     }
 
     /// A start file or credential store kept through a link (dotfiles,
@@ -5921,6 +6028,73 @@ mod guard_tests {
         assert_eq!(it.how, Aside::Failed, "{m:?}");
     }
 
+    /// Two launches watching one place both look when an app plants a file
+    /// there; the first moves it aside. For the second, the place is already
+    /// empty: it reports nothing, never "deleted" or "COULD NOT BE REMOVED"
+    /// for a file that sits in the first one's folder. A place that is still
+    /// there is reported as before, whichever way it went. (`put_aside` was
+    /// a closure before this check; the mutant without the check is the old
+    /// code and reports the empty place as `Deleted` or `Failed`.)
+    #[test]
+    fn a_place_another_look_already_emptied_is_not_reported() {
+        use std::os::unix::fs::PermissionsExt;
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path().join("home");
+        fs::create_dir_all(&home).unwrap();
+        let aside = t.path().join("aside");
+        // SAM's folder cannot be made: a file is in its way.
+        let blocked = t.path().join("blocked");
+        fs::write(&blocked, "").unwrap();
+        let unusable = blocked.join("aside");
+
+        // Already empty: nothing to report, whatever else would fail.
+        for may_delete in [true, false] {
+            for to in [&aside, &unusable] {
+                assert_eq!(
+                    put_aside(&home, to, ".bash_profile", may_delete),
+                    None,
+                    "may_delete {may_delete}, aside {to:?}"
+                );
+            }
+        }
+
+        // Still there: moved, or renamed in place, as before.
+        fs::write(home.join(".bash_profile"), "evil").unwrap();
+        assert_eq!(
+            put_aside(&home, &aside, ".bash_profile", true),
+            Some((aside.join(".bash_profile"), Aside::Moved))
+        );
+        assert_eq!(
+            fs::read_to_string(aside.join(".bash_profile")).unwrap(),
+            "evil"
+        );
+        fs::write(home.join(".bash_profile"), "evil").unwrap();
+        assert_eq!(
+            put_aside(&home, &unusable, ".bash_profile", false),
+            Some((home.join(".bash_profile.sam-moved-aside"), Aside::Renamed))
+        );
+
+        // Still there and nothing can move it: deleted where that is
+        // allowed (a name too long for the in-place rename), else said.
+        let long = "x".repeat(250);
+        fs::write(home.join(&long), "evil").unwrap();
+        assert_eq!(
+            put_aside(&home, &unusable, &long, true),
+            Some((home.join(&long), Aside::Deleted))
+        );
+        assert!(fs::symlink_metadata(home.join(&long)).is_err());
+        let locked = t.path().join("locked");
+        fs::create_dir_all(&locked).unwrap();
+        fs::write(locked.join(".zshrc"), "evil").unwrap();
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o555)).unwrap();
+        let stuck = [true, false].map(|d| put_aside(&locked, &unusable, ".zshrc", d));
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
+        for got in stuck {
+            assert_eq!(got, Some((locked.join(".zshrc"), Aside::Failed)));
+        }
+        assert!(locked.join(".zshrc").exists());
+    }
+
     /// Start folders under another config or data folder in the home
     /// (`XDG_CONFIG_HOME`, `XDG_DATA_HOME`) are protected like the usual
     /// ones, and the new places are on the list (audit S-F6).
@@ -5945,14 +6119,17 @@ mod guard_tests {
         let plain =
             protected_places_with(home, Some(home.join(".config")), Some("/elsewhere".into()));
         assert_eq!(plain.len(), PROTECTED_RO.len());
-        // A config folder that is the home itself adds nothing either.
+        // A config folder that is the home itself adds only the file SAM
+        // reads the user folders from, never the start places at the top of
+        // the home (`~/autostart`), nor the home itself.
         let same = protected_places_with(home, Some(home.to_path_buf()), None);
         assert_eq!(
             same.len(),
-            PROTECTED_RO.len(),
+            PROTECTED_RO.len() + 1,
             "{:?}",
             &same[PROTECTED_RO.len()..]
         );
+        assert_eq!(&same[PROTECTED_RO.len()..], ["user-dirs.dirs"]);
     }
 
     /// Start places follow `XDG_CONFIG_HOME` and `XDG_DATA_HOME` also when
@@ -6289,6 +6466,251 @@ mod guard_tests {
             opened(&mut ctx, home.join("Documents/b.txt")),
             vec![],
             "already shown by the Documents grant"
+        );
+    }
+
+    /// Files and folders named on the command line are not shared wherever
+    /// SAM refuses a place for them (docs/security.md, *Files named on the
+    /// command line*), with `XDG_CONFIG_HOME` given to the refused places
+    /// and the process's own left alone:
+    /// - with the variable at the home, two start places and a store at
+    ///   the top of the home (`~/autostart/x.desktop`, `~/git/...`,
+    ///   `~/gh/hosts.yml`), which are shared without it;
+    /// - with it at `~/cfg`, anything in that folder; with it outside the
+    ///   home (`/data/cfg`), its start places and stores, read and write or
+    ///   read-only, and the folder itself; a file beside it is shared;
+    /// - with `XDG_DATA_HOME` outside the home (`/share`), a store in it;
+    /// - with either variable at `/`, the start places and stores at the
+    ///   top of the root (`/autostart/x.desktop`, `/gh/hosts.yml`,
+    ///   `/applications/x.desktop`, `/keyrings/login.keyring`), judged by
+    ///   their names alone, so they need not exist; a file in the home is
+    ///   still shared;
+    /// - a file reached through a link in `~/.config` (`~/x`), or through a
+    ///   start place's own link to a file elsewhere;
+    /// - a file where a start place really leads when the settings folder
+    ///   outside the home, or the start place in it, is a link;
+    /// - a file where a settings folder outside the home really is when the
+    ///   folder that holds it is a link (`/data6` a link to `/disk6`);
+    /// - a file reached through a link that lies where a start place really
+    ///   leads;
+    /// - a file written with `..` after a link (`~/up/../.bashrc`), by its
+    ///   written name, while the file it leads to is shared when named so;
+    /// - a folder holding a moved settings folder, also one kept as a link,
+    ///   or a credential store (`~/.cargo`); an ordinary folder is shared.
+    ///
+    /// Known gaps (each assertion flips when its gap is closed): a file a
+    /// link inside `~/.config/fish` points to, named by its real place, and
+    /// one in a folder an unlisted `~/.config/helix` leads to, are shared.
+    #[test]
+    fn opened_files_are_refused_wherever_a_protected_place_is_named_or_leads() {
+        let t = scratch();
+        let base = fs::canonicalize(t.path()).unwrap();
+        let home = base.join("home/ann");
+        for d in [
+            "autostart",
+            "git/proj",
+            "gh",
+            "work",
+            "cfg/fish",
+            "cfg/helix",
+            ".config/fish",
+            "dotfiles/fish",
+            "dotfiles/helix",
+            "d/cfg",
+            ".cargo",
+            "e",
+            "work/sub",
+        ] {
+            fs::create_dir_all(home.join(d)).unwrap();
+        }
+        for d in [
+            "data/cfg/autostart",
+            "data/cfg/gh",
+            "data/cfg/fish",
+            "disk4/cfg/autostart",
+            "data4",
+            "data5/auto",
+            "data5/cfg",
+            "far/cfg",
+            "disk6/cfg",
+            "share/keyrings",
+        ] {
+            fs::create_dir_all(base.join(d)).unwrap();
+        }
+        for f in [
+            "autostart/x.desktop",
+            "git/proj/a.rs",
+            "gh/hosts.yml",
+            ".bashrc",
+            "work/a.txt",
+            "cfg/fish/config.fish",
+            "cfg/helix/config.toml",
+            "dotfiles/fish/config.fish",
+            "dotfiles/helix/config.toml",
+            ".cargo/credentials",
+            "work/.bashrc",
+        ] {
+            fs::write(home.join(f), "x").unwrap();
+        }
+        for f in [
+            "data/cfg/autostart/x.desktop",
+            "data/cfg/gh/hosts.yml",
+            "data/cfg/fish/config.fish",
+            "data/notes.txt",
+            "disk4/cfg/autostart/x.desktop",
+            "data5/auto/x.desktop",
+            "disk6/cfg/notes.txt",
+            "share/keyrings/login.keyring",
+        ] {
+            fs::write(base.join(f), "x").unwrap();
+        }
+        let link = |to: PathBuf, at: PathBuf| std::os::unix::fs::symlink(to, at).unwrap();
+        link(home.join("work/a.txt"), home.join(".config/lnk"));
+        link(home.join(".config/lnk"), home.join("x"));
+        link(
+            home.join("dotfiles/fish/config.fish"),
+            home.join(".config/fish/config.fish"),
+        );
+        link(home.join("dotfiles/helix"), home.join(".config/helix"));
+        link(base.join("disk4/cfg"), base.join("data4/cfg"));
+        link(base.join("data5/auto"), base.join("data5/cfg/autostart"));
+        link(base.join("far/cfg"), home.join("e/cfg"));
+        link(base.join("disk6"), base.join("data6"));
+        link(base.join("data/notes.txt"), base.join("data5/auto/lnk"));
+        link(home.join("work/sub"), home.join("up"));
+        let shared = |config: Option<PathBuf>, arg: PathBuf, rw: bool| {
+            let mut p = PermissionSet::strict_gui();
+            p.filesystem.opened_files = Access::Rw;
+            let mut ctx = ctx_for(&p, &home);
+            ctx.owd = home.clone();
+            ctx.args = vec![arg.to_string_lossy().into_owned()];
+            let refused = sam_core::places::refused_for_opened_with(&home, config, None);
+            !shareable_paths_with(&ctx, &Views::base(&ctx), rw, &refused).is_empty()
+        };
+        let at_home = || Some(home.clone());
+        for f in ["autostart/x.desktop", "git/proj/a.rs", "gh/hosts.yml"] {
+            assert!(
+                !shared(at_home(), home.join(f), true),
+                "{f}, the variable at the home"
+            );
+            assert!(shared(None, home.join(f), true), "{f} without the variable");
+        }
+        assert!(!shared(at_home(), home.join(".bashrc"), true));
+        assert!(shared(at_home(), home.join("work/a.txt"), true), "control");
+        for f in ["cfg/fish/config.fish", "cfg/helix/config.toml"] {
+            assert!(!shared(Some(home.join("cfg")), home.join(f), true), "{f}");
+        }
+        let data = || Some(base.join("data/cfg"));
+        for (f, rw) in [
+            ("data/cfg/autostart/x.desktop", true),
+            ("data/cfg/gh/hosts.yml", false),
+            ("data/cfg/fish/config.fish", true),
+            ("data/cfg", true),
+        ] {
+            assert!(!shared(data(), base.join(f), rw), "{f}");
+            assert!(
+                f == "data/cfg" || shared(None, base.join(f), rw),
+                "{f} without the variable"
+            );
+        }
+        assert!(shared(data(), base.join("data/notes.txt"), true), "control");
+        let keyring = base.join("share/keyrings/login.keyring");
+        let opened_with_data = |data: Option<PathBuf>| {
+            let mut p = PermissionSet::strict_gui();
+            p.filesystem.opened_files = Access::Rw;
+            let mut ctx = ctx_for(&p, &home);
+            ctx.args = vec![keyring.to_string_lossy().into_owned()];
+            let refused = sam_core::places::refused_for_opened_with(&home, None, data);
+            !shareable_paths_with(&ctx, &Views::base(&ctx), false, &refused).is_empty()
+        };
+        assert!(!opened_with_data(Some(base.join("share"))), "{keyring:?}");
+        assert!(opened_with_data(None), "{keyring:?} without the variable");
+        let root = || Some(PathBuf::from("/"));
+        for (config, data, f) in [
+            (root(), None, "/autostart/x.desktop"),
+            (root(), None, "/gh/hosts.yml"),
+            (None, root(), "/applications/x.desktop"),
+            (None, root(), "/keyrings/login.keyring"),
+        ] {
+            let refused = sam_core::places::refused_for_opened_with(&home, config, data);
+            let f = Path::new(f);
+            assert!(
+                refused.refuses(f, &sam_core::places::follow(f)),
+                "{f:?} with a variable at /"
+            );
+        }
+        assert!(
+            shared(root(), home.join("work/a.txt"), true),
+            "control: the variable at /"
+        );
+        assert!(!shared(None, home.join("x"), true), "a link in ~/.config");
+        assert!(!shared(None, home.join(".config/fish/config.fish"), true));
+        assert!(
+            !shared(
+                Some(base.join("data4/cfg")),
+                base.join("disk4/cfg/autostart/x.desktop"),
+                true
+            ),
+            "where a linked settings folder leads"
+        );
+        assert!(
+            !shared(
+                Some(base.join("data5/cfg")),
+                base.join("data5/auto/x.desktop"),
+                true
+            ),
+            "where a linked start place leads"
+        );
+        assert!(
+            shared(None, base.join("data5/auto/x.desktop"), true),
+            "data5/auto/x.desktop without the variable"
+        );
+        assert!(
+            !shared(
+                Some(base.join("data5/cfg")),
+                base.join("data5/auto/lnk"),
+                true
+            ),
+            "through a link where a linked start place leads"
+        );
+        assert!(
+            !shared(
+                Some(base.join("data6/cfg")),
+                base.join("disk6/cfg/notes.txt"),
+                true
+            ),
+            "where a settings folder in a linked folder really is"
+        );
+        assert!(
+            shared(None, base.join("disk6/cfg/notes.txt"), true),
+            "disk6/cfg/notes.txt without the variable"
+        );
+        assert!(
+            !shared(None, home.join("up/../.bashrc"), true),
+            "~/up/../.bashrc by its written name"
+        );
+        assert!(shared(None, home.join("work/.bashrc"), true), "control");
+        assert!(
+            !shared(Some(home.join("d/cfg")), home.join("d"), true),
+            "~/d"
+        );
+        assert!(
+            shared(None, home.join("d"), true),
+            "~/d without the variable"
+        );
+        assert!(
+            !shared(Some(home.join("e/cfg")), home.join("e"), true),
+            "~/e"
+        );
+        assert!(!shared(None, home.join(".cargo"), true), "~/.cargo");
+        assert!(shared(None, home.join("work"), true), "control");
+        assert!(
+            shared(None, home.join("dotfiles/fish/config.fish"), true),
+            "known gap: a file a link inside ~/.config/fish points to"
+        );
+        assert!(
+            shared(None, home.join("dotfiles/helix/config.toml"), true),
+            "known gap: a file where an unlisted ~/.config/helix leads"
         );
     }
 

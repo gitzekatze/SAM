@@ -1787,7 +1787,7 @@ fn app_row(r: &Row) -> gtk::ListBoxRow {
             crate::i18n::tr("SAM's analysis found it may not start in its sandbox; this goes away after the first successful start")
         }
         (true, "unsafe") => crate::i18n::tr("Its settings let it reach far outside its sandbox"),
-        (true, "stale") => crate::i18n::tr("The AppImage file changed since it was unpacked"),
+        (true, "stale") => crate::i18n::tr("The AppImage file changed since SAM last recorded unpacking it"),
         (true, "broken") => crate::i18n::tr("The last start failed"),
         (true, "missing") => crate::i18n::tr("The AppImage file is gone"),
         (true, "protection-missing") => crate::i18n::tr("Its last start lacked a protection layer its settings ask for; its page says which"),

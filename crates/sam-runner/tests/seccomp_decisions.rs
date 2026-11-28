@@ -224,14 +224,9 @@ fn record_arch(prog: &[Insn], arch: u32, out: &mut String) {
     }
 }
 
-/// The whole record: every filter setting, every architecture.
-fn record() -> String {
-    let mut out = String::from(
-        "# What SAM's syscall filter answers, per filter setting and per\n\
-         # architecture of the call (crates/sam-runner/tests/seccomp_decisions.rs).\n\
-         # One line per call number or range that is not allowed; `argN=V:X`\n\
-         # means the answer is X when argument N is V (all others 0).\n",
-    );
+/// The 16 filter settings, by name. A new field of `SeccompSpec` breaks
+/// this struct literal, so whoever adds one extends the settings here.
+fn settings() -> BTreeMap<String, SeccompSpec> {
     let mut settings = BTreeMap::new();
     for bits in 0..16u8 {
         let spec = SeccompSpec {
@@ -246,7 +241,18 @@ fn record() -> String {
         );
         settings.insert(name, spec);
     }
-    for (name, spec) in &settings {
+    settings
+}
+
+/// The whole record: every filter setting, every architecture.
+fn record() -> String {
+    let mut out = String::from(
+        "# What SAM's syscall filter answers, per filter setting and per\n\
+         # architecture of the call (crates/sam-runner/tests/seccomp_decisions.rs).\n\
+         # One line per call number or range that is not allowed; `argN=V:X`\n\
+         # means the answer is X when argument N is V (all others 0).\n",
+    );
+    for (name, spec) in &settings() {
         let prog = decode(&filter_bytes(spec).unwrap());
         writeln!(out, "\n## {name}").unwrap();
         for (arch_name, arch) in ARCHES {
@@ -305,6 +311,38 @@ fn the_filter_decides_every_call_as_recorded() {
             got.lines().nth(first),
             want.lines().nth(first),
             out.display()
+        );
+    }
+}
+
+/// The app page's and the sandbox check's socket note for 32-bit apps
+/// (`SeccompSpec::socketcall_unlimited`, review R72) says what the built
+/// filter does: under each of the 16 settings, the note appears exactly
+/// where the program allows a 32-bit x86 socketcall (number 102) that opens
+/// a socket (`SYS_SOCKET`, 1, in argument 0). A later filter that refuses
+/// that call while the note still claims the gap, or the reverse, fails
+/// here. On a processor without the filter's 32-bit part such a call ends
+/// the process and the note is never shown.
+#[test]
+fn the_socket_note_matches_the_filters_answer_to_32_bit_socketcall() {
+    for (name, spec) in &settings() {
+        let prog = decode(&filter_bytes(spec).unwrap());
+        let call = Call {
+            nr: 102,
+            arch: ARCHES[1].1,
+            args: [1, 0, 0, 0, 0, 0],
+        };
+        let got = answer(run(&prog, &call).0);
+        assert_eq!(
+            spec.socketcall_unlimited(),
+            got == "ALLOW",
+            "the app page's socket note says the 32-bit socket limit is {} under {name}, \
+             but the filter answers {got} to a 32-bit socketcall",
+            if spec.socketcall_unlimited() {
+                "incomplete"
+            } else {
+                "complete or not there"
+            }
         );
     }
 }

@@ -50,15 +50,20 @@ the steps; the list says what it does and what stays a person's job.
 After the checks above, one command does the rest, up to the last click:
 
 ```sh
+export SAM_RELEASE_TEST_COMMAND=/path/to/run-tests-in-a-container
 scripts/new-version.sh X.Y.Z --dry-run   # only checks that everything is ready
 scripts/new-version.sh X.Y.Z
 ```
 
-It checks that the version is new, the tree is clean, `main` matches GitHub,
-the last CI run on it passed and the release key is here. It asks once for
+It checks that the version is new, the tree is clean, a program to run the
+tests is named (`SAM_RELEASE_TEST_COMMAND`, or `SKIP_TESTS=1` after the
+tests passed elsewhere on this commit), `main` matches GitHub, the last CI
+run on it passed and the release key is here. It asks once for
 the key's passphrase and keeps GnuPG from forgetting it during the release.
 Then it makes a branch `release-X.Y.Z` (`main` is protected and takes
-changes only through pull requests), runs `scripts/release.sh` there, pushes
+changes only through pull requests), runs `scripts/release.sh` there (set
+`SAM_RELEASE_TEST_COMMAND` first, see below: that script runs no tests
+itself), pushes
 the branch and the tag, and opens the pull request *Release X.Y.Z*. It waits
 for the *Release* workflow, seals the AppImages with
 `scripts/sign-release.sh`, waits for the pull request's checks and merges it
@@ -75,13 +80,27 @@ repeated by hand.
 
 ```sh
 git switch -c release-X.Y.Z
+SAM_RELEASE_TEST_COMMAND=/path/to/run-tests-in-a-container \
 SIGN_KEY=AFE940EDA5A0C5C4B94B0A3FB1764CFD72A238E6 scripts/release.sh X.Y.Z
 ```
 
 The script checks that the tree is clean and the version is new, sets the
-version everywhere, dates the changelog, runs clippy and all tests, commits
-"Release X.Y.Z", makes a signed tag `vX.Y.Z`, and builds the source files.
-It pushes nothing. GnuPG asks for the passphrase.
+version everywhere, dates the changelog, runs clippy, has the whole test
+suite run, commits "Release X.Y.Z", makes a signed tag `vX.Y.Z`, and builds
+the source files. It pushes nothing. GnuPG asks for the passphrase.
+
+The script never runs the test suite itself: it hands it to the program
+`SAM_RELEASE_TEST_COMMAND` names. The tests start real sandboxes and SAM's
+own programs, so that program should run them in a container or under a
+separate account; the script does not check where the program runs them,
+so a program that simply runs the tests here would run them in your
+desktop session. The program gets the checkout's path as its one argument and
+`SAM_REQUIRE_SANDBOX=1` in its environment, which it should pass on to the
+tests, so a sandbox test that cannot build its sandbox fails instead of
+passing. If that program fails, the release stops before its commit.
+Without that variable the script stops before it changes anything, unless
+`SKIP_TESTS=1` says the tests already passed elsewhere on this commit
+(`SKIP_TESTS=1` skips clippy too).
 
 Then push the branch and the tag, and open the pull request:
 

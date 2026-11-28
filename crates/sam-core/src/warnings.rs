@@ -319,7 +319,8 @@ pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
     }
     // Its own warning: switching off the full-home warning silenced this
     // one too (audit U-M10).
-    if p.filesystem.home && (p.filesystem.ssh || p.filesystem.gnupg || p.filesystem.hidden_files) {
+    let fs = &p.filesystem;
+    if fs.ssh_given() || fs.gnupg_given() || fs.hidden_files_given() {
         w.push(Warning::danger(
             "secrets-exposed",
             "Private keys exposed",

@@ -2,6 +2,9 @@
 //! sandbox (security review 2026-11-23, SB-2 and SB-6):
 //! - a key folder that is a link (`~/.gnupg` to `~/Sync/gnupg`) stays
 //!   hidden, also unwritten, when only the folder it points into is granted;
+//! - so are the key folders and the credential stores whose switches are
+//!   stored "on" without the whole home (an old profile, a hand-edited
+//!   file): the switches count only with the whole home;
 //! - with the whole home writable and `~/.config` a link with a whole path
 //!   (dotfiles kept elsewhere), the app starts, and autostart stays
 //!   read-only;
@@ -39,6 +42,8 @@ use sam_runner::ops::{AddOptions, Sam};
 const ATTACK: &str = r#"#!/bin/sh
 H="$HOME"
 cat "$H/Sync/gnupg/private.key" 2>/dev/null | grep -q SECRET && echo GPGKEY=read || echo GPGKEY=hidden
+cat "$H/Sync/ssh/id_ed25519" 2>/dev/null | grep -q SECRET && echo SSHKEY=read || echo SSHKEY=hidden
+cat "$H/Sync/netrc" 2>/dev/null | grep -q SECRET && echo NETRC=read || echo NETRC=hidden
 echo 'pinentry-program /evil' >> "$H/Sync/gnupg/gpg-agent.conf" 2>/dev/null
 echo written >> "$H/Sync/notes.txt" 2>/dev/null
 mkdir -p "$H/.config/autostart" 2>/dev/null
@@ -87,6 +92,11 @@ fn places_behind_links_stay_protected_and_the_app_still_starts() {
     fs::write(home.join("Sync/gnupg/private.key"), "SECRET KEY").unwrap();
     fs::write(home.join("Sync/gnupg/gpg-agent.conf"), "# mine\n").unwrap();
     symlink(home.join("Sync/gnupg"), home.join(".gnupg")).unwrap();
+    fs::create_dir_all(home.join("Sync/ssh")).unwrap();
+    fs::write(home.join("Sync/ssh/id_ed25519"), "SECRET KEY").unwrap();
+    symlink(home.join("Sync/ssh"), home.join(".ssh")).unwrap();
+    fs::write(home.join("Sync/netrc"), "machine x password SECRET\n").unwrap();
+    symlink(home.join("Sync/netrc"), home.join(".netrc")).unwrap();
     // `~/.config` a link with a whole path into the home (dotfiles kept
     // elsewhere); SAM keeps its settings in it, as on a real system.
     symlink(home.join("dotfiles/config"), home.join(".config")).unwrap();
@@ -157,6 +167,36 @@ fn places_behind_links_stay_protected_and_the_app_still_starts() {
         "# mine\n",
         "the key folder's settings were changed"
     );
+
+    // The same with the key and credential switches stored "on" but not the
+    // whole home (an old profile, a hand-edited file): they count only
+    // with the whole home, so everything stays hidden.
+    let mut p = PermissionSet::strict_gui();
+    p.filesystem.custom_write = vec!["~/Sync".into()];
+    p.filesystem.ssh = true;
+    p.filesystem.gnupg = true;
+    p.filesystem.hidden_files = true;
+    let r = start(p, &[]);
+    assert_eq!(r["GPGKEY"], "hidden", "GnuPG keys: {r:?}");
+    assert_eq!(r["SSHKEY"], "hidden", "SSH keys: {r:?}");
+    assert_eq!(r["NETRC"], "hidden", "the credential store ~/.netrc: {r:?}");
+    assert_eq!(
+        read(&home.join("Sync/gnupg/gpg-agent.conf")),
+        "# mine\n",
+        "the key folder's settings were changed with the switch stored on"
+    );
+    // Control: with the whole home (read-only, so nothing is changed for
+    // the stages below), the same switches show them.
+    let mut p = PermissionSet::strict_gui();
+    p.filesystem.home = true;
+    p.filesystem.home_access = Access::Ro;
+    p.filesystem.ssh = true;
+    p.filesystem.gnupg = true;
+    p.filesystem.hidden_files = true;
+    let r = start(p, &[]);
+    assert_eq!(r["GPGKEY"], "read", "control, GnuPG keys: {r:?}");
+    assert_eq!(r["SSHKEY"], "read", "control, SSH keys: {r:?}");
+    assert_eq!(r["NETRC"], "read", "control, ~/.netrc: {r:?}");
 
     // SB-6, a link with a whole path into the home: the start used to fail
     // (Bubblewrap followed the link from its own root).

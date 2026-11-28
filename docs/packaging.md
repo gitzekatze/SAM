@@ -69,7 +69,9 @@ from GitHub, checks them, and builds offline from the vendored crates.
 
 Releases are made with one command, `scripts/new-version.sh X.Y.Z`. It
 runs `scripts/release.sh` (version everywhere, dated changelog, man pages,
-clippy and every test, signed tag and files in `dist/`) on a branch
+clippy, every test handed to the program `SAM_RELEASE_TEST_COMMAND` names,
+which should run them in a container or under a separate account, signed
+tag and files in `dist/`) on a branch
 `release-X.Y.Z`, because `main` is protected and takes changes only through
 pull requests, and merges that pull request once its checks pass. The
 *Release* workflow then builds a **draft** GitHub release from the tag;

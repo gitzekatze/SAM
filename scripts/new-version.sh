@@ -4,16 +4,18 @@
 #   scripts/new-version.sh X.Y.Z            do it
 #   scripts/new-version.sh X.Y.Z --dry-run  only check that everything is ready
 #
-# 1. Checks: the version is new, the tree is clean, main matches GitHub, the
-#    last CI run on it passed, the release key is here, gh is signed in,
-#    and data made by the last released version still works
-#    (tests/upgrade/run.sh).
+# 1. Checks: the version is new, the tree is clean, a program to run the
+#    tests is named (SAM_RELEASE_TEST_COMMAND, or SKIP_TESTS=1 after they
+#    passed elsewhere), main matches GitHub, the last CI run on it passed,
+#    the release key is here, gh is signed in, and data made by the last
+#    released version still works (tests/upgrade/run.sh).
 # 2. Asks once for the release key's passphrase and keeps GnuPG from
 #    forgetting it while the release runs (GnuPG forgets after 10 minutes
 #    without use; a tiny signature every 5 minutes keeps it).
 # 3. scripts/release.sh, on a branch release-X.Y.Z (main is protected and
 #    takes changes only through pull requests): version everywhere, all
-#    tests, signed tag.
+#    tests through the program SAM_RELEASE_TEST_COMMAND names (release.sh
+#    runs none itself), signed tag.
 # 4. Pushes the branch and the tag and opens the pull request "Release
 #    X.Y.Z". GitHub builds and tests the AppImages from the tag and makes a
 #    draft release (about 45 minutes); waits for it and shows a spinner with
@@ -88,6 +90,12 @@ git rev-parse -q --verify "refs/tags/$tag" >/dev/null && die "the tag $tag exist
 git rev-parse -q --verify "refs/heads/$branch" >/dev/null && die "the branch $branch exists already; delete it if it is left over from a failed try (git branch -D $branch)"
 [ "$(git branch --show-current)" = main ] || die "switch to the main branch first"
 [ -z "$(git status --porcelain)" ] || die "there are uncommitted changes; commit or stash them first"
+# scripts/release.sh runs no tests itself and stops without a program named
+# to run them; checked here, so the dry run says so and the real run stops
+# before it makes the branch.
+if [ "${SKIP_TESTS:-}" != 1 ] && [ -z "${SAM_RELEASE_TEST_COMMAND:-}" ]; then
+    die "scripts/release.sh does not run the test suite itself: set SAM_RELEASE_TEST_COMMAND=<program> to name the program that runs it (it gets this checkout's path; run the tests in a container or under a separate account), or SKIP_TESTS=1 after the tests passed elsewhere"
+fi
 command -v gh >/dev/null || die "the GitHub command line (gh) is not installed"
 gh auth status >/dev/null 2>&1 || die "gh is not signed in: run 'gh auth login'"
 git fetch -q origin main
@@ -129,7 +137,7 @@ gpg --yes -u "$key" --detach-sign -o "$work/unlock.sig" "$work/unlock" || die "t
 ( while sleep 300; do gpg --batch --yes -u "$key" --detach-sign -o "$work/alive.sig" "$work/unlock" 2>/dev/null || true; done ) &
 keepalive=$!
 
-step "Tagging $tag on the branch $branch (all tests run first; this takes a few minutes)"
+step "Tagging $tag on the branch $branch (the tests run first, through SAM_RELEASE_TEST_COMMAND; this takes a while)"
 git switch -q -c "$branch"
 SIGN_KEY="$key" scripts/release.sh "$new"
 

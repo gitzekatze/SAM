@@ -177,7 +177,7 @@ impl AppPage {
             "compatibility-mode" => Some((crate::i18n::tr("Compatibility mode"), "warn", crate::i18n::tr("Compatibility mode is on: so that the app works, it gets broad access (internet, the whole session bus, all of /usr, X11, GPU and sound). Turn it off under Launching → Compatibility mode once a narrower setting works; your previous settings come back"))),
             "compatibility-risk" => Some(compat_risk_label(entry.as_ref())),
             "unsafe" => Some((crate::i18n::tr("Unsafe"), "danger", crate::i18n::tr("These settings let the app reach far outside its sandbox"))),
-            "stale" => Some((crate::i18n::tr("AppImage changed"), "warn", crate::i18n::tr("The AppImage file changed since it was unpacked; SAM still runs the previous version until you update the sandbox"))),
+            "stale" => Some((crate::i18n::tr("AppImage changed"), "warn", crate::i18n::tr("The AppImage file changed since SAM last recorded unpacking it; the unpacked copy SAM starts may not be this file until you unpack it again"))),
             "broken" => Some((crate::i18n::tr("Broken"), "bad", crate::i18n::tr("The last start failed; see Troubleshooting below"))),
             "missing" => Some((crate::i18n::tr("File missing"), "bad", crate::i18n::tr("The AppImage file is gone; SAM can still run the unpacked copy"))),
             "protection-missing" => Some((crate::i18n::tr("Protection missing"), "bad", crate::i18n::tr("Its last start lacked a protection layer its settings ask for; see the note below"))),
@@ -413,7 +413,7 @@ impl AppPage {
             let badge = util::str_of(s, "badge");
             if ["stale", "broken", "missing"].contains(&badge) {
                 let text = match badge {
-                    "stale" => crate::i18n::tr("The AppImage changed since it was unpacked. Unpack it again to use the new version."),
+                    "stale" => crate::i18n::tr("The AppImage changed since SAM last recorded unpacking it. Unpack it again so that SAM starts this file and its record describes it."),
                     "missing" => crate::i18n::tr("The AppImage file is missing. Point SAM at its new location, or remove the sandbox."),
                     _ => util::plain(util::get(e, "last_error").and_then(Value::as_str).unwrap_or(&crate::i18n::tr("This app cannot start."))),
                 };

@@ -164,9 +164,19 @@ their 64-bit twins, so the filter stays on for 32-bit AppImages
 switched off for them, which let any app choose to run without it by
 making its start program 32-bit. One gap remains, as in Flatpak: a 32-bit
 socket or socket pair made through the old `socketcall` call is not
-limited to the listed types, because its type sits where no filter can
+limited to the listed types (so it can be a Bluetooth socket even without
+the *Bluetooth* switch), because its type sits where no filter can
 read it. Other apps keep ending at a 32-bit call, so a 64-bit program
 cannot use the 32-bit doors.
+
+This includes Bluetooth sockets: such an app with full network access can
+open them even with its *Bluetooth* switch off, because the filter is the
+only place that limits them. SAM says this for each app it applies to: the
+app's page lists *Socket limit incomplete (32-bit)*, and its sandbox check
+adds a note, because the test program makes only 64-bit calls
+(`the_app_page_names_the_incomplete_socket_limit_of_a_32_bit_app`,
+`the_sandbox_check_of_a_32_bit_app_says_its_socket_limit_is_incomplete`,
+`the_socket_note_matches_the_filters_answer_to_32_bit_socketcall`).
 
 The same filter applies while SAM unpacks an AppImage, to its own reader
 and to the AppImage's own extractor (`an_unpacking_tool_cannot_open_the_kernels_rarely_used_doors`).
@@ -613,13 +623,40 @@ the app read it (`git_credentials_under_config_git_stay_hidden`). Where
 (`~/cfg`), the stores kept under `~/.config` or `~/.local/share` are hidden
 there as well (`~/cfg/git/credentials`, `~/cfg/keepassxc`), as the start
 places are locked there, and none of them is shared as a file named on the
-command line (`credential_stores_follow_other_config_and_data_folders`).
+command line (`credential_stores_follow_other_config_and_data_folders`;
+which places SAM refuses for such files, also where these variables point
+outside the home or to the home itself, is under *Files named on the
+command line*).
 Where one of them names the home itself, the stores sit at the top of the
 home (`~/git/credentials`, `~/gh`, `~/keyrings`) and are hidden there in
-the same way. Not covered: the start places are not locked at the top of
-the home then (`~/autostart`), so an app with the whole home writable can
-change them there. Such a folder outside the home is shown only when you
-grant it, and SAM does not hide the stores in it then.
+the same way. Of the places locked under `~/.config`, only the file SAM
+reads Documents, Downloads and the other user folders from is locked at
+the top of the home as well, where `XDG_CONFIG_HOME` names the home
+(`~/user-dirs.dirs`). Like `~/.config/user-dirs.dirs`, and
+`~/cfg/user-dirs.dirs` where the variable names `~/cfg`, it is read-only
+and cannot be renamed away, and when it is missing, SAM creates it empty
+before a start that shows it writable
+(`the_user_folders_file_is_protected_wherever_sam_reads_it_in_the_home`,
+`the_user_folders_file_stays_locked_when_the_config_folder_is_the_home`).
+SAM promises this only when neither the file nor a folder on the way to it
+from the home (`~/cfg`) is a link. Not covered: while another app runs
+that saw the file missing, SAM leaves it missing (see *Folders are created
+empty first* below). SAM reads `XDG_CONFIG_HOME` from the environment of
+each start, so a start whose environment does not set it leaves
+`~/user-dirs.dirs` (or `~/cfg/user-dirs.dirs`) unlocked; set the variable
+in the desktop session's environment, not only in a shell's startup file.
+Not covered either: where either variable names the home, the start places
+are not locked at the top of the home (`~/autostart`, `~/applications`),
+so an app with the whole home writable can change them there. A folder
+outside the home that either variable names is shown only when you grant
+it, and SAM does not hide the stores in it then.
+The switches that allow them count only with the whole home
+(`filesystem.home`): stored on without it (an old profile, a
+hand-edited file), they hide the keys and stores as if off, also where a
+granted extra folder shows them
+(`key_switches_without_the_whole_home_hide_the_keys`, and
+`places_behind_links_stay_protected_and_the_app_still_starts` from a real
+sandbox).
 
 **Hidden whenever anything would show them:** SAM's own folders
 (configuration, data and unpacked apps, wherever they are, and the folders
@@ -912,10 +949,90 @@ How these stay protected with the home writable:
   binds a user folder with an access of its own at its real place, as it
   binds extra folders, while the app still reaches it through the home at
   the home's access, and the sandbox check reports this.
-- **Files named on the command line** are checked where they really lead:
-  never a key or credential store, a start place (also through a link: a
-  dotfiles folder holding the real `.bashrc` is not shared), or anything
-  inside SAM's folders. With files opened with the app set to *No access*
+- **Files named on the command line** (and files you open with the app)
+  are judged on one walk: as written (with `..` taken back), where they
+  lead and at each link on the way; SAM then binds the path it judged
+  (Bubblewrap follows that path again when it mounts it; see *Not
+  covered* below). SAM does not share a file or folder:
+  - that is the home or a folder above it;
+  - that leads into a system folder, or whose way passes a link in one:
+    `/etc`, `/usr`, `/boot`, `/root`, `/var`, `/proc`, `/sys`, `/dev` and
+    `/run` (but not `/run/media` and the drives in it), where they are
+    not part of the home and not a link on the way to it. With the home
+    kept there (`/home/ann` a link to `/var/home/ann`), the files in the
+    home are shared. Other folders, such as `/opt` and `/srv`, are not
+    system folders;
+  - that is or lies inside one of these places, leads into one, or whose
+    way passes a link that is or lies inside one: the key folders
+    `~/.ssh` and `~/.gnupg`, every place on the lists `PROTECTED_RO`
+    (start places) and `SENSITIVE_DOTFILES` (credential stores) in
+    `crates/sam-core/src/places.rs`, and the folders `~/.config` and
+    `~/.local`, under the home as named and where it really is; the start
+    places and stores kept in `~/.config` or `~/.local/share` also where
+    `XDG_CONFIG_HOME` or `XDG_DATA_HOME` puts them: in another folder in
+    the home (`~/cfg/autostart`), outside the home (`/data/cfg/autostart`,
+    `/data/cfg/gh`), or at the top of the home when a variable names the
+    home itself (`~/autostart`, `~/git`, `~/gh`), or at the top of the
+    root when a variable names `/` (`/autostart`, `/gh`); and the folders
+    the two variables name, as a whole, unless one names the home or a
+    folder above it. A settings or data folder named this way is taken as
+    written and in the folder that really holds it (`/data` a link to
+    `/disk/data`);
+  - that leads into, or whose way passes a link inside, the place a key
+    folder, start place or credential store really leads to: with
+    `~/.bashrc` a link to `~/dotfiles/bashrc`, the file
+    `~/dotfiles/bashrc` is not shared, and with `/data/cfg/autostart` a
+    link to `/data/auto` while `XDG_CONFIG_HOME` is `/data/cfg`, neither
+    is `/data/auto/x.desktop`. A key folder, start place or credential
+    store that leads to the home or a folder above it refuses all of it:
+    with `~/.config/fish` a link to the home, fish reads `~/config.fish`
+    and `~/conf.d` outside the sandbox, and with `~/.oci` a link to the
+    home, the OCI tool reads `~/config`, so no file in the home is shared;
+  - that is or lies inside one of SAM's folders.
+
+  A folder is also not shared when it holds the home, one of the places
+  the third item lists, or the place one of them really leads to (a
+  dotfiles folder holding the real `.bashrc`, `~/.cargo`, or `~/d` while
+  `XDG_CONFIG_HOME` is `~/d/cfg`), or when it lies outside the home and
+  off the drives (`/media`, `/mnt`, `/run/media`). SAM uses the
+  `XDG_CONFIG_HOME` and `XDG_DATA_HOME` of its own environment
+  (`opened_files_are_refused_wherever_a_protected_place_is_named_or_leads`,
+  `opened_files_are_also_refused_where_a_listed_place_leads`,
+  `opened_files_count_system_folders_only_outside_the_home`, and from a
+  real sandbox `opened_files_at_moved_start_places_in_a_real_sandbox`).
+  Not covered: a file that a link *inside* a protected place points to is
+  refused only when it is reached through that link: with
+  `~/.config/fish/config.fish` a link to `~/dotfiles/fish/config.fish`
+  (GNU Stow does this when `~/.config/fish` already exists), the file
+  `~/dotfiles/fish/config.fish` is shared when you name it so; the same
+  holds for a folder in `~/.config` on no list (`~/.config/helix` a link
+  to `~/dotfiles/helix`). A second name for a start file or store, made
+  with a hard link or a bind mount, is not recognised: SAM compares
+  paths, not files. An app that can write where a credential store or a
+  settings folder is named (a missing `~/.oci`, or `/data/cfg` in a
+  writable `/data`) can make it a link to another folder; a file you
+  open in that folder's start places and stores, or anywhere in it for a
+  store, is then not shared, and neither is a folder you open that holds
+  that place; an app that makes a start place, key folder or credential
+  store a link to the home makes every file in the home unshared. SAM
+  binds the path it judged, not the file it found: a second program that
+  can write a folder on the way to a file or folder you open (another
+  sandbox, or a running copy of the app with that folder writable; starts
+  of one app may run side by side) can swap a part of the way for a link
+  in the short time between SAM's look and Bubblewrap's mount, and
+  Bubblewrap follows that link, so a start file could be shared writable
+  at the place you opened. This race is older than this list; checking
+  each bound place inside the finished sandbox before the app starts, and
+  binding through an open handle, which close it, are planned. A file SAM
+  does not share for these reasons is not named at the start; the app
+  reports it as missing, unless another grant shows it. SAM only does not
+  hand such a file over itself: a grant that shows it (the whole home, or
+  a granted folder that holds it) still shows it as that grant does. With
+  `XDG_CONFIG_HOME` set to `~/cfg` and the whole home granted, the app
+  still sees `~/cfg/helix/config.toml`, and with read and write it can
+  change it.
+
+  With files opened with the app set to *No access*
   (`filesystem.opened_files = "none"`, also an old profile's `false`), none
   is shared, not even read-only; the app then starts in its private home,
   and a terminal app's start line and the launch log name each file SAM did
@@ -1263,7 +1380,21 @@ How these stay protected with the home writable:
   time SAM looks at the running apps (the window, `sam-jail stop`, any
   start) it takes that look and writes what it moved into that launch's
   log. A record from before the computer was restarted is dropped without
-  that look.
+  that look. Launches take turns to look at the home: a look waits at most
+  about a second for its turn while another launch looks, then looks
+  anyway, so two looks can then overlap. So something an app leaves in a
+  place that several launches watch is normally moved aside and reported
+  once, in the record of the launch whose look found it: that may be the
+  other app's record, since SAM cannot tell which app made it. When two
+  looks overlap, and while a launch of an older SAM still runs, the second
+  look may also report a link of yours that the first look had just put
+  back. A known limit: a start, and the look for a
+  launcher that was ended (from the window, `sam-jail stop` or a start),
+  first wait to read the records of the running apps, one launch at a time,
+  and that wait has no time limit yet. A launcher stopped while it starts
+  an app (Ctrl+Z) holds the records, so later starts wait until it goes on
+  or ends; the watches of apps that already run keep moving files aside
+  meanwhile.
 - **Key folders that are links** (dotfiles managed with `stow`, for example)
   are hidden where they point, also when only the folder they point into is
   granted (`~/.gnupg` a link to `~/Sync/gnupg`, and `~/Sync` granted);
@@ -1286,7 +1417,10 @@ home, an app can still change other files that programs outside the sandbox
 read: settings of programs not in the table above, scripts in project
 folders. SAM protects the places that make a computer run something by
 themselves; it cannot know every program's settings. And a file the app
-creates in a watched place exists for a moment (usually well under a second)
+creates in a watched place exists for a moment (usually well under a second;
+while another app's launch is looking at the home, up to about a second
+longer, because a look waits at most about a second for its turn, then
+looks anyway, so two looks can then overlap)
 before SAM moves it aside: a program outside that reads it in exactly that
 moment would see it. So full home access is meant only for apps you trust,
 and SAM warns when you grant it.
@@ -1325,7 +1459,8 @@ as its working folder. Named folders must be inside your home folder or on a
 mounted drive; your home folder itself, the folders above it, sensitive
 paths (keys, `~/.config`, `~/.local`) and files that make the desktop run
 something (shell start files, menu entries, SAM's settings) are never shared
-this way. Files it saves anywhere else stay in its private home. Each start
+this way (the full list, also where `XDG_CONFIG_HOME` or `XDG_DATA_HOME`
+moves these places, is under *Files named on the command line*). Files it saves anywhere else stay in its private home. Each start
 shows one line with what it can see, and the app's page shows the same
 warning.
 
@@ -1422,6 +1557,10 @@ gives apps a filtered bus by default.
 With `security.check_before_launch`, SAM repeats the check before a start
 whenever SAM, the app's settings, the security settings or the computer have
 changed, and refuses to start on any failure.
+
+For a 32-bit app the check also notes that its socket limit is incomplete
+(see the syscall filter); this note is neither passed nor failed, so it
+never stops a start.
 
 ---
 
@@ -1876,6 +2015,31 @@ was easily misread.
   `network.app_ports` to restrict it further.
 - **Hostname:** the sandbox keeps the computer's hostname, because changing
   it is blocked on some hardened systems.
+- **App records saved by two SAM processes at once.** Every save of an app
+  record takes one short record lock (the file `.records.lock` in SAM's apps folder), held
+  only while the record is read, changed and written. Each save writes only
+  what it changes onto the record as it is then; when two saves change the
+  same field, the later one wins (a list, such as the granted folders,
+  counts as one field, and a change that replaces the whole set of settings
+  writes that set as one value). Only your confirmation clears a "look at
+  it first" mark. A confirmation from the app's page checks under the lock
+  that the page showed what it confirms; `sam-jail review` without
+  `--seen` confirms what the record holds when it gets the lock. When the
+  AppImage changed other than through a SAM update, *Unpack Again* saves
+  that mark before it unpacks, so the new copy does not start unconfirmed
+  when the closing save fails; SAM does not promise this when you confirm
+  the app while it unpacks. The start's warning about a changed AppImage
+  says that the unpacked copy SAM starts may not be that file. Limits: a
+  SAM version from before this lock does not take it, so while it runs at
+  the same time as this one (an old window left open after an update), one
+  of its saves can still undo a change this SAM saved. A save that does
+  not get the lock within 10 seconds stops with an error and saves
+  nothing; work done before it stays (after *Unpack Again*, the newly
+  unpacked copy, which the record then does not describe). A start writes
+  the app's state and last error as it read or set them, so it can replace
+  a notice another process saved there while the app ran. SAM does not
+  promise any of this for a record it cannot read. Close old SAM windows
+  after updating SAM.
 
 ---
 

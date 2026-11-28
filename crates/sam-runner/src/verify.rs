@@ -360,16 +360,12 @@ pub fn plan(p: &PermissionSet, cfg: &Config, paths: &Paths, host: &HostInfo) -> 
         }
     }
     for (name, title, granted) in [
-        (".ssh", "SSH keys", fs.ssh),
-        (".gnupg", "GnuPG keys", fs.gnupg),
+        (".ssh", "SSH keys", fs.ssh_given()),
+        (".gnupg", "GnuPG keys", fs.gnupg_given()),
     ] {
         let path = host.home.join(name);
         if path.is_dir() {
-            let want = if fs.home && granted {
-                home_level
-            } else {
-                Access::Hidden
-            };
+            let want = if granted { home_level } else { Access::Hidden };
             v.push(c(
                 "keys",
                 "Files",
@@ -1048,6 +1044,38 @@ fn wayland_context_result(made: bool, failed: bool) -> Option<ProbeResult> {
     })
 }
 
+/// The sandbox check's note for a 32-bit app whose filter has the
+/// socketcall gap: the test program makes only 64-bit calls, so it cannot
+/// try the gap, and the check says the limit is incomplete instead of
+/// passing in silence. Neither passed nor failed, so it never stops a
+/// start ("Check the sandbox before each start" stops only on a failure).
+fn socket_limit_result(app: &AppEntry, cfg: &Config, host: &HostInfo) -> Option<ProbeResult> {
+    crate::launch::socket_limit_incomplete(app, &app.profile.permissions, cfg, host).then(|| {
+        ProbeResult {
+            id: "seccomp-32-bit-sockets".into(),
+            group: sam_core::i18n::tr("Security"),
+            title: sam_core::i18n::tr("Socket limit for 32-bit calls"),
+            ok: None,
+            observed: sam_core::i18n::tr(
+                "incomplete: a 32-bit socket made through the old socketcall call can be of any type, Bluetooth included when the app has full network access, and the test program cannot try 32-bit calls",
+            ),
+        }
+    })
+}
+
+/// The results SAM adds outside the sandbox, after the probe's own: the
+/// socket note first, so it stays under the probe's last heading
+/// (Security; `sam-jail verify` prints a heading each time the group
+/// changes), then the Wayland context (Display).
+fn add_outside_results(
+    report: &mut ProbeReport,
+    socket: Option<ProbeResult>,
+    wayland: Option<ProbeResult>,
+) {
+    report.results.extend(socket);
+    report.results.extend(wayland);
+}
+
 /// Runs the sandbox check for an app.
 pub fn verify(app: &AppEntry, cfg: &Config, paths: &Paths, host: &HostInfo) -> Result<Outcome> {
     let plan = plan(&app.profile.permissions, cfg, paths, host);
@@ -1137,7 +1165,7 @@ pub fn verify(app: &AppEntry, cfg: &Config, paths: &Paths, host: &HostInfo) -> R
     for r in &mut report.results {
         r.observed = sam_core::i18n::tr(&r.observed);
     }
-    report.results.extend(wayland);
+    add_outside_results(&mut report, socket_limit_result(app, cfg, host), wayland);
     let record = CheckRecord {
         at: sam_core::util::now(),
         key,
@@ -2615,6 +2643,91 @@ mod tests {
         assert_eq!(failed.id, "wayland-context");
         assert_eq!(wayland_context_result(true, false).unwrap().ok, Some(true));
         assert!(wayland_context_result(false, false).is_none());
+    }
+
+    /// Review R72: for a 32-bit app whose filter has the socketcall gap, the
+    /// check notes that the socket limit is incomplete, neither passed nor
+    /// failed, so a check before each start never refuses the app over it.
+    /// No note for a 64-bit program, a script or with the filter off, nor
+    /// on a processor without the filter's 32-bit part. The note stays
+    /// under the probe's last heading (Security), before the Wayland
+    /// context (Display), so every heading appears once.
+    #[test]
+    fn the_check_notes_the_incomplete_socket_limit_without_failing() {
+        let host = sam_core::sandbox::sample_context().host;
+        let cfg = Config::default();
+        let x86 = cfg!(target_arch = "x86_64");
+        let app = |arch: &str, script: bool, filter: bool| {
+            let mut e = AppEntry {
+                detection: Some(sam_core::DependencyReport {
+                    arch: arch.into(),
+                    entry_is_script: script,
+                    entry_binary: Some("usr/bin/game".into()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            };
+            e.profile.permissions = PermissionSet::strict_gui();
+            e.profile.permissions.advanced.seccomp_baseline = filter;
+            e.profile.permissions.advanced.seccomp_strict = false;
+            e
+        };
+        let note = socket_limit_result(&app("i686", false, true), &cfg, &host);
+        assert_eq!(note.is_some(), x86, "a 32-bit start program: {note:?}");
+        assert!(
+            socket_limit_result(&app("x86_64", false, true), &cfg, &host).is_none(),
+            "a 64-bit program"
+        );
+        assert!(
+            socket_limit_result(&app("i686", true, true), &cfg, &host).is_none(),
+            "a script among 32-bit files"
+        );
+        assert!(
+            socket_limit_result(&app("i686", false, false), &cfg, &host).is_none(),
+            "the filter off for this app"
+        );
+        // The note itself, built on every processor from the x86-64 case's
+        // fields, so its shape is checked where it cannot appear too.
+        let note = note.unwrap_or_else(|| ProbeResult {
+            id: "seccomp-32-bit-sockets".into(),
+            group: sam_core::i18n::tr("Security"),
+            title: String::new(),
+            ok: None,
+            observed: String::new(),
+        });
+        assert_eq!(note.id, "seccomp-32-bit-sockets");
+        assert_eq!(note.ok, None, "neither passed nor failed: {note:?}");
+        let passed = ProbeResult {
+            id: "userns".into(),
+            group: sam_core::i18n::tr("Security"),
+            title: "Nested sandboxes blocked".into(),
+            ok: Some(true),
+            observed: String::new(),
+        };
+        let mut report = ProbeReport {
+            results: vec![passed],
+            enforcement: String::new(),
+        };
+        add_outside_results(&mut report, Some(note), wayland_context_result(true, true));
+        assert_eq!(report.passed(), 2, "the probe's result and the context");
+        assert!(
+            report.failed().is_empty(),
+            "the note never fails the check: {:?}",
+            report.failed()
+        );
+        let ids: Vec<&str> = report.results.iter().map(|r| r.id.as_str()).collect();
+        assert_eq!(ids, ["userns", "seccomp-32-bit-sockets", "wayland-context"]);
+        let groups: Vec<&str> = report.results.iter().map(|r| r.group.as_str()).collect();
+        let mut runs = groups.clone();
+        runs.dedup();
+        let mut once = runs.clone();
+        once.sort_unstable();
+        once.dedup();
+        assert_eq!(
+            runs.len(),
+            once.len(),
+            "a heading appears twice: {groups:?}"
+        );
     }
 
     /// Review K-1: with X11 off, the check tries the X server's abstract

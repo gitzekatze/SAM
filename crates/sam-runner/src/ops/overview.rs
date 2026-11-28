@@ -38,10 +38,21 @@ impl Sam {
             sam_dirs: &own_dirs,
             sam_runtime: &sam_runtime,
         };
+        let mut warnings = evaluate(perms, &ctx);
+        // A 32-bit start program's filter has the socketcall gap; no setting
+        // causes or closes it, so it is information, not a warning.
+        if app.is_some_and(|a| crate::launch::socket_limit_incomplete(a, perms, &self.config, host))
+        {
+            warnings.push(Warning::info(
+                "socket-limit-32-bit",
+                "Socket limit incomplete (32-bit)",
+                "This app starts a 32-bit program. SAM's syscall filter limits its 32-bit calls as it limits 64-bit ones, with one gap, as in Flatpak: through the old socketcall call the app can open sockets of any type, because the type sits where no filter can read it. These include virtual-machine and kernel-crypto sockets and, when the app has full network access, Bluetooth sockets even with its Bluetooth switch off.",
+            ));
+        }
         Evaluation {
             risk: assess(perms),
             tags: sam_profile::tags::permission_tags(perms),
-            warnings: evaluate(perms, &ctx),
+            warnings,
         }
     }
 
@@ -71,7 +82,7 @@ impl Sam {
         }
         match e.state {
             AppState::Stale => {
-                w.push(Warning::warn("stale", "AppImage changed", "The AppImage changed since it was unpacked. Unpack it again to update the sandbox."))
+                w.push(Warning::warn("stale", "AppImage changed", "The AppImage changed since SAM last recorded unpacking it. Unpack it again so that SAM starts this file and its record describes it."))
             }
             AppState::Missing => w.push(Warning::warn(
                 "missing",
@@ -395,8 +406,7 @@ impl Sam {
     pub fn hide_duplicates(&self, query: &str) -> Result<AppEntry> {
         let mut e = self.resolve(query)?;
         self.hide_menu_entries(&mut e);
-        self.registry().save(&mut e)?;
-        Ok(e)
+        self.update_record(&e.id, |f| f.hidden_entries = e.hidden_entries.clone())
     }
 
     /// Put back the menu entries SAM hid for this app.
@@ -405,8 +415,7 @@ impl Sam {
         for h in std::mem::take(&mut e.hidden_entries) {
             menu::restore(&h, &e.id)?;
         }
-        self.registry().save(&mut e)?;
-        Ok(e)
+        self.update_record(&e.id, |f| f.hidden_entries.clear())
     }
 
     pub fn scan(&self, dirs: Option<Vec<PathBuf>>) -> Result<Vec<ScanItem>> {
