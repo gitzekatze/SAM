@@ -1100,7 +1100,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-jail-cli: The command line and its JSON interface
 
-153 tests.
+155 tests.
 
 | Promise | Test |
 |---|---|
@@ -1252,6 +1252,8 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | A sandboxed terminal app cannot reach past the terminal. | [`a_sandboxed_terminal_app_cannot_reach_past_the_terminal`](../crates/sam-jail-cli/tests/terminal.rs#L92) |
 | What SAM itself prints about an app (G-F5, L-F3, I-F11, I-F12): the name of its file, the failure summary taken from its error output, its log. | [`what_sam_prints_about_an_app_cannot_reach_past_the_terminal`](../crates/sam-jail-cli/tests/terminal.rs#L297) |
 | Sam never runs a helper the user can change. | [`sam_never_runs_a_helper_the_user_can_change`](../crates/sam-jail-cli/tests/trusted_helpers.rs#L61) |
+| What uninstalling SAM removes and keeps, with and without `--keep-data`, for a made, default, linked and moved unpack folder. | [`uninstalling_leaves_only_what_the_person_keeps`](../crates/sam-jail-cli/tests/uninstall_and_report.rs#L601) |
+| `sam-jail report APP` holds the app's launch log without the home folder, another user's name, the user name, an email address, an IP address or a given variable's value, and without the computer's name when it is longer than one letter. | [`a_bug_report_removes_the_personal_details_it_promises_to`](../crates/sam-jail-cli/tests/uninstall_and_report.rs#L718) |
 | A menu start after free space unpacks inside a sandbox. | [`a_menu_start_after_free_space_unpacks_inside_a_sandbox`](../crates/sam-jail-cli/tests/unpack.rs#L104) |
 | Without the command line a menu start refuses to unpack. | [`without_the_command_line_a_menu_start_refuses_to_unpack`](../crates/sam-jail-cli/tests/unpack.rs#L127) |
 | ⟲ Unpacking limits hold inside the unpack sandbox too. | [`an_unpacking_limit_inside_the_sandbox_stops_unpacking`](../crates/sam-jail-cli/tests/unpack.rs#L169) |
@@ -1310,4 +1312,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 1223 automated Rust tests plus 8 scripted checks.
+Total: 1225 automated Rust tests plus 8 scripted checks.

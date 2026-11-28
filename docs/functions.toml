@@ -1078,7 +1078,7 @@ area = "G"
 promise = "Uninstalling SAM removes everything it created and brings back menu entries it hid."
 code = ["sam-runner/src/ops/maintain.rs", "sam-intake/src/menu.rs"]
 tests = ["uninstall_removes_everything_and_restores_menus", "uninstall_refuses_folders_that_are_not_sams",
-  "uninstall_removes_only_with_yes",
+  "uninstall_removes_only_with_yes", "uninstalling_leaves_only_what_the_person_keeps",
 ]
 
 [[function]]
@@ -1102,7 +1102,7 @@ id = 34
 area = "G"
 promise = "Privacy: SAM sends nothing on its own, and a bug report never contains your name, home path, addresses or secrets."
 code = ["sam-runner/src/doctor.rs"]
-tests = ["given_environment_values_are_hidden_in_the_shown_command", "bug_reports_hide_the_user_name_and_home_path", "bug_reports_hide_names_addresses_and_secrets", "bug_reports_hide_secrets_in_every_spelling", "a_bug_report_is_complete_and_redacted", "update_checks_stay_off_unless_switched_on", "the_machine_id_reaches_only_apps_with_dbus", "bug_reports_hide_tokens_in_every_shape", "a_log_cannot_break_out_of_its_code_block"]
+tests = ["given_environment_values_are_hidden_in_the_shown_command", "bug_reports_hide_the_user_name_and_home_path", "bug_reports_hide_names_addresses_and_secrets", "bug_reports_hide_secrets_in_every_spelling", "a_bug_report_is_complete_and_redacted", "update_checks_stay_off_unless_switched_on", "the_machine_id_reaches_only_apps_with_dbus", "bug_reports_hide_tokens_in_every_shape", "a_log_cannot_break_out_of_its_code_block", "a_bug_report_removes_the_personal_details_it_promises_to"]
 
 [[area]]
 id = "H"
