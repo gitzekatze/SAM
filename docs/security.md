@@ -287,10 +287,10 @@ blocks:
   `clone` into a new user namespace, and `clone3`, whose flags no filter
   can read, answers "not implemented" so programs fall back to `clone`, as
   in Flatpak (`without_nested_sandboxes_clone_cannot_make_a_user_namespace`);
-- every socket type except local, internet and netlink (the kernel's status
+- every socket family except local, internet and netlink (the kernel's status
   channel): no virtual-machine (`AF_VSOCK`, which no network setting
   stops), raw-packet or kernel-crypto sockets. Bluetooth sockets only with
-  the *Bluetooth* switch. As in Flatpak, a refused type answers "not
+  the *Bluetooth* switch. As in Flatpak, a refused family answers "not
   supported", so programs fall back. The same limit holds for pairs of
   sockets (`socketpair`, which makes its sockets the same way;
   `a_socket_pair_opens_only_the_listed_families_too`);
@@ -304,9 +304,9 @@ their 64-bit twins, so the filter stays on for 32-bit AppImages
 switched off for them, which let any app choose to run without it by
 making its start program 32-bit. One gap remains, as in Flatpak: a 32-bit
 socket or socket pair made through the old `socketcall` call is not
-limited to the listed types (so it can be a Bluetooth socket even without
-the *Bluetooth* switch), because its type sits where no filter can
-read it. Other apps keep ending at a 32-bit call, so a 64-bit program
+limited to the listed families (so it can be a Bluetooth socket even
+without the *Bluetooth* switch), because its family sits where no filter
+can read it. Other apps keep ending at a 32-bit call, so a 64-bit program
 cannot use the 32-bit doors.
 
 This includes Bluetooth sockets: such an app with full network access can

@@ -266,7 +266,26 @@ pub struct CheckRecord {
     pub failed: Vec<String>,
     /// Checks that could not run on this computer.
     pub skipped: usize,
+    /// Notes SAM adds to the check ([`CHECK_NOTE_IDS`]): neither passed
+    /// nor failed, and not counted as checks that could not run. Not
+    /// written while 0, so records saved before this count existed load
+    /// with 0 and keep their checksum (no app looks changed outside SAM).
+    #[serde(skip_serializing_if = "is_zero")]
+    pub notes: usize,
 }
+
+fn is_zero(n: &usize) -> bool {
+    *n == 0
+}
+
+/// The results SAM adds to a sandbox check as notes: they name a limit of
+/// the sandbox that no test program can try, so they are neither passed
+/// nor failed. Today only the incomplete socket limit of a 32-bit app.
+pub const CHECK_NOTE_IDS: &[&str] = &[SOCKET_NOTE_ID];
+
+/// The id of the check's note that the socket limit of a 32-bit app is
+/// incomplete.
+pub const SOCKET_NOTE_ID: &str = "seccomp-32-bit-sockets";
 
 /// Per-app sandbox settings.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -815,6 +834,41 @@ mod tests {
 #[cfg(test)]
 mod old_record_tests {
     use super::*;
+
+    /// A record whose last sandbox check was saved before the check counted
+    /// notes (no `notes` key) reads with no notes and writes back exactly as
+    /// it was, so its checksum holds and the app does not look changed
+    /// outside SAM after an update. A note count is written and read back.
+    #[test]
+    fn a_check_from_before_the_note_count_keeps_its_checksum() {
+        let e = AppEntry {
+            reviewed: true,
+            extraction: Some(Default::default()),
+            last_check: Some(CheckRecord {
+                at: 1,
+                key: "k".into(),
+                passed: 20,
+                skipped: 1,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let mut old = serde_json::to_value(&e).unwrap();
+        if let Some(c) = old["last_check"].as_object_mut() {
+            c.remove("notes");
+        }
+        let read: AppEntry = serde_json::from_value(old.clone()).unwrap();
+        assert_eq!(read.last_check.as_ref().map(|c| c.notes), Some(0));
+        assert_eq!(serde_json::to_value(&read).unwrap(), old);
+        let mut noted = read;
+        if let Some(c) = noted.last_check.as_mut() {
+            c.notes = 1;
+        }
+        let v = serde_json::to_value(&noted).unwrap();
+        assert_eq!(v["last_check"]["notes"], 1);
+        let back: AppEntry = serde_json::from_value(v).unwrap();
+        assert_eq!(back.last_check.map(|c| c.notes), Some(1));
+    }
 
     /// A record saved before Room service existed (no `room_service` key)
     /// reads with Room service on and writes back exactly as it was, so its

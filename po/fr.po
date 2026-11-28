@@ -7783,7 +7783,10 @@ msgid ""
 "SAM did not unpack {app} again: it could not first save in the app's record "
 "that its new content must be looked at before it starts, so nothing was "
 "unpacked"
-msgstr "SAM n’a pas décompressé {app} à nouveau : il n’a pas pu enregistrer d’abord dans la fiche de l’application que tu dois examiner son nouveau contenu avant qu’elle démarre, donc rien n’a été décompressé"
+msgstr ""
+"SAM n’a pas décompressé {app} à nouveau : il n’a pas pu enregistrer d’abord "
+"dans la fiche de l’application que tu dois examiner son nouveau contenu "
+"avant qu’elle démarre, donc rien n’a été décompressé"
 
 #: crates/sam-runner/src/ops/maintain.rs:246
 msgid "the file's details changed, its content is the same"
@@ -7862,7 +7865,9 @@ msgstr ""
 msgid ""
 "SAM has not unpacked {app} yet, so it does not update it. Use Unpack Again "
 "and look at the app first."
-msgstr "SAM n’a pas encore décompressé {app}, il ne le met donc pas à jour. Utilise « Décompresser à nouveau » et examine d’abord l’application."
+msgstr ""
+"SAM n’a pas encore décompressé {app}, il ne le met donc pas à jour. Utilise "
+"« Décompresser à nouveau » et examine d’abord l’application."
 
 #. Keep the {placeholders}; their order may change.
 #: crates/sam-runner/src/ops/maintain.rs:995
@@ -9772,6 +9777,111 @@ msgstr ""
 msgid "unknown flat preset key '{other}'"
 msgstr "clé « {other} » inconnue dans le modèle plat"
 
+#: crates/sam-core/src/permissions.rs:1268
+msgid ""
+"Lets the app open Bluetooth sockets, which reach nearby devices only with "
+"full network access. Without it the syscall filter refuses them, except for "
+"an app whose start program is 32-bit (the security page says why). An app "
+"that may reach the Bluetooth service on the system D-Bus can use Bluetooth "
+"devices through it, with or without this switch."
+msgstr ""
+"Permet à l'app d'ouvrir des sockets Bluetooth, qui n'atteignent les "
+"appareils proches qu'avec un accès complet au réseau. Sans lui, le filtre "
+"des appels système les refuse, sauf pour une app dont le programme de "
+"lancement est en 32 bits (la page sur la sécurité explique pourquoi). Une "
+"app qui peut joindre le service Bluetooth sur le D-Bus système peut utiliser "
+"des appareils Bluetooth par son intermédiaire, avec ou sans cet interrupteur."
+
+#: crates/sam-core/src/warnings.rs:508
+msgid ""
+"This switch lets the app open Bluetooth sockets. Pairing also needs the "
+"Bluetooth service (BlueZ) on the system D-Bus, which this switch does not "
+"grant."
+msgstr ""
+"Cet interrupteur permet à l'app d'ouvrir des sockets Bluetooth. L'appairage "
+"nécessite aussi le service Bluetooth (BlueZ) sur le D-Bus système, que cet "
+"interrupteur n'accorde pas."
+
+#: crates/sam-gtk/src/app_page/mod.rs:956
+msgid "The setting applies, with a note"
+msgid_plural "All {n} settings apply, with a note"
+msgstr[0] "Le réglage s’applique, avec une note"
+msgstr[1] "Les {n} réglages s’appliquent, avec une note"
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-gtk/src/app_page/mod.rs:962
+msgid ""
+"Tested {when}. Every setting applies, except where a note of the test says "
+"otherwise."
+msgstr ""
+"Testé {when}. Chaque réglage s’applique, sauf là où une note du test dit "
+"autre chose."
+
+#: crates/sam-gtk/src/app_page/mod.rs:966
+msgid ""
+"The test confirmed every setting, except where a note says otherwise; see "
+"Test below"
+msgstr ""
+"Le test a confirmé chaque réglage, sauf là où une note dit autre chose ; "
+"voir « Test » ci-dessous"
+
+#: crates/sam-gtk/src/app_page/mod.rs:975
+msgid ""
+"Every setting below applies, except where a note below says otherwise. Not "
+"stored: the sandbox does not exist yet."
+msgstr ""
+"Chaque réglage ci-dessous s’applique, sauf là où une note ci-dessous dit "
+"autre chose. Non enregistré : le bac à sable n’existe pas encore."
+
+#: crates/sam-gtk/src/app_page/mod.rs:976
+msgid ""
+"The sandbox check confirmed every setting, except where a note says "
+"otherwise; see Sandbox Check below"
+msgstr ""
+"La vérification du bac à sable a confirmé chaque réglage, sauf là où une "
+"note dit autre chose ; voir « Vérification du bac à sable » ci-dessous"
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-jail-cli/src/main.rs:1684
+msgid "{passed} passed, {failed} failed, {skipped} not applicable"
+msgstr "{passed} réussies, {failed} échouées, {skipped} non applicables"
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-jail-cli/src/main.rs:1695
+msgid "{counts}, {n} note"
+msgid_plural "{counts}, {n} notes"
+msgstr[0] "{counts}, {n} note"
+msgstr[1] "{counts}, {n} notes"
+
+#: crates/sam-runner/src/ops/overview.rs:46
+msgid ""
+"This app starts a 32-bit program. SAM's syscall filter limits its 32-bit "
+"calls as it limits 64-bit ones, with one gap, as in Flatpak: through the old "
+"socketcall call the app can open sockets of families the filter would "
+"refuse, because the family sits where no filter can read it. These include "
+"virtual-machine and kernel-crypto sockets and, when the app has full network "
+"access, Bluetooth sockets even with its Bluetooth switch off."
+msgstr ""
+"Cette application lance un programme 32 bits. Le filtre des appels système "
+"de SAM limite ses appels 32 bits comme les appels 64 bits, avec une faille, "
+"comme dans Flatpak : par l’ancien appel socketcall, l’application peut "
+"ouvrir des sockets de familles que le filtre refuserait, car la famille se "
+"trouve là où aucun filtre ne peut la lire. Cela comprend les sockets de "
+"machines virtuelles et de cryptographie du noyau et, quand l’application a "
+"un accès complet au réseau, les sockets Bluetooth, même si son interrupteur "
+"Bluetooth est désactivé."
+
+#: crates/sam-runner/src/verify.rs:1059
+msgid ""
+"incomplete: a 32-bit socket made through the old socketcall call can be of a "
+"family the filter would refuse, Bluetooth included when the app has full "
+"network access, and the test program cannot try 32-bit calls"
+msgstr ""
+"incomplète : un socket 32 bits créé par l’ancien appel socketcall peut être "
+"d’une famille que le filtre refuserait, Bluetooth compris quand "
+"l’application a un accès complet au réseau, et le programme de test ne peut "
+"pas essayer d’appels 32 bits"
+
 #~ msgid ""
 #~ "SAM did not unpack {app} again: it could not first save in the app's "
 #~ "record that its new content must be looked at before it starts. Nothing "
@@ -10406,3 +10516,17 @@ msgstr "clé « {other} » inconnue dans le modèle plat"
 #~ "un endroit que l’application ne voit pas autrement : l’application a peut-"
 #~ "être créé ce lien. Si tu l’as créé toi-même, fais pointer ce dossier "
 #~ "utilisateur vers l’endroit où il mène dans ~/.config/user-dirs.dirs."
+
+#~ msgid ""
+#~ "Lets the app open Bluetooth connections to nearby devices; other apps "
+#~ "cannot while their syscall filter is on, except an app whose start "
+#~ "program is 32-bit and that has full network access (the security page "
+#~ "says why). Pairing and the Bluetooth service itself also need the system "
+#~ "D-Bus."
+#~ msgstr ""
+#~ "Permet à l'app d'ouvrir des connexions Bluetooth vers des appareils "
+#~ "proches ; les autres apps ne le peuvent pas tant que leur filtre des "
+#~ "appels système est activé, sauf une app dont le programme de lancement "
+#~ "est en 32 bits et qui a un accès complet au réseau (la page sur la "
+#~ "sécurité explique pourquoi). L'appairage et le service Bluetooth lui-même "
+#~ "nécessitent aussi le D-Bus système."

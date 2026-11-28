@@ -618,6 +618,7 @@ tests = [
   "a_failed_start_is_reported_whatever_numbers_the_room_takes",
   "a_room_gets_its_connections_at_their_numbers",
   "a_record_from_before_room_service_keeps_its_checksum",
+  "a_check_from_before_the_note_count_keeps_its_checksum",
   "a_missing_helper_names_only_what_is_lost",
   "the_helper_comes_for_each_of_its_jobs",
   "the_first_unusable_option_is_found_where_bubblewrap_reads_options",
@@ -848,6 +849,9 @@ tests = ["a_check_reports_what_it_finds_not_what_it_hopes", "a_skipped_check_is_
   "the_sandbox_check_fails_without_the_wayland_security_context",
   "the_check_notes_the_incomplete_socket_limit_without_failing",
   "the_sandbox_check_of_a_32_bit_app_says_its_socket_limit_is_incomplete",
+  "the_verify_summary_names_notes_apart_from_not_applicable",
+  "a_passed_check_with_a_note_is_not_called_complete",
+  "a_passed_check_with_a_note_says_so_in_every_text",
 ]
 checks = ["tests/real-apps/run.sh"]
 
