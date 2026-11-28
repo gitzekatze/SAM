@@ -2521,7 +2521,7 @@ mod tests {
                 .iter()
                 .any(|end| flat_page.contains(&format!("**{name}{end}")));
             assert!(
-                bold || headings.iter().any(|h| *h == name),
+                bold || headings.contains(&name),
                 "the pointer *{name}* names no bold paragraph or heading of the page"
             );
         }
