@@ -1658,6 +1658,89 @@ pub fn user_folder_refused(
     None
 }
 
+/// Whether SAM refuses `path` as a new extra folder: `/tmp` itself or a
+/// folder in it where programs outside the sandbox listen
+/// ([`crate::risk::shows_host_sockets`]), as written (with `~` and
+/// `$HOME` standing for `home`, and `.`, `..` and repeated `/` taken as
+/// the kernel takes them) or where its links lead now ([`follow`]). Read-only grants
+/// count too: connecting to a socket needs no write access. Any other
+/// folder in `/tmp` is allowed, such as the app's own
+/// ([`own_tmp_folder`]) (owner decision 10 of 2026-11-23).
+pub fn refused_tmp_grant(path: &str, home: &Path) -> bool {
+    if crate::risk::shows_host_sockets_in(path, home) {
+        return true;
+    }
+    let written = crate::risk::grant_lexical(path, home);
+    if !written.starts_with('/') {
+        // A relative path leads nowhere fixed; it is rated Dangerous by
+        // its name already.
+        return false;
+    }
+    // Where it leads as Linux follows it, also through a link whose target
+    // is not there yet.
+    let expanded = crate::risk::grant_expanded(path, home);
+    [follow(Path::new(&expanded)), follow(Path::new(&written))]
+        .iter()
+        .any(|way| crate::risk::shows_host_sockets_in(&way.leads.to_string_lossy(), home))
+}
+
+/// The extra folders in `after` that SAM refuses as new grants
+/// ([`refused_tmp_grant`]): those `before` did not hold already in the
+/// same form (`/tmp/` and `/tmp` are one form). A writable one must have
+/// been writable before; a read-only one may have been either, so an
+/// older grant may stay or become read-only, but never become writable.
+/// Each is named once, as written.
+pub fn new_tmp_grants(before: &PermissionSet, after: &PermissionSet, home: &Path) -> Vec<String> {
+    let form = |p: &str| crate::risk::grant_lexical(p, home);
+    let held = |lists: &[&Vec<String>], p: &str| {
+        lists.iter().any(|l| l.iter().any(|q| form(q) == form(p)))
+    };
+    let b = &before.filesystem;
+    let a = &after.filesystem;
+    let mut out: Vec<String> = Vec::new();
+    let writable = a
+        .custom_write
+        .iter()
+        .map(|p| (p, held(&[&b.custom_write], p)));
+    let read_only = a
+        .custom_read
+        .iter()
+        .map(|p| (p, held(&[&b.custom_write, &b.custom_read], p)));
+    for (p, was_there) in writable.chain(read_only) {
+        if !was_there && refused_tmp_grant(p, home) && !out.contains(p) {
+            out.push(p.clone());
+        }
+    }
+    out
+}
+
+/// The folder of an app's own in `/tmp` that SAM offers instead of `/tmp`
+/// or a folder in it where programs outside the sandbox listen
+/// ([`refused_tmp_grant`]): `/tmp/sam-<app id>`. Its name starts like
+/// none of those folders. SAM makes it at each start of the app, for you
+/// only (owner decision 10 of 2026-11-23).
+pub fn own_tmp_folder(id: &str) -> PathBuf {
+    PathBuf::from(format!("/tmp/sam-{id}"))
+}
+
+/// The list of extra folders `list` with each grant SAM refuses
+/// ([`refused_tmp_grant`]) replaced by the folder `own`, which is named
+/// once: what SAM suggests instead of a refused grant.
+pub fn with_own_tmp_folder(list: &[String], own: &str, home: &Path) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for p in list {
+        let p = if refused_tmp_grant(p, home) {
+            own
+        } else {
+            p.as_str()
+        };
+        if !out.iter().any(|q| q == p) {
+            out.push(p.to_string());
+        }
+    }
+    out
+}
+
 /// What the start, the app page and `sam-jail info` say about the user
 /// folder `key` set to `dir` that SAM refuses for `why`
 /// ([`user_folder_refused`]); `write`: the folder is set to read and
@@ -5289,5 +5372,146 @@ mod tests {
         // The home at `/`.
         let r = refused_for_opened_with(Path::new("/"), None, None).under_root(root.clone());
         assert!(refuses_opened(&r, &root.join("etc/x")), "the home at /");
+    }
+
+    /// Settings with these extra folders, read-only (`write` false) or
+    /// writable.
+    fn with_folders(paths: &[&str], write: bool) -> PermissionSet {
+        let mut p = PermissionSet::strict_gui();
+        let list = paths.iter().map(|x| x.to_string()).collect();
+        if write {
+            p.filesystem.custom_write = list;
+        } else {
+            p.filesystem.custom_read = list;
+        }
+        p
+    }
+
+    /// SAM refuses a new grant of /tmp or of a folder in it where programs
+    /// outside the sandbox listen, however the path is written and whether
+    /// read-only or writable (owner decision 10 of 2026-11-23). Another
+    /// folder in /tmp, /var/tmp, / and a relative path are not refused
+    /// here: SAM rates them by their names as before.
+    #[test]
+    fn a_new_grant_of_tmp_is_refused_however_it_is_written() {
+        let home = Path::new("/home/erika");
+        let none = PermissionSet::strict_gui();
+        for path in [
+            "/tmp",
+            "/tmp/",
+            "/tmp/.",
+            "//tmp",
+            "/tmp/x/..",
+            "/var/../tmp",
+            "~/../../tmp",
+            "$HOME/../../tmp",
+            "/tmp/.X11-unix",
+            "/tmp/tmux-1000",
+            "/tmp/ssh-XXXXabcd",
+            "/tmp/dbus-AbCdEf1234",
+            "/tmp/pulse-AbCdEf1234",
+            "/tmp/emacs1000",
+            "/tmp/.ICE-unix",
+            "/tmp/.XIM-unix",
+        ] {
+            assert!(refused_tmp_grant(path, home), "{path}");
+            for write in [false, true] {
+                assert_eq!(
+                    new_tmp_grants(&none, &with_folders(&[path], write), home),
+                    vec![path.to_string()],
+                    "{path}, writable: {write}"
+                );
+            }
+        }
+        for path in [
+            "/tmp/exchange",
+            "/var/tmp",
+            "/var/tmp/x",
+            "/",
+            "tmp",
+            "~/tmp",
+        ] {
+            assert!(!refused_tmp_grant(path, home), "{path}");
+            for write in [false, true] {
+                assert!(
+                    new_tmp_grants(&none, &with_folders(&[path], write), home).is_empty(),
+                    "{path}, writable: {write}"
+                );
+            }
+        }
+    }
+
+    /// A folder in the home that is a link to /tmp, or to a folder in it
+    /// where programs listen, is refused as a new grant where it leads; a
+    /// link to an ordinary folder is not.
+    #[test]
+    fn a_link_that_leads_to_tmp_is_refused_as_a_new_grant() {
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path();
+        std::fs::create_dir(home.join("work")).unwrap();
+        std::os::unix::fs::symlink("/tmp", home.join("t")).unwrap();
+        std::os::unix::fs::symlink("/tmp/.X11-unix", home.join("x")).unwrap();
+        std::os::unix::fs::symlink(home.join("work"), home.join("w")).unwrap();
+        let none = PermissionSet::strict_gui();
+        let written_out = format!("{}/t", home.display());
+        for path in ["~/t", "~/x", "~/t/", written_out.as_str()] {
+            assert!(refused_tmp_grant(path, home), "{path}");
+            assert_eq!(
+                new_tmp_grants(&none, &with_folders(&[path], false), home),
+                vec![path.to_string()],
+                "{path}"
+            );
+        }
+        assert!(!refused_tmp_grant("~/w", home));
+        assert!(!refused_tmp_grant("~/work", home));
+    }
+
+    /// An older grant of /tmp is no new grant: it may stay as it is, also
+    /// written another way, or become read-only; making it writable, or
+    /// adding another such folder, is refused.
+    #[test]
+    fn an_older_tmp_grant_may_stay_or_be_narrowed_but_not_widened() {
+        let home = Path::new("/home/erika");
+        let read = with_folders(&["/tmp"], false);
+        let write = with_folders(&["/tmp"], true);
+        assert!(new_tmp_grants(&read, &read, home).is_empty());
+        assert!(new_tmp_grants(&write, &write, home).is_empty());
+        assert!(new_tmp_grants(&write, &with_folders(&["/tmp/"], true), home).is_empty());
+        assert!(new_tmp_grants(&write, &read, home).is_empty(), "narrowed");
+        assert_eq!(new_tmp_grants(&read, &write, home), vec!["/tmp"], "widened");
+        let mut more = read.clone();
+        more.filesystem.custom_read.push("/tmp/.X11-unix".into());
+        more.filesystem.custom_read.push("/tmp/exchange".into());
+        assert_eq!(new_tmp_grants(&read, &more, home), vec!["/tmp/.X11-unix"]);
+    }
+
+    /// The folder of an app's own lies in /tmp, is never refused and is
+    /// none of the folders where programs outside the sandbox listen,
+    /// whatever the app's id; it replaces each refused grant in a list.
+    #[test]
+    fn the_folder_of_its_own_is_never_refused_nor_a_socket_folder() {
+        let home = Path::new("/home/erika");
+        for id in [
+            "appimage-krita-1a2b3c4d",
+            "appimage-tmux-0000",
+            "appimage-ssh-agent-ffff",
+            "appimage-x-1",
+        ] {
+            let own = own_tmp_folder(id);
+            let shown = own.to_string_lossy();
+            assert_eq!(own.parent(), Some(Path::new("/tmp")), "{id}");
+            assert!(!refused_tmp_grant(&shown, home), "{id}");
+            assert!(!crate::risk::shows_host_sockets_in(&shown, home), "{id}");
+            assert!(!crate::risk::is_dangerous_grant(&shown), "{id}");
+            let list: Vec<String> = ["/a", "/tmp", "/tmp/.X11-unix", "/b"]
+                .iter()
+                .map(|x| x.to_string())
+                .collect();
+            assert_eq!(
+                with_own_tmp_folder(&list, &shown, home),
+                vec!["/a".to_string(), shown.to_string(), "/b".to_string()],
+                "{id}"
+            );
+        }
     }
 }

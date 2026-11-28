@@ -776,6 +776,27 @@ impl PresetStore {
         if preset.name.trim().is_empty() {
             bail!("{}", sam_core::i18n::tr("preset name must not be empty"));
         }
+        // A preset never holds a grant of /tmp or of a folder in it where
+        // programs outside the sandbox listen: applied, it would give one
+        // to an app (owner decision 10 of 2026-11-23). Every way of saving
+        // a preset comes here (an import too).
+        let home = sam_core::util::home_dir();
+        let none = sam_core::permissions::PermissionSet::default();
+        if let Some(path) =
+            sam_core::places::new_tmp_grants(&none, &preset.permissions, &home).first()
+        {
+            return Err(sam_core::error::CodedError::new(
+                "tmp-grant-refused",
+                sam_core::i18n::trf(
+                    "SAM does not save {path} in the preset “{preset}”: programs outside the sandbox listen there, and an app could use them to run commands outside its sandbox. Nothing was saved. Give each app a folder of its own in /tmp instead; SAM offers one on the app's page.",
+                    &[
+                        ("path", &sam_core::util::display_safe(path, 200)),
+                        ("preset", &sam_core::util::display_safe(&preset.name, 80)),
+                    ],
+                ),
+            )
+            .into());
+        }
         let t = now();
         if preset.created_at == 0 {
             preset.created_at = t;
@@ -1743,6 +1764,37 @@ mod tests {
     /// A preset is always stored inside the presets folder, whatever its name:
     /// names like "../../evil" or "/etc/x" (typed, or from an imported file)
     /// cannot place a file elsewhere.
+    /// A preset that holds /tmp or a folder in it where programs outside
+    /// the sandbox listen is neither saved nor imported, and no file is
+    /// written; one with another folder in /tmp is saved (owner decision
+    /// 10 of 2026-11-23).
+    #[test]
+    fn a_preset_holding_tmp_is_not_saved() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = Paths::rooted(tmp.path());
+        let store = PresetStore::new(&paths);
+        for (read, write) in [(vec!["/tmp"], vec![]), (vec![], vec!["/tmp/.X11-unix"])] {
+            let mut p = Preset {
+                name: "Shares tmp".into(),
+                ..Default::default()
+            };
+            p.permissions.filesystem.custom_read = read.iter().map(|x| x.to_string()).collect();
+            p.permissions.filesystem.custom_write = write.iter().map(|x| x.to_string()).collect();
+            for r in [store.save(&mut p.clone()), store.import(&mut p.clone())] {
+                let err = r.unwrap_err();
+                assert_eq!(sam_core::error::code_of(&err), Some("tmp-grant-refused"));
+                assert!(err.to_string().contains("Shares tmp"), "{err}");
+            }
+            assert!(!store.file_for("Shares tmp").exists());
+        }
+        let mut p = Preset {
+            name: "Exchange".into(),
+            ..Default::default()
+        };
+        p.permissions.filesystem.custom_write = vec!["/tmp/exchange".into()];
+        assert!(store.save(&mut p).unwrap().exists());
+    }
+
     #[test]
     fn preset_names_cannot_place_files_outside_the_presets_folder() {
         let tmp = tempfile::tempdir().unwrap();

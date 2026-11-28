@@ -824,3 +824,41 @@ fn putting_a_configuration_that_turns_a_protection_off_needs_yes() {
         false
     );
 }
+
+/// `set` refuses a new grant of /tmp also with --yes, with the code
+/// `tmp-grant-refused`, changes nothing, and names the folder of the app's
+/// own and the command that grants it instead; that command works (owner
+/// decision 10 of 2026-11-23).
+#[test]
+fn set_refuses_tmp_even_with_yes_and_names_a_folder_of_its_own() {
+    let e = Env::new();
+    let id = e.add(&e.fixture("apps", "Shares", "Utility;"), true);
+    let o = e.run(
+        &[
+            "--json",
+            "set",
+            &id,
+            "filesystem.custom_read",
+            "/tmp",
+            "--yes",
+        ],
+        None,
+    );
+    assert!(!o.status.success());
+    let v: Value = serde_json::from_slice(&o.stdout).unwrap();
+    assert_eq!(v["code"], "tmp-grant-refused", "{v}");
+    let text = v["error"].as_str().unwrap();
+    let own = format!("/tmp/sam-{id}");
+    let command = format!("sam-jail set {id} filesystem.custom_read {own}");
+    assert!(text.contains(&command), "{text}");
+    assert_eq!(
+        e.json(&["get", &id, "filesystem.custom_read"], None),
+        serde_json::json!([]),
+        "nothing changed"
+    );
+    e.json(&["set", &id, "filesystem.custom_read", &own], None);
+    assert_eq!(
+        e.json(&["get", &id, "filesystem.custom_read"], None),
+        serde_json::json!([own])
+    );
+}

@@ -140,6 +140,40 @@ pub struct Editor {
     risk_badge: gtk::Label,
     warning_rows: RefCell<Vec<gtk::Widget>>,
     groups: RefCell<Vec<adw::PreferencesGroup>>,
+    /// The folder of the app's own in /tmp that SAM offers instead of a
+    /// grant of /tmp ([`tmp_offer`]); none for a preset or several apps.
+    own_tmp_folder: RefCell<Option<String>>,
+}
+
+/// What the editor does when the person adds `item` to the list `key`:
+/// for a folder SAM refuses as a new grant (`/tmp` or a folder in it
+/// where programs outside the sandbox listen,
+/// [`sam_core::places::refused_tmp_grant`]), the message to show and the
+/// text to put in the field instead: the folder of the app's own (`own`)
+/// when there is one, so one click on Add grants it (owner decision 10 of
+/// 2026-11-23). `None` for any other item, which is added as before.
+pub(crate) fn tmp_offer(
+    key: &str,
+    item: &str,
+    own: Option<&str>,
+    home: &std::path::Path,
+) -> Option<(String, Option<String>)> {
+    if !matches!(key, "filesystem.custom_read" | "filesystem.custom_write")
+        || !sam_core::places::refused_tmp_grant(item, home)
+    {
+        return None;
+    }
+    let text = match own {
+        Some(folder) => crate::i18n::trf(
+            "SAM does not give an app {path}: programs outside the sandbox listen there. SAM put a folder of the app's own, {folder}, in the field instead; press Add to give it.",
+            &[("path", &item), ("folder", &folder)],
+        ),
+        None => crate::i18n::trf(
+            "SAM does not give an app {path}: programs outside the sandbox listen there. Give each app a folder of its own in /tmp on its page instead.",
+            &[("path", &item)],
+        ),
+    };
+    Some((text, own.map(str::to_string)))
 }
 
 impl Editor {
@@ -168,6 +202,7 @@ impl Editor {
             risk_badge,
             warning_rows: RefCell::new(Vec::new()),
             groups: RefCell::new(Vec::new()),
+            own_tmp_folder: RefCell::new(None),
         });
         ed.build();
         ed
@@ -179,6 +214,12 @@ impl Editor {
         for g in self.groups.borrow().iter() {
             page.add(g);
         }
+    }
+
+    /// The folder of the app's own in /tmp the editor offers instead of a
+    /// grant of /tmp; `None` (the default) for a preset or several apps.
+    pub fn set_own_tmp_folder(&self, folder: Option<String>) {
+        *self.own_tmp_folder.borrow_mut() = folder;
     }
 
     pub fn connect_edited(&self, f: impl Fn(Value) + 'static) {
@@ -468,16 +509,21 @@ impl Editor {
                 .build();
             pick.add_css_class("flat");
             let me = Rc::downgrade(self);
+            let field = entry.clone();
             pick.connect_clicked(move |_| {
                 let Some(me) = me.upgrade() else { return };
                 let dialog = gtk::FileDialog::builder()
                     .title(tr("Choose a folder"))
                     .build();
                 let win = me.window.clone();
+                let field = field.clone();
                 glib::spawn_future_local(async move {
                     if let Ok(f) = dialog.select_folder_future(Some(&win)).await {
                         if let Some(p) = f.path() {
-                            me.add_item(key, &util::tildify(&p.to_string_lossy()));
+                            if let Some(t) = me.add_item(key, &util::tildify(&p.to_string_lossy()))
+                            {
+                                field.set_text(&t);
+                            }
                         }
                     }
                 });
@@ -501,8 +547,14 @@ impl Editor {
                     let ok = if map {
                         me.add_pair(key, &t)
                     } else {
-                        me.add_item(key, &t);
-                        true
+                        match me.add_item(key, &t) {
+                            // The folder SAM offers instead goes in the field.
+                            Some(offered) => {
+                                e2.set_text(&offered);
+                                false
+                            }
+                            None => true,
+                        }
                     };
                     if ok {
                         e2.set_text("");
@@ -529,14 +581,26 @@ impl Editor {
         });
     }
 
-    fn add_item(self: &Rc<Self>, key: &'static str, item: &str) {
+    /// Adds `item` to the list `key`; the text to put in the field
+    /// instead when SAM refuses it and offers another ([`tmp_offer`]).
+    fn add_item(self: &Rc<Self>, key: &'static str, item: &str) -> Option<String> {
+        let mut items: Vec<Value> = self.value(key).as_array().cloned().unwrap_or_default();
+        if items.iter().any(|v| v.as_str() == Some(item)) {
+            return None;
+        }
+        let own = self.own_tmp_folder.borrow().clone();
+        let home = sam_core::util::home_dir();
+        if let Some((text, offered)) = tmp_offer(key, item, own.as_deref(), &home) {
+            self.notify(&text);
+            return Some(offered.unwrap_or_else(|| item.to_string()));
+        }
         if key == "sockets.custom" {
             let p = sam_core::util::expand_home(item);
             if !p.is_absolute() {
                 self.notify(&crate::i18n::tr(
                     "Give the full path of the socket, for example /run/user/1000/app.sock",
                 ));
-                return;
+                return None;
             }
             use std::os::unix::fs::FileTypeExt;
             if let Ok(md) = std::fs::metadata(&p) {
@@ -545,15 +609,13 @@ impl Editor {
                         "{path} is not a socket. Use the Files settings to share folders or files.",
                         &[("path", &item)],
                     ));
-                    return;
+                    return None;
                 }
             }
         }
-        let mut items: Vec<Value> = self.value(key).as_array().cloned().unwrap_or_default();
-        if !items.iter().any(|v| v.as_str() == Some(item)) {
-            items.push(json!(item));
-            self.request(key, Value::Array(items));
-        }
+        items.push(json!(item));
+        self.request(key, Value::Array(items));
+        None
     }
 
     /// Adds NAME=value to a map setting; false (with a message) if invalid.
@@ -1294,6 +1356,34 @@ fn value_of(perms: Option<&Value>, key: &str) -> Value {
 
 #[cfg(test)]
 mod tests {
+    /// Adding /tmp or a folder in it where programs outside the sandbox
+    /// listen, read-only or writable, offers the folder of the app's own in
+    /// its place, or says where to find one without an app; any other
+    /// folder, also one in /tmp, and other lists are added as before.
+    #[test]
+    fn the_editor_offers_a_folder_of_its_own_instead_of_tmp() {
+        let home = std::path::Path::new("/home/erika");
+        let own = "/tmp/sam-appimage-krita-1a2b";
+        for key in ["filesystem.custom_read", "filesystem.custom_write"] {
+            for item in ["/tmp", "/tmp/", "/tmp/.X11-unix", "/tmp/tmux-1000"] {
+                let (text, field) = super::tmp_offer(key, item, Some(own), home)
+                    .unwrap_or_else(|| panic!("{key} {item} is not refused"));
+                assert_eq!(field.as_deref(), Some(own), "{key} {item}");
+                assert!(text.contains(item) && text.contains(own), "{text}");
+                let (text, field) = super::tmp_offer(key, item, None, home).unwrap();
+                assert_eq!(field, None, "{key} {item}");
+                assert!(text.contains("on its page"), "{text}");
+            }
+            for item in [own, "/tmp/exchange", "~/Music"] {
+                assert_eq!(super::tmp_offer(key, item, Some(own), home), None, "{item}");
+            }
+        }
+        assert_eq!(
+            super::tmp_offer("sockets.custom", "/tmp", Some(own), home),
+            None
+        );
+    }
+
     /// The editor (the app's page and the Permission Manager for one app)
     /// shows every permission in the catalogue, the one list of permissions
     /// (audit G-F14: the lists drifted; a setting was missing here).

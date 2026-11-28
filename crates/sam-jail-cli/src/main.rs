@@ -1112,9 +1112,12 @@ fn real_main(cli: Cli) -> Result<()> {
             value,
             yes,
         } => {
-            let cur = app.resolve(&q)?.profile.permissions;
+            let found = app.resolve(&q)?;
+            let cur = found.profile.permissions.clone();
             let mut new = cur.clone();
             new.set_key(&key, &value)?;
+            // Names the app's own folder in /tmp; no yes lifts it.
+            gate::refuse_tmp_grants(Some(&found), &cur, &new)?;
             gate::confirm(
                 &gate::Change::Settings {
                     before: &cur,
@@ -1167,7 +1170,9 @@ fn real_main(cli: Cli) -> Result<()> {
             ProfileCmd::Set { app: q, yes } => {
                 let perms: PermissionSet = serde_json::from_str(&read_stdin()?)
                     .context(tr("expected a PermissionSet as JSON on stdin"))?;
-                let cur = app.resolve(&q)?.profile.permissions;
+                let found = app.resolve(&q)?;
+                let cur = found.profile.permissions.clone();
+                gate::refuse_tmp_grants(Some(&found), &cur, &perms)?;
                 gate::confirm(
                     &gate::Change::Settings {
                         before: &cur,
@@ -1192,6 +1197,7 @@ fn real_main(cli: Cli) -> Result<()> {
                         "expected {\"from\": …, \"to\": …} with two PermissionSets as JSON on stdin",
                     ))?;
                 let (cur, merged) = app.plan_change(&q, &change)?;
+                gate::refuse_tmp_grants(Some(&cur), &cur.profile.permissions, &merged)?;
                 gate::confirm(
                     &gate::Change::Settings {
                         before: &cur.profile.permissions,

@@ -17,7 +17,44 @@ impl Drop for RemovedAtEnd {
 impl Sam {
     // ------------------------------------------------------------------ add
 
+    /// Refuses, before anything is unpacked or saved, to add an app with
+    /// settings (adjusted or a preset) that give it `/tmp` or a folder in
+    /// it where programs outside the sandbox listen (code
+    /// `tmp-grant-refused`, owner decision 10 of 2026-11-23).
+    fn refuse_tmp_grants_at_add(&self, path: &Path, opts: &AddOptions) -> Result<()> {
+        let mut asked: Vec<PermissionSet> = Vec::new();
+        if let Some(name) = &opts.preset {
+            if let Some(p) = find_preset(&self.paths, name)? {
+                asked.push(p.permissions);
+            }
+        }
+        asked.extend(opts.permissions.clone());
+        let home = sam_core::util::home_dir();
+        let none = PermissionSet::default();
+        for p in &asked {
+            if let Some(grant) = sam_core::places::new_tmp_grants(&none, p, &home).first() {
+                let name = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                return Err(sam_core::error::CodedError::new(
+                    "tmp-grant-refused",
+                    sam_core::i18n::trf(
+                        "SAM does not add {app} with {path}: programs outside the sandbox listen there, and the app could use them to run commands outside its sandbox. Nothing was added. Add the app without it, then give it a folder of its own on its page.",
+                        &[
+                            ("app", &sam_core::util::display_safe(&name, 80)),
+                            ("path", &sam_core::util::display_safe(grant, 200)),
+                        ],
+                    ),
+                )
+                .into());
+            }
+        }
+        Ok(())
+    }
+
     pub fn add(&self, path: &Path, opts: &AddOptions) -> Result<AddOutcome> {
+        self.refuse_tmp_grants_at_add(path, opts)?;
         let source = fs::canonicalize(path).with_context(|| {
             sam_core::i18n::trf("{file} does not exist", &[("file", &path.display())])
         })?;

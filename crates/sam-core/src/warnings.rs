@@ -331,12 +331,19 @@ pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
     w.extend(refused_user_folders(p, ctx));
     w.extend(user_folders_at_one_place(p, ctx));
     w.extend(own_place_links(p, ctx));
-    for path in p
+    // Each warning names the list it came from.
+    let extra = p
         .filesystem
         .custom_write
         .iter()
-        .chain(p.filesystem.custom_read.iter())
-    {
+        .map(|path| (path, "filesystem.custom_write"))
+        .chain(
+            p.filesystem
+                .custom_read
+                .iter()
+                .map(|path| (path, "filesystem.custom_read")),
+        );
+    for (path, key) in extra {
         if crate::risk::shows_host_sockets(path) {
             w.push(
                 Warning::danger(
@@ -344,7 +351,7 @@ pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
                     "Connections to other programs exposed",
                     crate::i18n::trf("'{path}' holds connections to programs outside the sandbox (terminal sessions, SSH connections, the X server). The app can use them to run commands outside the sandbox, even with read-only access.", &[("path", &path)]),
                 )
-                .with_key("filesystem.custom_write"),
+                .with_key(key),
             );
         } else if is_dangerous_grant(path) {
             w.push(
@@ -353,7 +360,7 @@ pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
                     "Sensitive path exposed",
                     crate::i18n::trf("'{path}' contains system or credential data. Exposing it weakens the sandbox significantly.", &[("path", &path)]),
                 )
-                .with_key("filesystem.custom_write"),
+                .with_key(key),
             );
         }
     }
