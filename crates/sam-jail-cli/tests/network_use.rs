@@ -3,13 +3,19 @@
 //! exactly what it proves; the limits are named in
 //! docs/reports/privacy-check-*.md.
 //!
-//! - The static gate: a new direct call in SAM's program code of one of
-//!   the functions listed in clippy.toml fails CI's clippy step until it is
-//!   listed with its exact line ([`WAYS_OUT`]). This covers the code CI's
-//!   clippy compiles: the debug build for x86_64, all features. Not
-//!   covered: functions not listed; macros, function pointers and generic
-//!   helpers; `extern` blocks, `asm!`, `include!` and `#[path]` only as
-//!   far as the parser refuses them; release-only and aarch64-only code;
+//! - The build gate. A safety net, not a proof: in the code CI's clippy
+//!   compiles (the debug build for x86_64 with default features), a new
+//!   direct call of a function listed in clippy.toml fails CI — clippy
+//!   without an `#[expect]`, the pin test without its exact line in the
+//!   reviewed list ([`WAYS_OUT`]). It catches accidental new network or
+//!   program calls in SAM's own code, not code written to get around it;
+//!   the traced run and the request tests are the proof of what SAM does.
+//!   Not covered: functions not listed; macros, function pointers and
+//!   generic helpers; foreign functions called through a path
+//!   (`self::NAME`) or declared in a listed block; code outside the `src`
+//!   folders or reached through attributes (`cfg_attr(…, path = …)`, a
+//!   `rustfmt::skip` hidden there), and modules of a crate root outside
+//!   `src`; `asm!` and `naked_asm!`; release-only and aarch64-only code;
 //!   `build.rs` and the room helper; libraries' own behaviour.
 //! - Pinned texts: the update module, the window's start and `AppRun`.
 //! - The list of libraries SAM is built from.
@@ -355,7 +361,7 @@ const ROOT_ATTR: &str =
 /// What the gate finds in one file: its places as (attribute, statement),
 /// and its problems. Besides each `#[expect]` and its statement, a place
 /// is every line (with an empty attribute) that holds `#[rustfmt::skip]`,
-/// `include!`, `#[path`, `asm!`, `global_asm!`, an `extern` block of
+/// `include!`, `#[path`, `asm!`, `global_asm!`, `naked_asm!`, an `extern` block of
 /// SAM's own declarations, or a call of a function such a block declares:
 /// clippy does not see through them, so each must be listed too. A gate
 /// lint named anywhere but in an `#[expect]` that starts its line (inside
@@ -475,7 +481,8 @@ fn read_file(rel: &str, text: &str, is_root: bool) -> (Vec<(String, String)>, Ve
             || t.contains("include!")
             || t.contains("#[path")
             || has_word(t, "asm")
-            || has_word(t, "global_asm");
+            || has_word(t, "global_asm")
+            || has_word(t, "naked_asm");
         let calls = !in_extern[k]
             && declared.iter().any(|d| {
                 t.match_indices(&format!("{d}(")).any(|(at, _)| {
@@ -1312,17 +1319,22 @@ fn lints_section(toml_text: &str, header: &str) -> Option<String> {
     )
 }
 
-/// A new direct call in SAM's program code of one of the functions listed
-/// in clippy.toml fails CI's clippy step until it is listed with its exact
-/// line. This covers the code CI's clippy compiles: the debug build for
-/// x86_64, all features. The test holds the parts: clippy.toml gates
+/// A safety net, not a proof: in the code CI's clippy compiles (the debug
+/// build for x86_64 with default features), a new direct call of a
+/// function listed in clippy.toml fails CI — clippy without an `#[expect]`,
+/// the pin test without its exact line in the reviewed list (the privacy
+/// report names what this does not cover). It catches
+/// accidental new network or program calls in SAM's own code, not code
+/// written to get around it; the traced run and the request tests are the
+/// proof of what SAM does. This test holds the pin's parts: clippy.toml gates
 /// exactly [`GATED`]; every crate root `cargo metadata` names denies the
 /// gate's lints outside its tests, and nothing in the build settings
 /// switches that off; in program code a gate lint is named only in an
 /// outer `#[expect]` that starts its line and stands on one statement that
 /// obeys the one-line rule; and each such pair, and each line the parser
 /// refuses unless listed (`extern` blocks and their calls, `asm!`,
-/// `include!`, `#[path`, `#[rustfmt::skip]`), is in [`WAYS_OUT`], with
+/// `naked_asm!`, `include!`, `#[path`, `#[rustfmt::skip]`), is in
+/// [`WAYS_OUT`], with
 /// multiplicity.
 #[test]
 fn each_listed_call_in_program_code_is_a_listed_place() {
@@ -1419,7 +1431,8 @@ fn each_listed_call_in_program_code_is_a_listed_place() {
     assert!(problems.is_empty(), "{}", problems.join("\n"));
 }
 
-/// The shared parser reads what the compiler reads: a gate lint named in
+/// A safety net, not a proof: for the cases its self-test lists, the build
+/// gate's shared parser reads code as the compiler does. A gate lint named in
 /// a raw string, a block comment or a `#[cfg(test)]` module does not
 /// count, the code after them does; a wrapped attribute is joined; an old
 /// lint name, an inner allow and a blanket allow are refused; an expect on
@@ -1505,6 +1518,7 @@ unsafe extern "C" {
 }
 fn g() { let _ = unsafe { syscall(1) }; }
 fn h() { std::arch::asm!("nop"); let _ = libc::syscall(2); }
+fn n() { core::arch::naked_asm!("ret"); }
 "####;
     let (places, problems) = read_file("h.rs", hidden, false);
     let lines: Vec<&str> = problems
@@ -1525,6 +1539,7 @@ fn h() { std::arch::asm!("nop"); let _ = libc::syscall(2); }
             "#[path = \"y.rs\"]",
             "fn g() { let _ = unsafe { syscall(1) }; }",
             "fn h() { std::arch::asm!(\"nop\"); let _ = libc::syscall(2); }",
+            "fn n() { core::arch::naked_asm!(\"ret\"); }",
         ]
     );
     assert!(places.iter().all(|(a, _)| a.is_empty()));
@@ -2403,8 +2418,9 @@ const NAME_SERVICE_SOCKETS: &[&str] = &[
 /// The two things a traced command may do that look like a way out but
 /// are not, each seen in the first traced run and named in the privacy
 /// report's limits. Each holds only for a process whose last successful
-/// `execve` ran exactly this program (by the path it ran) with exactly
-/// these arguments:
+/// `execve` ran a program with this file name (the last part of the path
+/// it ran; for pasta also `pasta.*`, its builds for one processor) and
+/// exactly these arguments:
 /// - pasta's `--help` and `--version` open one TCP socket to read the
 ///   kernel's buffer sizes; that process may connect nowhere and send
 ///   nothing (checked);
@@ -2601,8 +2617,9 @@ fn read_trace(cmd: &str, log: &str) -> Seen {
 /// The trace check reads strace's lines as strace writes them: an internet
 /// socket, io_uring and a name-service connect are found in any process;
 /// pasta's probe socket and `curl --version`'s nscd connect pass only for
-/// exactly that program and those arguments, and the probe's process may
-/// not use its socket (its log lines to a closed descriptor are no use).
+/// a program of that file name after a successful execve, with those
+/// arguments, and the probe's process may not use its socket (its log
+/// lines to a closed descriptor are no use).
 #[test]
 fn the_trace_check_reads_strace_lines() {
     let log = r#"10 execve("/usr/bin/pasta.avx2", ["/usr/bin/pasta", "--help"], 0x1 /* 3 vars */) = 0
@@ -3119,8 +3136,9 @@ fn every_command_is_traced_or_named_untraced() {
 /// connects nowhere on the internet, and `curl --version`'s connect to
 /// nscd). Only these commands must show a program: `add`, `run`, `verify`,
 /// `doctor` and `doctor --contracts`; exit status 3 ("not passed") counts
-/// as ran for `verify` and the doctor commands. The programs each command ran and the Unix sockets it
-/// connected to are printed for the privacy report.
+/// as ran for `verify` and the doctor commands. The programs each command
+/// ran and the Unix sockets it connected to are printed for the privacy
+/// report.
 #[test]
 fn everyday_commands_make_no_internet_connection() {
     if !traced_run_possible() {
