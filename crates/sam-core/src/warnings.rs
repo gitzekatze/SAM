@@ -508,7 +508,7 @@ pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
             Warning::warn(
                 "bluetooth",
                 "Bluetooth",
-                "Bluetooth requires system D-Bus access (BlueZ), which SAM cannot filter. The toggle is ignored unless the system bus is granted.",
+                "This switch lets the app open Bluetooth sockets. Pairing also needs the Bluetooth service (BlueZ) on the system D-Bus, which this switch does not grant.",
             )
             .with_key("devices.bluetooth"),
         );

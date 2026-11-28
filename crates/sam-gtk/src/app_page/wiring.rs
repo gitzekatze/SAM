@@ -364,25 +364,18 @@ impl AppPage {
                     self.check_badge
                         .set_tooltip_text(Some(&crate::i18n::tr("The settings, SAM or this computer changed since the last test; press Test again")));
                 } else if failed.is_empty() {
-                    self.check_summary.set_title(&crate::i18n::trn(
-                        "The setting applies",
-                        "All {n} settings apply",
-                        total as u64,
-                        &[],
-                    ));
-                    self.check_summary.set_subtitle(&esc(&crate::i18n::trf(
-                        "Tested {when}.",
-                        &[("when", &when)],
-                    )));
+                    let noted = util::get(r, "notes").and_then(Value::as_u64).unwrap_or(0) > 0;
+                    let (title, subtitle, tooltip) =
+                        passed_check_texts(total as u64, Some(&when), noted);
+                    self.check_summary.set_title(&title);
+                    self.check_summary.set_subtitle(&esc(&subtitle));
                     set_badge_visible(&self.check_badge, true);
                     util::set_badge(
                         &self.check_badge,
                         &crate::i18n::trf("Tested {when}", &[("when", &when)]),
                         "good",
                     );
-                    self.check_badge.set_tooltip_text(Some(&crate::i18n::tr(
-                        "The test confirmed that every setting applies; see Test below",
-                    )));
+                    self.check_badge.set_tooltip_text(Some(&tooltip));
                 } else {
                     self.check_summary.set_title(&crate::i18n::trn(
                         "{failed} of {n} check failed",
@@ -471,25 +464,13 @@ impl AppPage {
                     .filter(|x| matches!(util::get(x, "ok"), Some(Value::Bool(_))))
                     .count();
                 if failed.is_empty() {
-                    self.check_summary.set_title(&crate::i18n::trn(
-                        "The check passed",
-                        "All {n} checks passed",
-                        total as u64,
-                        &[],
-                    ));
-                    // A note SAM adds (the 32-bit socket limit) names a
-                    // limit the check passed over, so the summary says so.
-                    self.check_summary.set_subtitle(&if check_has_note(&results) {
-                        crate::i18n::tr("Every setting below applies, except where a note below says otherwise. Not stored: the sandbox does not exist yet.")
-                    } else {
-                        crate::i18n::tr(
-                            "Every setting below applies. Not stored: the sandbox does not exist yet.",
-                        )
-                    });
+                    let (title, subtitle, tooltip) =
+                        passed_check_texts(total as u64, None, check_has_note(&results));
+                    self.check_summary.set_title(&title);
+                    self.check_summary.set_subtitle(&subtitle);
                     set_badge_visible(&self.check_badge, true);
                     util::set_badge(&self.check_badge, &crate::i18n::tr("Checked"), "good");
-                    self.check_badge
-                        .set_tooltip_text(Some(&crate::i18n::tr("The sandbox check confirmed that every setting applies; see Sandbox Check below")));
+                    self.check_badge.set_tooltip_text(Some(&tooltip));
                 } else {
                     self.check_summary.set_title(&crate::i18n::trn(
                         "{failed} of {n} check failed",

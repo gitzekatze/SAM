@@ -597,11 +597,12 @@ msgstr "Bluetooth"
 
 #: crates/sam-core/src/permissions.rs:1268
 msgid ""
-"Lets the app open Bluetooth connections to nearby devices; other apps cannot "
-"while their syscall filter is on, except an app whose start program is 32-"
-"bit and that has full network access (the security page says why). Pairing "
-"and the Bluetooth service itself also need the system D-Bus."
-msgstr "Erlaubt der App Bluetooth-Verbindungen zu Geräten in der Nähe; andere Apps können das nicht, solange ihr Systemaufruf-Filter an ist, außer einer App, deren Startprogramm ein 32-Bit-Programm ist und die vollen Netzwerkzugang hat (die Sicherheitsseite erklärt, warum). Koppeln und der Bluetooth-Dienst selbst brauchen zusätzlich den System-D-Bus."
+"Lets the app open Bluetooth sockets, which reach nearby devices only with "
+"full network access. Without it the syscall filter refuses them, except for "
+"an app whose start program is 32-bit (the security page says why). An app "
+"that may reach the Bluetooth service on the system D-Bus can use Bluetooth "
+"devices through it, with or without this switch."
+msgstr "Erlaubt der App, Bluetooth-Sockets zu öffnen, die Geräte in der Nähe nur mit vollem Netzwerkzugang erreichen. Ohne den Schalter lehnt der Systemaufruf-Filter sie ab, außer bei einer App, deren Startprogramm ein 32-Bit-Programm ist (die Sicherheitsseite erklärt, warum). Eine App, die den Bluetooth-Dienst auf dem System-D-Bus erreichen darf, kann über ihn Bluetooth-Geräte nutzen, mit oder ohne diesen Schalter."
 
 #: crates/sam-core/src/permissions.rs:1270 crates/sam-core/src/risk.rs:331
 #: crates/sam-runner/src/verify.rs:531
@@ -1682,12 +1683,10 @@ msgstr ""
 
 #: crates/sam-core/src/warnings.rs:508
 msgid ""
-"Bluetooth requires system D-Bus access (BlueZ), which SAM cannot filter. The "
-"toggle is ignored unless the system bus is granted."
-msgstr ""
-"Bluetooth braucht Zugriff auf den System-D-Bus (BlueZ), den SAM nicht "
-"filtern kann. Der Schalter bleibt wirkungslos, solange der Systembus nicht "
-"erlaubt ist."
+"This switch lets the app open Bluetooth sockets. Pairing also needs the "
+"Bluetooth service (BlueZ) on the system D-Bus, which this switch does not "
+"grant."
+msgstr "Dieser Schalter erlaubt der App, Bluetooth-Sockets zu öffnen. Koppeln braucht zusätzlich den Bluetooth-Dienst (BlueZ) auf dem System-D-Bus, den dieser Schalter nicht freigibt."
 
 #: crates/sam-core/src/warnings.rs:517
 msgid "Raw backend arguments"
@@ -3139,6 +3138,77 @@ msgstr "Sandbox wird erstellt …"
 msgid "Step {n} of {total}: {step}"
 msgstr "Schritt {n} von {total}: {step}"
 
+#: crates/sam-gtk/src/app_page/mod.rs:951
+msgid "The setting applies"
+msgid_plural "All {n} settings apply"
+msgstr[0] "Die Einstellung greift"
+msgstr[1] "Alle {n} Einstellungen greifen"
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-gtk/src/app_page/mod.rs:952
+msgid "Tested {when}."
+msgstr "Getestet {when}."
+
+#: crates/sam-gtk/src/app_page/mod.rs:953
+msgid "The test confirmed that every setting applies; see Test below"
+msgstr ""
+"Der Test hat bestätigt, dass jede Einstellung greift; siehe „Test“ unten"
+
+#: crates/sam-gtk/src/app_page/mod.rs:956
+msgid "The setting applies, with a note"
+msgid_plural "All {n} settings apply, with a note"
+msgstr[0] "Die Einstellung greift, mit einem Hinweis"
+msgstr[1] "Alle {n} Einstellungen greifen, mit einem Hinweis"
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-gtk/src/app_page/mod.rs:962
+msgid ""
+"Tested {when}. Every setting applies, except where a note of the test says "
+"otherwise."
+msgstr "Getestet {when}. Jede Einstellung greift, außer wo ein Hinweis des Tests etwas anderes sagt."
+
+#: crates/sam-gtk/src/app_page/mod.rs:966
+msgid ""
+"The test confirmed every setting, except where a note says otherwise; see "
+"Test below"
+msgstr "Der Test hat jede Einstellung bestätigt, außer wo ein Hinweis etwas anderes sagt; siehe „Test“ unten"
+
+#: crates/sam-gtk/src/app_page/mod.rs:969
+#: crates/sam-gtk/src/app_page/mod.rs:974
+msgid "The check passed"
+msgid_plural "All {n} checks passed"
+msgstr[0] "Die Prüfung war erfolgreich"
+msgstr[1] "Alle {n} Prüfungen erfolgreich"
+
+#: crates/sam-gtk/src/app_page/mod.rs:970
+msgid ""
+"Every setting below applies. Not stored: the sandbox does not exist yet."
+msgstr ""
+"Jede Einstellung unten greift. Nicht gespeichert: Die Sandbox existiert noch "
+"nicht."
+
+#: crates/sam-gtk/src/app_page/mod.rs:971
+msgid ""
+"The sandbox check confirmed that every setting applies; see Sandbox Check "
+"below"
+msgstr ""
+"Die Sandbox-Prüfung hat bestätigt, dass jede Einstellung greift; siehe "
+"„Sandbox-Prüfung“ unten"
+
+#: crates/sam-gtk/src/app_page/mod.rs:975
+msgid ""
+"Every setting below applies, except where a note below says otherwise. Not "
+"stored: the sandbox does not exist yet."
+msgstr ""
+"Jede Einstellung unten greift, außer wo ein Hinweis unten etwas anderes "
+"sagt. Nicht gespeichert: Die Sandbox existiert noch nicht."
+
+#: crates/sam-gtk/src/app_page/mod.rs:976
+msgid ""
+"The sandbox check confirmed every setting, except where a note says "
+"otherwise; see Sandbox Check below"
+msgstr "Die Sandbox-Prüfung hat jede Einstellung bestätigt, außer wo ein Hinweis etwas anderes sagt; siehe „Sandbox-Prüfung“ unten"
+
 #: crates/sam-gtk/src/app_page/render.rs:13
 msgid "The settings could not be loaded"
 msgstr "Die Einstellungen konnten nicht geladen werden"
@@ -3882,7 +3952,7 @@ msgstr ""
 #: crates/sam-gtk/src/app_page/wiring.rs:315
 #: crates/sam-gtk/src/app_page/wiring.rs:332
 #: crates/sam-gtk/src/app_page/wiring.rs:338
-#: crates/sam-gtk/src/app_page/wiring.rs:444
+#: crates/sam-gtk/src/app_page/wiring.rs:437
 msgid "Not tested yet"
 msgstr "Noch nicht getestet"
 
@@ -3901,7 +3971,7 @@ msgstr ""
 "Drück „Testen“, um zu prüfen, ob jede Einstellung greift und die App startet"
 
 #: crates/sam-gtk/src/app_page/wiring.rs:353
-#: crates/sam-gtk/src/app_page/wiring.rs:452
+#: crates/sam-gtk/src/app_page/wiring.rs:445
 msgid "Out of date"
 msgstr "Veraltet"
 
@@ -3926,58 +3996,42 @@ msgstr ""
 "Die Einstellungen, SAM oder dieser Computer haben sich seit dem letzten Test "
 "geändert; drück erneut „Testen“"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:367
-msgid "The setting applies"
-msgid_plural "All {n} settings apply"
-msgstr[0] "Die Einstellung greift"
-msgstr[1] "Alle {n} Einstellungen greifen"
-
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/wiring.rs:373
-msgid "Tested {when}."
-msgstr "Getestet {when}."
-
-#. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/wiring.rs:380
+#: crates/sam-gtk/src/app_page/wiring.rs:375
 msgid "Tested {when}"
 msgstr "Getestet {when}"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:383
-msgid "The test confirmed that every setting applies; see Test below"
-msgstr ""
-"Der Test hat bestätigt, dass jede Einstellung greift; siehe „Test“ unten"
-
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/wiring.rs:387
-#: crates/sam-gtk/src/app_page/wiring.rs:494
+#: crates/sam-gtk/src/app_page/wiring.rs:380
+#: crates/sam-gtk/src/app_page/wiring.rs:475
 msgid "{failed} of {n} check failed"
 msgid_plural "{failed} of {n} checks failed"
 msgstr[0] "{failed} von {n} Prüfung fehlgeschlagen"
 msgstr[1] "{failed} von {n} Prüfungen fehlgeschlagen"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/wiring.rs:393
+#: crates/sam-gtk/src/app_page/wiring.rs:386
 msgid "Not applied: {settings}. Tested {when}."
 msgstr "Nicht angewendet: {settings}. Getestet {when}."
 
-#: crates/sam-gtk/src/app_page/wiring.rs:398
+#: crates/sam-gtk/src/app_page/wiring.rs:391
 msgid "Test failed"
 msgstr "Test fehlgeschlagen"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:399
+#: crates/sam-gtk/src/app_page/wiring.rs:392
 msgid "The test found settings that do not apply; see Test below"
 msgstr ""
 "Der Test hat Einstellungen gefunden, die nicht greifen; siehe „Test“ unten"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:410
+#: crates/sam-gtk/src/app_page/wiring.rs:403
 msgid "The app started and kept running"
 msgstr "Die App ist gestartet und lief weiter"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:412
+#: crates/sam-gtk/src/app_page/wiring.rs:405
 msgid "The app did not keep running"
 msgstr "Die App lief nicht weiter"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:438
+#: crates/sam-gtk/src/app_page/wiring.rs:431
 msgid ""
 "Starts the sandbox this AppImage would get with a test program and confirms "
 "from inside that every setting below really applies. The AppImage is not "
@@ -3989,56 +4043,29 @@ msgstr ""
 "wird weder entpackt noch ausgeführt. Nutze die Schaltfläche „Testen“ oben; "
 "sie startet die App auch für ein paar Sekunden."
 
-#: crates/sam-gtk/src/app_page/wiring.rs:445
+#: crates/sam-gtk/src/app_page/wiring.rs:438
 msgid "You can test the settings before you create the sandbox."
 msgstr "Du kannst die Einstellungen testen, bevor du die Sandbox erstellst."
 
-#: crates/sam-gtk/src/app_page/wiring.rs:453
+#: crates/sam-gtk/src/app_page/wiring.rs:446
 msgid "The settings changed since the last check. Check again."
 msgstr ""
 "Die Einstellungen haben sich seit der letzten Prüfung geändert. Prüfe erneut."
 
-#: crates/sam-gtk/src/app_page/wiring.rs:474
-msgid "The check passed"
-msgid_plural "All {n} checks passed"
-msgstr[0] "Die Prüfung war erfolgreich"
-msgstr[1] "Alle {n} Prüfungen erfolgreich"
-
-#: crates/sam-gtk/src/app_page/wiring.rs:483
-msgid ""
-"Every setting below applies, except where a note below says otherwise. Not "
-"stored: the sandbox does not exist yet."
-msgstr "Jede Einstellung unten greift, außer wo ein Hinweis unten etwas anderes sagt. Nicht gespeichert: Die Sandbox existiert noch nicht."
-
-#: crates/sam-gtk/src/app_page/wiring.rs:485
-msgid ""
-"Every setting below applies. Not stored: the sandbox does not exist yet."
-msgstr ""
-"Jede Einstellung unten greift. Nicht gespeichert: Die Sandbox existiert noch "
-"nicht."
-
-#: crates/sam-gtk/src/app_page/wiring.rs:490
+#: crates/sam-gtk/src/app_page/wiring.rs:472
 msgid "Checked"
 msgstr "Geprüft"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:492
-msgid ""
-"The sandbox check confirmed that every setting applies; see Sandbox Check "
-"below"
-msgstr ""
-"Die Sandbox-Prüfung hat bestätigt, dass jede Einstellung greift; siehe "
-"„Sandbox-Prüfung“ unten"
-
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/wiring.rs:500
+#: crates/sam-gtk/src/app_page/wiring.rs:481
 msgid "Not applied: {settings}."
 msgstr "Nicht angewendet: {settings}."
 
-#: crates/sam-gtk/src/app_page/wiring.rs:505
+#: crates/sam-gtk/src/app_page/wiring.rs:486
 msgid "Check failed"
 msgstr "Prüfung fehlgeschlagen"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:506
+#: crates/sam-gtk/src/app_page/wiring.rs:487
 msgid ""
 "The sandbox check found settings that do not apply; see Sandbox Check below"
 msgstr ""
@@ -4046,25 +4073,25 @@ msgstr ""
 "„Sandbox-Prüfung“ unten"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/wiring.rs:558
+#: crates/sam-gtk/src/app_page/wiring.rs:539
 msgid "{n} confirmed setting"
 msgid_plural "{n} confirmed settings"
 msgstr[0] "{n} bestätigte Einstellung"
 msgstr[1] "{n} bestätigte Einstellungen"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:564
+#: crates/sam-gtk/src/app_page/wiring.rs:545
 msgid "What the test program found inside the sandbox"
 msgstr "Was das Testprogramm in der Sandbox vorgefunden hat"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:605
+#: crates/sam-gtk/src/app_page/wiring.rs:586
 msgid "Launch arguments saved"
 msgstr "Startargumente gespeichert"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:618
+#: crates/sam-gtk/src/app_page/wiring.rs:599
 msgid "Turn On Compatibility Mode?"
 msgstr "Kompatibilitätsmodus einschalten?"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:619
+#: crates/sam-gtk/src/app_page/wiring.rs:600
 msgid ""
 "The app gets broad access: the network, all of /usr, X11, the GPU, sound and "
 "the whole session bus. Through the whole session bus it can ask desktop "
@@ -4082,28 +4109,28 @@ msgstr ""
 "Deine jetzigen Einstellungen werden gemerkt und kommen zurück, wenn du ihn "
 "ausschaltest."
 
-#: crates/sam-gtk/src/app_page/wiring.rs:620
+#: crates/sam-gtk/src/app_page/wiring.rs:601
 msgid "Turn On"
 msgstr "Einschalten"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:639
+#: crates/sam-gtk/src/app_page/wiring.rs:620
 msgid "Compatibility mode on"
 msgstr "Kompatibilitätsmodus an"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:641
+#: crates/sam-gtk/src/app_page/wiring.rs:622
 msgid "Compatibility mode off: your previous settings are back"
 msgstr "Kompatibilitätsmodus aus: Deine vorherigen Einstellungen sind zurück"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:667
+#: crates/sam-gtk/src/app_page/wiring.rs:648
 msgid "Type a name for the preset first"
 msgstr "Gib zuerst einen Namen für die Vorlage ein"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/wiring.rs:682
+#: crates/sam-gtk/src/app_page/wiring.rs:663
 msgid "Replace “{name}”?"
 msgstr "„{name}“ ersetzen?"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:683
+#: crates/sam-gtk/src/app_page/wiring.rs:664
 msgid ""
 "A preset with this name exists. Its settings are replaced by the ones shown "
 "here. Apps that used it keep their current settings."
@@ -4112,17 +4139,17 @@ msgstr ""
 "hier gezeigten ersetzt. Apps, die sie verwendet haben, behalten ihre "
 "aktuellen Einstellungen."
 
-#: crates/sam-gtk/src/app_page/wiring.rs:686
+#: crates/sam-gtk/src/app_page/wiring.rs:667
 msgid "Replace"
 msgstr "Ersetzen"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/wiring.rs:695
+#: crates/sam-gtk/src/app_page/wiring.rs:676
 msgid "Saved from {app}"
 msgstr "Aus {app} gespeichert"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/wiring.rs:708
+#: crates/sam-gtk/src/app_page/wiring.rs:689
 msgid ""
 "Saved preset “{name}”. Apply it to other apps from the main menu → My "
 "Presets."
@@ -6307,7 +6334,8 @@ msgstr "lief in ihrer Sandbox und endete von selbst ({summary})"
 #. Keep the {placeholders}; their order may change.
 #: crates/sam-jail-cli/src/main.rs:1684
 msgid "{passed} passed, {failed} failed, {skipped} not applicable"
-msgstr "{passed} bestanden, {failed} fehlgeschlagen, {skipped} nicht zutreffend"
+msgstr ""
+"{passed} bestanden, {failed} fehlgeschlagen, {skipped} nicht zutreffend"
 
 #. Keep the {placeholders}; their order may change.
 #: crates/sam-jail-cli/src/main.rs:1695
@@ -8055,7 +8083,14 @@ msgid ""
 "refuse, because the family sits where no filter can read it. These include "
 "virtual-machine and kernel-crypto sockets and, when the app has full network "
 "access, Bluetooth sockets even with its Bluetooth switch off."
-msgstr "Diese App startet ein 32-Bit-Programm. SAMs Systemaufruf-Filter begrenzt ihre 32-Bit-Aufrufe so wie 64-Bit-Aufrufe, mit einer Lücke, wie bei Flatpak: Über den alten Aufruf socketcall kann die App Sockets von Familien öffnen, die der Filter ablehnen würde, weil die Familie dort steht, wo kein Filter sie lesen kann. Dazu gehören Sockets für virtuelle Maschinen und für die Kryptografie des Kernels und, wenn die App vollen Netzwerkzugang hat, Bluetooth-Sockets, auch wenn ihr Bluetooth-Schalter aus ist."
+msgstr ""
+"Diese App startet ein 32-Bit-Programm. SAMs Systemaufruf-Filter begrenzt "
+"ihre 32-Bit-Aufrufe so wie 64-Bit-Aufrufe, mit einer Lücke, wie bei Flatpak: "
+"Über den alten Aufruf socketcall kann die App Sockets von Familien öffnen, "
+"die der Filter ablehnen würde, weil die Familie dort steht, wo kein Filter "
+"sie lesen kann. Dazu gehören Sockets für virtuelle Maschinen und für die "
+"Kryptografie des Kernels und, wenn die App vollen Netzwerkzugang hat, "
+"Bluetooth-Sockets, auch wenn ihr Bluetooth-Schalter aus ist."
 
 #: crates/sam-runner/src/ops/overview.rs:75
 msgid "Isolation assessment"
@@ -9274,7 +9309,11 @@ msgid ""
 "incomplete: a 32-bit socket made through the old socketcall call can be of a "
 "family the filter would refuse, Bluetooth included when the app has full "
 "network access, and the test program cannot try 32-bit calls"
-msgstr "unvollständig: Ein 32-Bit-Socket, der über den alten Aufruf socketcall entsteht, kann von einer Familie sein, die der Filter ablehnen würde, Bluetooth eingeschlossen, wenn die App vollen Netzwerkzugang hat, und das Testprogramm kann keine 32-Bit-Aufrufe ausprobieren"
+msgstr ""
+"unvollständig: Ein 32-Bit-Socket, der über den alten Aufruf socketcall "
+"entsteht, kann von einer Familie sein, die der Filter ablehnen würde, "
+"Bluetooth eingeschlossen, wenn die App vollen Netzwerkzugang hat, und das "
+"Testprogramm kann keine 32-Bit-Aufrufe ausprobieren"
 
 #: crates/sam-runner/src/verify.rs:1096
 msgid ""
@@ -9657,6 +9696,27 @@ msgstr ""
 #: crates/sam-storage/src/lib.rs:932
 msgid "unknown flat preset key '{other}'"
 msgstr "unbekannter Schlüssel „{other}“ in der flachen Vorlage"
+
+#~ msgid ""
+#~ "Lets the app open Bluetooth connections to nearby devices; other apps "
+#~ "cannot while their syscall filter is on, except an app whose start "
+#~ "program is 32-bit and that has full network access (the security page "
+#~ "says why). Pairing and the Bluetooth service itself also need the system "
+#~ "D-Bus."
+#~ msgstr ""
+#~ "Erlaubt der App Bluetooth-Verbindungen zu Geräten in der Nähe; andere "
+#~ "Apps können das nicht, solange ihr Systemaufruf-Filter an ist, außer "
+#~ "einer App, deren Startprogramm ein 32-Bit-Programm ist und die vollen "
+#~ "Netzwerkzugang hat (die Sicherheitsseite erklärt, warum). Koppeln und der "
+#~ "Bluetooth-Dienst selbst brauchen zusätzlich den System-D-Bus."
+
+#~ msgid ""
+#~ "Bluetooth requires system D-Bus access (BlueZ), which SAM cannot filter. "
+#~ "The toggle is ignored unless the system bus is granted."
+#~ msgstr ""
+#~ "Bluetooth braucht Zugriff auf den System-D-Bus (BlueZ), den SAM nicht "
+#~ "filtern kann. Der Schalter bleibt wirkungslos, solange der Systembus "
+#~ "nicht erlaubt ist."
 
 #~ msgid ""
 #~ "Lets the app open Bluetooth connections to nearby devices; other apps "

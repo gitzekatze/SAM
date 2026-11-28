@@ -13,7 +13,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-core: Permission model, risk, warnings, configuration and file formats
 
-211 tests.
+212 tests.
 
 | Promise | Test |
 |---|---|
@@ -61,16 +61,17 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | Texts without a translation come back with their values. | [`texts_without_a_translation_come_back_with_their_values`](../crates/sam-core/src/i18n.rs#L322) |
 | Only icons that are safe to decode reach the desktop's image code: a PNG whose header announces more than 1024×1024 pixels (a decode bomb: a small file that asks for gigabytes) is refused before anything decodes it, and so are oversized files, large SVGs and XPM (audit G-F8, I-F18). | [`only_icons_that_are_safe_to_decode_are_taken`](../crates/sam-core/src/icon.rs#L131) |
 | ⟲ Regression (review 2026-11-23, F3): any file with the text `<svg` in its first 2 KiB counted as an SVG, so an XPM, ICO or TGA icon carrying it in a comment or its pixels was installed as `.svg` and reached the desktop's decoder for its real format. | [`only_a_real_svg_counts_as_one`](../crates/sam-core/src/icon.rs#L171) |
-| Changing an app's settings clears the record of a failed start, so the app is no longer shown as broken. | [`profile_change_clears_broken_launch`](../crates/sam-core/src/model.rs#L784) |
-| An AppImage file swapped outside SAM shows as changed outside SAM; while the mark is off it is not written, so every record saved before it existed keeps its checksum (no app looks changed after an update). | [`a_swapped_appimage_file_is_marked_and_old_records_stay_unchanged`](../crates/sam-core/src/model.rs#L802) |
-| A record saved before Room service existed (no `room_service` key) reads with Room service on and writes back exactly as it was, so its checksum holds and no app looks changed outside SAM after an update. | [`a_record_from_before_room_service_keeps_its_checksum`](../crates/sam-core/src/model.rs#L832) |
-| An app with compatibility risk carries a warning badge until it has started successfully once. | [`apps_with_compatibility_risk_are_marked_until_they_start`](../crates/sam-core/src/model.rs#L882) |
-| Only a failure within the first ten seconds counts as "stopped right after starting" (the menu start's notice with a likely fix): not a clean end, however quick, and not a failure after the app ran for a while. | [`only_a_quick_failure_counts_as_stopped_right_after_start`](../crates/sam-core/src/model.rs#L944) |
-| A start without a wanted protection layer is marked. | [`a_start_without_a_wanted_protection_layer_is_marked`](../crates/sam-core/src/model.rs#L969) |
-| A record SAM marked broken, stale or unsafe shows that badge whatever else is true of it: a re-unpacking that failed keeps the old unpacked folder, a changed AppImage file keeps its record, and an app that asks for administrator rights stays Unsafe even after a start that failed in the sandbox setup (which alone shows Broken). | [`a_marked_state_decides_the_badge`](../crates/sam-core/src/model.rs#L998) |
-| Every badge has its own name, the one the command line shows and the JSON interface gives scripts in `badge_label` next to the code in `badge`: a warning badge never reads as another or as nothing. | [`every_badge_is_named_for_people_and_scripts`](../crates/sam-core/src/model.rs#L1036) |
-| Each isolation verdict tells the person why, in words of its own (shown as the app's warning and in `info`). | [`every_isolation_verdict_says_why`](../crates/sam-core/src/model.rs#L1082) |
-| The last problem names a start that failed by itself: the first finding, or else the exit summary. | [`only_a_failed_start_leaves_a_last_problem`](../crates/sam-core/src/model.rs#L1104) |
+| Changing an app's settings clears the record of a failed start, so the app is no longer shown as broken. | [`profile_change_clears_broken_launch`](../crates/sam-core/src/model.rs#L794) |
+| An AppImage file swapped outside SAM shows as changed outside SAM; while the mark is off it is not written, so every record saved before it existed keeps its checksum (no app looks changed after an update). | [`a_swapped_appimage_file_is_marked_and_old_records_stay_unchanged`](../crates/sam-core/src/model.rs#L812) |
+| A record whose last sandbox check was saved before the check counted notes (no `notes` key) reads with no notes and writes back exactly as it was, so its checksum holds and the app does not look changed outside SAM after an update. | [`a_check_from_before_the_note_count_keeps_its_checksum`](../crates/sam-core/src/model.rs#L842) |
+| A record saved before Room service existed (no `room_service` key) reads with Room service on and writes back exactly as it was, so its checksum holds and no app looks changed outside SAM after an update. | [`a_record_from_before_room_service_keeps_its_checksum`](../crates/sam-core/src/model.rs#L877) |
+| An app with compatibility risk carries a warning badge until it has started successfully once. | [`apps_with_compatibility_risk_are_marked_until_they_start`](../crates/sam-core/src/model.rs#L927) |
+| Only a failure within the first ten seconds counts as "stopped right after starting" (the menu start's notice with a likely fix): not a clean end, however quick, and not a failure after the app ran for a while. | [`only_a_quick_failure_counts_as_stopped_right_after_start`](../crates/sam-core/src/model.rs#L989) |
+| A start without a wanted protection layer is marked. | [`a_start_without_a_wanted_protection_layer_is_marked`](../crates/sam-core/src/model.rs#L1014) |
+| A record SAM marked broken, stale or unsafe shows that badge whatever else is true of it: a re-unpacking that failed keeps the old unpacked folder, a changed AppImage file keeps its record, and an app that asks for administrator rights stays Unsafe even after a start that failed in the sandbox setup (which alone shows Broken). | [`a_marked_state_decides_the_badge`](../crates/sam-core/src/model.rs#L1043) |
+| Every badge has its own name, the one the command line shows and the JSON interface gives scripts in `badge_label` next to the code in `badge`: a warning badge never reads as another or as nothing. | [`every_badge_is_named_for_people_and_scripts`](../crates/sam-core/src/model.rs#L1081) |
+| Each isolation verdict tells the person why, in words of its own (shown as the app's warning and in `info`). | [`every_isolation_verdict_says_why`](../crates/sam-core/src/model.rs#L1127) |
+| The last problem names a start that failed by itself: the first finding, or else the exit summary. | [`only_a_failed_start_leaves_a_last_problem`](../crates/sam-core/src/model.rs#L1149) |
 | A release build ignores SAM's folder switches (`SAM_CONFIG_DIR`, `SAM_DATA_DIR`, `SAM_APPLICATIONS_DIR`, `SAM_RUNTIME_DIR`): it keeps its settings, data and menu entries where it keeps them otherwise and its runtime folders in the session's runtime folder, so a variable in the desktop's environment never moves an installed SAM to other settings and app records (owner decision of 2026-11-27). | [`a_release_build_ignores_sams_folder_switches`](../crates/sam-core/src/paths.rs#L289) |
 | A developer build (tests, work on SAM itself) follows SAM's four folder switches. | [`a_developer_build_follows_sams_folder_switches`](../crates/sam-core/src/paths.rs#L302) |
 | The standard `XDG_CONFIG_HOME` and `XDG_DATA_HOME` move SAM's folders in every build, a release build too, also while SAM's own folder switches are set and ignored. | [`every_build_follows_the_standard_config_and_data_folders`](../crates/sam-core/src/paths.rs#L325) |
@@ -1291,7 +1292,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-gtk: The window (logic that runs without a display)
 
-33 tests.
+34 tests.
 
 | Promise | Test |
 |---|---|
@@ -1300,13 +1301,14 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | A tag filter cycles through three states with each click: only apps with the permission, only apps without it, and off. | [`a_tag_filter_cycles_through_has_has_not_and_off`](../crates/sam-gtk/src/all_perms.rs#L1450) |
 | The list shows an app only when it passes every filter at once: the search text, each state filter, and each tag filter in its state. | [`the_list_shows_only_apps_that_pass_every_filter`](../crates/sam-gtk/src/all_perms.rs#L1459) |
 | Personal folders explain where they are; other permissions keep their description unchanged. | [`folder_explanations_name_the_path`](../crates/sam-gtk/src/all_perms.rs#L1508) |
-| The window qualifies "every setting applies" exactly when the check holds a note SAM adds, not for a check that could not run. | [`a_passed_check_with_a_note_is_not_called_complete`](../crates/sam-gtk/src/app_page/mod.rs#L948) |
-| "Confirm Settings" names the note of an update's needs, which the page hides meanwhile but confirming accepts (review L4). | [`the_question_names_the_update_note_that_confirming_accepts`](../crates/sam-gtk/src/app_page/mod.rs#L959) |
-| The arguments of a review always carry what the page showed, so SAM can refuse it when the app changed since (review L4). | [`a_review_from_the_page_names_what_it_showed`](../crates/sam-gtk/src/app_page/mod.rs#L968) |
-| The window confirms a hint for the command line with --yes exactly when it has asked: a hint rated Think twice or Dangerous, or one that turns on compatibility mode, but not a Medium one (owner decision 13 of 2026-11-23: `hints --apply` refuses a risky hint without --yes). | [`the_window_confirms_a_hint_exactly_when_it_asked`](../crates/sam-gtk/src/app_page/mod.rs#L981) |
-| The window confirms a repair step for the command line with --yes exactly when it has asked, as it does for a hint: a step rated Think twice or Dangerous, one that turns on compatibility mode, or one from the app's own output. | [`the_window_confirms_a_repair_step_exactly_when_it_asked`](../crates/sam-gtk/src/app_page/mod.rs#L1019) |
-| "Confirm Settings" names what the changed settings let the app do before it may start again: full home and X11 written into the record from outside appear in the question (audit G-F12/13: one click confirmed them unseen). | [`confirming_changed_settings_names_what_they_allow`](../crates/sam-gtk/src/app_page/mod.rs#L1067) |
-| The header's "Sandboxed" is green only while the last start had every protection layer; with one missing it is amber and names the layer (audit G-F15: it stayed green). | [`the_header_is_not_green_while_a_protection_layer_was_missing`](../crates/sam-gtk/src/app_page/mod.rs#L1093) |
+| A passed check with a note SAM adds never says, in its title, subtitle or badge tooltip, that every setting applies in full; one without a note does, both for a stored test and for a check of an AppImage without a sandbox. | [`a_passed_check_with_a_note_says_so_in_every_text`](../crates/sam-gtk/src/app_page/mod.rs#L989) |
+| The window qualifies "every setting applies" exactly when the check holds a note SAM adds, not for a check that could not run. | [`a_passed_check_with_a_note_is_not_called_complete`](../crates/sam-gtk/src/app_page/mod.rs#L1013) |
+| "Confirm Settings" names the note of an update's needs, which the page hides meanwhile but confirming accepts (review L4). | [`the_question_names_the_update_note_that_confirming_accepts`](../crates/sam-gtk/src/app_page/mod.rs#L1024) |
+| The arguments of a review always carry what the page showed, so SAM can refuse it when the app changed since (review L4). | [`a_review_from_the_page_names_what_it_showed`](../crates/sam-gtk/src/app_page/mod.rs#L1033) |
+| The window confirms a hint for the command line with --yes exactly when it has asked: a hint rated Think twice or Dangerous, or one that turns on compatibility mode, but not a Medium one (owner decision 13 of 2026-11-23: `hints --apply` refuses a risky hint without --yes). | [`the_window_confirms_a_hint_exactly_when_it_asked`](../crates/sam-gtk/src/app_page/mod.rs#L1046) |
+| The window confirms a repair step for the command line with --yes exactly when it has asked, as it does for a hint: a step rated Think twice or Dangerous, one that turns on compatibility mode, or one from the app's own output. | [`the_window_confirms_a_repair_step_exactly_when_it_asked`](../crates/sam-gtk/src/app_page/mod.rs#L1084) |
+| "Confirm Settings" names what the changed settings let the app do before it may start again: full home and X11 written into the record from outside appear in the question (audit G-F12/13: one click confirmed them unseen). | [`confirming_changed_settings_names_what_they_allow`](../crates/sam-gtk/src/app_page/mod.rs#L1132) |
+| The header's "Sandboxed" is green only while the last start had every protection layer; with one missing it is amber and names the layer (audit G-F15: it stayed green). | [`the_header_is_not_green_while_a_protection_layer_was_missing`](../crates/sam-gtk/src/app_page/mod.rs#L1158) |
 | Preset names reach SAM after `--`, so one that starts with `-` is not read as an option (audit G-F20). | [`preset_names_are_never_read_as_options`](../crates/sam-gtk/src/backend.rs#L372) |
 | An installed (release) window runs only the command line tool next to it, never one in a neighbouring `debug` or `release` folder that an app with write access to the home could create (audit G-F10). | [`an_installed_window_runs_only_the_tool_next_to_it`](../crates/sam-gtk/src/backend.rs#L388) |
 | An installed (release) window never runs a program that a variable in its environment names (`SAM_CLI`, `SAM_RUN`); only a developer build does (owner decision 16 of 2026-11-23). | [`an_installed_window_ignores_a_program_named_in_its_environment`](../crates/sam-gtk/src/backend.rs#L413) |
@@ -1342,4 +1344,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 1255 automated Rust tests plus 8 scripted checks.
+Total: 1257 automated Rust tests plus 8 scripted checks.

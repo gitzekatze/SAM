@@ -1052,7 +1052,7 @@ fn wayland_context_result(made: bool, failed: bool) -> Option<ProbeResult> {
 fn socket_limit_result(app: &AppEntry, cfg: &Config, host: &HostInfo) -> Option<ProbeResult> {
     crate::launch::socket_limit_incomplete(app, &app.profile.permissions, cfg, host).then(|| {
         ProbeResult {
-            id: "seccomp-32-bit-sockets".into(),
+            id: sam_core::SOCKET_NOTE_ID.into(),
             group: sam_core::i18n::tr("Security"),
             title: sam_core::i18n::tr("Socket limit for 32-bit calls"),
             ok: None,
