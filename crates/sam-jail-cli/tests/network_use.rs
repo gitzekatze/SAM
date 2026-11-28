@@ -2442,7 +2442,9 @@ const NAME_SERVICE_SOCKETS: &[&str] = &[
 /// - `curl --version` inside its sandbox (`sandboxed`), which doctor's
 ///   contracts and the bug report run, loads libraries that look up the
 ///   user's account through the name service; its connects to nscd's
-///   socket are allowed, nothing else.
+///   socket are allowed (the traced run's outer Bubblewrap hides nscd, so
+///   they fail; a request sent to nscd would count as a send), nothing
+///   else.
 fn allowed(ran: &(String, Vec<String>), sandboxed: bool, line: &str) -> bool {
     let (path, argv) = ran;
     let name = path.rsplit('/').next().unwrap_or(path);
@@ -2825,6 +2827,8 @@ fn the_trace_check_reads_strace_lines() {
         // Whatever the descriptor (strace may split the socket line).
         "31 connect(7, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr(\"192.0.2.53\")}, 16) = 0",
         "31 sendto(9, \"q\", 1, MSG_NOSIGNAL, NULL, 0) = 1",
+        // A request to nscd, where a connect to it succeeds, is a send.
+        "31 connect(5, {sa_family=AF_UNIX, sun_path=\"/var/run/nscd/socket\"}, 110) = 0\n31 sendto(5, \"\\2\\0\\0\\0\", 12, MSG_NOSIGNAL, NULL, 0) = 12",
     ] {
         let seen = read_trace("x", &format!("{sandboxed}{bad}\n"));
         assert_eq!(seen.problems.len(), 1, "{bad}: {:?}", seen.problems);
@@ -2869,6 +2873,8 @@ fn bwrap_works() -> bool {
 /// and `/etc/nsswitch.conf` (`hosts: files dns`), so the result does not
 /// depend on this computer's name service: a lookup of the host name goes
 /// to the DNS server, a lookup of `localhost` is answered from the file.
+/// It also hides nscd's sockets (`/run/nscd`, `/var/run/nscd`) under empty
+/// folders, so a connect to nscd fails on every computer.
 /// Before its first use in this test process, `getent` inside the same
 /// wrapper must fail for the host name and answer `localhost`; otherwise
 /// the test fails here, naming what does not hold. (Once: a lookup of the
@@ -2893,27 +2899,52 @@ fn outer_wrapper_args(root: &Path) -> Vec<std::ffi::OsString> {
         "--ro-bind".into(),
     ]);
     args.extend([nss.into_os_string(), "/etc/nsswitch.conf".into()]);
+    // nscd's sockets are hidden, so no traced command reaches nscd on any
+    // computer (where nscd runs, a connect to it would succeed and its
+    // request would count as a send by curl in its sandbox).
+    let mut hidden: Vec<PathBuf> = Vec::new();
+    for dir in ["/run/nscd", "/var/run/nscd"] {
+        if let Ok(real) = fs::canonicalize(dir) {
+            if real.is_dir() && !hidden.contains(&real) {
+                args.extend(["--tmpfs".into(), real.clone().into_os_string()]);
+                hidden.push(real);
+            }
+        }
+    }
     args.extend(["--unshare-uts", "--hostname"].map(Into::into));
     args.push(name.clone().into());
     args.push("--".into());
+    // Each lookup ends within two minutes, as a traced command does.
     let getent = |what: &str| {
-        std::process::Command::new(&args[0])
+        let mut child = std::process::Command::new(&args[0])
             .args(&args[1..])
             .args(["getent", "hosts", what])
-            .output()
-            .unwrap()
-            .status
-            .success()
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let start = std::time::Instant::now();
+        loop {
+            if let Some(st) = child.try_wait().unwrap() {
+                break st.success();
+            }
+            if start.elapsed() > std::time::Duration::from_secs(120) {
+                child.kill().ok();
+                child.wait().ok();
+                panic!("precondition of the traced run: `getent hosts {what}` still ran after two minutes");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
     };
     CHECKED.call_once(|| {
-    assert!(
-        !getent(&name),
-        "precondition of the traced run: inside its outer Bubblewrap, `getent hosts {name}` must fail (no name service may answer the unknown host name), but it answered"
-    );
-    assert!(
-        getent("localhost"),
-        "precondition of the traced run: inside its outer Bubblewrap, `getent hosts localhost` must answer from the test-made /etc/hosts, but it did not"
-    );
+        assert!(
+            !getent(&name),
+            "precondition of the traced run: inside its outer Bubblewrap, `getent hosts {name}` must fail (no name service may answer the unknown host name), but it answered"
+        );
+        assert!(
+            getent("localhost"),
+            "precondition of the traced run: inside its outer Bubblewrap, `getent hosts localhost` must answer from the test-made /etc/hosts, but it did not"
+        );
     });
     args
 }

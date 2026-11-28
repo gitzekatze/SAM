@@ -234,7 +234,9 @@ container; the GnuPG programs in its trace show it ran.
   The test allows this only for curl started by the sandbox's Bubblewrap,
   and such a curl may connect to no other internet address and send
   nothing but netlink requests, whatever the descriptor. Its nscd connect
-  is allowed only there too.
+  is allowed only there too; the traced run's outer Bubblewrap hides nscd's
+  sockets, so that connect fails on every computer, and a request sent to
+  nscd would count as a send.
 - **pasta's probe socket.** `pasta --help` and `--version`, which doctor
   runs, open one TCP socket to read the kernel's buffer sizes; the test
   allows this only for a program of that file name after a successful
