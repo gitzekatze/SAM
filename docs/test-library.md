@@ -505,7 +505,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-runner: Operations: add, launch, verify, repair, update, group changes; the sandbox at run time
 
-599 tests.
+602 tests.
 
 | Promise | Test |
 |---|---|
@@ -1083,6 +1083,9 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | A server that ignores Range sends the whole file to every range request. | [`a_server_that_ignores_ranges_gets_one_range_request_then_the_whole_file`](../crates/sam-runner/tests/update_partial.rs#L104) |
 | A slow server: eight ranges of 16 KiB at 8 KiB a second take about twelve seconds, the whole file two minutes. | [`the_whole_update_download_stops_at_one_deadline`](../crates/sam-runner/tests/update_partial.rs#L147) |
 | The whole file gets only the time left of the update's limit, never an hour of its own (review B2 S6, R90). | [`the_whole_file_download_gets_only_the_time_left`](../crates/sam-runner/tests/update_partial.rs#L193) |
+| For an app whose update source is a `.zsync` address, reached through a redirect to another address on the same HTTPS server: the update check, then the update (a part of the new version, which the server answers with the whole file, then the whole file) send exactly this and nothing else. | [`update_requests_carry_nothing_about_the_person_or_their_apps`](../crates/sam-runner/tests/update_privacy.rs#L36) |
+| The whole-word match finds a word alone or between other characters, never inside a longer version number. | [`a_version_is_found_only_as_a_whole_word`](../crates/sam-runner/tests/update_privacy.rs#L224) |
+| HEAD, POST and PUT requests, sent here with curl to the recording server, are all in its request log, with their request lines. | [`the_recording_server_records_every_method`](../crates/sam-runner/tests/update_recorder.rs#L18) |
 | Updates download only changes check them and refuse tampering. | [`updates_download_only_changes_check_them_and_refuse_tampering`](../crates/sam-runner/tests/update_server.rs#L212) |
 | ⟲ Regressions (audit U-H4, U-H3): updates were downloaded next to the AppImage under a guessable name (`.<name>.sam-download`) with tools that follow links, so an app with write access to that folder (often Downloads) could plant a link there and SAM wrote the update through it into any file of the person. | [`an_update_writes_through_no_planted_link_and_keeps_the_sandbox`](../crates/sam-runner/tests/update_server.rs#L373) |
 | ⟲ Regression (audit U-H5): when the new version had the same file name as the old one, going back moved the current file onto the kept old version (destroying it), then "restored" the new file and reported that the app was back. | [`going_back_with_an_unchanged_file_name_keeps_both_versions`](../crates/sam-runner/tests/update_server.rs#L468) |
@@ -1368,4 +1371,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 1281 automated Rust tests plus 8 scripted checks.
+Total: 1284 automated Rust tests plus 8 scripted checks.

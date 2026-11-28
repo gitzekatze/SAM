@@ -207,7 +207,7 @@ curl downloads over HTTPS only (also after redirects) with these limits, prints 
 - **SAM functions that rely on it:** [28](functions.md#28), [34](functions.md#34)
 - **Quick check:** `program:curl`
 - **Tests:** `updates_are_downloaded_over_https_only`, `updates_download_only_changes_check_them_and_refuse_tampering`, `a_server_that_sends_more_than_announced_cannot_fill_the_disk` (fully)
-- **Checked first by:** `network_use.rs`, `update_partial.rs`, `update_server.rs` (a broken contract stops these tests with its name)
+- **Checked first by:** `network_use.rs`, `update_partial.rs`, `update_privacy.rs`, `update_server.rs` (a broken contract stops these tests with its name)
 - **Covers:** `program:curl`, `option:--proto`, `option:--proto-redir`, `option:--fail`, `option:--location`, `option:--max-redirs`, `option:--max-time`, `option:--connect-timeout`, `option:--speed-limit`, `option:--speed-time`, `option:--silent`, `option:--show-error`, `option:--user-agent`, `option:--header`, `option:--range`, `option:--disable`, `option:--globoff`
 - **If it breaks:** No update is installed when curl fails; the old version stays. A changed option shows in the update server test.
 

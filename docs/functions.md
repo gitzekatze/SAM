@@ -9,7 +9,7 @@
 >
 > Test results are from the newest version report (2026-11-21 05:11:03).
 
-**42 functions:** 2 proven by passing tests, 39 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 1281 tests in all.
+**42 functions:** 2 proven by passing tests, 39 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 1284 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
@@ -47,7 +47,7 @@
 | 31 | [Disk space per app, and freeing space.](#31) | sam-runner | 2 | ✅ 🆕 1 new test since the report |
 | 32 | [Uninstalling SAM removes what the user guide's *Removing SAM* says it removes, and brings back the menu entries it hid for the apps it removes.](#32) | sam-runner, sam-intake | 4 | ✅ 🆕 2 new tests since the report |
 | 33 | [The doctor check finds problems with the system or an app.](#33) | sam-runner, sam-core | 25 | ✅ 🆕 10 new tests since the report |
-| 34 | [Privacy: SAM sends nothing on its own, and a bug report hides what the security page's *Bug reports* lists, such as your name, home path, IPv4 addresses and secrets.](#34) | sam-gtk, sam-runner | 24 | ✅ 🆕 15 new tests since the report |
+| 34 | [Privacy: SAM sends nothing on its own, and a bug report hides what the security page's *Bug reports* lists, such as your name, home path, IPv4 addresses and secrets.](#34) | sam-gtk, sam-runner | 27 | ✅ 🆕 18 new tests since the report |
 | 35 | [The overview of all apps, with clear status badges.](#35) | sam-gtk, sam-jail-cli, sam-storage, sam-core | 14 | ✅ 🆕 9 new tests since the report |
 | 36 | [The Permission Manager, for one app or several, with tags in the same colors everywhere.](#36) | sam-gtk, sam-profile | 12 | ✅ |
 | 37 | [SAM speaks English, German, Spanish and French: every text in the window and every message from SAM's core. You can choose SAM's language in the main menu; apps keep the system's.](#37) | sam-gtk, sam-core | 12 | ✅ 🆕 6 new tests since the report |
@@ -1578,6 +1578,9 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`everyday_commands_open_no_internet_socket`](../crates/sam-jail-cli/tests/network_use.rs#L2905) | During the window's start (W1-W11, twice: before and after an app is added) and the everyday commands (E1-E22), in a test home with an app whose network is "none", each command did its work (its exit status, and the program that shows it ran: an unpack tool for `add`, Bubblewrap for `run`, `verify` and `doctor`, GnuPG for `doctor --contracts`), and no process SAM started opened an internet socket, set up io_uring or connected to a name-service socket, other than the two named in [`allowed`]. | 🆕 new |
 | [`the_trace_sees_an_update_check`](../crates/sam-jail-cli/tests/network_use.rs#L2988) | The tracer sees SAM's real way out: an update check the person asks for (`updates <id>`) ends with 0, runs curl, and opens an internet socket, whose only internet connect goes to the address the app names (127.0.0.1 and the recorder's port). | 🆕 new |
 | [`the_trace_sees_inside_an_apps_sandbox`](../crates/sam-jail-cli/tests/network_use.rs#L3040) | The tracer follows into an app's sandbox, inside Bubblewrap's namespaces: an app whose start script runs `getent hosts`, started with network "none", shows getent's start and its internet socket in the trace (the app's own network is its permission; here it only proves the tracer sees that far). | 🆕 new |
+| [`update_requests_carry_nothing_about_the_person_or_their_apps`](../crates/sam-runner/tests/update_privacy.rs#L36) | For an app whose update source is a `.zsync` address, reached through a redirect to another address on the same HTTPS server: the update check, then the update (a part of the new version, which the server answers with the whole file, then the whole file) send exactly this and nothing else. | 🆕 new |
+| [`a_version_is_found_only_as_a_whole_word`](../crates/sam-runner/tests/update_privacy.rs#L224) | The whole-word match finds a word alone or between other characters, never inside a longer version number. | 🆕 new |
+| [`the_recording_server_records_every_method`](../crates/sam-runner/tests/update_recorder.rs#L18) | HEAD, POST and PUT requests, sent here with curl to the recording server, are all in its request log, with their request lines. | 🆕 new |
 
 **Code:** [`sam-runner/src/doctor.rs`](../crates/sam-runner/src/doctor.rs), [`sam-runner/src/updates.rs`](../crates/sam-runner/src/updates.rs), [`sam-runner/src/ops/maintain.rs`](../crates/sam-runner/src/ops/maintain.rs), [`sam-gtk/src/backend.rs`](../crates/sam-gtk/src/backend.rs)
 

@@ -18,12 +18,23 @@ use sam_intake::testkit::{build, FixtureFile, FixtureSpec};
 use sam_runner::ops::{AddOptions, Sam};
 
 const SERVER: &str = r#"
-import http.server, ssl, sys, os, threading, time
+import http.server, json, ssl, sys, os, threading, time
 root, cert, key, log = sys.argv[1:5]
 class Handler(http.server.SimpleHTTPRequestHandler):
     tag = ""
     def __init__(self, *a, **k):
         super().__init__(*a, directory=root, **k)
+    # Every request whole, whatever its method, one JSON line each, for the
+    # privacy test (update_privacy.rs): the request line and every header
+    # the client sent, in its order. Read here, before the method decides
+    # what the server answers, so no request is left out.
+    def parse_request(self):
+        ok = super().parse_request()
+        if getattr(self, "headers", None) is not None:
+            with open(log + ".headers", "a") as f:
+                f.write(json.dumps({"tag": self.tag, "line": self.requestline,
+                                    "headers": list(self.headers.items())}) + "\n")
+        return ok
     def do_GET(self):
         rng = self.headers.get("Range")
         with open(log, "a") as f:
@@ -36,6 +47,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             src, dst = open(hook).read().split("\n")[:2]
             os.replace(src, dst)
             os.remove(hook)
+        # /redirect-https/NAME sends the client to NAME on this HTTPS server.
+        if self.path.startswith("/redirect-https/"):
+            self.send_response(302)
+            self.send_header("Location", f"https://127.0.0.1:{srv.server_address[1]}/{self.path[16:]}")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         # /redirect/NAME sends the client to NAME on the plain HTTP server.
         if self.path.startswith("/redirect/"):
             self.send_response(302)
