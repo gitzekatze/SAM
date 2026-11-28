@@ -9,7 +9,7 @@
 >
 > Test results are from the newest version report (2026-11-21 05:11:03).
 
-**42 functions:** 3 proven by passing tests, 38 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 1207 tests in all.
+**42 functions:** 2 proven by passing tests, 39 with new tests not yet in a report, 0 with a failing test, 1 by scripted checks, 0 with a gap, 1209 tests in all.
 
 | | Function | Components | Tests | Result |
 |---|---|---|---|---|
@@ -45,9 +45,9 @@
 | 29 | [SAM notices AppImages that were moved or changed.](#29) | sam-runner, sam-intake | 10 | ✅ 🆕 4 new tests since the report |
 | 30 | [Removing an app deletes only SAM's own folders, never your files.](#30) | sam-runner, sam-storage, sam-core | 9 | ✅ 🆕 3 new tests since the report |
 | 31 | [Disk space per app, and freeing space.](#31) | sam-runner | 2 | ✅ 🆕 1 new test since the report |
-| 32 | [Uninstalling SAM removes everything it created and brings back menu entries it hid.](#32) | sam-runner, sam-intake | 3 | ✅ 🆕 1 new test since the report |
+| 32 | [Uninstalling SAM removes everything it created and brings back menu entries it hid.](#32) | sam-runner, sam-intake | 4 | ✅ 🆕 2 new tests since the report |
 | 33 | [The doctor check finds problems with the system or an app.](#33) | sam-runner, sam-core | 25 | ✅ 🆕 10 new tests since the report |
-| 34 | [Privacy: SAM sends nothing on its own, and a bug report never contains your name, home path, addresses or secrets.](#34) | sam-runner | 9 | ✅ |
+| 34 | [Privacy: SAM sends nothing on its own, and a bug report never contains your name, home path, addresses or secrets.](#34) | sam-runner | 10 | ✅ 🆕 1 new test since the report |
 | 35 | [The overview of all apps, with clear status badges.](#35) | sam-gtk, sam-jail-cli, sam-storage, sam-core | 14 | ✅ 🆕 9 new tests since the report |
 | 36 | [The Permission Manager, for one app or several, with tags in the same colors everywhere.](#36) | sam-gtk, sam-profile | 12 | ✅ |
 | 37 | [SAM speaks English, German, Spanish and French: every text in the window and every message from SAM's core. You can choose SAM's language in the main menu; apps keep the system's.](#37) | sam-gtk, sam-core | 12 | ✅ 🆕 6 new tests since the report |
@@ -1455,6 +1455,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`uninstall_removes_everything_and_restores_menus`](../crates/sam-runner/tests/uninstall.rs#L17) | Uninstalling SAM removes all of its files and restores the menu entries it had hidden. | ✅ |
 | [`uninstall_refuses_folders_that_are_not_sams`](../crates/sam-runner/tests/uninstall.rs#L123) | Uninstalling refuses to delete a folder that is not SAM's, such as the home folder. | ✅ |
 | [`uninstall_removes_only_with_yes`](../crates/sam-jail-cli/tests/commands.rs#L621) | `uninstall` without --yes only says what it would remove; with --yes it removes the sandboxes, and the AppImage files stay. | 🆕 new |
+| [`uninstalling_leaves_only_what_the_person_keeps`](../crates/sam-jail-cli/tests/uninstall_and_report.rs#L601) | What uninstalling SAM removes and keeps, with and without `--keep-data`, for a made, default, linked and moved unpack folder. | 🆕 new |
 
 **Code:** [`sam-runner/src/ops/maintain.rs`](../crates/sam-runner/src/ops/maintain.rs), [`sam-intake/src/menu.rs`](../crates/sam-intake/src/menu.rs)
 
@@ -1505,6 +1506,7 @@ The components are those of the [architecture](architecture.md#level-3-component
 | [`the_machine_id_reaches_only_apps_with_dbus`](../crates/sam-sandbox/src/lib.rs#L4062) | The machine ID identifies this computer; an app sees it only with D-Bus, which needs it, never without. | ✅ |
 | [`bug_reports_hide_tokens_in_every_shape`](../crates/sam-runner/src/doctor.rs#L1204) | Bug reports also hide what gives access in other shapes (audit U-L5): a token after `#` or inside a link's path, `Authorization` and cookie lines, and named secrets in settings and logs. | ✅ |
 | [`a_log_cannot_break_out_of_its_code_block`](../crates/sam-runner/src/doctor.rs#L1276) | An app's log cannot end the report's code block and add text of its own after it: the fence is always longer than any run of backticks inside. | ✅ |
+| [`a_bug_report_removes_the_personal_details_it_promises_to`](../crates/sam-jail-cli/tests/uninstall_and_report.rs#L718) | `sam-jail report APP` holds the app's launch log without the home folder, another user's name, the user name, an email address, an IP address or a given variable's value, and without the computer's name when it is longer than one letter. | 🆕 new |
 
 **Code:** [`sam-runner/src/doctor.rs`](../crates/sam-runner/src/doctor.rs)
 
