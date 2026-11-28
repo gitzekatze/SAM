@@ -14,9 +14,9 @@
 - The help of the *Bluetooth* switch now says what the switch controls:
   Bluetooth sockets, which reach nearby devices only with full network
   access and which the syscall filter otherwise refuses while it is on,
-  except for an app whose start program is 32-bit. An app that may reach the Bluetooth
-  service on the system D-Bus can use Bluetooth devices through it, with
-  or without the switch. The warning shown with the switch on no longer
+  except for an app whose start program is 32-bit. An app that may reach
+  the Bluetooth service on the system D-Bus can use Bluetooth devices
+  through it, with or without the switch. The warning shown with the switch on no longer
   says that the switch is ignored without the system bus.
 - The note itself now says that such sockets can be of families the
   filter would refuse, instead of "of any type".
