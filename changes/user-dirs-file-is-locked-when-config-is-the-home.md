@@ -6,14 +6,20 @@
   writable could rewrite the file SAM really reads and, at a later start
   or a start running at the same time, be shown other folders as its user
   folders.
-- SAM now keeps `~/user-dirs.dirs` read-only there as well, and the app
-  cannot rename it away. When the file is missing, SAM creates it empty
+- SAM now keeps `~/user-dirs.dirs` read-only there as well, and when it
+  is not a link, the app cannot rename it away. When the file is missing, SAM creates it empty
   before the start, as it does `~/.config/user-dirs.dirs`, so the app
   cannot write one there while it runs. SAM does the same for
   `~/cfg/user-dirs.dirs` when `XDG_CONFIG_HOME` names `~/cfg`.
 - While another app runs that saw the file missing, SAM leaves it
   missing; a file an app writes there then is moved aside, within moments while
   the home is watched, otherwise when the app ends.
+- When the file is a link (dotfiles), SAM locks the file the link leads
+  to, but the app can replace the link while it runs. SAM moves the app's
+  file aside and puts the link back, within moments while the home is
+  watched, otherwise when the app ends; a start in between finds the user
+  folders the app's file names. When the link leads to a missing file,
+  nothing is locked and SAM does not create it.
 - SAM reads `XDG_CONFIG_HOME` from the environment of each start. A start
   whose environment does not set it (for example a start from a menu entry
   while the variable is set only in a shell's startup file) leaves the file
