@@ -103,14 +103,15 @@ what a private home showed as the fonts
   bind only narrows: where the place the link leads to lies strictly
   inside a folder this start shows writable (never that folder itself,
   the home or a folder above it), SAM binds that place read-only wherever
-  the app reaches it there, and pins the folders between the two, so the
-  app cannot rename one of them away with the bind inside. With the home
+  the app reaches it there. Where the app cannot change the folder that
+  holds the link, SAM also pins the folders between the two, so the app
+  cannot rename one of them away with the bind inside: with the home
   read-only, `~/dotfiles` an extra writable folder and
   `~/.config/fontconfig` your link to
   `../dotfiles/fontconfig/.config/fontconfig`, the app therefore cannot
   write the font settings that programs outside the sandbox load there.
-  SAM pins only where the app cannot change the folder that holds the
-  link; where it can, the app can replace the link itself (below). SAM
+  Where the app can change that folder, it can replace the link itself
+  (below). SAM
   makes no such bind where the name of a place it would bind is not valid
   text: it then only names the link, the place stays as writable as that
   folder shows it, and the start runs
@@ -143,9 +144,8 @@ store. Keep the real files at that place. With the whole home, a link that
 stays inside the home under the home's own name (a relative link, or one
 through `/home/u`) works through the home. A link that leads out of the
 home (a second disk, the Nix or Guix store) shows only what the sandbox
-shows at that place anyway, usually nothing, also with the whole home;
-with the whole home, also add the place it leads to as an extra read-only
-folder. With the home kept
+shows at that place anyway, usually nothing, also with the whole home:
+there, add the place it leads to as an extra read-only folder. With the home kept
 behind a link, the same holds for a link that names the home's real place
 (`/data/u/myfonts`): make it relative. The
 common link `~/.fonts` to `~/.local/share/fonts` loses nothing, since SAM
@@ -153,8 +153,9 @@ shows `~/.local/share/fonts` itself. Anyone who can write a protected name
 can keep your fonts out of a private home this way (`~/.config/gh` made a
 link into `~/.fonts`), and anyone who can write in your home can make a
 folder inside a writable grant read-only for the app while the link
-exists, and the folders between that grant and the folder pinned, so the
-app cannot rename or remove them meanwhile. Neither makes anything
+exists, and, where the link lies in a folder the app cannot change, the
+folders between that grant and the folder pinned, so the app cannot
+rename or remove them meanwhile. Neither makes anything
 readable or writable, and the start names it.
 
 **Not covered.**

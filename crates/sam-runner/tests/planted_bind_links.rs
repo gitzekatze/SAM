@@ -1240,7 +1240,7 @@ fn a_protected_link_never_knocks_out_the_read_only_font_settings_in_a_real_sandb
                 assert_eq!(r["WRITE0"], "30", "{what}, real place: {text}");
             }
             if name == "private home" && !planted {
-                assert_ne!(r["WRITE1"], "ok", "{what}, home's name: {text}");
+                assert_eq!(r["WRITE1"], "30", "{what}, home's name: {text}");
             }
             assert_eq!(r["WRITE2"], "ok", "{what}, control: {text}");
             fs::remove_file(real.join(".config/other.txt")).unwrap();
