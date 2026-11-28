@@ -97,11 +97,12 @@ fn curl_args(req: &Request, max_secs: u64) -> Result<Vec<String>> {
     }
     // The server part: after `https:` and every `/` or `\` that follows it
     // (curl reads `https:///name:secret@host/` with a login too), up to the
-    // next `/`, `\`, `?` or `#`. A login is an `@` there, also written as
-    // `%40`.
+    // next `/`, `?` or `#`, where curl ends it (a `\` there belongs to the
+    // login, as in `https://a\b@host/`). A login is an `@` there, also
+    // written as `%40`.
     let server = url["https:".len()..]
         .trim_start_matches(['/', '\\'])
-        .split(['/', '\\', '?', '#'])
+        .split(['/', '?', '#'])
         .next()
         .unwrap_or_default();
     if server.contains('@') || server.to_ascii_lowercase().contains("%40") {
@@ -1666,6 +1667,8 @@ mod tests {
             "https://\\name:secret@example.org/App.zsync",
             "https://name%40x:secret%40y@example.org/App.zsync",
             "https://name%40example.org/App.zsync",
+            "https://name:secret\\x@example.org/App.zsync",
+            "https://a\\b@host/x",
         ] {
             for req in [
                 Request::Answer {

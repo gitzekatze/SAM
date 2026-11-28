@@ -1889,12 +1889,19 @@ and in the TLS handshake).
 licence, a link in the guide) opens in your browser only when you click it.
 Your browser then loads it; SAM sends nothing itself.
 
-How this is checked, and what the checks do not cover, is in the
-[privacy check](reports/privacy-check-2026-11-28.md). One of its limits:
-the contract check and the bug report run `curl --version`, whose
-libraries look up your account and this computer's name through the
-system's name service; where that service asks a server (accounts from a
-network directory, for example), that lookup may leave the computer.
+How this is checked, and what the checks do not cover, is in the [privacy
+check](reports/privacy-check-2026-11-28.md). Its build gate is a safety net,
+not a proof: in the code CI's clippy compiles (the debug build for x86_64
+with default features), a new direct call of a function listed in
+clippy.toml fails CI — clippy without an `#[expect]`, the pin test without
+its exact line in the reviewed list. It catches accidental new network or
+program calls in SAM's own code, not code written to get around it; the
+traced run and the request tests are the proof of what SAM does. One of
+the check's limits: the contract check and the bug report run
+`curl --version`, whose libraries look up your account and this computer's
+name through the system's name service; where that service asks a server
+(accounts from a network directory, for example), that lookup may leave
+the computer.
 
 Only the AppImage SAM unpacked is checked: SAM
 reads the file once, compares its checksum with what it unpacked last and

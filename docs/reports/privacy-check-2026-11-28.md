@@ -63,21 +63,26 @@ Each test's own description says exactly what it proves; together:
 
 1. **The static gate** (`each_listed_call_in_program_code_is_a_listed_place`,
    `the_way_out_parser_reads_what_the_compiler_reads`, in
-   `crates/sam-jail-cli/tests/network_use.rs`). A new direct call in SAM's
-   program code of one of the functions listed in clippy.toml fails CI's
-   clippy step until it is listed with its exact line. This covers the
-   code CI's clippy compiles: the debug build for x86_64, all features.
-   Today 93 places are listed, each with what it runs, when and what it
-   sends. **Does not prove:** functions clippy.toml does not list; macros,
-   function pointers and generic helpers (which program a generic place
-   runs, or what new callers of a generic helper ask it to run); `extern`
-   blocks, `asm!`, `include!` and `#[path]` only as far as the parser
-   refuses them; release-only and aarch64-only code; the arguments of a
-   listed program in later statements (except curl's); messages over an
-   already listed socket; links inside label markup; `build.rs` and the
-   room helper `crates/sam-runner/room-exec/main.rs` (with its own
-   `execve`), which the build compiles without clippy; shell code
-   (`AppRun` is pinned instead); libraries' own behaviour.
+   `crates/sam-jail-cli/tests/network_use.rs`). A safety net, not a proof:
+   in the code CI's clippy compiles (the debug build for x86_64 with default
+   features), a new direct call of a function listed in clippy.toml fails CI
+   — clippy without an `#[expect]`, the pin test without its exact line in
+   the reviewed list. It catches accidental new network or program calls in
+   SAM's own code, not code written to get around it; the traced run and the
+   request tests are the proof of what SAM does. Today 93 places are listed,
+   each with what it runs, when and what it sends. **Does not prove:**
+   functions not listed; macros, function pointers and generic helpers;
+   foreign functions called through a path (`self::NAME`) or declared in a
+   listed block; code outside the `src` folders or reached through
+   attributes (`cfg_attr(…, path = …)`, a `rustfmt::skip` hidden there), and
+   modules of a crate root outside `src`; `asm!` and `naked_asm!`;
+   release-only and aarch64-only code; `build.rs`;
+   libraries' own behaviour; which program a generic place runs, or what new
+   callers of a generic helper ask it to run; the arguments of a listed
+   program in later statements (except curl's); messages over an already
+   listed socket; links inside label markup; the room helper
+   `crates/sam-runner/room-exec/main.rs` with its own `execve`, which the
+   build compiles without clippy; shell code (`AppRun` is pinned instead).
 2. **What every update request is built from**
    (`every_update_request_has_exactly_these_curl_arguments`,
    `the_github_address_is_exactly_the_release_address`,
@@ -187,8 +192,9 @@ container; the GnuPG programs in its trace show it ran.
   curl also reads a `~/.curlrc` (**likely**); SAM's update requests do not.
 - **pasta's probe socket.** `pasta --help` and `--version`, which doctor
   runs, open one TCP socket to read the kernel's buffer sizes; the test
-  allows this only for that program and checks that it connects nowhere
-  on the internet and sends nothing on it.
+  allows this only for a program of that file name after a successful
+  start, with those arguments, and checks that it connects nowhere on the
+  internet and sends nothing on it.
 - **Libraries' own behaviour** outside the traced commands, including the
   window's process: GLib or GTK may look up the user's own account through
   the name service, which can leave the computer where accounts come from a
