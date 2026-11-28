@@ -699,7 +699,14 @@ pub fn prepare(
         // aside at once (review B2 R52).
         sam_sandbox::prepare_home_protection_alongside(&ctx, &others);
         // After the folders above are made, so they do not count as new.
-        home_watch = sam_sandbox::HomeWatch::before_alongside(&ctx, &others);
+        // Only with the shared records open: `writes_start_places` reads
+        // links on disk, so asking it a second time could answer otherwise,
+        // and a watch without a record would take no last look in its turn.
+        home_watch = if shared.is_some() {
+            sam_sandbox::HomeWatch::before_alongside(&ctx, &others)
+        } else {
+            None
+        };
         if let (Some(s), Some(w)) = (&shared, &home_watch) {
             let name = format!(
                 "{}-{}",
@@ -1468,8 +1475,9 @@ fn run_once(
     let mut found = std::mem::take(&mut prepared.moved_at_start);
     found.extend(live_watch.map(|l| l.finish()).unwrap_or_default());
     // In this launch's turn. A launch has a home watch exactly when it has
-    // a record (both come with `writes_start_places`), so the record's look
-    // is the look of every watched launch.
+    // a record (`prepare` makes the watch only with the shared records
+    // open, and keeps a record for every watch), so the record's look is
+    // the look of every watched launch.
     if let Some(r) = prepared.home_record.take() {
         found.extend(r.last_look());
     }

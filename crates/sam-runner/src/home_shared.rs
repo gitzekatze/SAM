@@ -331,7 +331,7 @@ pub struct Registration {
     watch: HomeWatch,
     aside: PathBuf,
     armed: bool,
-    /// Where its last look takes its turn.
+    /// Where its looks take their turn.
     turns: Turns,
 }
 
