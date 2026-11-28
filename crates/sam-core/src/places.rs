@@ -430,8 +430,10 @@ pub fn is_sams_name(place: &str) -> bool {
 /// The places SAM never shares as a file or folder named on the command
 /// line or opened with the app (docs/security.md, *Files named on the
 /// command line*): one list, asked once per path on its one walk
-/// ([`follow`]), and the place shared is the place judged
-/// ([`RefusedForOpened::refuses`]).
+/// ([`follow`]); the sandbox then binds the path it judged
+/// ([`RefusedForOpened::refuses`]). Bubblewrap follows that path again
+/// when it mounts it, so a second program that swaps a part of the way
+/// for a link in between is not covered (docs/security.md).
 ///
 /// The places are named, never resolved: the key folders, start places
 /// and credential stores ([`PROTECTED_RO`], [`SENSITIVE_DOTFILES`], also
@@ -445,10 +447,9 @@ pub fn is_sams_name(place: &str) -> bool {
 /// as written and in the folder that really holds it, not where a link at
 /// its own name leads. Besides, where each key folder, start place and
 /// credential store really leads (`~/.bashrc` a link to
-/// `~/dotfiles/bashrc`); for a credential store, unless that is the home or
-/// a folder above it, while a key folder or start place that leads there
-/// refuses all of it (`~/.config/fish` a link to the home refuses every
-/// file in the home).
+/// `~/dotfiles/bashrc`); one that leads to the home or a folder above it
+/// refuses all of it (`~/.config/fish` or `~/.oci` a link to the home
+/// refuses every file in the home).
 #[derive(Debug, Clone)]
 pub struct RefusedForOpened {
     home: PathBuf,
@@ -461,10 +462,8 @@ pub struct RefusedForOpened {
     /// Every named place, sorted, with no duplicates.
     named: Vec<PathBuf>,
     /// Where each named key folder, start place and credential store
-    /// really leads, sorted; for a credential store never the home or a
-    /// folder above it, so a store an app made a link to the home refuses
-    /// nothing in it, while a start place made a link to the home refuses
-    /// all of it.
+    /// really leads, sorted; one made a link to the home refuses all of
+    /// it.
     led_to: Vec<PathBuf>,
     /// `/`; a test judges the system folders below a scratch folder.
     root: PathBuf,
@@ -490,9 +489,9 @@ pub fn refused_for_opened_with(
     homes.dedup();
     // The places relative to the home, as the sandbox locks and hides
     // them (a variable folder inside the home included), and the folders
-    // refused as a whole there (the `~/` entries of the risk list). The
-    // key folders and start places (`keys`) are kept apart from the
-    // credential stores (`stores`) for where they lead, below.
+    // refused as a whole there (the `~/` entries of the risk list): the
+    // key folders and start places (`keys`) and the credential stores
+    // (`stores`).
     let keys_in_home: Vec<String> = protected_places_with(home, config.clone(), data.clone())
         .into_iter()
         .chain([".ssh".to_string(), ".gnupg".to_string()])
@@ -519,24 +518,13 @@ pub fn refused_for_opened_with(
             }
         }
     }
-    // Where each place really leads. A credential store that leads to the
-    // home or a folder above it (a link an app planted at a missing
-    // `~/.oci`) refuses nothing there, so one such link cannot make every
-    // opened file unshared. A key folder or start place that leads there
-    // refuses all of it: with `~/.config/fish` a link to the home, fish
-    // reads `~/config.fish` and `~/conf.d/*.fish` outside the sandbox, so
-    // a writable `~/conf.d` would let the app plant a file that runs at
-    // the next shell.
-    let mut led_to: Vec<PathBuf> = keys
-        .iter()
-        .map(|p| resolve(p))
-        .chain(
-            stores
-                .iter()
-                .map(|p| resolve(p))
-                .filter(|r| !is_home_or_above(home, &real_home, r)),
-        )
-        .collect();
+    // Where each place really leads. One that leads to the home or a
+    // folder above it refuses all of it, as SAM always did: with
+    // `~/.config/fish` a link to the home, fish reads `~/config.fish` and
+    // `~/conf.d/*.fish` outside the sandbox, so a writable `~/conf.d` would
+    // let the app plant a file that runs at the next shell; with `~/.oci`
+    // a link to the home, the OCI tool reads `~/config`.
+    let mut led_to: Vec<PathBuf> = keys.iter().chain(&stores).map(|p| resolve(p)).collect();
     led_to.sort();
     led_to.dedup();
     named.extend(keys);
@@ -558,15 +546,23 @@ pub fn refused_for_opened_with(
 /// never where a link at its own name leads (`/data` a link to
 /// `/disk/data` makes `XDG_CONFIG_HOME=/data/cfg` also `/disk/data/cfg`).
 /// Where the start places and stores in it really lead is added by
-/// [`refused_for_opened_with`]. Nothing for a value that is relative or has
-/// no last name (`/`, one ending in `..`): the XDG Base Directory
-/// specification has programs ignore a relative one (a relative one inside
-/// the home still counts as the sandbox's locks take it,
-/// [`protected_places_with`]).
+/// [`refused_for_opened_with`]. For `/` itself (also written `//` or `/.`)
+/// just `/`: programs then keep their start places and stores at the top
+/// of the root (`/autostart`, `/gh`). Nothing for a value that is relative
+/// or ends in `..` (the sandbox does not start with a `..` in either
+/// variable): the XDG Base Directory specification has programs ignore a
+/// relative one (a relative one inside the home still counts as the
+/// sandbox's locks take it, [`protected_places_with`]).
 fn variable_folder(dir: Option<PathBuf>) -> Vec<PathBuf> {
     let Some(dir) = dir.filter(|d| d.is_absolute()) else {
         return Vec::new();
     };
+    if dir
+        .components()
+        .all(|c| matches!(c, Component::RootDir | Component::CurDir))
+    {
+        return vec![PathBuf::from("/")];
+    }
     let (Some(parent), Some(Component::Normal(name))) =
         (dir.parent(), dir.components().next_back())
     else {
@@ -610,8 +606,7 @@ impl RefusedForOpened {
     ///   its way, it is or lies inside a named place;
     /// - where it leads, or at a link on its way, it is or lies inside the
     ///   place a key folder, start place or credential store really leads
-    ///   to (for a credential store, unless that is the home or a folder
-    ///   above it).
+    ///   to.
     pub fn refuses(&self, written: &Path, way: &Way) -> bool {
         if way.stuck || is_home_or_above(&self.home, &self.real_home, &way.leads) {
             return true;
@@ -4084,14 +4079,15 @@ mod tests {
     /// key folder, start place or credential store really leads
     /// (`~/.netrc` a link to `~/Sync/netrc`, `~/.bashrc` to
     /// `~/dotfiles/bashrc`), while a user folder set there is shown as
-    /// before (user folders do not ask this list). Where a store's link
-    /// leads to the home or above (as an app could plant it), nothing in
-    /// the home is refused for it; where `~/.config` really is kept
-    /// (`~/dotfiles/config`), other files are shared and the start places
-    /// and stores in it are refused (`autostart/x.desktop`,
-    /// `git/credentials`). Where a start place or key folder leads to the
-    /// home (`~/.config/fish` or `~/.ssh` a link to `~`), every file in
-    /// the home is refused (`~/conf.d`, `~/config.fish`).
+    /// before (user folders do not ask this list). Where `~/.config` really
+    /// is kept (`~/dotfiles/config`), other files are shared and the start
+    /// places and stores in it are refused (`autostart/x.desktop`,
+    /// `git/credentials`). Where a start place, key folder or credential
+    /// store leads to the home (`~/.config/fish`, `~/.ssh`, `~/.oci` or
+    /// `~/.password-store` a link to `~`), every file in the home is
+    /// refused (`~/conf.d`, `~/config.fish`), and where a store leads to a
+    /// folder above the home (`~/.kube` a link to the scratch folder
+    /// standing for `/`), every file in that folder is.
     #[test]
     fn opened_files_are_also_refused_where_a_listed_place_leads() {
         let t = scratch();
@@ -4120,8 +4116,6 @@ mod tests {
         link_to(&home.join("Sync/netrc"), &home.join(".netrc"));
         link_to(&home.join("dotfiles/bashrc"), &home.join(".bashrc"));
         link_to(&home.join("dotfiles/config"), &home.join(".config"));
-        link_to(&home, &home.join(".oci"));
-        link_to(&base, &home.join(".kube"));
         let opened = refused_for_opened_with(&home, None, None);
         for p in [home.join("Sync/netrc"), home.join("dotfiles/bashrc")] {
             assert!(refuses_opened(&opened, &p), "{p:?} is not shared");
@@ -4145,10 +4139,16 @@ mod tests {
         ] {
             assert!(!refuses_opened(&opened, &p), "{p:?} is shared");
         }
-        // A start place or key folder that leads to the home, unlike a
-        // store: the programs outside the sandbox read its files from the
-        // home itself.
-        for (who, place) in [("bo", ".config/fish"), ("cy", ".ssh")] {
+        // A start place, key folder or credential store that leads to the
+        // home: the programs outside the sandbox read its files from the
+        // home itself (fish reads `~/config.fish`, the OCI tool
+        // `~/config`).
+        for (who, place) in [
+            ("bo", ".config/fish"),
+            ("cy", ".ssh"),
+            ("dee", ".oci"),
+            ("eve", ".password-store"),
+        ] {
             let home = base.join("home").join(who);
             make_dirs(&home, &[".config", "conf.d"]);
             for f in ["conf.d/x.fish", "config.fish"] {
@@ -4162,6 +4162,24 @@ mod tests {
                     "{f} with {place} a link to the home"
                 );
             }
+        }
+        // A credential store that leads to a folder above the home refuses
+        // every file in that folder, in the home and outside it; the system
+        // folders are judged below the scratch folder, so only the store
+        // refuses `out/x.txt`.
+        let home = base.join("home/fay");
+        make_dirs(&home, &["work"]);
+        make_dirs(&base, &["out"]);
+        for f in [home.join("work/a.txt"), base.join("out/x.txt")] {
+            std::fs::write(&f, "x").unwrap();
+        }
+        link_to(&base, &home.join(".kube"));
+        let opened = refused_for_opened_with(&home, None, None).under_root(base.clone());
+        for p in [home.join("work/a.txt"), base.join("out/x.txt")] {
+            assert!(
+                refuses_opened(&opened, &p),
+                "{p:?} with .kube a link above the home"
+            );
         }
     }
 

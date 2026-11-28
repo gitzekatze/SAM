@@ -934,8 +934,9 @@ How these stay protected with the home writable:
   the home's access, and the sandbox check reports this.
 - **Files named on the command line** (and files you open with the app)
   are judged on one walk: as written (with `..` taken back), where they
-  lead and at each link on the way; SAM shares the place it judged. SAM
-  does not share a file or folder:
+  lead and at each link on the way; SAM then binds the path it judged
+  (Bubblewrap follows that path again when it mounts it; see *Not
+  covered* below). SAM does not share a file or folder:
   - that is the home or a folder above it;
   - that leads into a system folder, or whose way passes a link in one:
     `/etc`, `/usr`, `/boot`, `/root`, `/var`, `/proc`, `/sys`, `/dev` and
@@ -954,9 +955,10 @@ How these stay protected with the home writable:
     `XDG_CONFIG_HOME` or `XDG_DATA_HOME` puts them: in another folder in
     the home (`~/cfg/autostart`), outside the home (`/data/cfg/autostart`,
     `/data/cfg/gh`), or at the top of the home when a variable names the
-    home itself (`~/autostart`, `~/git`, `~/gh`); and the folders the two
-    variables name, as a whole, unless one names the home or a folder
-    above it. A settings or data folder named this way is taken as
+    home itself (`~/autostart`, `~/git`, `~/gh`), or at the top of the
+    root when a variable names `/` (`/autostart`, `/gh`); and the folders
+    the two variables name, as a whole, unless one names the home or a
+    folder above it. A settings or data folder named this way is taken as
     written and in the folder that really holds it (`/data` a link to
     `/disk/data`);
   - that leads into, or whose way passes a link inside, the place a key
@@ -964,12 +966,11 @@ How these stay protected with the home writable:
     `~/.bashrc` a link to `~/dotfiles/bashrc`, the file
     `~/dotfiles/bashrc` is not shared, and with `/data/cfg/autostart` a
     link to `/data/auto` while `XDG_CONFIG_HOME` is `/data/cfg`, neither
-    is `/data/auto/x.desktop`. A credential store that leads to the home
-    or a folder above it (a link an app made at a missing `~/.oci`)
-    refuses nothing there. A key folder or start place that leads there
-    refuses all of it: with `~/.config/fish` a link to the home, fish
-    reads `~/config.fish` and `~/conf.d` outside the sandbox, so no file
-    in the home is shared;
+    is `/data/auto/x.desktop`. A key folder, start place or credential
+    store that leads to the home or a folder above it refuses all of it:
+    with `~/.config/fish` a link to the home, fish reads `~/config.fish`
+    and `~/conf.d` outside the sandbox, and with `~/.oci` a link to the
+    home, the OCI tool reads `~/config`, so no file in the home is shared;
   - that is or lies inside one of SAM's folders.
 
   A folder is also not shared when it holds the home or one of these
@@ -994,13 +995,19 @@ How these stay protected with the home writable:
   writable `/data`) can make it a link to another folder; a file you
   open in that folder's start places and stores, or anywhere in it for a
   store, is then not shared, and neither is a folder you open that holds
-  that place; an app that makes a start place or key folder a link to the
-  home makes every file in the home unshared. A credential store that
-  really is the home or a folder above it (`~/.password-store` a link to
-  the home) does not keep the files in the home from being shared. A file
-  SAM does not share for
-  these reasons is not named at the start; the app reports it as
-  missing.
+  that place; an app that makes a start place, key folder or credential
+  store a link to the home makes every file in the home unshared. SAM
+  binds the path it judged, not the file it found: a second program that
+  can write a folder on the way to a file or folder you open (another
+  sandbox, or a running copy of the app with that folder writable; starts
+  of one app may run side by side) can swap a part of the way for a link
+  in the short time between SAM's look and Bubblewrap's mount, and
+  Bubblewrap follows that link, so a start file could be shared writable
+  at the place you opened. This race is older than this list; checking
+  each bound place inside the finished sandbox before the app starts, and
+  binding through an open handle, which close it, are planned. A file SAM
+  does not share for these reasons is not named at the start; the app
+  reports it as missing.
 
   With files opened with the app set to *No access*
   (`filesystem.opened_files = "none"`, also an old profile's `false`), none

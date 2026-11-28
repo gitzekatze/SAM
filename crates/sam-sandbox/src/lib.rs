@@ -1991,13 +1991,15 @@ fn guard_home(a: &mut Args, home: &Path, fsp: &FilesystemPerms, views: &Views, s
 /// `~/.config`, `~/.local` and the folders `XDG_CONFIG_HOME` and
 /// `XDG_DATA_HOME` name, as written, where it leads and at each link on its
 /// way, also where a key folder, start place or credential store really
-/// leads: for a credential store, unless that is the home or a folder
-/// above it; a key folder or start place leading there refuses all of
+/// leads: one leading to the home or a folder above it refuses all of
 /// it), anything inside SAM's own folders wherever they are; and a
 /// folder also never when it holds such a place or the home, or lies
-/// outside the home and the mounted drives. Each is shared at the place
-/// judged, on one walk: with `~/.bashrc` a link into `~/dotfiles`, opening
-/// `~/dotfiles` would share the real start file (audit D-M2, S-F13).
+/// outside the home and the mounted drives. Each is judged on one walk,
+/// and the path judged is the one bound: with `~/.bashrc` a link into
+/// `~/dotfiles`, opening `~/dotfiles` would share the real start file
+/// (audit D-M2, S-F13). Bubblewrap follows that path again when it
+/// mounts it; a second program that swaps a part of the way for a link
+/// in between is not covered (docs/security.md).
 pub fn opened_paths(ctx: &LaunchContext) -> Vec<(PathBuf, bool)> {
     opened_paths_in(ctx, &Views::base(ctx))
 }
@@ -2122,8 +2124,8 @@ fn shareable_paths_with(
         } else {
             ctx.owd.join(given)
         };
-        // One walk, judged and shared: the place shared is the place
-        // judged.
+        // One walk: the path judged is the path bound (Bubblewrap
+        // follows it again when it mounts it).
         let way = sam_core::places::follow(&joined);
         if refused.refuses(&joined, &way) {
             continue;
@@ -6401,6 +6403,11 @@ mod guard_tests {
     ///   home (`/data/cfg`), its start places and stores, read and write or
     ///   read-only, and the folder itself; a file beside it is shared;
     /// - with `XDG_DATA_HOME` outside the home (`/share`), a store in it;
+    /// - with either variable at `/`, the start places and stores at the
+    ///   top of the root (`/autostart/x.desktop`, `/gh/hosts.yml`,
+    ///   `/applications/x.desktop`, `/keyrings/login.keyring`), judged by
+    ///   their names alone, so they need not exist; a file in the home is
+    ///   still shared;
     /// - a file reached through a link in `~/.config` (`~/x`), or through a
     ///   start place's own link to a file elsewhere;
     /// - a file where a start place really leads when the settings folder
@@ -6541,6 +6548,24 @@ mod guard_tests {
         };
         assert!(!opened_with_data(Some(base.join("share"))), "{keyring:?}");
         assert!(opened_with_data(None), "{keyring:?} without the variable");
+        let root = || Some(PathBuf::from("/"));
+        for (config, data, f) in [
+            (root(), None, "/autostart/x.desktop"),
+            (root(), None, "/gh/hosts.yml"),
+            (None, root(), "/applications/x.desktop"),
+            (None, root(), "/keyrings/login.keyring"),
+        ] {
+            let refused = sam_core::places::refused_for_opened_with(&home, config, data);
+            let f = Path::new(f);
+            assert!(
+                refused.refuses(f, &sam_core::places::follow(f)),
+                "{f:?} with a variable at /"
+            );
+        }
+        assert!(
+            shared(root(), home.join("work/a.txt"), true),
+            "control: the variable at /"
+        );
         assert!(!shared(None, home.join("x"), true), "a link in ~/.config");
         assert!(!shared(None, home.join(".config/fish/config.fish"), true));
         assert!(

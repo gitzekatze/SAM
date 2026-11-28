@@ -9,25 +9,24 @@ page names under *Files named on the command line*:
   (`/data/cfg/autostart/x.desktop`, `/data/cfg/gh/hosts.yml`) or at the top
   of the home when a variable names the home itself
   (`~/autostart/x.desktop`, `~/git/...`; a store there, such as
-  `~/gh/hosts.yml`, was refused before too); before, such files were
-  shared, writable with Read & write, so an app could add a login
+  `~/gh/hosts.yml`, was refused before too), or at the top of the root
+  when a variable names `/` (`/autostart/x.desktop`); before, such files
+  were shared, writable with Read & write, so an app could add a login
   autostart entry that runs outside the sandbox;
 - the folders the two variables name are refused as a whole, as
   `~/.config` and `~/.local` are, unless one names the home itself or a
   folder above it;
 - a file reached through a link that lies in a protected place, or in the
   place a key folder, start place or store really leads to, is refused;
-  where a key folder or start place leads to the home (`~/.config/fish` a
-  link to `~`), every file in the home is refused, as before;
+  where a key folder, start place or credential store leads to the home
+  (`~/.config/fish` or `~/.oci` a link to `~`), every file in the home is
+  refused, as before;
 - a folder that holds such a moved place is not shared either (`~/d` while
   `XDG_CONFIG_HOME` is `~/d/cfg`);
-- each path is judged on one walk and shared at the place judged;
+- each path is judged on one walk, and SAM binds the path it judged;
 - a home kept behind a link inside a system folder (`/home/ann` a link to
   `/var/home/ann`) no longer makes every file in it count as a system
-  file, so those files can be opened again;
-- a credential store an app made a link to the home (or a folder above
-  it) no longer makes every file in the home unshared; this holds for
-  credential stores only, not for start places or key folders.
+  file, so those files can be opened again.
 
 Who loses what: an editor can no longer open, from the command line, a
 file inside a folder that `XDG_CONFIG_HOME` or `XDG_DATA_HOME` names
@@ -38,9 +37,12 @@ outside the sandbox; where a variable names the home, giving it a folder
 of its own (the usual `~/.config`) also brings back the files at the top
 of the home.
 
-Not covered: a credential store that really is the home or a folder
-above it (`~/.password-store` a link to `~`) no longer keeps the files in
-the home from being shared. A file that a link inside a protected place
-points to is shared when you name it by its real place, and a second
-name made with a hard link or a bind mount is not recognised. User
-folders (Documents, Downloads, ...) are judged as before.
+Not covered: a second program that can write a folder on the way to a
+file you open (another sandbox, or a running copy of the app) can swap a
+part of the way for a link between SAM's look and Bubblewrap's mount, and
+Bubblewrap follows that link; this race is older than this change, and
+binding through an open handle is planned. A file that a link inside a
+protected place points to is shared when you name it by its real place,
+and a second name made with a hard link or a bind mount is not
+recognised. User folders (Documents, Downloads, ...) are judged as
+before.
