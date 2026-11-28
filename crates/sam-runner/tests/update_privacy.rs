@@ -32,7 +32,10 @@ fn names(text: &str, word: &str) -> bool {
 /// `application/json, */*` or `*/*`; `Range: bytes=<digits>-<digits>`).
 /// No request names the user, the login, this computer's name, the home,
 /// the test's folder, the app's record, the installed file's name or SAM's
-/// version. All three kinds are seen: a description, a part, a whole file.
+/// version (the address itself names the app, as every update check must).
+/// All three kinds are seen: a description, a part, a whole file. The
+/// request line may say HTTP/1.1 or HTTP/1.0: the stand-in answers in 1.0,
+/// and curl then speaks 1.0 to it after the redirect.
 #[test]
 fn update_requests_carry_nothing_about_the_person_or_their_apps() {
     let tmp = tempfile::tempdir().unwrap();

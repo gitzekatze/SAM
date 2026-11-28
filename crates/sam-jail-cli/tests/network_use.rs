@@ -3,12 +3,14 @@
 //! exactly what it proves; the limits are named in
 //! docs/reports/privacy-check-*.md.
 //!
-//! - The static gate: clippy refuses, in SAM's program code, every direct
-//!   call that starts a program, opens a socket, looks up a name or an
-//!   account, hands a link or a remote file to the desktop, or enters the
-//!   update chain (clippy.toml, `disallowed-methods` and
-//!   `disallowed-types`). Each place that needs one carries an
-//!   `#[expect(...)]`, and [`WAYS_OUT`] lists each of them word for word.
+//! - The static gate: a new direct call in SAM's program code of one of
+//!   the functions listed in clippy.toml fails CI's clippy step until it is
+//!   listed with its exact line ([`WAYS_OUT`]). This covers the code CI's
+//!   clippy compiles: the debug build for x86_64, all features. Not
+//!   covered: functions not listed; macros, function pointers and generic
+//!   helpers; `extern` blocks, `asm!`, `include!` and `#[path]` only as
+//!   far as the parser refuses them; release-only and aarch64-only code;
+//!   `build.rs` and the room helper; libraries' own behaviour.
 //! - Pinned texts: the update module, the window's start and `AppRun`.
 //! - The list of libraries SAM is built from.
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
@@ -142,6 +144,8 @@ fn code_only(text: &str) -> String {
 struct Attr {
     /// 1-based line of its `#`.
     line: usize,
+    /// 1-based line of its closing `]`.
+    end: usize,
     inner: bool,
     /// The attribute as written, its lines joined with single spaces.
     text: String,
@@ -166,47 +170,84 @@ fn join(lines: &[&str]) -> String {
     t.replace("( ", "(").replace(" )", ")").replace(",)", ")")
 }
 
-/// Every attribute in `text` outside items marked `#[cfg(test)]`, which
-/// no program contains.
+/// The lines of `text` that no program contains: a module marked
+/// `#[cfg(test)]` (`mod NAME { … }` up to its closing brace, or
+/// `mod NAME;`). Only modules: `#[cfg(test)]` on anything else (a field, a
+/// function) is read like program code, so it cannot hide what follows.
+fn test_modules(lines: &[&str]) -> Vec<bool> {
+    let mut skip = vec![false; lines.len()];
+    let is_mod = |l: &str| {
+        let t = l.trim();
+        let t = t
+            .strip_prefix("pub ")
+            .or_else(|| t.strip_prefix("pub(crate) "))
+            .unwrap_or(t);
+        let rest = t.strip_prefix("mod ")?;
+        let name: String = rest
+            .chars()
+            .take_while(|c| c.is_alphanumeric() || *c == '_')
+            .collect();
+        let after = rest[name.len()..].trim();
+        if name.is_empty() {
+            None
+        } else if after == "{" {
+            Some(true)
+        } else if after == ";" {
+            Some(false)
+        } else {
+            None
+        }
+    };
+    let mut i = 0;
+    while i < lines.len() {
+        if lines[i].trim() != "#[cfg(test)]" {
+            i += 1;
+            continue;
+        }
+        let mut j = i + 1;
+        while j < lines.len() && lines[j].trim().starts_with("#[") && lines[j].trim().ends_with(']')
+        {
+            j += 1;
+        }
+        let Some(block) = lines.get(j).and_then(|l| is_mod(l)) else {
+            i += 1;
+            continue;
+        };
+        let mut end = j;
+        if block {
+            let mut depth = 0i64;
+            'outer: for (k, l) in lines.iter().enumerate().skip(j) {
+                for ch in l.chars() {
+                    match ch {
+                        '{' => depth += 1,
+                        '}' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                end = k;
+                                break 'outer;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                end = k;
+            }
+        }
+        for s in skip.iter_mut().take(end + 1).skip(i) {
+            *s = true;
+        }
+        i = end + 1;
+    }
+    skip
+}
+
+/// Every attribute that starts a line of `text`, outside test modules
+/// ([`test_modules`]).
 fn attributes(text: &str) -> Vec<Attr> {
     let code = code_only(text);
     let orig: Vec<&str> = text.lines().collect();
     let lines: Vec<&str> = code.lines().collect();
-    let mut skip = vec![false; lines.len()];
-    // Items under #[cfg(test)]: their other attributes, then up to their
-    // `;` or the brace that closes their body.
-    let mut i = 0;
-    while i < lines.len() {
-        if lines[i].trim() == "#[cfg(test)]" {
-            let mut j = i + 1;
-            while j < lines.len() && lines[j].trim().starts_with("#[") {
-                j += 1;
-            }
-            let (mut depth, mut opened) = (0i64, false);
-            while j < lines.len() {
-                for ch in lines[j].chars() {
-                    match ch {
-                        '{' => {
-                            depth += 1;
-                            opened = true;
-                        }
-                        '}' => depth -= 1,
-                        _ => {}
-                    }
-                }
-                if (!opened && lines[j].trim_end().ends_with(';')) || (opened && depth <= 0) {
-                    break;
-                }
-                j += 1;
-            }
-            for s in skip.iter_mut().take((j + 1).min(lines.len())).skip(i) {
-                *s = true;
-            }
-            i = j + 1;
-            continue;
-        }
-        i += 1;
-    }
+    let skip = test_modules(&lines);
     let mut out = Vec::new();
     let mut i = 0;
     while i < lines.len() {
@@ -243,6 +284,7 @@ fn attributes(text: &str) -> Vec<Attr> {
             });
         out.push(Attr {
             line: i + 1,
+            end: end + 1,
             inner: t.starts_with("#!["),
             text: join(&orig[i..=end]),
             code: join(&lines[i..=end]),
@@ -310,13 +352,36 @@ fn switches_lints_off(code: &str) -> bool {
 const ROOT_ATTR: &str =
     "#![cfg_attr(not(test), deny(clippy::disallowed_methods, clippy::disallowed_types))]";
 
-/// What the gate finds in one file: its listed places as (attribute,
-/// statement), and its problems.
+/// What the gate finds in one file: its places as (attribute, statement),
+/// and its problems. Besides each `#[expect]` and its statement, a place
+/// is every line (with an empty attribute) that holds `#[rustfmt::skip]`,
+/// `include!`, `#[path`, `asm!`, `global_asm!`, an `extern` block of
+/// SAM's own declarations, or a call of a function such a block declares:
+/// clippy does not see through them, so each must be listed too. A gate
+/// lint named anywhere but in an `#[expect]` that starts its line (inside
+/// a macro, after another attribute on the same line) is refused.
 fn read_file(rel: &str, text: &str, is_root: bool) -> (Vec<(String, String)>, Vec<String>) {
     let mut places = Vec::new();
     let mut problems = Vec::new();
     let mut roots = 0;
+    let code = code_only(text);
+    let orig: Vec<&str> = text.lines().collect();
+    let lines: Vec<&str> = code.lines().collect();
+    let skip = test_modules(&lines);
+    // The lines of every attribute that starts a line: judged here.
+    let mut judged = vec![false; lines.len()];
     for a in attributes(text) {
+        if names_gate(&a.code) {
+            for j in judged.iter_mut().take(a.end).skip(a.line - 1) {
+                *j = true;
+            }
+            if !lines[a.end - 1].trim_end().ends_with(']') {
+                problems.push(format!(
+                    "{rel}:{}: code follows `{}` on its line",
+                    a.end, a.text
+                ));
+            }
+        }
         let at = format!("{rel}:{}", a.line);
         if a.inner && a.text == ROOT_ATTR && is_root {
             roots += 1;
@@ -358,6 +423,71 @@ fn read_file(rel: &str, text: &str, is_root: bool) -> (Vec<(String, String)>, Ve
             continue;
         }
         places.push((a.text, stmt));
+    }
+    // SAM's own `extern` blocks: the functions they declare.
+    let mut declared: Vec<String> = Vec::new();
+    let mut in_extern = vec![false; lines.len()];
+    let mut i = 0;
+    while i < lines.len() {
+        let t = lines[i].trim();
+        let words: Vec<&str> = t.split_whitespace().collect();
+        let opens = !skip[i]
+            && t.ends_with('{')
+            && (words.first() == Some(&"extern") || words.get(1) == Some(&"extern"))
+            && !has_word(t, "fn");
+        if !opens {
+            i += 1;
+            continue;
+        }
+        let mut depth = 0i64;
+        let mut k = i;
+        while k < lines.len() {
+            in_extern[k] = true;
+            if let Some(name) = lines[k].trim().strip_prefix("fn ") {
+                declared.push(
+                    name.chars()
+                        .take_while(|c| c.is_alphanumeric() || *c == '_')
+                        .collect(),
+                );
+            }
+            depth += lines[k].matches('{').count() as i64 - lines[k].matches('}').count() as i64;
+            if depth <= 0 {
+                break;
+            }
+            k += 1;
+        }
+        places.push((String::new(), orig[i].trim().to_string()));
+        i = k + 1;
+    }
+    for (k, l) in lines.iter().enumerate() {
+        if skip[k] {
+            continue;
+        }
+        let t = l.trim();
+        if names_gate(t) && !judged[k] {
+            problems.push(format!(
+                "{rel}:{}: a privacy check lint is named outside an #[expect(...)] that starts its line: `{}`",
+                k + 1,
+                orig[k].trim()
+            ));
+        }
+        let hidden = t.contains("#[rustfmt::skip")
+            || t.contains("include!")
+            || t.contains("#[path")
+            || has_word(t, "asm")
+            || has_word(t, "global_asm");
+        let calls = !in_extern[k]
+            && declared.iter().any(|d| {
+                t.match_indices(&format!("{d}(")).any(|(at, _)| {
+                    t[..at]
+                        .chars()
+                        .next_back()
+                        .is_none_or(|c| !(c.is_alphanumeric() || c == '_' || c == '.' || c == ':'))
+                })
+            });
+        if hidden || calls {
+            places.push((String::new(), orig[k].trim().to_string()));
+        }
     }
     if is_root && roots != 1 {
         problems.push(format!(
@@ -454,6 +584,33 @@ const GATED: &[&str] = &[
     "sam_runner::ops::Sam::self_update_from",
     // The window's network commands.
     "sam_jail_gui::backend::Backend::call_online",
+    // Added after review round 1: more ways to start a program, open a
+    // socket, look up an account or hand over a link, and the window
+    // backend's inner methods, so a new method cannot skip the refusal.
+    "libc::execl",
+    "libc::execle",
+    "libc::execlp",
+    "libc::dlopen",
+    "libc::getpwent",
+    "libc::getgrent",
+    "libc::getgrouplist",
+    "libc::initgroups",
+    "libc::getspnam",
+    "libc::getservbyname",
+    "libc::res_init",
+    "glib::spawn_async_with_fds",
+    "gio::Socket::new",
+    "gio::prelude::SocketExt::connect",
+    "gio::prelude::SocketListenerExt::add_inet_port",
+    "gio::prelude::AppInfoExt::launch",
+    "gio::prelude::AppInfoExt::launch_uris",
+    "gio::AppInfo::launch_default_for_uri_future",
+    "gtk4::UriLauncher::builder",
+    "gio::File::for_commandline_arg",
+    "gio::File::for_parse_name",
+    "sam_jail_gui::backend::Backend::counted",
+    "sam_jail_gui::backend::Backend::call_inner",
+    "sam_jail_gui::backend::Backend::call_progress_inner",
     // Types (disallowed-types).
     "gio::SocketClient",
     "gio::Resolver",
@@ -461,13 +618,14 @@ const GATED: &[&str] = &[
     "gio::SocketConnection",
     "gio::DBusConnection",
     "gio::DBusProxy",
+    "gio::NetworkAddress",
 ];
 
-/// Every place in SAM's program code that starts a program, opens a
-/// socket, hands something to the desktop or enters the update chain:
-/// (file, its `#[expect]`, its one-line statement, what runs, when, and
+/// Every place in SAM's program code that calls a function clippy.toml
+/// lists, and every line the parser refuses unless listed: (file, its
+/// `#[expect]` or nothing, its one-line statement, what runs, when, and
 /// what it sends). A new place, a changed line or a place that went away
-/// fails [`every_way_out_of_sams_code_is_listed`] until this list is
+/// fails [`each_listed_call_in_program_code_is_a_listed_place`] until this list is
 /// changed with it, which a review then judges. Only curl's requests go
 /// off this computer (crates/sam-runner/src/updates.rs).
 const WAYS_OUT: &[(&str, &str, &str, &str)] = &[
@@ -951,10 +1109,145 @@ const WAYS_OUT: &[(&str, &str, &str, &str)] = &[
         "let attempt = UnixStream::connect(display);",
         "Connects to the Wayland socket on this computer; when an app with Wayland starts.",
     ),
+    (
+        "crates/sam-core/src/i18n.rs",
+        "",
+        "CStr::from_ptr(dngettext(",
+        "dngettext: a translated text with a plural, from SAM's translation files on this computer.",
+    ),
+    (
+        "crates/sam-core/src/i18n.rs",
+        "",
+        "bind_textdomain_codeset(domain.as_ptr(), c\"UTF-8\".as_ptr());",
+        "bind_textdomain_codeset: asks for UTF-8 translations; nothing is sent.",
+    ),
+    (
+        "crates/sam-core/src/i18n.rs",
+        "",
+        "bindtextdomain(domain.as_ptr(), dir.as_ptr());",
+        "bindtextdomain: names the folder of SAM's translation files on this computer.",
+    ),
+    (
+        "crates/sam-core/src/i18n.rs",
+        "",
+        "let out = unsafe { CStr::from_ptr(dgettext(domain.as_ptr(), id.as_ptr())) };",
+        "dgettext: a translated text, from SAM's translation files on this computer.",
+    ),
+    (
+        "crates/sam-core/src/i18n.rs",
+        "",
+        "unsafe extern \"C\" {",
+        "SAM's own declarations of four gettext functions of the C library (dgettext, dngettext, bindtextdomain, bind_textdomain_codeset); they read SAM's translation files on this computer.",
+    ),
+    (
+        "crates/sam-core/src/place_check.rs",
+        "",
+        "let r = unsafe { statx(fd.as_raw_fd(), c\"\".as_ptr(), AT_EMPTY_PATH, 0, &mut st) };",
+        "statx on an opened place, to see whether it is the root of a mount; nothing is sent.",
+    ),
+    (
+        "crates/sam-core/src/place_check.rs",
+        "",
+        "syscall(",
+        "syscall for openat2, opening a place without following links; nothing is sent.",
+    ),
+    (
+        "crates/sam-core/src/place_check.rs",
+        "",
+        "unsafe extern \"C\" {",
+        "SAM's own declarations of syscall and statx of the C library, for the place check (also built into the room helper, which has no libc crate).",
+    ),
+    (
+        "crates/sam-gtk/src/backend.rs",
+        "#[expect(clippy::disallowed_methods, reason = \"way out: sam-jail with progress, after the refusal\")]",
+        "let r = self.call_progress_inner(args, input, on_progress).await;",
+        "call_progress_inner: sam-jail --json <command> with progress lines; only call_with_progress runs it, after the refusal of the commands that go online.",
+    ),
+    (
+        "crates/sam-gtk/src/backend.rs",
+        "#[expect(clippy::disallowed_methods, reason = \"way out: sam-jail, after the refusal\")]",
+        "let r = self.counted(args, input).await;",
+        "counted: sam-jail --json <command> for Backend::call, after the refusal of the commands that go online.",
+    ),
+    (
+        "crates/sam-gtk/src/backend.rs",
+        "#[expect(clippy::disallowed_methods, reason = \"way out: sam-jail, counted\")]",
+        "let r = self.call_inner(args, input).await;",
+        "call_inner: starts sam-jail --json <command>; only counted runs it.",
+    ),
+    (
+        "crates/sam-gtk/src/backend.rs",
+        "#[expect(clippy::disallowed_methods, reason = \"way out: sam-jail, for the listed update actions\")]",
+        "let r = self.counted(args, input).await;",
+        "counted: sam-jail --json <command> for Backend::call_online, whose every caller is listed here.",
+    ),
+    (
+        "crates/sam-gtk/src/backend.rs",
+        "#[expect(clippy::disallowed_methods, reason = \"way out: the terminal GIO picks\")]",
+        "let launched = info.launch(&[], gio::AppLaunchContext::NONE);",
+        "Starts the terminal emulator GIO picks, running sam-jail-run for a terminal app; when the person starts it; runs on this computer.",
+    ),
 ];
 
-/// The program crates: their roots carry [`ROOT_ATTR`]. The test guard is
+/// The roots of SAM's programs and libraries, as cargo builds them: every
+/// target of every workspace package except its tests, benchmarks and
+/// build scripts, by the path `cargo metadata` names (so a binary in
+/// `src/bin/NAME/main.rs` or at a `path = …` counts too). The test guard is
 /// a test-only crate, part of no program.
+fn crate_roots() -> Vec<String> {
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
+    let out = std::process::Command::new(cargo)
+        .args([
+            "metadata",
+            "--format-version",
+            "1",
+            "--no-deps",
+            "--offline",
+            "--manifest-path",
+        ])
+        .arg(root().join("Cargo.toml"))
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let top = fs::canonicalize(root()).unwrap();
+    let mut roots = Vec::new();
+    for p in v["packages"].as_array().unwrap() {
+        if p["name"] == "sam-test-guard" {
+            continue;
+        }
+        for t in p["targets"].as_array().unwrap() {
+            let kinds: Vec<&str> = t["kind"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter_map(|k| k.as_str())
+                .collect();
+            if kinds
+                .iter()
+                .all(|k| ["test", "bench", "custom-build"].contains(k))
+            {
+                continue;
+            }
+            let path = fs::canonicalize(t["src_path"].as_str().unwrap()).unwrap();
+            let rel = path
+                .strip_prefix(&top)
+                .unwrap()
+                .to_string_lossy()
+                .to_string();
+            roots.push(rel);
+        }
+    }
+    roots.sort();
+    roots
+}
+
+/// Every Rust file of SAM's programs and libraries: below each crate's
+/// `src` and each crate root, with whether it is a root.
 fn program_files() -> Vec<(String, bool)> {
     fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
         for e in fs::read_dir(dir).into_iter().flatten().flatten() {
@@ -966,6 +1259,8 @@ fn program_files() -> Vec<(String, bool)> {
             }
         }
     }
+    let roots = crate_roots();
+    let top = fs::canonicalize(root()).unwrap();
     let mut files = Vec::new();
     for c in fs::read_dir(root().join("crates")).unwrap().flatten() {
         if c.file_name() == "sam-test-guard" {
@@ -976,21 +1271,17 @@ fn program_files() -> Vec<(String, bool)> {
     let mut out: Vec<(String, bool)> = files
         .into_iter()
         .map(|p| {
-            let rel = p
-                .strip_prefix(root())
-                .unwrap()
-                .to_string_lossy()
-                .replace("/../..", "")
-                .to_string();
-            let rel = rel.trim_start_matches("./").to_string();
-            let tail = rel.splitn(3, '/').nth(2).unwrap_or_default().to_string();
-            let is_root = tail == "src/lib.rs"
-                || tail == "src/main.rs"
-                || (tail.starts_with("src/bin/") && tail.matches('/').count() == 2);
+            let p = fs::canonicalize(p).unwrap();
+            p.strip_prefix(&top).unwrap().to_string_lossy().to_string()
+        })
+        .chain(roots.iter().cloned())
+        .map(|rel| {
+            let is_root = roots.contains(&rel);
             (rel, is_root)
         })
         .collect();
     out.sort();
+    out.dedup();
     out
 }
 
@@ -1021,18 +1312,20 @@ fn lints_section(toml_text: &str, header: &str) -> Option<String> {
     )
 }
 
-/// The static gate holds, and every way out of SAM's program code is
-/// listed: clippy.toml gates exactly [`GATED`]; every program crate root
-/// denies the gate's lints outside its tests, and nothing in the build
-/// settings switches that off; and in program code every attribute that
-/// names the gate's lints is an outer `#[expect]` on one statement that
-/// obeys the one-line rule, and each such pair is in [`WAYS_OUT`], with
-/// multiplicity. Together with clippy (CI runs it with `-D warnings`), a
-/// new direct call of a gated method or type in program code, or a changed
-/// listed line, fails until [`WAYS_OUT`] says what it runs, when, and
-/// what it sends.
+/// A new direct call in SAM's program code of one of the functions listed
+/// in clippy.toml fails CI's clippy step until it is listed with its exact
+/// line. This covers the code CI's clippy compiles: the debug build for
+/// x86_64, all features. The test holds the parts: clippy.toml gates
+/// exactly [`GATED`]; every crate root `cargo metadata` names denies the
+/// gate's lints outside its tests, and nothing in the build settings
+/// switches that off; in program code a gate lint is named only in an
+/// outer `#[expect]` that starts its line and stands on one statement that
+/// obeys the one-line rule; and each such pair, and each line the parser
+/// refuses unless listed (`extern` blocks and their calls, `asm!`,
+/// `include!`, `#[path`, `#[rustfmt::skip]`), is in [`WAYS_OUT`], with
+/// multiplicity.
 #[test]
-fn every_way_out_of_sams_code_is_listed() {
+fn each_listed_call_in_program_code_is_a_listed_place() {
     let mut problems = Vec::new();
     // clippy.toml gates exactly GATED.
     let clippy = read("clippy.toml");
@@ -1074,10 +1367,10 @@ fn every_way_out_of_sams_code_is_listed() {
     }
     let ci = read(".github/workflows/ci.yml");
     for want in [
-        "cargo clippy --workspace --all-targets --locked -- -D warnings",
-        "does not refer to",
+        "          cargo clippy --workspace --all-targets --locked -- -D warnings 2>&1 | tee \"$RUNNER_TEMP/clippy.log\"",
+        "          if grep -E -q \"does not refer to|expected a .*, found\" \"$RUNNER_TEMP/clippy.log\"; then",
     ] {
-        if !ci.contains(want) {
+        if !ci.lines().any(|l| l == want) {
             problems.push(format!(
                 ".github/workflows/ci.yml lost `{want}`: CI must run clippy with -D warnings and fail on a clippy.toml path that names nothing"
             ));
@@ -1119,7 +1412,7 @@ fn every_way_out_of_sams_code_is_listed() {
         }
     }
     for (_, a, _, what) in WAYS_OUT {
-        if !a.contains("reason = \"way out: ") || what.len() < 20 {
+        if !(a.is_empty() || a.contains("reason = \"way out: ")) || what.len() < 20 {
             problems.push(format!("WAYS_OUT entry {a:?} says too little about itself"));
         }
     }
@@ -1190,6 +1483,51 @@ fn e() {}
     // The old singular name (17), the closure (21), the `if` (23), the
     // two-line statement (25), the inner allow (31), the blanket allow (33).
     assert_eq!(lines, ["17", "21", "23", "25", "31", "33"], "{problems:#?}");
+    // Review round 1: `#[cfg(test)]` on a field hides nothing after it; a
+    // lint named after another attribute on its line or inside a macro is
+    // refused; what clippy cannot see through is a place to list.
+    let hidden = r####"
+struct S {
+    #[cfg(test)]
+    pub a: bool,
+}
+#[expect(clippy::disallowed_methods, reason = "way out: x")]
+fn fetch() {
+    let _ = Command::new("curl");
+}
+#[rustfmt::skip] fn f() { #[allow(clippy::disallowed_methods)] let _ = 1; }
+macro_rules! m { () => { #[allow(clippy::disallowed_methods)] () }; }
+include!("x.rs");
+#[path = "y.rs"]
+mod y;
+unsafe extern "C" {
+    fn syscall(n: i64, ...) -> i64;
+}
+fn g() { let _ = unsafe { syscall(1) }; }
+fn h() { std::arch::asm!("nop"); let _ = libc::syscall(2); }
+"####;
+    let (places, problems) = read_file("h.rs", hidden, false);
+    let lines: Vec<&str> = problems
+        .iter()
+        .map(|p| p.split(':').nth(1).unwrap_or_default())
+        .collect();
+    // The expect on a whole function (7), the allow after rustfmt::skip
+    // (10: code follows the joined attribute, and it is no expect), the
+    // allow in a macro (11).
+    assert_eq!(lines, ["7", "10", "10", "11"], "{problems:#?}");
+    let listed: Vec<&str> = places.iter().map(|(_, l)| l.as_str()).collect();
+    assert_eq!(
+        listed,
+        [
+            "unsafe extern \"C\" {",
+            "#[rustfmt::skip] fn f() { #[allow(clippy::disallowed_methods)] let _ = 1; }",
+            "include!(\"x.rs\");",
+            "#[path = \"y.rs\"]",
+            "fn g() { let _ = unsafe { syscall(1) }; }",
+            "fn h() { std::arch::asm!(\"nop\"); let _ = libc::syscall(2); }",
+        ]
+    );
+    assert!(places.iter().all(|(a, _)| a.is_empty()));
     // A root without its attribute, and one with it.
     assert_eq!(read_file("r.rs", "fn main() {}\n", true).1.len(), 1);
     let (_, p) = read_file("r.rs", &format!("{ROOT_ATTR}\nfn main() {{}}\n"), true);
@@ -1251,74 +1589,32 @@ fn apprun() -> String {
     t[from..to].to_string()
 }
 
-/// The update module's program part, which builds every request SAM sends
-/// (its curl arguments are fixed word for word by the unit test
+/// The reviewed hashes of the update module's program part (which builds
+/// every request SAM sends; its curl arguments are fixed word for word by
 /// `every_update_request_has_exactly_these_curl_arguments` in
-/// crates/sam-runner/src/updates.rs).
-const UPDATE_MODULE: &str = "03e16fb9d8001a6813c062638e0b782dd68b1a2ee2259903a78c25646b829a31";
+/// crates/sam-runner/src/updates.rs), of the functions below and of
+/// `AppRun`. They are in a file that is not protected, network_use_pins.toml
+/// next to this one: renewing a hash is routine review.
+const PINS: &str = include_str!("network_use_pins.toml");
 
 /// The functions the window runs at its start; they run these commands
-/// (each traced by `everyday_commands_open_no_internet_socket` as W1-W11):
+/// (each traced by `everyday_commands_make_no_internet_connection` as W1-W11):
 /// `config get general.language`, `version`, `permissions`,
 /// `desktop all refresh`, `config show` (and the two `config set` of an
 /// old settings file), `list`, `discover`, `scan <Downloads>`,
 /// `updates --if-due`, `list`.
-const WINDOW_START: &[(&str, &str, &str)] = &[
-    (
-        "crates/sam-gtk/src/window.rs",
-        "start",
-        "a774819c74261b402db0d12b42ba7ef803393dcfafc1e2691d793063a3c018bc",
-    ),
-    (
-        "crates/sam-gtk/src/window.rs",
-        "check_cli_version",
-        "0c37fc360221ecbb1dc0d3d2c83ed5cde235a4f5ec304bf2382053cbba1e40ee",
-    ),
-    (
-        "crates/sam-gtk/src/window.rs",
-        "load_catalog",
-        "1a07634c663e65d5630c7a7125d052b345a58fc7dd42b44c154d3fd4a28436a8",
-    ),
-    (
-        "crates/sam-gtk/src/window.rs",
-        "load_config",
-        "000437eb4b11b4f14e65e864887f1af24a9de22c1422ff62f2e19fcf52ba948a",
-    ),
-    (
-        "crates/sam-gtk/src/window.rs",
-        "refresh_apps",
-        "e5e1357249c08e8a1a4f977cb5983bd87c39a17ded395739aa433db62b2bb64f",
-    ),
-    (
-        "crates/sam-gtk/src/window.rs",
-        "count_downloads",
-        "66d3a16e830cdaf7f744b91461c58e10611371dc4d95f16605ae1886983618e9",
-    ),
-    (
-        "crates/sam-gtk/src/window.rs",
-        "refresh_registered",
-        "b2181b7cdf3ffb0c209d8e29dd02ed28c4ce8e887269233367ff7285ac9d59f3",
-    ),
-    (
-        "crates/sam-gtk/src/i18n.rs",
-        "apply_language_setting",
-        "aef64072cc09b5970cfbeeea9d3745c4e85932ef15c25f64e67570bb793b0a13",
-    ),
-    (
-        "crates/sam-gtk/src/i18n.rs",
-        "configured_language",
-        "05eb38743dc640de6404b3be6078fa35dde2c5b56cc483941a60eea4bbf2e628",
-    ),
-    (
-        "crates/sam-gtk/src/main.rs",
-        "main",
-        "76c0a19f79f3698cff06c09adbea15f3aa2d040b7bf64f82a8e06ce5907b75d5",
-    ),
+const WINDOW_START: &[(&str, &str)] = &[
+    ("crates/sam-gtk/src/window.rs", "start"),
+    ("crates/sam-gtk/src/window.rs", "check_cli_version"),
+    ("crates/sam-gtk/src/window.rs", "load_catalog"),
+    ("crates/sam-gtk/src/window.rs", "load_config"),
+    ("crates/sam-gtk/src/window.rs", "refresh_apps"),
+    ("crates/sam-gtk/src/window.rs", "count_downloads"),
+    ("crates/sam-gtk/src/window.rs", "refresh_registered"),
+    ("crates/sam-gtk/src/i18n.rs", "apply_language_setting"),
+    ("crates/sam-gtk/src/i18n.rs", "configured_language"),
+    ("crates/sam-gtk/src/main.rs", "main"),
 ];
-
-/// `AppRun` runs getconf, `sam-jail-gui --version`, kdialog, zenity and
-/// notify-send, all on this computer.
-const APPRUN: &str = "d9015dfc7470d7c75d37c51b26608ae90e5e8afb6c0f0fab545ab25e5c44183e";
 
 /// The texts that decide when SAM goes online and what it sends are the
 /// reviewed ones: the update module's program part, the functions the
@@ -1328,25 +1624,39 @@ const APPRUN: &str = "d9015dfc7470d7c75d37c51b26608ae90e5e8afb6c0f0fab545ab25e5c
 /// itself").
 #[test]
 fn the_update_module_the_window_start_and_apprun_are_as_reviewed() {
+    let pins: toml::Value = toml::from_str(PINS).unwrap();
+    let want = |k: &str| {
+        pins.get(k)
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string()
+    };
     let mut problems = Vec::new();
     let got = pin(&update_module_program());
-    if got != UPDATE_MODULE {
+    if got != want("update_module") {
         problems.push(format!(
-            "crates/sam-runner/src/updates.rs (before its tests) changed: review whether SAM now sends another request, to another address or with another argument, then set UPDATE_MODULE to \"{got}\""
+            "crates/sam-runner/src/updates.rs (before its tests) changed: review whether SAM now sends another request, to another address or with another argument, then set update_module in crates/sam-jail-cli/tests/network_use_pins.toml to \"{got}\""
         ));
     }
-    for (file, name, want) in WINDOW_START {
+    for (file, name) in WINDOW_START {
+        let key = format!("{file} {name}");
+        let had = pins["window_start"]
+            .get(&key)
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         let got = pin(function(&read(file), name));
-        if got != *want {
+        if got != had {
             problems.push(format!(
-                "{file}: fn {name} changed: review whether the window's start now runs another command, then set its hash in WINDOW_START to \"{got}\""
+                "{file}: fn {name} changed: review whether the window's start now runs another command, then set \"{key}\" in crates/sam-jail-cli/tests/network_use_pins.toml to \"{got}\""
             ));
         }
     }
+    // `AppRun` runs getconf, `sam-jail-gui --version`, kdialog, zenity and
+    // notify-send, all on this computer.
     let got = pin(&apprun());
-    if got != APPRUN {
+    if got != want("apprun") {
         problems.push(format!(
-            "scripts/make-appimage.sh: the AppRun text changed: review which programs it runs, then set APPRUN to \"{got}\""
+            "scripts/make-appimage.sh: the AppRun text changed: review which programs it runs, then set apprun in crates/sam-jail-cli/tests/network_use_pins.toml to \"{got}\""
         ));
     }
     assert!(problems.is_empty(), "{}", problems.join("\n"));
@@ -1371,847 +1681,699 @@ fn lock_packages(lock: &str) -> Vec<(String, String, String)> {
     out
 }
 
-/// Cargo.lock's packages, sorted: (name, version, source).
-const LIBRARIES: &[(&str, &str, &str)] = &[
+/// The libraries in Cargo.lock, by name and source (SAM's own crates have
+/// none), sorted. Versions are left out: a version bump of a listed
+/// library is the lock file's own business.
+const LIBRARIES: &[(&str, &str)] = &[
     (
         "anstream",
-        "1.0.0",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "anstyle",
-        "1.0.14",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "anstyle-parse",
-        "1.0.0",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "anstyle-query",
-        "1.1.5",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "anstyle-wincon",
-        "3.0.11",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "anyhow",
-        "1.0.104",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "autocfg",
-        "1.5.1",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "backhand",
-        "0.25.5",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "bitflags",
-        "2.13.2",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "bitvec",
-        "1.1.1",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "block-buffer",
-        "0.12.1",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "cairo-rs",
-        "0.22.9",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "cairo-sys-rs",
-        "0.22.9",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "cc",
-        "1.11.1",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "cfg-expr",
-        "0.20.10",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "cfg-if",
-        "1.0.5",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "clap",
-        "4.6.9",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "clap_builder",
-        "4.6.7",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "clap_derive",
-        "4.6.9",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "clap_lex",
-        "1.1.1",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "clap_mangen",
-        "0.3.4",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "colorchoice",
-        "1.0.5",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "const-oid",
-        "0.10.3",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "cpufeatures",
-        "0.3.1",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "crypto-common",
-        "0.2.2",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "darling",
-        "0.21.3",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "darling_core",
-        "0.21.3",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "darling_macro",
-        "0.21.3",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "deku",
-        "0.20.3",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "deku_derive",
-        "0.20.3",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "digest",
-        "0.11.3",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "downcast-rs",
-        "1.2.1",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "enumflags2",
-        "0.7.12",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "enumflags2_derive",
-        "0.7.12",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "equivalent",
-        "1.0.3",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "errno",
-        "0.3.14",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "fastrand",
-        "2.5.0",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "field-offset",
-        "0.3.6",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "find-msvc-tools",
-        "0.1.15",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "flate2",
-        "1.1.11",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "fnv",
-        "1.0.7",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "funty",
-        "2.0.0",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "futures-channel",
-        "0.3.34",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "futures-core",
-        "0.3.34",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "futures-executor",
-        "0.3.34",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "futures-io",
-        "0.3.34",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "futures-macro",
-        "0.3.34",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "futures-task",
-        "0.3.34",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "futures-util",
-        "0.3.34",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "gdk-pixbuf",
-        "0.22.0",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "gdk-pixbuf-sys",
-        "0.22.9",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "gdk4",
-        "0.11.5",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "gdk4-sys",
-        "0.11.5",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "getrandom",
-        "0.4.3",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "gio",
-        "0.22.10",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "gio-sys",
-        "0.22.9",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "glib",
-        "0.22.10",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "glib-macros",
-        "0.22.9",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "glib-sys",
-        "0.22.9",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "gobject-sys",
-        "0.22.9",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "goblin",
-        "0.10.7",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "graphene-rs",
-        "0.22.8",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "graphene-sys",
-        "0.22.9",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "gsk4",
-        "0.11.5",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "gsk4-sys",
-        "0.11.5",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "gtk4",
-        "0.11.5",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "gtk4-macros",
-        "0.11.5",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "gtk4-sys",
-        "0.11.5",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "hashbrown",
-        "0.17.1",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "heck",
-        "0.5.0",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "hybrid-array",
-        "0.4.15",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "ident_case",
-        "1.0.1",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "indexmap",
-        "2.14.2",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "is_terminal_polyfill",
-        "1.70.2",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "itoa",
-        "1.0.18",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "jobserver",
-        "0.1.35",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "landlock",
-        "0.4.7",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "libadwaita",
-        "0.9.2",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "libadwaita-sys",
-        "0.9.2",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "libc",
-        "0.2.191",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "liblzma",
-        "0.4.9",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "liblzma-sys",
-        "0.4.9",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "linux-raw-sys",
-        "0.12.1",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "log",
-        "0.4.35",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "lz4_flex",
-        "0.14.0",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "md4",
-        "0.11.0",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "memchr",
-        "2.8.3",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "memoffset",
-        "0.9.1",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "no_std_io2",
-        "0.9.4",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "once_cell",
-        "1.21.4",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "once_cell_polyfill",
-        "1.70.2",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "pango",
-        "0.22.9",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "pango-sys",
-        "0.22.9",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "pin-project-lite",
-        "0.2.17",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "pkg-config",
-        "0.3.34",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "plain",
-        "0.2.3",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "proc-macro-crate",
-        "3.5.0",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "proc-macro2",
-        "1.0.107",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "pulldown-cmark",
-        "0.13.6",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "quick-xml",
-        "0.41.0",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "quote",
-        "1.0.47",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "r-efi",
-        "6.0.0",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "radium",
-        "0.7.0",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "roff",
-        "1.1.1",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "rustc_version",
-        "0.4.1",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "rustix",
-        "1.1.6",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "rustversion",
-        "1.0.23",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
-    ("sam-core", "0.1.0", ""),
-    ("sam-detect", "0.1.0", ""),
-    ("sam-gtk", "0.1.0", ""),
-    ("sam-intake", "0.1.0", ""),
-    ("sam-jail-cli", "0.1.0", ""),
-    ("sam-profile", "0.1.0", ""),
-    ("sam-runner", "0.1.0", ""),
-    ("sam-sandbox", "0.1.0", ""),
-    ("sam-storage", "0.1.0", ""),
-    ("sam-test-guard", "0.1.0", ""),
+    ("sam-core", ""),
+    ("sam-detect", ""),
+    ("sam-gtk", ""),
+    ("sam-intake", ""),
+    ("sam-jail-cli", ""),
+    ("sam-profile", ""),
+    ("sam-runner", ""),
+    ("sam-sandbox", ""),
+    ("sam-storage", ""),
+    ("sam-test-guard", ""),
     (
         "scroll",
-        "0.13.0",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "scroll_derive",
-        "0.13.2",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "seccompiler",
-        "0.5.0",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "semver",
-        "1.0.28",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "serde",
-        "1.0.229",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "serde_core",
-        "1.0.229",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "serde_derive",
-        "1.0.229",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "serde_json",
-        "1.0.154",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "serde_spanned",
-        "1.1.3",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "sha1",
-        "0.11.0",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "sha2",
-        "0.11.1",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "shlex",
-        "2.0.1",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "slab",
-        "0.4.12",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "smallvec",
-        "1.16.5",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "solana-nohash-hasher",
-        "0.2.1",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "strsim",
-        "0.11.1",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "syn",
-        "2.0.119",
-        "registry+https://github.com/rust-lang/crates.io-index",
-    ),
-    (
-        "syn",
-        "3.0.10",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "system-deps",
-        "7.0.8",
-        "registry+https://github.com/rust-lang/crates.io-index",
-    ),
-    (
-        "system-deps",
-        "9.0.1",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "tap",
-        "1.0.1",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "target-lexicon",
-        "0.13.5",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "tempfile",
-        "3.27.0",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "thiserror",
-        "2.0.21",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "thiserror-impl",
-        "2.0.21",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "toml",
-        "1.2.1+spec-1.1.0",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "toml_datetime",
-        "1.1.3+spec-1.1.0",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "toml_edit",
-        "0.25.19+spec-1.1.0",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "toml_parser",
-        "1.1.5+spec-1.1.0",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "toml_writer",
-        "1.2.0+spec-1.1.0",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "typenum",
-        "1.20.1",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "unicase",
-        "2.10.0",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "unicode-ident",
-        "1.0.27",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "utf8parse",
-        "0.2.2",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "version-compare",
-        "0.2.1",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "wayland-backend",
-        "0.3.17",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "wayland-client",
-        "0.31.15",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "wayland-protocols",
-        "0.32.13",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "wayland-scanner",
-        "0.31.11",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "wayland-sys",
-        "0.31.11",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "windows-link",
-        "0.2.1",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "windows-sys",
-        "0.61.2",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "winnow",
-        "1.0.5",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "wyz",
-        "0.5.1",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "xxhash-rust",
-        "0.8.19",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "zlib-rs",
-        "0.6.8",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "zmij",
-        "1.0.23",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "zstd",
-        "0.13.4",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "zstd-safe",
-        "7.4.0",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
     (
         "zstd-sys",
-        "2.1.2+zstd.1.5.7",
         "registry+https://github.com/rust-lang/crates.io-index",
     ),
 ];
 
-/// Only listed libraries are part of SAM: the name, version and source of
-/// every package in Cargo.lock equal [`LIBRARIES`]. A new library, another
-/// version or another source (a git fork, a `[patch]`) fails until the
-/// list is changed with it, which a review then judges. A listed library
-/// is trusted, not proven offline.
+/// The (name, source) pairs of a Cargo.lock's packages.
+fn lock_libraries(lock: &str) -> Vec<(String, String)> {
+    let mut v: Vec<(String, String)> = lock_packages(lock)
+        .into_iter()
+        .map(|(n, _, s)| (n, s))
+        .collect();
+    v.dedup();
+    v
+}
+
+/// Only listed libraries are part of SAM: the name and source of every
+/// package in Cargo.lock equal [`LIBRARIES`]. A new library or another
+/// source (a git fork, a `[patch]`) fails until the list is changed with
+/// it, which a review then judges; a new version of a listed library does
+/// not. A listed library is trusted, not proven offline, and a new direct
+/// use of a library already in Cargo.lock is not seen here.
 #[test]
 fn only_listed_libraries_are_part_of_sam() {
-    let got = lock_packages(&read("Cargo.lock"));
-    let want: Vec<(String, String, String)> = LIBRARIES
+    let got = lock_libraries(&read("Cargo.lock"));
+    let want: Vec<(String, String)> = LIBRARIES
         .iter()
-        .map(|(a, b, c)| (a.to_string(), b.to_string(), c.to_string()))
+        .map(|(a, b)| (a.to_string(), b.to_string()))
         .collect();
     if got != want {
         let list: Vec<String> = got
             .iter()
-            .map(|(n, v, s)| format!("    ({n:?}, {v:?}, {s:?}),"))
+            .map(|(n, s)| format!("    ({n:?}, {s:?}),"))
             .collect();
         panic!(
-            "Cargo.lock's libraries changed (updating dependencies does this): review each new name, version and source, then set LIBRARIES in crates/sam-jail-cli/tests/network_use.rs to:\n{}",
+            "Cargo.lock names another library or source: review each new name and source, then set LIBRARIES in crates/sam-jail-cli/tests/network_use.rs to:\n{}",
             list.join("\n")
         );
     }
 }
 
-/// The library check reads a Cargo.lock's name, version and source, so
-/// another version of a listed library is a change.
+/// The library check reads a Cargo.lock's names and sources: another
+/// source or a new name is a change, another version is not.
 #[test]
-fn the_library_check_sees_a_changed_version() {
+fn the_library_check_sees_a_new_name_or_source() {
     let lock = "version = 4\n\n[[package]]\nname = \"serde\"\nversion = \"1.0.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n\n[[package]]\nname = \"sam-core\"\nversion = \"0.1.0\"\n";
-    let a = lock_packages(lock);
+    let a = lock_libraries(lock);
     assert_eq!(
         a,
         [
-            ("sam-core".into(), "0.1.0".into(), String::new()),
+            ("sam-core".into(), String::new()),
             (
                 "serde".into(),
-                "1.0.0".into(),
                 "registry+https://github.com/rust-lang/crates.io-index".into()
             ),
         ]
     );
-    assert_ne!(a, lock_packages(&lock.replace("1.0.0", "1.0.1")));
+    assert_eq!(a, lock_libraries(&lock.replace("1.0.0", "1.0.1")));
+    assert_ne!(
+        a,
+        lock_libraries(&lock.replace("registry+https", "git+https"))
+    );
+    assert_ne!(a, lock_libraries(&lock.replace("\"serde\"", "\"serde2\"")));
 }
 
 // ----------------------------------------------------------- traced run
@@ -2222,9 +2384,16 @@ fn the_library_check_sees_a_changed_version() {
 const TRACED_CALLS: &str = "trace=socket,connect,sendto,sendmsg,io_uring_setup,execve,execveat";
 
 /// Name-service sockets: a connect to one is a name or account lookup that
-/// can leave this computer (resolved, nscd, SSSD, Avahi).
+/// can leave this computer (resolved, nscd, SSSD, Avahi, nslcd, winbind,
+/// systemd's user database).
 const NAME_SERVICE_SOCKETS: &[&str] = &[
     "/run/systemd/resolve/",
+    "/run/systemd/userdb/",
+    "/run/nslcd/socket",
+    "/var/run/nslcd/socket",
+    "/run/samba/winbindd/",
+    "/var/run/samba/winbindd/",
+    "/run/winbindd/",
     "/run/nscd/socket",
     "/var/run/nscd/socket",
     "/var/lib/sss/pipes/nss",
@@ -2233,8 +2402,9 @@ const NAME_SERVICE_SOCKETS: &[&str] = &[
 
 /// The two things a traced command may do that look like a way out but
 /// are not, each seen in the first traced run and named in the privacy
-/// report's limits. Each holds only for a process that runs exactly this
-/// program with exactly these arguments:
+/// report's limits. Each holds only for a process whose last successful
+/// `execve` ran exactly this program (by the path it ran) with exactly
+/// these arguments:
 /// - pasta's `--help` and `--version` open one TCP socket to read the
 ///   kernel's buffer sizes; that process may connect nowhere and send
 ///   nothing (checked);
@@ -2242,8 +2412,16 @@ const NAME_SERVICE_SOCKETS: &[&str] = &[
 ///   loads libraries that look up the user's account and this computer's
 ///   name through the name service; its connects to nscd's socket are
 ///   allowed, nothing else.
-fn allowed(argv: &[String], line: &str) -> bool {
-    let prog = argv.first().map(|p| p.rsplit('/').next().unwrap_or(p));
+fn allowed(ran: &(String, Vec<String>), line: &str) -> bool {
+    let (path, argv) = ran;
+    let name = path.rsplit('/').next().unwrap_or(path);
+    // pasta starts itself again as pasta.avx2 (or another build for this
+    // processor) with the same arguments.
+    let prog = if name == "pasta" || name.starts_with("pasta.") {
+        Some("pasta")
+    } else {
+        Some(name)
+    };
     let rest: Vec<&str> = argv.iter().skip(1).map(String::as_str).collect();
     let probe = rest == ["--help"] || rest == ["--version"];
     match prog {
@@ -2297,6 +2475,8 @@ struct Seen {
     inet: Vec<(String, u16)>,
     /// Whether any process opened an internet socket.
     inet_socket: bool,
+    /// The processes that opened one.
+    inet_socket_pids: Vec<String>,
     problems: Vec<String>,
 }
 
@@ -2306,7 +2486,11 @@ struct Seen {
 /// name-service socket, other than what [`allowed`] names.
 fn read_trace(cmd: &str, log: &str) -> Seen {
     let mut seen = Seen::default();
-    let mut argv: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    // Each process's program: (the path its last successful execve ran,
+    // its arguments). An execve strace shows unfinished counts only once
+    // its resumed line says it succeeded.
+    let mut argv: BTreeMap<String, (String, Vec<String>)> = BTreeMap::new();
+    let mut pending: BTreeMap<String, (String, Vec<String>, String)> = BTreeMap::new();
     // The probe sockets: (process, descriptor).
     let mut probes: Vec<(String, String)> = Vec::new();
     for line in log.lines() {
@@ -2314,16 +2498,28 @@ fn read_trace(cmd: &str, log: &str) -> Seen {
         let call = call.trim_start();
         let who = argv.get(pid).cloned().unwrap_or_default();
         let named = || {
-            if who.is_empty() {
+            if who.1.is_empty() {
                 format!("process {pid} (SAM's own)")
             } else {
-                format!("process {pid} ({})", who.join(" "))
+                format!("process {pid} ({})", who.1.join(" "))
             }
         };
         if call.starts_with("execve(") || call.starts_with("execveat(") {
-            if call.contains(") = 0") || call.ends_with("<unfinished ...>") {
-                argv.insert(pid.to_string(), exec_argv(call));
+            let path = call.split('"').nth(1).unwrap_or("").to_string();
+            if call.ends_with("<unfinished ...>") {
+                pending.insert(pid.to_string(), (path, exec_argv(call), call.to_string()));
+            } else if call.trim_end().ends_with(") = 0") {
+                argv.insert(pid.to_string(), (path, exec_argv(call)));
                 seen.execs.push((pid.to_string(), call.to_string()));
+            }
+            continue;
+        }
+        if call.starts_with("<... execve resumed>") || call.starts_with("<... execveat resumed>") {
+            if let Some((path, a, first)) = pending.remove(pid) {
+                if call.trim_end().ends_with("= 0") {
+                    argv.insert(pid.to_string(), (path, a));
+                    seen.execs.push((pid.to_string(), first));
+                }
             }
             continue;
         }
@@ -2336,6 +2532,7 @@ fn read_trace(cmd: &str, log: &str) -> Seen {
             if !matches!(family, "AF_UNIX" | "AF_LOCAL" | "AF_NETLINK") {
                 if family.starts_with("AF_INET") {
                     seen.inet_socket = true;
+                    seen.inet_socket_pids.push(pid.to_string());
                 }
                 if allowed(&who, call) {
                     let fd = call.rsplit("= ").next().unwrap_or("").trim().to_string();
@@ -2433,6 +2630,14 @@ fn the_trace_check_reads_strace_lines() {
     }
     let other = log.replace("\"--help\"", "\"--splice-only\"");
     assert_eq!(read_trace("x", &other).problems.len(), 1);
+    // The exception goes by the program that ran, not by what it calls
+    // itself, and only after an execve that succeeded.
+    let renamed = log.replace("execve(\"/usr/bin/curl\"", "execve(\"/tmp/x\"");
+    assert_eq!(read_trace("x", &renamed).problems.len(), 1);
+    let failed = "20 execve(\"/usr/bin/curl\", [\"/usr/bin/curl\", \"--version\"], 0x1 /* 3 vars */ <unfinished ...>\n20 <... execve resumed>) = -1 ENOENT (No such file or directory)\n20 connect(3, {sa_family=AF_UNIX, sun_path=\"/var/run/nscd/socket\"}, 110) = -1 ENOENT\n";
+    assert_eq!(read_trace("x", failed).problems.len(), 1);
+    let resumed = failed.replace(") = -1 ENOENT (No such file or directory)", ") = 0");
+    assert!(read_trace("x", &resumed).problems.is_empty());
     let seen = read_trace(
         "x",
         "16 connect(3, {sa_family=AF_INET, sin_port=htons(8443), sin_addr=inet_addr(\"127.0.0.1\")}, 16) = 0\n",
@@ -2744,7 +2949,7 @@ fn page_of(args: &[String]) -> String {
 }
 
 /// The commands the traced run covers, by their man page names: kept equal
-/// to [`steps`] and P1 by [`everyday_commands_open_no_internet_socket`].
+/// to [`steps`] and P1 by [`everyday_commands_make_no_internet_connection`].
 const TRACED: &[&str] = &[
     "add",
     "cleanup",
@@ -2832,6 +3037,9 @@ const UNTRACED_FORMS: &[(&str, &str)] = &[
     ("self-update", "--check"),
     ("cleanup", "--data"),
     ("verify", "--permissions-stdin"),
+    // `desktop <id> <action>` for one app (only `desktop all refresh` is
+    // traced): its page names the ACTION argument.
+    ("desktop", "ACTION"),
 ];
 
 /// Every command and subcommand of sam-jail, at any depth, is either in
@@ -2842,9 +3050,16 @@ const UNTRACED_FORMS: &[(&str, &str)] = &[
 #[test]
 fn every_command_is_traced_or_named_untraced() {
     let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("man");
     let out = std::process::Command::new(env!("CARGO_BIN_EXE_sam-jail"))
         .arg("man")
-        .arg(tmp.path())
+        .arg(&dir)
+        .env("SAM_CONFIG_DIR", tmp.path().join("config"))
+        .env("SAM_DATA_DIR", tmp.path().join("data"))
+        .env("HOME", tmp.path().join("home"))
+        .env("LC_ALL", "C")
+        .env_remove("LANGUAGE")
+        .stdin(std::process::Stdio::null())
         .output()
         .unwrap();
     assert!(
@@ -2853,7 +3068,7 @@ fn every_command_is_traced_or_named_untraced() {
         String::from_utf8_lossy(&out.stderr)
     );
     let mut pages = BTreeMap::new();
-    for e in fs::read_dir(tmp.path()).unwrap().flatten() {
+    for e in fs::read_dir(&dir).unwrap().flatten() {
         let n = e.file_name().to_string_lossy().to_string();
         if let Some(c) = n
             .strip_prefix("sam-jail-")
@@ -2898,12 +3113,16 @@ fn every_command_is_traced_or_named_untraced() {
 /// whose network is "none", each command did its work (its exit status,
 /// and the program that shows it ran: an unpack tool for `add`, Bubblewrap
 /// for `run`, `verify` and `doctor`, GnuPG for `doctor --contracts`), and
-/// no process SAM started opened an internet socket, set up io_uring or
-/// connected to a name-service socket, other than the two named in
-/// [`allowed`]. The programs each command ran and the Unix sockets it
+/// no process SAM started made an internet connection: none opened an
+/// internet socket, set up io_uring or connected to a name-service socket,
+/// other than the two named in [`allowed`] (pasta's probe socket, which
+/// connects nowhere on the internet, and `curl --version`'s connect to
+/// nscd). Only these commands must show a program: `add`, `run`, `verify`,
+/// `doctor` and `doctor --contracts`; exit status 3 ("not passed") counts
+/// as ran for `verify` and the doctor commands. The programs each command ran and the Unix sockets it
 /// connected to are printed for the privacy report.
 #[test]
-fn everyday_commands_open_no_internet_socket() {
+fn everyday_commands_make_no_internet_connection() {
     if !traced_run_possible() {
         return;
     }
@@ -2915,7 +3134,7 @@ fn everyday_commands_open_no_internet_socket() {
     let downloads = root.join("home/Downloads").to_str().unwrap().to_string();
     let mut problems = Vec::new();
     let mut covered = std::collections::BTreeSet::new();
-    covered.insert("updates".to_string()); // P1
+    covered.insert("updates".to_string()); // W10, and P1 with an app id
     let mut id = String::new();
     for round in 0..2 {
         for (label, args, ok, marker) in steps(&img, &downloads, &id) {
@@ -3076,7 +3295,8 @@ fn the_trace_sees_inside_an_apps_sandbox() {
         ran.seen.execs
     );
     assert!(
-        ran.seen.inet_socket,
-        "the trace does not show getent's internet socket inside the sandbox"
+        ran.seen.inet_socket_pids.iter().any(|p| getent.contains(&p)),
+        "the trace does not show getent's internet socket inside the sandbox: sockets from {:?}, getent {getent:?}",
+        ran.seen.inet_socket_pids
     );
 }

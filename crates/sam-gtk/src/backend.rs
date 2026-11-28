@@ -96,7 +96,12 @@ impl Backend {
     /// online cannot hide behind a list of words.
     pub async fn call(&self, args: &[&str], input: Option<String>) -> Reply {
         refuse_online(args)?;
-        self.counted(args, input).await
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "way out: sam-jail, after the refusal"
+        )]
+        let r = self.counted(args, input).await;
+        r
     }
 
     /// [`Backend::call`] for the commands that go online. Every caller is
@@ -104,13 +109,19 @@ impl Backend {
     /// the window's start, which checks only when the person switched that
     /// on), listed in crates/sam-jail-cli/tests/network_use.rs.
     pub async fn call_online(&self, args: &[&str], input: Option<String>) -> Reply {
-        self.counted(args, input).await
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "way out: sam-jail, for the listed update actions"
+        )]
+        let r = self.counted(args, input).await;
+        r
     }
 
     /// Runs the command while the window shows that it is busy.
     async fn counted(&self, args: &[&str], input: Option<String>) -> Reply {
         self.busy.set(self.busy.get() + 1);
         (self.busy_changed)(true);
+        #[expect(clippy::disallowed_methods, reason = "way out: sam-jail, counted")]
         let r = self.call_inner(args, input).await;
         self.busy.set(self.busy.get() - 1);
         (self.busy_changed)(self.busy.get() > 0);
@@ -129,6 +140,10 @@ impl Backend {
         refuse_online(args)?;
         self.busy.set(self.busy.get() + 1);
         (self.busy_changed)(true);
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "way out: sam-jail with progress, after the refusal"
+        )]
         let r = self.call_progress_inner(args, input, on_progress).await;
         self.busy.set(self.busy.get() - 1);
         (self.busy_changed)(self.busy.get() > 0);
@@ -272,7 +287,9 @@ impl Backend {
         let info = info.map_err(|e| {
             crate::i18n::trf("Could not start a terminal: {error}", &[("error", &e)])
         })?;
-        info.launch(&[], gio::AppLaunchContext::NONE)
+        #[expect(clippy::disallowed_methods, reason = "way out: the terminal GIO picks")]
+        let launched = info.launch(&[], gio::AppLaunchContext::NONE);
+        launched
             .map_err(|e| crate::i18n::trf("Could not start a terminal: {error}", &[("error", &e)]))
     }
 

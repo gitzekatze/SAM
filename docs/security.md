@@ -1967,7 +1967,7 @@ SAM keeps what it learns about you on your computer.
   "phone home" of any kind. SAM goes online only when you ask, as
   [Network use by SAM itself](#network-use-by-sam-itself) describes
   (`update_checks_stay_off_unless_switched_on`,
-  `everyday_commands_open_no_internet_socket`,
+  `everyday_commands_make_no_internet_connection`,
   `update_requests_carry_nothing_about_the_person_or_their_apps`).
 - **What stays on your disk:** SAM's settings, the app records and, per app,
   the last 20 launch logs (Preferences → Diagnostics). A launch log holds

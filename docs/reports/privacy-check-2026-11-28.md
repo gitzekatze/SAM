@@ -58,7 +58,7 @@ tests are in the next section.
 
 Each test's own description says exactly what it proves; together:
 
-1. **The static gate** (`every_way_out_of_sams_code_is_listed`,
+1. **The static gate** (`each_listed_call_in_program_code_is_a_listed_place`,
    `the_way_out_parser_reads_what_the_compiler_reads`, in
    `crates/sam-jail-cli/tests/network_use.rs`). clippy refuses, in SAM's
    program code, every direct call that starts a program, opens a socket,
@@ -89,10 +89,10 @@ Each test's own description says exactly what it proves; together:
    prove:** that each listed place runs only after the person's action; the
    list says when each runs, and review judges it.
 4. **The libraries** (`only_listed_libraries_are_part_of_sam`,
-   `the_library_check_sees_a_changed_version`): every package in
+   `the_library_check_sees_a_new_name_or_source`): every package in
    `Cargo.lock`, by name, version and source. **Does not prove:** that a
    listed library never goes online.
-5. **The traced run** (`everyday_commands_open_no_internet_socket`,
+5. **The traced run** (`everyday_commands_make_no_internet_connection`,
    `the_trace_sees_an_update_check`, `the_trace_sees_inside_an_apps_sandbox`,
    `every_command_is_traced_or_named_untraced`,
    `the_trace_check_reads_strace_lines`). The window's start commands

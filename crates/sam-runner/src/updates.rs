@@ -3,8 +3,10 @@
 //! The source comes from the AppImage itself (`.upd_info`, see
 //! [`sam_detect::update_info`]). Every source ends in a `.zsync` file whose
 //! header names the SHA-1 of the published AppImage; when it differs from the
-//! file on this computer, an update is available. Only the header is read
-//! (a few kilobytes), nothing is downloaded or replaced.
+//! file on this computer, an update is available. A check reads only the
+//! start of each update description (16 KiB) and, for a GitHub source, the
+//! release description (whole, up to 16 MiB); it downloads no AppImage and
+//! replaces nothing.
 //!
 //! The network is reached through `curl`: HTTPS only, also for redirects,
 //! short time limits, a fixed user agent that names SAM instead of curl's.
@@ -84,7 +86,7 @@ fn github_api_url(owner: &str, repo: &str, tag: &str) -> String {
 /// curl would send to the server), is refused.
 fn curl_args(req: &Request, max_secs: u64) -> Result<Vec<String>> {
     let url = req.url();
-    let Some(rest) = url.strip_prefix("https://") else {
+    if !url.starts_with("https://") {
         bail!(
             "{}",
             sam_core::i18n::trf(
@@ -92,9 +94,17 @@ fn curl_args(req: &Request, max_secs: u64) -> Result<Vec<String>> {
                 &[("address", &sam_core::util::display_safe(url, 120))]
             )
         );
-    };
-    let server = rest.split(['/', '?', '#']).next().unwrap_or_default();
-    if server.contains('@') {
+    }
+    // The server part: after `https:` and every `/` or `\` that follows it
+    // (curl reads `https:///name:secret@host/` with a login too), up to the
+    // next `/`, `\`, `?` or `#`. A login is an `@` there, also written as
+    // `%40`.
+    let server = url["https:".len()..]
+        .trim_start_matches(['/', '\\'])
+        .split(['/', '\\', '?', '#'])
+        .next()
+        .unwrap_or_default();
+    if server.contains('@') || server.to_ascii_lowercase().contains("%40") {
         bail!(
             "{}",
             sam_core::i18n::tr("the update address holds a login, which SAM does not send")
@@ -1652,6 +1662,10 @@ mod tests {
             "https://name@example.org/App.zsync",
             "https://name@example.org",
             "https://name@example.org?x",
+            "https:///name:secret@example.org/App.zsync",
+            "https://\\name:secret@example.org/App.zsync",
+            "https://name%40x:secret%40y@example.org/App.zsync",
+            "https://name%40example.org/App.zsync",
         ] {
             for req in [
                 Request::Answer {

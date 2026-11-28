@@ -216,8 +216,8 @@ jobs:
         if: env.CODE == 'true'
         run: |
           set -o pipefail
-          cargo clippy --workspace --all-targets --locked -- -D warnings 2>&1 | tee clippy.log
-          if grep -q "does not refer to" clippy.log; then
+          cargo clippy --workspace --all-targets --locked -- -D warnings 2>&1 | tee "$RUNNER_TEMP/clippy.log"
+          if grep -E -q "does not refer to|expected a .*, found" "$RUNNER_TEMP/clippy.log"; then
             echo "clippy.toml names a path that does not exist (see above)." >&2
             exit 1
           fi
