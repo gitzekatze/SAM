@@ -2731,7 +2731,8 @@ impl Section<'_> {
                     // target stays read-only there, as before the rule;
                     // it protects something where the app cannot change
                     // the link itself. Only narrowing: the bind shows
-                    // nothing a grant does not show already. Never for a
+                    // nothing a grant does not show already, and the
+                    // folders above it are pinned (`own_locked`). Never for a
                     // target by a name that is not valid text
                     // ([`Views::read_only_targets`]).
                     let mut targets = Vec::new();
