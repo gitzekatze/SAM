@@ -4227,7 +4227,7 @@ mod tests {
         assert!(has_seq(&a, &["--chdir", proj.to_str().unwrap()]));
         assert_eq!(withheld_opened_paths(&ctx), Vec::<PathBuf>::new());
         // "No access" shares nothing, not even read-only (it used to share
-        // like "Read-only"): no bind, the app starts in its private home
+        // like "Read-only"): no bind, the app starts in its home
         // rather than in a folder it cannot see, and the log names the file
         // it did not share.
         ctx.permissions.filesystem.opened_files = Access::None;

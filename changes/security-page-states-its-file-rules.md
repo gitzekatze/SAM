@@ -18,8 +18,9 @@
 - With files opened with the app set to *No access*, the page now says
   that the app starts in the folder it was started from wherever a grant
   shows that folder, and in its home otherwise.
-- The threat model points to these limits for apps that read keys and
-  for apps that make themselves start later.
+- The threat model points to these limits for apps that read keys, for
+  apps that make themselves start later and for apps that replace SAM's
+  own programs.
 - Tests check that the rules stay numbered once each with working
   pointers, and that the rules for start places and credential stores
   name a gap exactly while SAM's code has it.
