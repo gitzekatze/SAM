@@ -3,31 +3,104 @@
 
 use super::*;
 
+/// What a change of an app's settings changes, for
+/// [`Sam::save_profile`]: every writer names it, so none merges a whole
+/// set by mistake.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(super) enum SetChange {
+    /// Some switches: only those are written, a switch another SAM process
+    /// saved meanwhile stays.
+    Switches,
+    /// The whole set, chosen as one (a preset, the compatibility mode, a
+    /// whole set the person confirmed): written as one value. A reset (SAM's
+    /// recommendation, also written as one value) and an undo of the repair
+    /// steps are made on the record as it is under the lock instead
+    /// ([`Sam::reset_profile`], [`Sam::undo_repairs`]).
+    WholeSet,
+}
+
+/// The moment between a writer's read and its save, where a test lets
+/// another SAM process save; outside tests nothing happens here. A function
+/// of its own, so the translation collector skips only it as test code.
+fn before_save() {
+    #[cfg(test)]
+    record_lock_tests::before_save();
+}
+
 impl Sam {
     // ---------------------------------------------------------- profiles
 
-    pub(super) fn save_profile(&self, entry: &mut AppEntry) -> Result<()> {
-        entry.profile.user_modified = entry.profile.permissions != entry.recommended;
-        // The note of an update's needs keeps what is not granted yet: a
-        // changed switch is not the person seeing it (review L5).
-        settle_update_note(entry, NoteEvent::SettingsChanged);
-        // A changed switch is no confirmation that the person looked at a
-        // record or file changed outside SAM: only `mark_reviewed` clears
-        // those marks. Nor that they looked at the settings SAM chose from
-        // what the app says about itself (`reviewed`): one switch changed
-        // on the command line, in the window or for a group of apps leaves
-        // the others unconfirmed (review F5). Only flows that set the whole
-        // set confirm it: `mark_reviewed`, a preset, `set_permissions`.
-        entry.clear_launch_failure();
-        self.registry().save(entry)
+    /// Saves the change of an app's settings that `entry` holds, made on
+    /// the copy `read`: under the record lock, only what the change
+    /// changed is written onto the record as it is now, so what another
+    /// SAM process saved meanwhile (an "unpack again", an update and their
+    /// "look at it first" marks and notices) stays. With
+    /// [`SetChange::WholeSet`] the settings are written as one value, so
+    /// the saved set is exactly the one the writer chose (before, a switch
+    /// saved meanwhile was merged into a preset or a confirmed set, which
+    /// then held a set nobody chose). `entry` becomes the record as saved.
+    pub(super) fn save_profile(
+        &self,
+        read: &AppEntry,
+        entry: &mut AppEntry,
+        kind: SetChange,
+    ) -> Result<()> {
+        let id = entry.id.clone();
+        let saved = self.change_profile(&id, |now| {
+            sam_storage::apply_changes(now, read, entry)?;
+            if kind == SetChange::WholeSet {
+                // A preset, the compatibility mode or a whole set the
+                // person confirmed:
+                // a switch another process saved meanwhile is replaced
+                // too, never mixed in. The later save wins, as for any
+                // one setting two saves change.
+                now.profile.permissions = entry.profile.permissions.clone();
+            }
+            Ok(())
+        })?;
+        *entry = saved;
+        Ok(())
+    }
+
+    /// Makes `change` on the record of `id` as it is under the record lock,
+    /// then saves it as every change of an app's settings is saved; returns
+    /// the record as saved. For a change that must see the record as it is
+    /// now: a repair step changes switches and the list of applied steps
+    /// together, so another process's step saved meanwhile stays in both
+    /// (merged field by field, a switch and the list that names its step
+    /// could come from two different saves).
+    fn change_profile(
+        &self,
+        id: &str,
+        change: impl FnOnce(&mut AppEntry) -> Result<()>,
+    ) -> Result<AppEntry> {
+        before_save();
+        let saved = self.registry().try_update(id, |now| {
+            change(now)?;
+            now.profile.user_modified = now.profile.permissions != now.recommended;
+            // The note of an update's needs keeps what is not granted yet: a
+            // changed switch is not the person seeing it (review L5).
+            settle_update_note(now, NoteEvent::SettingsChanged);
+            // A changed switch is no confirmation that the person looked at a
+            // record or file changed outside SAM: only `mark_reviewed` clears
+            // those marks. Nor that they looked at the settings SAM chose from
+            // what the app says about itself (`reviewed`): one switch changed
+            // on the command line, in the window or for a group of apps leaves
+            // the others unconfirmed (review F5). Only flows that set the whole
+            // set confirm it: `mark_reviewed`, a preset, `set_permissions`.
+            now.clear_launch_failure();
+            Ok(())
+        })?;
+        saved.with_context(|| sam_core::i18n::trf("no registered app '{id}'", &[("id", &id)]))
     }
 
     /// Changes one setting. Leaves the app unconfirmed when it was.
     pub fn set_permission(&self, query: &str, key: &str, value: &str) -> Result<AppEntry> {
         let mut e = self.resolve(query)?;
+        let read = e.clone();
         e.profile.permissions.set_key(key, value)?;
         e.profile.preset = None;
-        self.save_profile(&mut e)?;
+        self.save_profile(&read, &mut e, SetChange::Switches)?;
         Ok(e)
     }
 
@@ -51,10 +124,16 @@ impl Sam {
         confirms: bool,
     ) -> Result<AppEntry> {
         let mut e = self.resolve(query)?;
+        let read = e.clone();
         e.profile.permissions = perms;
         e.profile.preset = None;
         e.reviewed |= confirms;
-        self.save_profile(&mut e)?;
+        let kind = if confirms {
+            SetChange::WholeSet
+        } else {
+            SetChange::Switches
+        };
+        self.save_profile(&read, &mut e, kind)?;
         Ok(e)
     }
 
@@ -85,16 +164,33 @@ impl Sam {
         }
     }
 
+    /// Puts SAM's recommended settings back and forgets the repair steps,
+    /// on the record as it is under the record lock. It also takes off each
+    /// argument (`--no-sandbox`) that a step listed with its own record
+    /// added. Steps applied by SAM 0.1.0 are listed by name only, so their
+    /// arguments are not covered.
     pub fn reset_profile(&self, query: &str) -> Result<AppEntry> {
-        let mut e = self.resolve(query)?;
-        e.profile.permissions = e.recommended.clone();
-        e.profile.compatibility_mode = false;
-        e.repairs_applied.clear();
-        e.applied_repairs.clear();
-        e.repair_backup = None;
-        e.profile.preset = None;
-        self.save_profile(&mut e)?;
-        Ok(e)
+        let id = self.resolve(query)?.id;
+        self.change_profile(&id, |e| {
+            let added_args: Vec<String> = e
+                .applied_repairs
+                .iter()
+                .filter(|r| {
+                    r.step
+                        .as_ref()
+                        .is_some_and(|s| matches!(s.action, FixAction::AddArg { .. }))
+                })
+                .filter_map(|r| r.added.clone())
+                .collect();
+            e.profile.args.retain(|a| !added_args.contains(a));
+            e.profile.permissions = e.recommended.clone();
+            e.profile.compatibility_mode = false;
+            e.repairs_applied.clear();
+            e.applied_repairs.clear();
+            e.repair_backup = None;
+            e.profile.preset = None;
+            Ok(())
+        })
     }
 
     pub fn set_compat(&self, query: &str, on: bool) -> Result<AppEntry> {
@@ -110,6 +206,7 @@ impl Sam {
         if on == e.profile.compatibility_mode {
             return Ok(e);
         }
+        let read = e.clone();
         if on {
             e.profile.before_compat = Some(e.profile.permissions.clone());
             e.profile.permissions = compatibility_profile(&e.profile.permissions);
@@ -122,7 +219,7 @@ impl Sam {
                 .unwrap_or_else(|| e.recommended.clone());
         }
         e.profile.compatibility_mode = on;
-        self.save_profile(&mut e)?;
+        self.save_profile(&read, &mut e, SetChange::WholeSet)?;
         Ok(e)
     }
 
@@ -138,11 +235,8 @@ impl Sam {
     /// unpacking under its own start lock would wait for itself.
     fn verify_unpacked(&self, e: &AppEntry) -> Result<crate::verify::Outcome> {
         let out = crate::verify::verify(e, &self.config, &self.paths, &self.host())?;
-        let reg = self.registry();
-        if let Some(mut fresh) = reg.get(&e.id)? {
-            fresh.last_check = Some(out.record.clone());
-            reg.save(&mut fresh)?;
-        }
+        self.registry()
+            .update(&e.id, |fresh| fresh.last_check = Some(out.record.clone()))?;
         Ok(out)
     }
 
@@ -269,7 +363,7 @@ impl Sam {
 
     /// Replaces the extra arguments always passed to the app.
     pub fn set_args(&self, query: &str, args: Vec<String>) -> Result<AppEntry> {
-        let mut e = self.resolve(query)?;
+        let e = self.resolve(query)?;
         let args: Vec<String> = args
             .into_iter()
             .map(|a| a.trim().to_string())
@@ -280,9 +374,7 @@ impl Sam {
                 bail!("invalid argument {a:?}");
             }
         }
-        e.profile.args = args;
-        self.registry().save(&mut e)?;
-        Ok(e)
+        self.update_record(&e.id, |f| f.profile.args = args)
     }
 
     // ------------------------------------------------------------ repair
@@ -301,30 +393,40 @@ impl Sam {
         as_repair: bool,
         confirmed: bool,
     ) -> Result<AppEntry> {
-        let mut e = self.resolve(query)?;
-        let change = crate::gate::Change::Apply {
-            e: &e,
-            cfg: &self.config,
-            paths: &self.paths,
-            sug,
-        };
-        crate::gate::confirm(&change, confirmed)?;
-        if as_repair && e.repair_backup.is_none() {
-            e.repair_backup = Some(e.profile.clone());
-        }
-        let mut undo = sam_core::model::AppliedRepair {
-            step: Some(sug.clone()),
-            on_trial: as_repair,
-            ..Default::default()
-        };
-        crate::repair::apply_step(&mut e, sug, &mut undo)?;
-        e.profile.preset = None;
-        if as_repair && !e.repairs_applied.contains(&sug.id) {
-            e.repairs_applied.push(sug.id.clone());
-            e.applied_repairs.push(undo);
-        }
-        self.save_profile(&mut e)?;
-        Ok(e)
+        let id = self.resolve(query)?.id;
+        // Judged, applied and listed on the record as it is under the
+        // record lock: a step another SAM process applied meanwhile stays
+        // in the switches and in the list of applied steps, so every
+        // switch a step turned off can be undone by name. The gate reads
+        // the record and this computer's settings; its one slower check
+        // (whether overlays work here, a short Bubblewrap run) is made
+        // once per process.
+        self.change_profile(&id, |e| {
+            crate::gate::confirm(
+                &crate::gate::Change::Apply {
+                    e: &*e,
+                    cfg: &self.config,
+                    paths: &self.paths,
+                    sug,
+                },
+                confirmed,
+            )?;
+            if as_repair && e.repair_backup.is_none() {
+                e.repair_backup = Some(e.profile.clone());
+            }
+            let mut undo = sam_core::model::AppliedRepair {
+                step: Some(sug.clone()),
+                on_trial: as_repair,
+                ..Default::default()
+            };
+            crate::repair::apply_step(e, sug, &mut undo)?;
+            e.profile.preset = None;
+            if as_repair && !e.repairs_applied.contains(&sug.id) {
+                e.repairs_applied.push(sug.id.clone());
+                e.applied_repairs.push(undo);
+            }
+            Ok(())
+        })
     }
 
     /// Find a suggestion by id among the app's hints, findings and repair steps.
@@ -354,21 +456,23 @@ impl Sam {
     /// Switches off one applied repair step: puts back exactly what that
     /// step changed and keeps the other steps.
     pub fn undo_repair_step(&self, query: &str, step_id: &str) -> Result<AppEntry> {
-        let mut e = self.resolve(query)?;
-        let i = e
-            .applied_repairs
-            .iter()
-            .position(|r| r.step.as_ref().is_some_and(|s| s.id == step_id))
-            .with_context(|| {
-                sam_core::i18n::trf(
-                    "the repair step '{step_id}' is not applied",
-                    &[("step_id", &step_id)],
-                )
-            })?;
-        let r = e.applied_repairs.remove(i);
-        crate::repair::revert_step(&mut e, &r)?;
-        self.save_profile(&mut e)?;
-        Ok(e)
+        let id = self.resolve(query)?.id;
+        // On the record as it is under the record lock, as for applying a
+        // step: a step applied meanwhile keeps its entry in the list.
+        self.change_profile(&id, |e| {
+            let i = e
+                .applied_repairs
+                .iter()
+                .position(|r| r.step.as_ref().is_some_and(|s| s.id == step_id))
+                .with_context(|| {
+                    sam_core::i18n::trf(
+                        "the repair step '{step_id}' is not applied",
+                        &[("step_id", &step_id)],
+                    )
+                })?;
+            let r = e.applied_repairs.remove(i);
+            crate::repair::revert_step(e, &r)
+        })
     }
 
     /// Undo every repair step, newest first, each taking back only what it
@@ -376,28 +480,32 @@ impl Sam {
     /// profile from before the first step was put back). Older records
     /// without the steps' own records fall back to that copy.
     pub fn undo_repairs(&self, query: &str) -> Result<AppEntry> {
-        let mut e = self.resolve(query)?;
-        if !e.applied_repairs.is_empty() {
-            for r in e.applied_repairs.clone().iter().rev() {
-                crate::repair::revert_step(&mut e, r)?;
-            }
-            e.repair_backup = None;
-        } else if let Some(backup) = e.repair_backup.take() {
-            e.profile = backup;
-        } else {
-            bail!(
-                "{}",
-                sam_core::i18n::trf(
-                    "no repair steps to undo for {app}",
-                    &[("app", &e.display_name())]
+        let id = self.resolve(query)?.id;
+        // On the record as it is under the record lock, as for one step:
+        // a step another SAM process applied meanwhile, with its own
+        // record, is turned back too.
+        self.change_profile(&id, |e| {
+            if !e.applied_repairs.is_empty() {
+                for r in e.applied_repairs.clone().iter().rev() {
+                    crate::repair::revert_step(e, r)?;
+                }
+                e.repair_backup = None;
+            } else if let Some(backup) = e.repair_backup.take() {
+                e.profile = backup;
+            } else {
+                bail!(
+                    "{}",
+                    sam_core::i18n::trf(
+                        "no repair steps to undo for {app}",
+                        &[("app", &e.display_name())]
+                    )
                 )
-            )
-        }
-        e.repairs_applied.clear();
-        e.applied_repairs.clear();
-        e.tried_repairs.clear();
-        self.save_profile(&mut e)?;
-        Ok(e)
+            }
+            e.repairs_applied.clear();
+            e.applied_repairs.clear();
+            e.tried_repairs.clear();
+            Ok(())
+        })
     }
 
     pub fn mark_reviewed(&self, query: &str) -> Result<AppEntry> {
@@ -412,26 +520,33 @@ impl Sam {
     /// showed (review L4). Without `seen` (a person at the terminal), what
     /// is there now is confirmed.
     pub fn mark_reviewed_as_shown(&self, query: &str, seen: Option<&str>) -> Result<AppEntry> {
-        let mut e = self.resolve(query)?;
-        if let Some(seen) = seen {
-            if sam_storage::review_fingerprint(&e)? != seen {
-                return Err(sam_core::error::CodedError::new(
-                    "review-out-of-date",
-                    sam_core::i18n::trf(
-                        "{app} changed since this page showed it. Look at it again, then confirm.",
-                        &[("app", &sam_core::util::display_safe(e.display_name(), 80))],
-                    ),
-                )
-                .into());
+        let id = self.resolve(query)?.id;
+        before_save();
+        // Checked against `seen` and confirmed on the record as it is under
+        // the record lock: a mark or notice another SAM process saved after
+        // the page was drawn is never cleared unseen. Without `seen`, what
+        // is there when the lock is taken is confirmed.
+        let saved = self.registry().update_confirmed(&id, |e| {
+            if let Some(seen) = seen {
+                if sam_storage::review_fingerprint(e)? != seen {
+                    return Err(sam_core::error::CodedError::new(
+                        "review-out-of-date",
+                        sam_core::i18n::trf(
+                            "{app} changed since this page showed it. Look at it again, then confirm.",
+                            &[("app", &sam_core::util::display_safe(e.display_name(), 80))],
+                        ),
+                    )
+                    .into());
+                }
             }
-        }
-        e.reviewed = true;
-        settle_update_note(&mut e, NoteEvent::Seen);
-        // The one place that confirms changes made outside SAM.
-        e.changed_outside = false;
-        e.content_changed_outside = false;
-        self.registry().save_confirmed(&mut e)?;
-        Ok(e)
+            e.reviewed = true;
+            settle_update_note(e, NoteEvent::Seen);
+            // The one place that confirms changes made outside SAM.
+            e.changed_outside = false;
+            e.content_changed_outside = false;
+            Ok(())
+        })?;
+        saved.with_context(|| sam_core::i18n::trf("no registered app '{id}'", &[("id", &id)]))
     }
 
     /// Applies a preset; asks (returns it not applied) when it removes
@@ -447,6 +562,7 @@ impl Sam {
         expect: Option<&str>,
     ) -> Result<PresetApply> {
         let mut e = self.resolve(query)?;
+        let read = e.clone();
         let preset = find_preset(&self.paths, preset_name)?
             .with_context(|| format!("unknown preset '{preset_name}'"))?;
         let fingerprint = sam_storage::fingerprint(&preset.permissions)?;
@@ -472,7 +588,7 @@ impl Sam {
         e.profile.preset = Some(preset.name.clone());
         // The whole set is the preset the person picked.
         e.reviewed = true;
-        self.save_profile(&mut e)?;
+        self.save_profile(&read, &mut e, SetChange::WholeSet)?;
         Ok(PresetApply {
             preset: preset.name,
             check,
@@ -569,12 +685,13 @@ impl Sam {
                         to: e.profile.permissions.clone(),
                     },
                 );
+                let read = e.clone();
                 out.previous.insert(
                     e.id.clone(),
                     std::mem::replace(&mut e.profile.permissions, new),
                 );
                 e.profile.preset = None;
-                self.save_profile(&mut e)?;
+                self.save_profile(&read, &mut e, SetChange::Switches)?;
             }
         }
         Ok(out)
@@ -805,5 +922,421 @@ mod update_note_tests {
             !changed(&sam),
             "back on the recommendation is no longer changed"
         );
+    }
+}
+
+#[cfg(test)]
+mod record_lock_tests {
+    use super::*;
+    use std::cell::RefCell;
+
+    thread_local! {
+        /// What another SAM process saves between a writer's read and its
+        /// save ([`meanwhile`]).
+        static BEFORE_SAVE: RefCell<Option<Box<dyn FnOnce()>>> = const { RefCell::new(None) };
+    }
+
+    /// Called by a change of the settings (`save_profile`, a repair step)
+    /// and by a confirmation before they take the record lock: the moment
+    /// a save by another process can land between the writer's read and
+    /// its save.
+    pub(super) fn before_save() {
+        if let Some(h) = BEFORE_SAVE.with(|h| h.borrow_mut().take()) {
+            h();
+        }
+    }
+
+    /// The next `save_profile` on this thread first runs `f`.
+    fn meanwhile(f: impl FnOnce() + 'static) {
+        BEFORE_SAVE.with(|h| *h.borrow_mut() = Some(Box::new(f)));
+    }
+
+    /// Grants a folder through another SAM process, as `sam-jail set`
+    /// from a terminal does while the window saves.
+    fn grant_meanwhile(paths: &Paths, id: &'static str) {
+        let paths = paths.clone();
+        meanwhile(move || {
+            Sam::with_paths(paths)
+                .unwrap()
+                .update_record(id, |f| {
+                    f.profile
+                        .permissions
+                        .filesystem
+                        .custom_write
+                        .push("~/Granted meanwhile".into())
+                })
+                .unwrap();
+        });
+    }
+
+    fn granted_meanwhile(e: &AppEntry) -> bool {
+        e.profile
+            .permissions
+            .filesystem
+            .custom_write
+            .iter()
+            .any(|p| p.contains("meanwhile"))
+    }
+
+    /// Every writer that replaces the whole set (a whole set the person
+    /// confirmed, a preset, a reset, the compatibility mode, an undo of
+    /// the repair steps of an older record that lists no step of its own and
+    /// goes back to the copy from before the first step) saves exactly the
+    /// set it chose, also when another
+    /// SAM process granted a folder between the writer's read and its
+    /// save. Before, each setting the writer left as it read it kept the
+    /// value on disk, so the saved set held a grant nobody chose while it
+    /// counted as confirmed or carried the preset's name.
+    #[test]
+    fn a_whole_set_is_saved_as_chosen_when_a_switch_was_saved_meanwhile() {
+        let t = tempfile::tempdir().unwrap();
+        let paths = Paths::rooted(t.path());
+        let sam = Sam::with_paths(paths.clone()).unwrap();
+        let base = PermissionSet::strict_gui();
+        let mut start = base.clone();
+        start.devices.gpu = !base.devices.gpu;
+        let mut preset = Preset {
+            name: "Offline".into(),
+            permissions: base.clone(),
+            ..Default::default()
+        };
+        PresetStore::new(&paths).save(&mut preset).unwrap();
+        const ID: &str = "appimage-whole-1a2b";
+        type Writer = Box<dyn Fn(&Sam)>;
+        let writers: Vec<(&str, PermissionSet, Writer)> = vec![
+            (
+                "a whole set confirmed",
+                base.clone(),
+                Box::new(|s| {
+                    s.set_permissions(ID, PermissionSet::strict_gui()).unwrap();
+                }),
+            ),
+            (
+                "a preset",
+                base.clone(),
+                Box::new(|s| {
+                    assert!(s.apply_preset(ID, "Offline", true, None).unwrap().applied);
+                }),
+            ),
+            (
+                "a reset",
+                base.clone(),
+                Box::new(|s| {
+                    s.reset_profile(ID).unwrap();
+                }),
+            ),
+            (
+                "the compatibility mode",
+                compatibility_profile(&start),
+                Box::new(|s| {
+                    s.set_compat(ID, true).unwrap();
+                }),
+            ),
+            (
+                "an undo of the repair steps",
+                base.clone(),
+                Box::new(|s| {
+                    s.undo_repairs(ID).unwrap();
+                }),
+            ),
+        ];
+        for (what, chosen, write) in writers {
+            let mut e = AppEntry {
+                id: ID.into(),
+                name: "Whole".into(),
+                recommended: base.clone(),
+                repair_backup: Some(SandboxProfile {
+                    permissions: base.clone(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            };
+            e.profile.permissions = start.clone();
+            sam.registry().save_confirmed(&mut e).unwrap();
+            grant_meanwhile(&paths, ID);
+            write(&sam);
+            let back = sam.resolve(ID).unwrap();
+            assert!(
+                !granted_meanwhile(&back),
+                "{what}: a folder nobody chose was mixed into the saved set"
+            );
+            assert_eq!(back.profile.permissions, chosen, "{what}");
+        }
+    }
+
+    /// A writer that changes one switch still saves only that switch: a
+    /// folder another SAM process granted between its read and its save
+    /// stays.
+    #[test]
+    fn one_switch_changed_keeps_a_grant_saved_meanwhile() {
+        let t = tempfile::tempdir().unwrap();
+        let paths = Paths::rooted(t.path());
+        let sam = Sam::with_paths(paths.clone()).unwrap();
+        const ID: &str = "appimage-switch-1a2b";
+        let mut e = AppEntry {
+            id: ID.into(),
+            name: "Switch".into(),
+            ..Default::default()
+        };
+        e.profile.permissions.devices.gpu = false;
+        sam.registry().save_confirmed(&mut e).unwrap();
+        grant_meanwhile(&paths, ID);
+        sam.set_permission(ID, "devices.gpu", "true").unwrap();
+        let back = sam.resolve(ID).unwrap();
+        assert!(back.profile.permissions.devices.gpu, "the switch is saved");
+        assert!(granted_meanwhile(&back), "the grant saved meanwhile stays");
+    }
+
+    /// A change of the settings made on a copy read before an "unpack
+    /// again" or an update saved its result saves only the change: the
+    /// new unpacked copy, the notice of a changed signing key and the
+    /// "look at it first" mark that step saved stay (before, the whole
+    /// copy was written back, and the next start ran the new content
+    /// without the notice).
+    #[test]
+    fn a_settings_change_keeps_what_an_unpack_saved_meanwhile() {
+        let t = tempfile::tempdir().unwrap();
+        let sam = Sam::with_paths(Paths::rooted(t.path())).unwrap();
+        let mut e = AppEntry {
+            id: "appimage-overlap-1a2b".into(),
+            extraction: Some(Default::default()),
+            ..Default::default()
+        };
+        e.profile.permissions.devices.gpu = false;
+        sam.registry().save(&mut e).unwrap();
+        let read = sam.resolve(&e.id).unwrap();
+        // Saved by an "unpack again" while the settings change was made.
+        sam.update_record(&e.id, |f| {
+            f.content_changed_outside = true;
+            f.signing_key_changed = Some("the earlier key".into());
+            f.source.sha256 = "1".repeat(64);
+            f.extraction.as_mut().unwrap().appdir = "/unpacked/again".into();
+        })
+        .unwrap();
+        let mut changed = read.clone();
+        changed.profile.permissions.devices.gpu = true;
+        sam.save_profile(&read, &mut changed, SetChange::Switches)
+            .unwrap();
+        let back = sam.registry().get(&e.id).unwrap().unwrap();
+        assert!(back.profile.permissions.devices.gpu, "the change is saved");
+        assert!(back.profile.user_modified);
+        assert_eq!(
+            back.signing_key_changed.as_deref(),
+            Some("the earlier key"),
+            "the notice of a changed signing key stays"
+        );
+        assert_eq!(back.source.sha256, "1".repeat(64), "the new file stays");
+        assert_eq!(
+            back.extraction.unwrap().appdir,
+            Path::new("/unpacked/again"),
+            "the new unpacked copy stays"
+        );
+        assert!(back.content_changed_outside, "the mark stays");
+        assert_eq!(changed.signing_key_changed, back.signing_key_changed);
+    }
+
+    /// A repair step that sets one switch, as SAM's ladder offers them.
+    fn step(id: &str, key: &str, value: &str) -> Suggestion {
+        Suggestion {
+            id: id.into(),
+            title: id.into(),
+            explanation: String::new(),
+            action: FixAction::Set {
+                key: key.into(),
+                value: value.into(),
+            },
+            risk: RiskLevel::High,
+            from_app_output: false,
+        }
+    }
+
+    fn seccomp_off() -> Suggestion {
+        step("seccomp-baseline", "advanced.seccomp_baseline", "false")
+    }
+
+    fn userns_on() -> Suggestion {
+        step("userns", "advanced.allow_userns", "true")
+    }
+
+    /// The steps the record lists as applied, by id.
+    fn listed(e: &AppEntry) -> Vec<String> {
+        e.applied_repairs
+            .iter()
+            .filter_map(|r| r.step.as_ref())
+            .map(|s| s.id.clone())
+            .collect()
+    }
+
+    /// A record with SAM's strict settings for a window app, confirmed.
+    fn strict_app(sam: &Sam, id: &str) {
+        let mut e = AppEntry {
+            id: id.into(),
+            name: "Steps".into(),
+            recommended: PermissionSet::strict_gui(),
+            ..Default::default()
+        };
+        e.profile.permissions = PermissionSet::strict_gui();
+        sam.registry().save_confirmed(&mut e).unwrap();
+    }
+
+    /// Two repair steps applied at the same time (the window and
+    /// `sam-jail repair` from a terminal) are both applied and both
+    /// listed. Before, the switches were saved one by one but the list of
+    /// applied steps as one value: the later save's list replaced the
+    /// earlier one, and the syscall filter stayed off with no record of the
+    /// step that turned it off.
+    #[test]
+    fn two_repair_steps_applied_at_once_are_both_listed() {
+        let t = tempfile::tempdir().unwrap();
+        let paths = Paths::rooted(t.path());
+        let sam = Sam::with_paths(paths.clone()).unwrap();
+        const ID: &str = "appimage-steps-1a2b";
+        strict_app(&sam, ID);
+        let other = paths.clone();
+        meanwhile(move || {
+            Sam::with_paths(other)
+                .unwrap()
+                .apply_suggestion(ID, &userns_on(), true, true)
+                .unwrap();
+        });
+        sam.apply_suggestion(ID, &seccomp_off(), true, true)
+            .unwrap();
+        let back = sam.resolve(ID).unwrap();
+        let p = &back.profile.permissions.advanced;
+        assert!(!p.seccomp_baseline && p.allow_userns, "both steps applied");
+        assert_eq!(
+            listed(&back),
+            ["userns", "seccomp-baseline"],
+            "a switch a step changed is not listed as that step"
+        );
+        assert_eq!(back.repairs_applied, ["userns", "seccomp-baseline"]);
+        let undone = sam.undo_repairs(ID).unwrap();
+        let p = &undone.profile.permissions.advanced;
+        assert!(
+            p.seccomp_baseline && !p.allow_userns,
+            "\"Undo repairs\" turns every step back"
+        );
+    }
+
+    /// Undoing one repair step while another SAM process applies another
+    /// step keeps that other step applied and listed. Before, the undo
+    /// saved its list without the new step, while the new step's switch
+    /// (the syscall filter off) stayed.
+    #[test]
+    fn undoing_one_repair_step_keeps_a_step_applied_meanwhile() {
+        let t = tempfile::tempdir().unwrap();
+        let paths = Paths::rooted(t.path());
+        let sam = Sam::with_paths(paths.clone()).unwrap();
+        const ID: &str = "appimage-undo-1a2b";
+        strict_app(&sam, ID);
+        sam.apply_suggestion(ID, &userns_on(), true, true).unwrap();
+        let other = paths.clone();
+        meanwhile(move || {
+            Sam::with_paths(other)
+                .unwrap()
+                .apply_suggestion(ID, &seccomp_off(), true, true)
+                .unwrap();
+        });
+        sam.undo_repair_step(ID, "userns").unwrap();
+        let back = sam.resolve(ID).unwrap();
+        let p = &back.profile.permissions.advanced;
+        assert!(!p.allow_userns, "the undone step is undone");
+        assert!(!p.seccomp_baseline, "the step applied meanwhile stays");
+        assert_eq!(
+            listed(&back),
+            ["seccomp-baseline"],
+            "the step applied meanwhile is no longer listed"
+        );
+        let undone = sam.undo_repair_step(ID, "seccomp-baseline").unwrap();
+        assert!(undone.profile.permissions.advanced.seccomp_baseline);
+    }
+
+    /// "Undo repairs" and a reset made while another SAM process applies a
+    /// repair step that adds an argument (`--no-sandbox`, which turns off
+    /// the app's own Chromium sandbox) also take off that step's argument.
+    /// Before, both worked on a copy read before that step was saved: the
+    /// argument on disk stayed, and the lists that named the step were
+    /// saved empty.
+    #[test]
+    fn undoing_repairs_or_a_reset_turns_back_an_argument_a_step_added_meanwhile() {
+        let no_sandbox = || Suggestion {
+            action: FixAction::AddArg {
+                value: "--no-sandbox".into(),
+            },
+            ..step("chromium-no-sandbox", "", "")
+        };
+        type Writer = fn(&Sam, &str) -> Result<AppEntry>;
+        let writers: [(&str, Writer); 2] = [
+            ("\"Undo repairs\"", |s, id| s.undo_repairs(id)),
+            ("a reset", |s, id| s.reset_profile(id)),
+        ];
+        for (what, write) in writers {
+            let t = tempfile::tempdir().unwrap();
+            let paths = Paths::rooted(t.path());
+            let sam = Sam::with_paths(paths.clone()).unwrap();
+            const ID: &str = "appimage-args-1a2b";
+            strict_app(&sam, ID);
+            sam.apply_suggestion(ID, &userns_on(), true, true).unwrap();
+            let other = paths.clone();
+            let step = no_sandbox();
+            meanwhile(move || {
+                Sam::with_paths(other)
+                    .unwrap()
+                    .apply_suggestion(ID, &step, true, true)
+                    .unwrap();
+            });
+            write(&sam, ID).unwrap();
+            let back = sam.resolve(ID).unwrap();
+            assert!(
+                !back.profile.args.iter().any(|a| a == "--no-sandbox"),
+                "{what}: --no-sandbox stays on; the steps still listed: {:?}",
+                listed(&back)
+            );
+            assert!(
+                back.applied_repairs.is_empty() && back.repairs_applied.is_empty(),
+                "{what}"
+            );
+            assert!(!back.profile.permissions.advanced.allow_userns, "{what}");
+        }
+    }
+
+    /// Confirming from the app's page (`sam-jail review --seen`) checks
+    /// what the page showed on the record as it is under the record lock:
+    /// a "look at it first" mark another SAM process saves after the page
+    /// was drawn and before the confirmation takes the lock makes the
+    /// confirmation fail with `review-out-of-date`, and the mark stays.
+    /// Checked before the lock was taken, the confirmation cleared a mark
+    /// nobody saw.
+    #[test]
+    fn a_confirmation_from_the_page_never_clears_a_mark_saved_before_its_lock() {
+        let t = tempfile::tempdir().unwrap();
+        let paths = Paths::rooted(t.path());
+        let sam = Sam::with_paths(paths.clone()).unwrap();
+        const ID: &str = "appimage-shown-1a2b";
+        let mut e = AppEntry {
+            id: ID.into(),
+            name: "Shown".into(),
+            ..Default::default()
+        };
+        sam.registry().save_confirmed(&mut e).unwrap();
+        let shown = sam_storage::review_fingerprint(&sam.resolve(ID).unwrap()).unwrap();
+        let other = paths.clone();
+        meanwhile(move || {
+            Sam::with_paths(other)
+                .unwrap()
+                .update_record(ID, |f| f.content_changed_outside = true)
+                .unwrap();
+        });
+        let err = sam
+            .mark_reviewed_as_shown(ID, Some(&shown))
+            .expect_err("a mark the page never showed was confirmed");
+        assert_eq!(
+            sam_core::error::code_of(&err),
+            Some("review-out-of-date"),
+            "{err:#}"
+        );
+        let back = sam.resolve(ID).unwrap();
+        assert!(back.content_changed_outside, "the mark stays");
+        assert!(!back.reviewed, "nothing is confirmed");
     }
 }

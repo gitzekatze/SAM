@@ -629,10 +629,27 @@ outside the home or to the home itself, is under *Files named on the
 command line*).
 Where one of them names the home itself, the stores sit at the top of the
 home (`~/git/credentials`, `~/gh`, `~/keyrings`) and are hidden there in
-the same way. Not covered: the start places are not locked at the top of
-the home then (`~/autostart`), so an app with the whole home writable can
-change them there. Such a folder outside the home is shown only when you
-grant it, and SAM does not hide the stores in it then.
+the same way. Of the places locked under `~/.config`, only the file SAM
+reads Documents, Downloads and the other user folders from is locked at
+the top of the home as well, where `XDG_CONFIG_HOME` names the home
+(`~/user-dirs.dirs`). Like `~/.config/user-dirs.dirs`, and
+`~/cfg/user-dirs.dirs` where the variable names `~/cfg`, it is read-only
+and cannot be renamed away, and when it is missing, SAM creates it empty
+before a start that shows it writable
+(`the_user_folders_file_is_protected_wherever_sam_reads_it_in_the_home`,
+`the_user_folders_file_stays_locked_when_the_config_folder_is_the_home`).
+SAM promises this only when neither the file nor a folder on the way to it
+from the home (`~/cfg`) is a link. Not covered: while another app runs
+that saw the file missing, SAM leaves it missing (see *Folders are created
+empty first* below). SAM reads `XDG_CONFIG_HOME` from the environment of
+each start, so a start whose environment does not set it leaves
+`~/user-dirs.dirs` (or `~/cfg/user-dirs.dirs`) unlocked; set the variable
+in the desktop session's environment, not only in a shell's startup file.
+Not covered either: where either variable names the home, the start places
+are not locked at the top of the home (`~/autostart`, `~/applications`),
+so an app with the whole home writable can change them there. A folder
+outside the home that either variable names is shown only when you grant
+it, and SAM does not hide the stores in it then.
 The switches that allow them count only with the whole home
 (`filesystem.home`): stored on without it (an old profile, a
 hand-edited file), they hide the keys and stores as if off, also where a
@@ -1937,6 +1954,31 @@ was easily misread.
   `network.app_ports` to restrict it further.
 - **Hostname:** the sandbox keeps the computer's hostname, because changing
   it is blocked on some hardened systems.
+- **App records saved by two SAM processes at once.** Every save of an app
+  record takes one short record lock (the file `.records.lock` in SAM's apps folder), held
+  only while the record is read, changed and written. Each save writes only
+  what it changes onto the record as it is then; when two saves change the
+  same field, the later one wins (a list, such as the granted folders,
+  counts as one field, and a change that replaces the whole set of settings
+  writes that set as one value). Only your confirmation clears a "look at
+  it first" mark. A confirmation from the app's page checks under the lock
+  that the page showed what it confirms; `sam-jail review` without
+  `--seen` confirms what the record holds when it gets the lock. When the
+  AppImage changed other than through a SAM update, *Unpack Again* saves
+  that mark before it unpacks, so the new copy does not start unconfirmed
+  when the closing save fails; SAM does not promise this when you confirm
+  the app while it unpacks. The start's warning about a changed AppImage
+  says that the unpacked copy SAM starts may not be that file. Limits: a
+  SAM version from before this lock does not take it, so while it runs at
+  the same time as this one (an old window left open after an update), one
+  of its saves can still undo a change this SAM saved. A save that does
+  not get the lock within 10 seconds stops with an error and saves
+  nothing; work done before it stays (after *Unpack Again*, the newly
+  unpacked copy, which the record then does not describe). A start writes
+  the app's state and last error as it read or set them, so it can replace
+  a notice another process saved there while the app ran. SAM does not
+  promise any of this for a record it cannot read. Close old SAM windows
+  after updating SAM.
 
 ---
 
