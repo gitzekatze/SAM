@@ -336,6 +336,21 @@ fn seccomp_spec(app: &AppEntry) -> kernel::SeccompSpec {
     }
 }
 
+/// A start of `app` with `perms` gets the syscall filter with its 32-bit
+/// part, whose socket limit has a gap: a 32-bit socket made through the
+/// old `socketcall` call can be of any type
+/// ([`kernel::SeccompSpec::socketcall_unlimited`]). The app page and the
+/// sandbox check say so. `perms` are the settings being looked at, which
+/// on the app page may differ from the stored ones.
+pub(crate) fn socket_limit_incomplete(
+    app: &AppEntry,
+    perms: &sam_core::permissions::PermissionSet,
+    cfg: &Config,
+    host: &sam_core::host::HostInfo,
+) -> bool {
+    wanted_layers(perms, cfg, host).1 && seccomp_spec(app).socketcall_unlimited()
+}
+
 /// Environment checks before launching. Returns blocking errors
 /// and non-blocking warnings.
 pub fn preflight(app: &AppEntry) -> (Vec<String>, Vec<Warning>) {
@@ -661,7 +676,8 @@ pub fn prepare(
         sam_sandbox::write_identity_files(&ctx)?;
         // Launches that can write start places take turns here: each takes
         // over what the running ones saw at their start and keeps its own
-        // record on disk (`home_shared`, review 2026-11-23 F1 and F2).
+        // record on disk (`home_shared`, review 2026-11-23 F1 and F2). This
+        // wait for the records of the running apps has no time limit yet.
         let shared = if sam_sandbox::writes_start_places(&ctx) {
             // What is moved aside comes from the person's home: for them
             // only (review F4).
@@ -692,7 +708,7 @@ pub fn prepare(
             home_record = Some(s.register(&name, w, &home_aside)?);
             // What a running app planted in a place this launch takes over
             // as empty, or in place of a link, goes before this one starts.
-            moved_at_start = w.settle(&home_aside);
+            moved_at_start = crate::home_shared::Turns::of(paths).settle(w, &home_aside);
         }
         drop(shared);
         if perms.dbus.session.mode == DbusMode::Filtered
@@ -1219,7 +1235,11 @@ fn run_once(
         r.arm(&log_path);
     }
     let (live_watch, watch_warning) = match prepared.home_watch.as_ref() {
-        Some(w) => crate::home_live::LiveWatch::start(w, aside.clone()),
+        Some(w) => crate::home_live::LiveWatch::start(
+            w,
+            aside.clone(),
+            crate::home_shared::Turns::of(paths),
+        ),
         None => (None, None),
     };
     if let Some(warn) = &watch_warning {
@@ -1442,7 +1462,7 @@ fn run_once(
     let mut found = std::mem::take(&mut prepared.moved_at_start);
     found.extend(live_watch.map(|l| l.finish()).unwrap_or_default());
     if let Some(w) = &prepared.home_watch {
-        found.extend(w.settle(&aside));
+        found.extend(crate::home_shared::Turns::of(paths).settle(w, &aside));
     }
     if let Some(r) = prepared.home_record.take() {
         r.finish();
@@ -2868,11 +2888,10 @@ mod tests {
         );
     }
 
-    /// A 32-bit start program gets the filter's 32-bit part (review K-3);
-    /// a script among 32-bit files, or an app nobody analyzed, does not.
-    #[test]
-    fn a_32_bit_start_program_gets_the_filters_32_bit_part() {
-        let app = |arch: &str, script: bool| AppEntry {
+    /// An app whose detection report names `arch` for its start program,
+    /// a script when `script` is set.
+    fn analyzed(arch: &str, script: bool) -> AppEntry {
+        AppEntry {
             detection: Some(sam_core::DependencyReport {
                 arch: arch.into(),
                 entry_is_script: script,
@@ -2880,14 +2899,101 @@ mod tests {
                 ..Default::default()
             }),
             ..Default::default()
-        };
-        assert!(seccomp_spec(&app("i686", false)).i386);
-        assert!(!seccomp_spec(&app("i686", true)).i386, "a script");
+        }
+    }
+
+    /// A 32-bit start program gets the filter's 32-bit part (review K-3);
+    /// a script among 32-bit files, or an app nobody analyzed, does not.
+    #[test]
+    fn a_32_bit_start_program_gets_the_filters_32_bit_part() {
+        assert!(seccomp_spec(&analyzed("i686", false)).i386);
+        assert!(!seccomp_spec(&analyzed("i686", true)).i386, "a script");
         assert!(
-            !seccomp_spec(&app("x86_64", false)).i386,
+            !seccomp_spec(&analyzed("x86_64", false)).i386,
             "a 64-bit program"
         );
         assert!(!seccomp_spec(&AppEntry::default()).i386, "not analyzed");
+    }
+
+    /// The app page's and the check's socket note (review R72) appears
+    /// exactly where a start loads the filter with its 32-bit part, whose
+    /// socket limit has the socketcall gap: a 32-bit start program with the
+    /// filter wanted, by the baseline or by the strict switch alone. Never
+    /// for a script, a 64-bit program, an app nobody analyzed, or with the
+    /// filter off for the app or for every app; never on a processor
+    /// without the 32-bit part.
+    #[test]
+    fn the_socket_note_follows_the_filters_32_bit_part() {
+        let host = sam_core::sandbox::sample_context().host;
+        let x86 = cfg!(target_arch = "x86_64");
+        let mut cfg = Config::default();
+        let mut on = sam_core::permissions::PermissionSet::strict_gui();
+        on.advanced.seccomp_baseline = true;
+        on.advanced.seccomp_strict = false;
+        cfg.security.baseline_seccomp = true;
+        let game = analyzed("i686", false);
+        assert_eq!(
+            socket_limit_incomplete(&game, &on, &cfg, &host),
+            x86,
+            "a 32-bit start program with the baseline filter"
+        );
+        let mut strict_only = on.clone();
+        strict_only.advanced.seccomp_baseline = false;
+        strict_only.advanced.seccomp_strict = true;
+        let mut no_baseline = cfg.clone();
+        no_baseline.security.baseline_seccomp = false;
+        assert_eq!(
+            socket_limit_incomplete(&game, &strict_only, &no_baseline, &host),
+            x86,
+            "the strict switch alone loads the filter"
+        );
+        assert!(
+            !socket_limit_incomplete(&analyzed("i686", true), &on, &cfg, &host),
+            "a script among 32-bit files"
+        );
+        assert!(
+            !socket_limit_incomplete(&analyzed("x86_64", false), &on, &cfg, &host),
+            "a 64-bit program"
+        );
+        assert!(
+            !socket_limit_incomplete(&AppEntry::default(), &on, &cfg, &host),
+            "an app nobody analyzed"
+        );
+        let mut off = on.clone();
+        off.advanced.seccomp_baseline = false;
+        assert!(
+            !socket_limit_incomplete(&game, &off, &cfg, &host),
+            "the filter off for this app"
+        );
+        assert!(
+            !socket_limit_incomplete(&game, &on, &no_baseline, &host),
+            "the filter off for every app"
+        );
+        assert_eq!(
+            kernel::SeccompSpec {
+                i386: true,
+                ..Default::default()
+            }
+            .filters_32_bit_calls(),
+            x86
+        );
+        for strict in [false, true] {
+            for allow_userns in [false, true] {
+                for bluetooth in [false, true] {
+                    let spec = kernel::SeccompSpec {
+                        strict,
+                        allow_userns,
+                        bluetooth,
+                        i386: true,
+                    };
+                    assert_eq!(
+                        spec.socketcall_unlimited(),
+                        x86,
+                        "no row limits 32-bit socketcall: strict {strict}, nested {allow_userns}, bluetooth {bluetooth}"
+                    );
+                }
+            }
+        }
     }
 
     /// Without Bubblewrap, starting an app stops while it is being prepared,

@@ -131,6 +131,29 @@ impl FilesystemPerms {
             _ => Access::None,
         }
     }
+
+    /// Whether the app is given `~/.ssh`. The key and credential switches
+    /// count only with the whole home (`filesystem.home`), as the window
+    /// shows them (greyed out without it): a stored "on" without it (an old
+    /// profile, a hand-edited file, `sam-jail set`) hides the keys like
+    /// "off", also where a granted extra folder would show them. The
+    /// sandbox, its check and the warnings read this answer.
+    pub fn ssh_given(&self) -> bool {
+        self.home && self.ssh
+    }
+
+    /// Whether the app is given `~/.gnupg`: only with the whole home, as
+    /// [`Self::ssh_given`].
+    pub fn gnupg_given(&self) -> bool {
+        self.home && self.gnupg
+    }
+
+    /// Whether the app is given the other credential stores (password
+    /// stores, cloud keys, `~/.netrc`): only with the whole home, as
+    /// [`Self::ssh_given`].
+    pub fn hidden_files_given(&self) -> bool {
+        self.home && self.hidden_files
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -1243,7 +1266,7 @@ pub fn permission_catalog() -> Vec<PermissionInfo> {
         perm!("devices.usb", "Devices", "Raw USB",
             "Raw access to USB devices. Needed by flashing tools and some hardware utilities.", Dangerous, advanced),
         perm!("devices.bluetooth", "Devices", "Bluetooth",
-            "Lets the app open Bluetooth connections to nearby devices; other apps cannot. Pairing and the Bluetooth service itself also need the system D-Bus.", Dangerous, advanced),
+            "Lets the app open Bluetooth connections to nearby devices; other apps cannot, except an app whose start program is 32-bit (the security page says why). Pairing and the Bluetooth service itself also need the system D-Bus.", Dangerous, advanced),
         perm!("audio.enabled", "Audio", "Sound",
             "Play and record audio (through PipeWire's PulseAudio service). Recording is possible once this is on.", Medium),
         perm!("audio.direct", "Audio", "Sound without SAM's relay",

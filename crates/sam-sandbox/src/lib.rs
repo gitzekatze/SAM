@@ -256,7 +256,7 @@ fn shown_writable(views: &Views, p: &Path) -> bool {
 /// holding secrets: a browser creating its profile is fine.
 fn watched_places(p: &PermissionSet, home: &Path) -> Vec<String> {
     let fs = &p.filesystem;
-    let keys = [(".ssh", fs.ssh), (".gnupg", fs.gnupg)]
+    let keys = [(".ssh", fs.ssh_given()), (".gnupg", fs.gnupg_given())]
         .into_iter()
         .filter(|(_, granted)| !granted)
         .map(|(k, _)| k.to_string());
@@ -619,46 +619,6 @@ impl HomeWatch {
                 .chain([".ssh".to_string(), ".gnupg".to_string()])
                 .collect()
         };
-        // Never gives up silently (regression, audit L-F2: after 1000 names
-        // per place, with SAM's folder on another drive or a full disk, the
-        // file simply stayed, and nothing said so).
-        let put_aside = |rel: &str, may_delete: bool| -> Option<(PathBuf, Aside)> {
-            let from = self.home.join(rel);
-            let name = rel.replace('/', "__");
-            // A free name in `dir`; the same place moved again keeps both.
-            let free = |dir: &Path, base: &str| {
-                (0u64..)
-                    .map(|n| {
-                        dir.join(if n == 0 {
-                            base.to_string()
-                        } else {
-                            format!("{base}.{n}")
-                        })
-                    })
-                    .find(|p| fs::symlink_metadata(p).is_err())
-            };
-            if fs::create_dir_all(aside).is_ok() {
-                if let Some(to) = free(aside, &name) {
-                    if fs::rename(&from, &to).is_ok() {
-                        return Some((to, Aside::Moved));
-                    }
-                }
-            }
-            // SAM's folder cannot take it: a name nothing reads, next to it.
-            if let (Some(dir), Some(base)) = (from.parent(), from.file_name()) {
-                let base = format!("{}.sam-moved-aside", base.to_string_lossy());
-                if let Some(to) = free(dir, &base) {
-                    if fs::rename(&from, &to).is_ok() {
-                        return Some((to, Aside::Renamed));
-                    }
-                }
-            }
-            Some(if may_delete && remove_any(&from) {
-                (from, Aside::Deleted)
-            } else {
-                (from, Aside::Failed)
-            })
-        };
         // A folder on the way to a watched place that is now a link: the app
         // renamed the folder and put a link of its own in its place, so a
         // link it holds with the same text, or a place it made, leads where
@@ -689,7 +649,7 @@ impl HomeWatch {
             }
         }
         for rel in &swapped {
-            if let Some((to, how)) = put_aside(rel, false) {
+            if let Some((to, how)) = put_aside(&self.home, aside, rel, false) {
                 moved.push(MovedAside {
                     place: rel.clone(),
                     to,
@@ -705,7 +665,7 @@ impl HomeWatch {
                     .iter()
                     .any(|o| o != rel && rel.starts_with(&format!("{o}/")))
             {
-                if let Some((to, how)) = put_aside(rel, named.contains(rel)) {
+                if let Some((to, how)) = put_aside(&self.home, aside, rel, named.contains(rel)) {
                     moved.push(MovedAside {
                         place: rel.clone(),
                         to,
@@ -719,7 +679,8 @@ impl HomeWatch {
             let same = fs::read_link(&path).is_ok_and(|t| &t == target);
             if !same {
                 if fs::symlink_metadata(&path).is_ok() {
-                    if let Some((to, how)) = put_aside(rel, named.contains(rel)) {
+                    if let Some((to, how)) = put_aside(&self.home, aside, rel, named.contains(rel))
+                    {
                         moved.push(MovedAside {
                             place: rel.clone(),
                             to,
@@ -732,6 +693,58 @@ impl HomeWatch {
         }
         moved
     }
+}
+
+/// Takes what is at `rel` in `home` out of its place: into `aside`
+/// (keeping its place in the name), else renamed next to it to a name
+/// nothing reads, else (`may_delete`) deleted; `None` when nothing is there
+/// any more. Never gives up silently (regression, audit L-F2: after 1000
+/// names per place, with SAM's folder on another drive or a full disk, the
+/// file simply stayed, and nothing said so). A place that is already empty
+/// when SAM moves it is not reported: another launch's look took it a
+/// moment before, and said so in its own record; before, this look then
+/// reported it as deleted, or as still there in capitals.
+fn put_aside(home: &Path, aside: &Path, rel: &str, may_delete: bool) -> Option<(PathBuf, Aside)> {
+    let from = home.join(rel);
+    let name = rel.replace('/', "__");
+    // A free name in `dir`; the same place moved again keeps both.
+    let free = |dir: &Path, base: &str| {
+        (0u64..)
+            .map(|n| {
+                dir.join(if n == 0 {
+                    base.to_string()
+                } else {
+                    format!("{base}.{n}")
+                })
+            })
+            .find(|p| fs::symlink_metadata(p).is_err())
+    };
+    if fs::create_dir_all(aside).is_ok() {
+        if let Some(to) = free(aside, &name) {
+            if fs::rename(&from, &to).is_ok() {
+                return Some((to, Aside::Moved));
+            }
+        }
+    }
+    // SAM's folder cannot take it: a name nothing reads, next to it.
+    if let (Some(dir), Some(base)) = (from.parent(), from.file_name()) {
+        let base = format!("{}.sam-moved-aside", base.to_string_lossy());
+        if let Some(to) = free(dir, &base) {
+            if fs::rename(&from, &to).is_ok() {
+                return Some((to, Aside::Renamed));
+            }
+        }
+    }
+    // Gone, not refused: only "not found" counts. Any other error (a folder
+    // the app made unreadable) still ends in deleting it or saying so.
+    if matches!(fs::symlink_metadata(&from), Err(e) if e.kind() == std::io::ErrorKind::NotFound) {
+        return None;
+    }
+    Some(if may_delete && remove_any(&from) {
+        (from, Aside::Deleted)
+    } else {
+        (from, Aside::Failed)
+    })
 }
 
 /// The way to `p` as Linux follows it, link by link: every link met (its
@@ -1855,15 +1868,19 @@ fn pins(
 /// under `XDG_CONFIG_HOME` and `XDG_DATA_HOME` inside the home
 /// ([`sensitive_places`]: with `XDG_CONFIG_HOME=~/cfg`, Git's passwords in
 /// `~/cfg/git/credentials` stayed readable with the whole home).
+/// "Given" counts only with the whole home
+/// ([`FilesystemPerms::ssh_given`]): a switch stored "on" without it showed
+/// the keys wherever a granted extra folder showed them, though the window
+/// greys the switch out and the sandbox check expected them hidden.
 fn masked_places(home: &Path, fsp: &FilesystemPerms) -> Vec<String> {
     let mut masks: Vec<String> = Vec::new();
-    if !fsp.ssh {
+    if !fsp.ssh_given() {
         masks.push(".ssh".into());
     }
-    if !fsp.gnupg {
+    if !fsp.gnupg_given() {
         masks.push(".gnupg".into());
     }
-    if !fsp.hidden_files {
+    if !fsp.hidden_files_given() {
         masks.extend(sensitive_places(home));
     }
     masks
@@ -5418,10 +5435,83 @@ mod guard_tests {
         let a = args_of(&ctx_for(&p, &home));
         let target = home.join("Sync/gnupg").to_string_lossy().into_owned();
         assert!(has_seq(&a, &["--tmpfs", &target]), "{a:?}");
-        // Given the key folder, the app sees it.
+        // Given the key folder with the whole home, the app sees it (the
+        // switch alone counts for nothing:
+        // `key_switches_without_the_whole_home_hide_the_keys`).
         p.filesystem.gnupg = true;
+        p.filesystem.home = true;
         let a = args_of(&ctx_for(&p, &home));
         assert!(!has_seq(&a, &["--tmpfs", &target]), "{a:?}");
+    }
+
+    /// The key and credential switches count only with the whole home
+    /// ([`FilesystemPerms::ssh_given`]): stored "on" without it (an old
+    /// profile, a hand-edited file), `~/.ssh`, `~/.gnupg` and the other
+    /// credential stores stay hidden where a granted extra folder shows
+    /// them, and a key folder there is watched like one not given, as the
+    /// window and the sandbox check say. With the whole home the same
+    /// switches show them.
+    #[test]
+    fn key_switches_without_the_whole_home_hide_the_keys() {
+        let t = scratch();
+        let home = fs::canonicalize(t.path()).unwrap().join("home");
+        for d in ["Sync/ssh", "Sync/gnupg"] {
+            fs::create_dir_all(home.join(d)).unwrap();
+        }
+        fs::write(home.join("Sync/netrc"), "machine example password secret\n").unwrap();
+        let link = |to: &str, at: &str| {
+            std::os::unix::fs::symlink(home.join(to), home.join(at)).unwrap();
+        };
+        link("Sync/ssh", ".ssh");
+        link("Sync/gnupg", ".gnupg");
+        link("Sync/netrc", ".netrc");
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.custom_write = vec![home.join("Sync").display().to_string()];
+        p.filesystem.ssh = true;
+        p.filesystem.gnupg = true;
+        p.filesystem.hidden_files = true;
+        let s = |r: &str| home.join(r).to_string_lossy().into_owned();
+        let ctx = ctx_for(&p, &home);
+        let a = args_of(&ctx);
+        assert!(has_seq(&a, &["--tmpfs", &s("Sync/ssh")]), "SSH keys: {a:?}");
+        assert!(
+            has_seq(&a, &["--tmpfs", &s("Sync/gnupg")]),
+            "GnuPG keys: {a:?}"
+        );
+        assert!(
+            has_seq(&a, &["--ro-bind", "/dev/null", &s("Sync/netrc")]),
+            "the credential store ~/.netrc: {a:?}"
+        );
+        assert!(
+            writes_start_places(&ctx),
+            "the key folders shown writable through ~/Sync are watched"
+        );
+        // Each key folder on its own: the check above holds while either
+        // one is watched, so it alone would miss one switch read raw.
+        let watched = watched_places(&p, &home);
+        for k in [".ssh", ".gnupg"] {
+            assert!(
+                watched.iter().any(|w| w == k),
+                "the key folder ~/{k} is watched while its switch is on without the whole home: {watched:?}"
+            );
+        }
+        // With the whole home, the switches show them.
+        p.filesystem.home = true;
+        let watched = watched_places(&p, &home);
+        for k in [".ssh", ".gnupg"] {
+            assert!(
+                !watched.iter().any(|w| w == k),
+                "the key folder ~/{k} given with the whole home is not watched: {watched:?}"
+            );
+        }
+        let a = args_of(&ctx_for(&p, &home));
+        for (r, what) in [("Sync/ssh", "SSH keys"), ("Sync/gnupg", "GnuPG keys")] {
+            assert!(!has_seq(&a, &["--tmpfs", &s(r)]), "{what}: {a:?}");
+        }
+        assert!(
+            !has_seq(&a, &["--ro-bind", "/dev/null", &s("Sync/netrc")]),
+            "{a:?}"
+        );
     }
 
     /// A start file or credential store kept through a link (dotfiles,
@@ -5875,6 +5965,73 @@ mod guard_tests {
         fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
         let it = m.iter().find(|m| m.place == ".zshrc").unwrap();
         assert_eq!(it.how, Aside::Failed, "{m:?}");
+    }
+
+    /// Two launches watching one place both look when an app plants a file
+    /// there; the first moves it aside. For the second, the place is already
+    /// empty: it reports nothing, never "deleted" or "COULD NOT BE REMOVED"
+    /// for a file that sits in the first one's folder. A place that is still
+    /// there is reported as before, whichever way it went. (`put_aside` was
+    /// a closure before this check; the mutant without the check is the old
+    /// code and reports the empty place as `Deleted` or `Failed`.)
+    #[test]
+    fn a_place_another_look_already_emptied_is_not_reported() {
+        use std::os::unix::fs::PermissionsExt;
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path().join("home");
+        fs::create_dir_all(&home).unwrap();
+        let aside = t.path().join("aside");
+        // SAM's folder cannot be made: a file is in its way.
+        let blocked = t.path().join("blocked");
+        fs::write(&blocked, "").unwrap();
+        let unusable = blocked.join("aside");
+
+        // Already empty: nothing to report, whatever else would fail.
+        for may_delete in [true, false] {
+            for to in [&aside, &unusable] {
+                assert_eq!(
+                    put_aside(&home, to, ".bash_profile", may_delete),
+                    None,
+                    "may_delete {may_delete}, aside {to:?}"
+                );
+            }
+        }
+
+        // Still there: moved, or renamed in place, as before.
+        fs::write(home.join(".bash_profile"), "evil").unwrap();
+        assert_eq!(
+            put_aside(&home, &aside, ".bash_profile", true),
+            Some((aside.join(".bash_profile"), Aside::Moved))
+        );
+        assert_eq!(
+            fs::read_to_string(aside.join(".bash_profile")).unwrap(),
+            "evil"
+        );
+        fs::write(home.join(".bash_profile"), "evil").unwrap();
+        assert_eq!(
+            put_aside(&home, &unusable, ".bash_profile", false),
+            Some((home.join(".bash_profile.sam-moved-aside"), Aside::Renamed))
+        );
+
+        // Still there and nothing can move it: deleted where that is
+        // allowed (a name too long for the in-place rename), else said.
+        let long = "x".repeat(250);
+        fs::write(home.join(&long), "evil").unwrap();
+        assert_eq!(
+            put_aside(&home, &unusable, &long, true),
+            Some((home.join(&long), Aside::Deleted))
+        );
+        assert!(fs::symlink_metadata(home.join(&long)).is_err());
+        let locked = t.path().join("locked");
+        fs::create_dir_all(&locked).unwrap();
+        fs::write(locked.join(".zshrc"), "evil").unwrap();
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o555)).unwrap();
+        let stuck = [true, false].map(|d| put_aside(&locked, &unusable, ".zshrc", d));
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
+        for got in stuck {
+            assert_eq!(got, Some((locked.join(".zshrc"), Aside::Failed)));
+        }
+        assert!(locked.join(".zshrc").exists());
     }
 
     /// Start folders under another config or data folder in the home
