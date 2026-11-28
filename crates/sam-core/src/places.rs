@@ -2471,8 +2471,9 @@ mod tests {
     /// The security page's file rules are numbered once each (F1 to F5,
     /// C1 to C4), each points to where the page says it in full, every
     /// link and every pointer in the section names a heading or a bold
-    /// paragraph of the page, and the section cites nothing private
-    /// (review numbers, roadmap or decision numbers, chats).
+    /// paragraph of the page, and the section holds none of these private
+    /// references: an `R` with two or three digits, the words "review
+    /// finding" or "roadmap", "decision" with a number, or "chat".
     #[test]
     fn the_file_rules_are_numbered_once_each_and_cite_nothing_private() {
         use crate::file_rules_doc::{one_line, page, rule, section, HEADING};
@@ -2516,9 +2517,11 @@ mod tests {
             "the section points to its homes: {names:?}"
         );
         for name in names {
+            let bold = ['*', '.', ':']
+                .iter()
+                .any(|end| flat_page.contains(&format!("**{name}{end}")));
             assert!(
-                flat_page.contains(&format!("**{name}"))
-                    || headings.iter().any(|h| h.starts_with(&name)),
+                bold || headings.iter().any(|h| *h == name),
                 "the pointer *{name}* names no bold paragraph or heading of the page"
             );
         }
@@ -2543,8 +2546,9 @@ mod tests {
     /// The security page names the start places SAM does not lock in the
     /// gap paragraph of rule C3 exactly while `PROTECTED_RO` leaves them out
     /// (`~/.vim`, `~/.config/vim`, `~/.local/share/nvim`, `~/.config/hg`),
-    /// and the start places at the top of the home where `XDG_CONFIG_HOME`
-    /// names the home exactly while they do not follow there. It never
+    /// and says that start places are not locked at the top of the home
+    /// where `XDG_CONFIG_HOME` names the home exactly while
+    /// `~/.config/autostart` does not follow there. It never
     /// requires a gap to stay: a change that closes one fails here until it
     /// also updates the rule.
     #[test]
@@ -2553,9 +2557,12 @@ mod tests {
         let page = page();
         let gaps = gap(rule(&page, "C3"));
         for place in [".vim", ".config/vim", ".local/share/nvim", ".config/hg"] {
+            // Locked: the place itself or a folder above it is on the list
+            // (an entry inside it, such as a file in `~/.vim`, locks only
+            // that entry).
             let locked = PROTECTED_RO
                 .iter()
-                .any(|p| *p == place || p.starts_with(&format!("{place}/")));
+                .any(|p| *p == place || place.starts_with(&format!("{p}/")));
             let marker = format!("`~/{place}`");
             assert_eq!(
                 locked,

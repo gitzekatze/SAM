@@ -4227,9 +4227,9 @@ mod tests {
         assert!(has_seq(&a, &["--chdir", proj.to_str().unwrap()]));
         assert_eq!(withheld_opened_paths(&ctx), Vec::<PathBuf>::new());
         // "No access" shares nothing, not even read-only (it used to share
-        // like "Read-only"): no bind, the app starts in its home
-        // rather than in a folder it cannot see, and the log names the file
-        // it did not share.
+        // like "Read-only"): no bind, the app starts in its home rather
+        // than in a folder it cannot see, and the log names the file it did
+        // not share.
         ctx.permissions.filesystem.opened_files = Access::None;
         assert_eq!(opened_paths(&ctx), vec![], "none shares no opened file");
         let a = args_of(&ctx);
@@ -5983,8 +5983,9 @@ mod guard_tests {
     /// while the sandbox leaves it writable: with `~/.config/tmux/plugins`
     /// a link to `~/work/dots/tmux`, both with the whole home writable and
     /// with a private home and `~/work` an extra writable folder, no
-    /// read-only bind covers `~/work/dots/tmux`. Control: the start place
-    /// itself is locked with the whole home. It never requires the gap to
+    /// read-only bind covers `~/work/dots/tmux`. Controls: the start place
+    /// itself is locked with the whole home, and `~/work` is bound writable
+    /// with the private home. It never requires the gap to
     /// stay: a change that closes it fails here until it also updates the
     /// rule.
     #[test]
@@ -6014,6 +6015,14 @@ mod guard_tests {
                 assert!(
                     has_seq(&args, &["--ro-bind-try", place, place]),
                     "control, {case}: the start place is locked: {args:?}"
+                );
+            } else {
+                let work = home.join("work");
+                let work = work.to_str().unwrap();
+                assert!(
+                    has_seq(&args, &["--bind-try", work, work])
+                        || has_seq(&args, &["--bind", work, work]),
+                    "control, {case}: ~/work is bound writable: {args:?}"
                 );
             }
             let locked = has_seq(&args, &["--ro-bind-try", t_s, t_s])
