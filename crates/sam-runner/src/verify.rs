@@ -63,7 +63,9 @@ fn rank(a: Access) -> u8 {
 /// its place as well was told the check failed. `None` (no check) where
 /// the sandbox may show the place on its own: the system folders it binds
 /// read-only (also `extra_lib_dirs`), `/run`, `/proc`, `/dev`, `/sys`,
-/// and the fonts and theme files of a private home (`own`).
+/// and the fonts and theme files a private home binds on its own (`own`:
+/// only those with no link on their way in the home; one skipped for a
+/// link shows nothing there).
 fn expect_at_target(
     path: &Path,
     shown: &[(PathBuf, Access)],
@@ -325,12 +327,18 @@ pub fn plan(p: &PermissionSet, cfg: &Config, paths: &Paths, host: &HostInfo) -> 
             }
         }
     }
+    // The fonts and theme files a private home binds on its own: only
+    // those with no link on their way in the home, judged as the sandbox
+    // judges them ([`sam_core::places::own_places_from_settings`]). One
+    // skipped for a link is not shown on its own, so a left-out folder
+    // whose link leads to its target is expected hidden there.
     let own: Vec<PathBuf> = if fs.home {
         Vec::new()
     } else {
-        sam_sandbox::own_home_places(p)
-            .iter()
-            .map(|rel| host.home.join(rel))
+        sam_core::places::own_places_from_settings(p, host, &sam_dirs, &this)
+            .into_iter()
+            .filter(|(_, d)| *d == sam_core::places::OwnBind::Bind)
+            .map(|(rel, _)| host.home.join(rel))
             .collect()
     };
     for (id, title, path, want) in folders {
@@ -1910,6 +1918,47 @@ mod tests {
         p.filesystem.custom_read = vec![s(&docs), s(&data3)];
         let pl = plan(&p, &cfg, &sam_paths(), &h);
         assert_eq!(folder(&pl, &title(&docs)), Access::ReadOnly);
+    }
+
+    /// In a private home SAM binds the fonts on its own only where they are
+    /// no link: an extra folder left out for a planted link that leads to
+    /// the target of a linked `~/.fonts` is expected as not shown there,
+    /// since nothing binds that target. While the fonts were bound where
+    /// their link led, the check made no probe there. One that leads into
+    /// a real `~/.fonts`, which SAM binds, still gets none.
+    #[test]
+    fn the_check_expects_nothing_at_the_target_of_a_skipped_font_link() {
+        let t = scratch();
+        let base = fs::canonicalize(t.path()).unwrap();
+        let h = host_in(&base);
+        let cfg = Config::default();
+        let s = |p: &Path| p.to_string_lossy().into_owned();
+        let title = |p: &Path| format!("Extra folder {}", sam_core::util::tildify(p));
+        let myfonts = base.join("myfonts");
+        let w = h.home.join("w");
+        for d in [&myfonts, &w] {
+            fs::create_dir_all(d).unwrap();
+        }
+        std::os::unix::fs::symlink(&myfonts, h.home.join(".fonts")).unwrap();
+        let planted = w.join("l");
+        std::os::unix::fs::symlink(&myfonts, &planted).unwrap();
+        let mut p = PermissionSet::strict_gui();
+        p.filesystem.custom_read = vec![s(&planted)];
+        p.filesystem.custom_write = vec![s(&w)];
+        let pl = plan(&p, &cfg, &sam_paths(), &h);
+        assert_eq!(folder(&pl, &title(&planted)), Access::Hidden);
+        // A real `~/.fonts`, bound on its own: no probe at a place that
+        // leads into it.
+        fs::remove_file(h.home.join(".fonts")).unwrap();
+        fs::create_dir_all(h.home.join(".fonts/sub")).unwrap();
+        fs::remove_file(&planted).unwrap();
+        std::os::unix::fs::symlink(h.home.join(".fonts/sub"), &planted).unwrap();
+        let pl = plan(&p, &cfg, &sam_paths(), &h);
+        assert!(
+            !pl.checks.iter().any(|c| c.title == title(&planted)),
+            "{:?}",
+            pl.checks.iter().map(|c| &c.title).collect::<Vec<_>>()
+        );
     }
 
     /// With the whole home and in a private home, a user folder without a

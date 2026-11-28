@@ -945,8 +945,9 @@ fn the_folders_above_a_read_only_user_folder_cannot_be_renamed() {
 
 /// With the whole home writable and an extra read-only folder inside each
 /// font folder (`~/.fonts/licensed`, `~/.local/share/fonts/a/licensed`),
-/// the font folders stay read-only, as SAM always binds them: the pins of
-/// the folders above a read-only extra folder (review of finding R63) once
+/// the font folders stay read-only, as SAM binds every font folder where
+/// neither it nor a folder on its way in the home is a link: the pins of
+/// the folders above a read-only extra folder once
 /// bound `~/.fonts` writable after its read-only bind. The home stays
 /// writable.
 #[test]

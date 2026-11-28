@@ -19,11 +19,13 @@
 //!   earlier start: a link needs no access to where it leads): SAM's own
 //!   read-only bind of the fonts does not show the GitHub tool's token
 //!   there (only `~/.config/gh` was guarded); nor with `XDG_CONFIG_HOME`
-//!   outside the home (only the stores in the home were guarded).
+//!   outside the home (only the stores in the home were guarded). SAM now
+//!   follows no link at a font place at all, so a fonts folder that is a
+//!   link to an ordinary folder shows nothing either.
 //!
 //! The controls show the attack would have been seen: Git's settings file
-//! in the same folder stays readable, and an ordinary file named on the
-//! command line is shared.
+//! in the same folder stays readable, an ordinary file named on the
+//! command line is shared, and a real fonts folder is shown.
 //!
 //! In its own file because it sets `HOME` for the test process.
 #![allow(clippy::unwrap_used, clippy::panic)] // a test: a panic is a failed test
@@ -222,8 +224,9 @@ fn git_credentials_under_config_git_stay_hidden() {
 
     // A fonts folder made a link to a credential store under the moved
     // folder: SAM's own read-only bind of the fonts does not show it in a
-    // private home. A fonts folder that is a link to an ordinary folder
-    // there is shown, so a read would have been seen.
+    // private home. Nor does a fonts folder that is a link to an ordinary
+    // folder there: SAM follows no link at a font place. A real fonts
+    // folder is shown, so a read would have been seen.
     let fonts = home.join(".fonts");
     std::os::unix::fs::symlink(cfg.join("gh"), &fonts).unwrap();
     let r = start(
@@ -242,7 +245,20 @@ fn git_credentials_under_config_git_stay_hidden() {
         PermissionSet::strict_gui(),
         "a private home, ~/.fonts a link to ~/cfg/myfonts",
     );
-    assert_eq!(r["FONTS_MINE"], "read", "control, ~/cfg/myfonts: {r:?}");
+    assert_eq!(
+        r["FONTS_MINE"], "hidden",
+        "~/.fonts a link to ~/cfg/myfonts: {r:?}"
+    );
+    fs::remove_file(&fonts).unwrap();
+    fs::create_dir_all(&fonts).unwrap();
+    fs::write(fonts.join("mine.txt"), "mine\n").unwrap();
+    let r = start(
+        PermissionSet::strict_gui(),
+        "a private home, a real ~/.fonts",
+    );
+    assert_eq!(r["FONTS_MINE"], "read", "control, a real ~/.fonts: {r:?}");
+    fs::remove_dir_all(&fonts).unwrap();
+    std::os::unix::fs::symlink(cfg.join("myfonts"), &fonts).unwrap();
 
     // The same with `XDG_CONFIG_HOME` outside the home (and outside `/tmp`,
     // where any link counts as one to programs listening outside the
@@ -281,8 +297,8 @@ fn git_credentials_under_config_git_stay_hidden() {
     );
     assert_eq!(
         r["FONTS_MINE"],
-        "read",
-        "control, {}/myfonts: {r:?}",
+        "hidden",
+        "~/.fonts a link to {}/myfonts: {r:?}",
         far.display()
     );
 }

@@ -20,8 +20,9 @@
   Incus's under `/var/lib/incus`). A user folder inside a writable home counts as writable, and a
   writable extra folder follows such a link only where the app may write
   anyway, so a planted link can no longer make a read-only home writable.
-  Your fonts and theme files are also never shown through a link to your
-  home, your keys or SAM's own files.
+  Your fonts and theme files follow no link (see the note "SAM
+  shows your fonts and theme files on its own only where they are no
+  link").
 - A folder counts as one the app can change whenever any writable
   permission shows it, also where an extra read-only folder lies deeper:
   an app could make that read-only folder a link into such a folder and
@@ -41,8 +42,8 @@
   other place in `/tmp`, such as `/tmp/tmate-1000`, is rated *Some
   access* when read-only, so SAM adds it without asking first, and
   *Think twice* when writable.
-- Links that stay inside what the app is shown keep working, for example
-  `~/.fonts` as a link to `~/.local/share/fonts`. If you made a link to an
+- Extra folders named by a link that stays inside what the app is shown
+  keep working. If you made a link to an
   extra folder yourself that leads out of what the app is shown and the
   app has the whole home writable, list the place it leads to as an
   extra folder instead of the link. Never do so for a link to where
@@ -52,30 +53,25 @@
   check expects such a folder as the rest of the app's folders show the
   place it leads to; where the sandbox shows its own folder there (a
   system folder, `/run`, `/proc`, `/dev`, `/sys`, or the fonts and theme
-  files of a private home), it does not check that folder.
+  files SAM binds in a private home), it does not check that folder.
 - For a writable extra or user folder left out this way, the launch log
   says that SAM leaves it out as a writable folder: with a read-only home
   the app may still read the place it leads to.
 - For each place left out by these rules (a link the app may have
-  planted, a link to where programs outside the sandbox listen, or fonts
-  and theme files that lead to your home or your keys), the launch log
-  says that SAM leaves out the extra or user folder, or does not bind the
-  fonts or theme place on its own, and why: for a planted link, that the
-  home and the user folders do not show the place it leads to; for the
-  other two rules, where the link leads. It also says that the app still
-  sees what its other folders show there. If you list the place a link
-  in your fonts or theme files leads to as an extra folder, SAM still
-  leaves out the fonts or theme place itself, and the app reaches that
-  place through the link wherever its other folders show the link.
+  planted, or a link to where programs outside the sandbox listen), the
+  launch log says that SAM leaves out the extra or user folder, and why:
+  for a planted link, that the home and the user folders do not show the
+  place it leads to; for the other rule, where the link leads. It also
+  says that the app still sees what its other folders show there.
 - SAM judges such a link by the permissions of the start at hand. A link
   the app made in an earlier start, while it had more write access (the
   whole home or a folder writable), is still followed after you narrow
-  its permissions, for example `~/.fonts` made a link to another drive.
+  its permissions, for example an extra folder made a link to another
+  drive. Your fonts and theme files are not open to this: they follow no
+  link at all.
   A link to one of the places where programs outside the sandbox listen
   that SAM knows stays refused in every start (with the limits above: a
   link the app made to a socket folder SAM does not know, such as WSLg's
   `/mnt/wslg/.X11-unix`, is followed once the narrower permissions no
-  longer count it as planted), and your fonts and theme files
-  never lead to your home, your keys or SAM's own files. After you narrow
-  an app's permissions, check that `~/.fonts`, `~/.config/fontconfig` and
-  the extra folders are not links you did not make.
+  longer count it as planted). After you narrow an app's permissions,
+  check that the extra folders are not links you did not make.

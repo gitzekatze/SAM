@@ -212,6 +212,34 @@ fn refused_user_folders(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning>
         .collect()
 }
 
+/// The fonts, the fonts settings and the theme files that SAM does not
+/// show on its own because they, or a folder on their way in the home,
+/// are links ([`crate::places::own_place_links_note_from_settings`]): the
+/// window and `sam-jail info` name each link and where it leads before the
+/// start, with the words of the launch note, also for an app with the
+/// whole home, which still sees them through the home. Told only in the
+/// launch log, fonts kept with GNU Stow went missing in an app without a
+/// word on its page. The app page cannot know the folders a start opens,
+/// so a start may keep a little more read-only than the page says.
+fn own_place_links(p: &PermissionSet, ctx: &WarningContext) -> Option<Warning> {
+    let host = ctx.host?;
+    let this = crate::places::ThisStart {
+        writable: Vec::new(),
+        sam_runtime: ctx.sam_runtime.to_vec(),
+    };
+    let sams = crate::places::sams_folders(
+        &host.home,
+        ctx.sam_dirs,
+        &crate::places::shown_folders(p, host),
+    );
+    let note = crate::places::own_place_links_note_from_settings(p, host, &sams, &this)?;
+    Some(Warning::info(
+        "own-place-links",
+        "Fonts or theme files behind a link",
+        note,
+    ))
+}
+
 /// Granted user folders set to one place at different access (Music read
 /// and write, Pictures read-only, both `~/Media`): the stricter setting
 /// wins, so the app sees the place read-only
@@ -302,6 +330,7 @@ pub fn evaluate(p: &PermissionSet, ctx: &WarningContext) -> Vec<Warning> {
     w.extend(read_only_grants(p, ctx));
     w.extend(refused_user_folders(p, ctx));
     w.extend(user_folders_at_one_place(p, ctx));
+    w.extend(own_place_links(p, ctx));
     for path in p
         .filesystem
         .custom_write
@@ -1497,5 +1526,60 @@ mod tests {
         p.display.x11 = true;
         let w = evaluate(&p, &WarningContext::default());
         assert!(!codes(&w).contains(&"x11-enabled"));
+    }
+
+    /// The app page and `sam-jail info` name the fonts and theme files SAM
+    /// does not show on its own because they are links, with the words of
+    /// the launch note, before the start: `~/.fonts` a link to
+    /// `~/myfonts`, and `~/.config` folded into one link by GNU Stow with
+    /// the fonts settings behind it. Told only in the launch log, the
+    /// fonts went missing without a word on the page. Real font folders
+    /// give no such entry.
+    #[test]
+    fn the_app_page_names_font_and_theme_links_sam_does_not_follow() {
+        let t = scratch();
+        let base = std::fs::canonicalize(t.path()).unwrap();
+        let home = base.join("home");
+        for d in [
+            "myfonts",
+            "dotfiles/config/fontconfig",
+            ".local/share/fonts",
+        ] {
+            std::fs::create_dir_all(home.join(d)).unwrap();
+        }
+        let host = HostInfo {
+            home: home.clone(),
+            ..Default::default()
+        };
+        let ctx = WarningContext {
+            host: Some(&host),
+            ..Default::default()
+        };
+        let p = PermissionSet::strict_gui();
+        let page = |p: &PermissionSet| {
+            evaluate(p, &ctx)
+                .into_iter()
+                .find(|w| w.code == "own-place-links")
+        };
+        assert!(page(&p).is_none(), "plain font folders: no entry");
+        std::os::unix::fs::symlink("myfonts", home.join(".fonts")).unwrap();
+        std::os::unix::fs::symlink("dotfiles/config", home.join(".config")).unwrap();
+        let w = page(&p).expect("the links are named");
+        assert_eq!(w.severity, Severity::Info);
+        assert_eq!(w.title, "Fonts or theme files behind a link");
+        let note = crate::places::own_place_links_note_from_settings(
+            &p,
+            &host,
+            &crate::places::sams_folders(&home, &[], &crate::places::shown_folders(&p, &host)),
+            &crate::places::ThisStart::default(),
+        )
+        .unwrap();
+        assert_eq!(w.message, note);
+        assert!(
+            note.starts_with(
+                "SAM does not bind ~/.fonts (a link to ~/myfonts); ~/.config/fontconfig (behind ~/.config, a link to ~/dotfiles/config) for this app on its own:"
+            ),
+            "{note}"
+        );
     }
 }
