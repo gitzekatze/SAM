@@ -503,17 +503,30 @@ impl AppPage {
         let ok_text = ok_text.to_string();
         glib::spawn_future_local(async move {
             let refs: Vec<&str> = args.iter().map(String::as_str).collect();
-            match app.backend.call(&refs, None).await {
-                Ok(_) => app.toast(&ok_text),
-                Err(e) => app.report_error(&e),
-            }
-            me.reload();
-            if full {
-                app.refresh_apps().await;
-            } else {
-                app.refresh_registered().await;
-            }
+            let r = app.backend.call(&refs, None).await;
+            me.after_simple(&app, r, &ok_text, full).await;
         });
+    }
+
+    /// What [`Self::simple_with`] does after its command: tells the result
+    /// and reloads. The update buttons use it after `call_online`.
+    pub(super) async fn after_simple(
+        self: &Rc<Self>,
+        app: &Rc<App>,
+        r: crate::backend::Reply,
+        ok_text: &str,
+        full: bool,
+    ) {
+        match r {
+            Ok(_) => app.toast(ok_text),
+            Err(e) => app.report_error(&e),
+        }
+        self.reload();
+        if full {
+            app.refresh_apps().await;
+        } else {
+            app.refresh_registered().await;
+        }
     }
 
     pub(super) fn apply_suggestion(self: &Rc<Self>, sug: Value, as_repair: bool, then_run: bool) {
@@ -588,10 +601,9 @@ impl AppPage {
             button.set_sensitive(false);
             app.toast(&tr("Downloading the update…"));
             let mut args = vec!["update".to_string(), me.app_id.clone()];
-            let mut result = app
-                .backend
-                .call(&args.iter().map(String::as_str).collect::<Vec<_>>(), None)
-                .await;
+            let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+            // The person said Update in the dialog just before.
+            let mut result = app.backend.call_online(&refs, None).await;
             if let Err(e) = &result {
                 if e.is("signing-key-changed")
                     || e.is("signature-unchecked")
@@ -610,19 +622,17 @@ impl AppPage {
                         window::confirm(&app.window, &title, e, &tr("Update Anyway"), true).await;
                     if ok {
                         args.push("--accept-key-change".into());
-                        result = app
-                            .backend
-                            .call(&args.iter().map(String::as_str).collect::<Vec<_>>(), None)
-                            .await;
+                        let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+                        // The person said Update Anyway just before.
+                        result = app.backend.call_online(&refs, None).await;
                     } else {
                         // Said no: the download kept for this answer is
                         // deleted now, not left in SAM's folder.
                         args.push("--decline-key-change".into());
-                        result = app
-                            .backend
-                            .call(&args.iter().map(String::as_str).collect::<Vec<_>>(), None)
-                            .await
-                            .map(|_| Value::Null);
+                        let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+                        // Offline: deletes the kept download.
+                        let r = app.backend.call_online(&refs, None).await;
+                        result = r.map(|_| Value::Null);
                     }
                 }
             }

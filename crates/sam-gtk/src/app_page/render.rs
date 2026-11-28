@@ -1055,7 +1055,17 @@ impl AppPage {
                 "edit-undo-symbolic",
                 &crate::i18n::tr("Go back to the previous version"),
                 &crate::i18n::trf("Puts {prev} back in place of the updated AppImage. The updated file is kept, so you can switch again.", &[("prev", &prev)]),
-                |me| me.simple_with(vec!["update".into(), me.app_id.clone(), "--undo".into()], &crate::i18n::tr("Back to the previous version"), true),
+                |me| {
+                    let Some(app) = me.app() else { return };
+                    let me = me.clone();
+                    glib::spawn_future_local(async move {
+                        let args = ["update", me.app_id.as_str(), "--undo"];
+                        // Offline: puts the kept version back.
+                        let r = app.backend.call_online(&args, None).await;
+                        let ok = crate::i18n::tr("Back to the previous version");
+                        me.after_simple(&app, r, &ok, true).await;
+                    });
+                },
             );
         }
         // Check the setup (sam-jail doctor <app>), results right below.
@@ -1269,10 +1279,15 @@ impl AppPage {
         check.connect_clicked(move |b| {
             if let Some(me) = w.upgrade() {
                 b.set_sensitive(false);
-                me.simple(
-                    vec!["updates".into(), me.app_id.clone()],
-                    &crate::i18n::tr("Update check done"),
-                );
+                let Some(app) = me.app() else { return };
+                let me = me.clone();
+                glib::spawn_future_local(async move {
+                    let args = ["updates", me.app_id.as_str()];
+                    // The person clicked Check for Updates.
+                    let r = app.backend.call_online(&args, None).await;
+                    let ok = crate::i18n::tr("Update check done");
+                    me.after_simple(&app, r, &ok, false).await;
+                });
             }
         });
 

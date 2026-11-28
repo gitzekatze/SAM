@@ -1520,7 +1520,12 @@ impl App {
     fn self_update(self: &Rc<Self>) {
         let me = self.clone();
         glib::spawn_future_local(async move {
-            let check = match me.backend.call(&["self-update", "--check"], None).await {
+            // The person chose Check for SAM Updates in the main menu.
+            let r = me
+                .backend
+                .call_online(&["self-update", "--check"], None)
+                .await;
+            let check = match r {
                 Ok(v) => v,
                 Err(e) => return me.report_error(&e),
             };
@@ -1556,7 +1561,9 @@ impl App {
                 return;
             }
             me.toast(&tr("Downloading the update…"));
-            let done = match me.backend.call(&["self-update"], None).await {
+            // The person said Update in the dialog just before.
+            let r = me.backend.call_online(&["self-update"], None).await;
+            let done = match r {
                 Ok(v) => v,
                 Err(e) => return me.report_error(&e),
             };
@@ -1637,7 +1644,11 @@ impl App {
             {
                 let me = me.clone();
                 glib::spawn_future_local(async move {
-                    if let Ok(v) = me.backend.call(&["updates", "--if-due"], None).await {
+                    // Checks only when the person switched on the daily
+                    // check (off by default; `updates --if-due` returns at
+                    // once otherwise).
+                    let r = me.backend.call_online(&["updates", "--if-due"], None).await;
+                    if let Ok(v) = r {
                         let n = v
                             .get("apps")
                             .and_then(Value::as_array)

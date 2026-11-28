@@ -88,8 +88,27 @@ impl Backend {
         }
     }
 
-    /// Runs `sam-jail --json <args>`, optionally with JSON on stdin.
+    /// Runs `sam-jail --json <args>`, optionally with JSON on stdin. It
+    /// refuses the commands that go online (`updates`, `update`,
+    /// `self-update`): the window runs those only through
+    /// [`Backend::call_online`], whose every caller is listed in
+    /// crates/sam-jail-cli/tests/network_use.rs, so a new place that goes
+    /// online cannot hide behind a list of words.
     pub async fn call(&self, args: &[&str], input: Option<String>) -> Reply {
+        refuse_online(args)?;
+        self.counted(args, input).await
+    }
+
+    /// [`Backend::call`] for the commands that go online. Every caller is
+    /// a place where the person asked for an update check or an update (or
+    /// the window's start, which checks only when the person switched that
+    /// on), listed in crates/sam-jail-cli/tests/network_use.rs.
+    pub async fn call_online(&self, args: &[&str], input: Option<String>) -> Reply {
+        self.counted(args, input).await
+    }
+
+    /// Runs the command while the window shows that it is busy.
+    async fn counted(&self, args: &[&str], input: Option<String>) -> Reply {
         self.busy.set(self.busy.get() + 1);
         (self.busy_changed)(true);
         let r = self.call_inner(args, input).await;
@@ -107,6 +126,7 @@ impl Backend {
         input: Option<String>,
         on_progress: impl Fn(&Value) + 'static,
     ) -> Reply {
+        refuse_online(args)?;
         self.busy.set(self.busy.get() + 1);
         (self.busy_changed)(true);
         let r = self.call_progress_inner(args, input, on_progress).await;
@@ -338,6 +358,28 @@ fn tool_from(exe_dir: Option<&Path>, name: &str, developer_build: bool) -> Optio
     Some(newest.canonicalize().unwrap_or(newest))
 }
 
+/// Whether `args` is a `sam-jail` command that goes online: its first word
+/// that is not an option is `updates`, `update` or `self-update`.
+fn online_command(args: &[&str]) -> bool {
+    args.iter()
+        .find(|a| !a.starts_with('-'))
+        .is_some_and(|c| matches!(*c, "updates" | "update" | "self-update"))
+}
+
+/// An error for a command that goes online, which only
+/// [`Backend::call_online`] runs.
+fn refuse_online(args: &[&str]) -> Result<(), CliError> {
+    if online_command(args) {
+        return Err(CliError::coded(
+            "online-command",
+            crate::i18n::tr(
+                "SAM did not run this command: the window goes online only through its update actions.",
+            ),
+        ));
+    }
+    Ok(())
+}
+
 /// The reply in `sam-jail --json` output: the last JSON object line on
 /// stdout with an `ok` field.
 fn envelope(out: &str) -> Option<Reply> {
@@ -366,6 +408,37 @@ fn envelope(out: &str) -> Option<Reply> {
 mod tests {
     use super::*;
     use std::fs;
+
+    /// The window's ordinary way to run a command refuses the three that go
+    /// online, also after an option, so they run only through
+    /// `call_online`, whose callers are listed; every other command passes.
+    #[test]
+    fn the_window_runs_update_commands_only_through_call_online() {
+        for args in [
+            &["updates"][..],
+            &["updates", "--if-due"],
+            &["update", "appimage-a-1"],
+            &["update", "appimage-a-1", "--undo"],
+            &["self-update", "--check"],
+            &["--json", "self-update"],
+        ] {
+            assert!(online_command(args), "{args:?}");
+            assert!(
+                refuse_online(args).is_err_and(|e| e.is("online-command")),
+                "{args:?}"
+            );
+        }
+        for args in [
+            &[][..],
+            &["list"],
+            &["config", "get", "updates.check_on_start"],
+            &["preset", "show", "--", "update"],
+            &["--json", "doctor"],
+        ] {
+            assert!(!online_command(args), "{args:?}");
+            assert!(refuse_online(args).is_ok(), "{args:?}");
+        }
+    }
 
     /// Preset names reach SAM after `--`, so one that starts with `-` is
     /// not read as an option (audit G-F20).
