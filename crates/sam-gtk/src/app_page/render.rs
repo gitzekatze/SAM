@@ -1327,7 +1327,15 @@ impl AppPage {
                 }
             });
         }
-        self.add_dynamic(&g, &text_row("SHA-256", util::str_of(e, "source.sha256")));
+        // Nothing unpacked yet: the record keeps the checksum of the file the
+        // person added, which a file there now may not match (`note_seen_file`
+        // in sam-runner), so the row says whose checksum it is.
+        let sha_label = if e.get("extraction").is_some_and(|x| !x.is_null()) {
+            "SHA-256".to_string()
+        } else {
+            crate::i18n::tr("SHA-256 of the file you added")
+        };
+        self.add_dynamic(&g, &text_row(&sha_label, util::str_of(e, "source.sha256")));
     }
 
     pub(super) fn relocate(self: &Rc<Self>) {

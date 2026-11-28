@@ -1070,7 +1070,7 @@ area = "F"
 promise = "SAM notices AppImages that were moved or changed."
 code = ["sam-intake/src/fingerprint.rs", "sam-runner/src/ops/maintain.rs"]
 tests = ["a_swapped_appimage_does_not_start_until_it_is_confirmed", "what_is_unpacked_is_what_sam_checked_even_if_the_file_is_swapped", "a_swapped_appimage_stays_marked_when_a_switch_changes", "a_swapped_appimage_is_marked_also_after_the_change_check", "a_swapped_appimage_file_is_marked_and_old_records_stay_unchanged", "a_changed_appimage_file_is_noticed", "a_moved_appimage_is_recognized_by_its_content", "a_swapped_appimage_moved_elsewhere_is_not_taken_for_the_apps_own_file", "a_moved_appimage_added_again_is_followed_with_its_marks", "following_a_moved_appimage_keeps_a_change_made_while_it_was_checked",
-  "a_changed_appimage_still_asks_first_when_the_closing_save_fails",
+  "a_changed_appimage_still_asks_first_when_the_closing_save_fails", "new_content_is_not_unpacked_when_its_mark_cannot_be_saved", "a_swapped_appimage_of_a_never_unpacked_app_is_marked_when_it_is_unpacked", "a_never_unpacked_app_is_not_updated",
 ]
 
 [[area]]

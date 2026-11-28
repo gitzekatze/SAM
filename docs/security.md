@@ -2044,7 +2044,15 @@ unpacked all come from that copy. Another program with access to the
 AppImage's folder can no longer swap the file between SAM's check and the
 unpacking, so SAM never records one file and unpacks another
 (`what_is_unpacked_is_what_sam_checked_even_if_the_file_is_swapped`). A
-file swapped there afterwards is noticed like any changed AppImage. Moving such a
+file swapped there afterwards is noticed like any changed AppImage, also
+for an app whose first unpack failed: the change check and relocating keep
+the checksum of the file it was added with, so the first unpack of a
+swapped file is marked
+(`a_swapped_appimage_of_a_never_unpacked_app_is_marked_when_it_is_unpacked`),
+and such an app is neither checked for updates nor updated
+(`a_never_unpacked_app_is_not_updated`). SAM does not promise this mark
+when an earlier SAM version already saw the swapped file of such an app:
+its record then names that file. Moving such a
 file elsewhere does not pass it off as the app's own: SAM follows a moved
 AppImage only when its content is what SAM unpacked for the app; another
 file is added as an app of its own
@@ -2190,9 +2198,11 @@ was easily misread.
   that the page showed what it confirms; `sam-jail review` without
   `--seen` confirms what the record holds when it gets the lock. When the
   AppImage changed other than through a SAM update, *Unpack Again* saves
-  that mark before it unpacks, so the new copy does not start unconfirmed
-  when the closing save fails; SAM does not promise this when you confirm
-  the app while it unpacks. The start's warning about a changed AppImage
+  that mark before it unpacks and unpacks nothing when it cannot save it
+  (`new_content_is_not_unpacked_when_its_mark_cannot_be_saved`), so the
+  new copy does not start unconfirmed when SAM stops before its closing
+  save or that save fails; SAM does not promise this when you confirm the
+  app while it unpacks. The start's warning about a changed AppImage
   says that the unpacked copy SAM starts may not be that file. Limits: a
   SAM version from before this lock does not take it, so while it runs at
   the same time as this one (an old window left open after an update), one
