@@ -20,7 +20,7 @@
   Incus's under `/var/lib/incus`). A user folder inside a writable home counts as writable, and a
   writable extra folder follows such a link only where the app may write
   anyway, so a planted link can no longer make a read-only home writable.
-  Your fonts and theme files follow no link at all (see the note "SAM
+  Your fonts and theme files follow no link (see the note "SAM
   shows your fonts and theme files on its own only where they are no
   link").
 - A folder counts as one the app can change whenever any writable

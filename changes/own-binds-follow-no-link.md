@@ -18,9 +18,11 @@
   `~/.local/share/fonts` loses nothing.
 - Where a link you made leads into a folder the app may write (with the
   home read-only, `~/dotfiles` writable and `~/.config/fontconfig` a link
-  into it), SAM keeps the place it leads to read-only there, unless its
-  name is not valid text, and the app can no longer rename a folder above
-  it away with the read-only bind inside.
+  into it), SAM keeps the place it leads to read-only there, never that
+  folder itself, the home or a folder above it, and unless its name is
+  not valid text; and the app can no longer rename a folder above it
+  away with the read-only bind inside. A further link on the way inside
+  that folder stays as writable as the folder.
 - A link at a protected name can no longer keep the font settings
   writable where a granted folder shows them, and a credential you keep
   as a link into a fonts folder keeps that folder out of a private home.

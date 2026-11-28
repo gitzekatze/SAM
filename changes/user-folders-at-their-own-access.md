@@ -42,8 +42,8 @@
   program that can write a folder above, can also still swap such a folder
   for a link while SAM starts the app. Checking each shown folder in the
   finished sandbox before the app starts, which closes this, is planned.
-  Font folders, font settings and theme files stay read-only where they
-  are no link.
+  Font folders, font settings and theme files stay read-only where SAM
+  binds them.
 - When two user folders are set to the same real folder with different
   access (Music read and write, Pictures read-only, both `~/Media`), the
   stricter access now wins: the folder is read-only for both, whatever

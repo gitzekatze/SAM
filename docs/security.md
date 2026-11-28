@@ -84,13 +84,13 @@ what a private home showed as the fonts
   `a_credential_linked_into_the_fonts_stays_hidden_with_a_read_only_home`).
 - **Where no grant shows the place at its name** (a private home), SAM
   binds it at its name only when it lies in no protected place, key or
-  credential store or folder of SAM's, and holds none, by its name or
-  where a link at such a name really leads. So a credential you keep as a
+  credential store or folder of SAM's by its name, and holds none, by its
+  name or where a link at such a name really leads. So a credential you keep as a
   link into a fonts folder (`~/.git-credentials` a link into `~/.fonts`)
   keeps that fonts folder out, and the start says why. Where a grant
-  shows the place only under another name (with the home kept behind a
-  link, an extra `~/.config` is shown at `/data/u/.config`), SAM binds it
-  only there
+  shows such a place only under another name (with the home kept behind
+  a link, an extra `~/.config` is shown at `/data/u/.config`), SAM binds
+  it only there
   (`a_credential_kept_as_a_link_into_a_font_folder_stays_hidden_in_a_private_home`,
   `a_credential_linked_into_the_font_settings_stays_hidden_behind_a_linked_home`,
   `a_font_place_holding_a_credential_is_bound_only_where_a_grant_shows_it`,
@@ -108,7 +108,9 @@ what a private home showed as the fonts
   read-only, `~/dotfiles` an extra writable folder and
   `~/.config/fontconfig` your link to
   `../dotfiles/fontconfig/.config/fontconfig`, the app therefore cannot
-  write the font settings that programs outside the sandbox load. SAM
+  write the font settings that programs outside the sandbox load there.
+  SAM pins only where the app cannot change the folder that holds the
+  link; where it can, the app can replace the link itself (below). SAM
   makes no such bind where the name of a place it would bind is not valid
   text: it then only names the link, the place stays as writable as that
   folder shows it, and the start runs
@@ -141,8 +143,9 @@ store. Keep the real files at that place. With the whole home, a link that
 stays inside the home under the home's own name (a relative link, or one
 through `/home/u`) works through the home. A link that leads out of the
 home (a second disk, the Nix or Guix store) shows only what the sandbox
-shows at that place anyway, usually nothing, also with the whole home; add
-the place it leads to as an extra read-only folder. With the home kept
+shows at that place anyway, usually nothing, also with the whole home;
+with the whole home, also add the place it leads to as an extra read-only
+folder. With the home kept
 behind a link, the same holds for a link that names the home's real place
 (`/data/u/myfonts`): make it relative. The
 common link `~/.fonts` to `~/.local/share/fonts` loses nothing, since SAM
@@ -150,8 +153,9 @@ shows `~/.local/share/fonts` itself. Anyone who can write a protected name
 can keep your fonts out of a private home this way (`~/.config/gh` made a
 link into `~/.fonts`), and anyone who can write in your home can make a
 folder inside a writable grant read-only for the app while the link
-exists. Neither makes anything readable or writable, and the start names
-it.
+exists, and the folders between that grant and the folder pinned, so the
+app cannot rename or remove them meanwhile. Neither makes anything
+readable or writable, and the start names it.
 
 **Not covered.**
 - A program running alongside (also a running copy of the app) can swap
@@ -169,6 +173,11 @@ it.
   read and write) or with host theme settings off, so an extra writable
   `~/.config` shows the theme files in it (`~/.config/gtk-3.0`,
   `~/.config/kdeglobals`, `~/.config/qt5ct`, …) writable.
+- SAM keeps only the place a link finally leads to read-only. A further
+  link on the way inside the writable folder (`~/dotfiles/fontconfig`
+  itself a link), or a link inside that place leading elsewhere in the
+  folder, stays as writable as the folder shows it, so the app can
+  replace it or write where it leads.
 - A font or theme file that is a hard link to another file of yours is no
   link to SAM and is shown like any file.
 
@@ -1188,8 +1197,8 @@ How these stay protected with the home writable:
   (`a_grant_of_tmp_or_its_listening_places_is_dangerous_even_read_only`).
 - **Links never take a bind where it must not lead.** SAM binds each
   extra folder and each granted user folder where its links lead. (Your
-  fonts and theme files follow no link at all: see
-  [Your fonts and theme files follow no link](#your-fonts-and-theme-files-follow-no-link).) With the whole
+  fonts and theme files are never bound where a link leads on its own:
+  see [Your fonts and theme files follow no link](#your-fonts-and-theme-files-follow-no-link).) With the whole
   home writable, an app could make a missing `~/.fonts` (before that
   rule), or an extra folder not made yet, a link to `/tmp/tmux-1000` or
   to `/run/user/1000`,
@@ -1290,8 +1299,8 @@ How these stay protected with the home writable:
   somewhere the second rule allows: with a private home, an extra folder
   `~/data` made a link to `/mnt/data/private` in a start with the whole
   home writable shows that folder, which no start gave the app. Your
-  fonts and theme files are not open to this: they follow no link at
-  all, whoever made it and in whichever start (see
+  fonts and theme files are not open to this: SAM never binds them where
+  a link leads on its own, whoever made it and in whichever start (see
   [Your fonts and theme files follow no link](#your-fonts-and-theme-files-follow-no-link)). A link
   to one of the places listed above where programs outside the sandbox
   listen stays refused in every start, except where a program running
@@ -1323,8 +1332,8 @@ How these stay protected with the home writable:
   `a_user_folder_in_a_writable_home_counts_as_one_the_app_can_change`,
   `ordinary_font_folders_and_links_inside_the_home_still_work`,
   `the_check_expects_a_left_out_extra_folder_as_its_target_is_shown`).
-- **Your fonts and theme files follow no link** at all, whoever made
-  the link: see [Your fonts and theme files follow no link](#your-fonts-and-theme-files-follow-no-link).
+- **Your fonts and theme files follow no link**, whoever made the link:
+  see [Your fonts and theme files follow no link](#your-fonts-and-theme-files-follow-no-link).
 - **Extra sockets** (`sockets.custom`) are passed in from where their links
   lead. One reached through a link in a folder the app may change is left
   out (the app could have made that link, to the session bus or another

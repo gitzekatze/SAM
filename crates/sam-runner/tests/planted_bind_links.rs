@@ -1216,26 +1216,38 @@ fn a_protected_link_never_knocks_out_the_read_only_font_settings_in_a_real_sandb
 
     // The home kept behind a link: the extra folder is shown at its real
     // place, and the fonts settings stay read-only there, with and
-    // without the planted link, and under the home's name, which the
-    // read-only home shows.
+    // without the planted link. In a private home without the planted
+    // link they are read-only under the home's name too; with it, the
+    // planted link is hidden where it leads, and nothing reaches the
+    // fonts settings (checked last).
     let real = rig.home.parent().unwrap().join("tester-real");
     fs::rename(&rig.home, &real).unwrap();
     symlink(&real, &rig.home).unwrap();
-    for planted in [false, true] {
-        if planted {
-            symlink(config.join("fontconfig"), real.join(".config/vivaldi")).unwrap();
+    for (name, perms) in [("read-only home", &p), ("private home", &private)] {
+        for planted in [false, true] {
+            if planted {
+                symlink(config.join("fontconfig"), real.join(".config/vivaldi")).unwrap();
+            }
+            let writes = format!(
+                "{}|{}|{}",
+                s(&real.join(".config/fontconfig/x.conf")),
+                s(&config.join("fontconfig/y.conf")),
+                s(&real.join(".config/other.txt"))
+            );
+            let (r, text) = rig.start(perms, &[("SAM_TEST_WRITES", writes)]);
+            let what = format!("{name}, planted {planted}");
+            if name == "read-only home" || !planted {
+                assert_eq!(r["WRITE0"], "30", "{what}, real place: {text}");
+            }
+            if name == "private home" && !planted {
+                assert_ne!(r["WRITE1"], "ok", "{what}, home's name: {text}");
+            }
+            assert_eq!(r["WRITE2"], "ok", "{what}, control: {text}");
+            fs::remove_file(real.join(".config/other.txt")).unwrap();
+            if planted {
+                fs::remove_file(real.join(".config/vivaldi")).unwrap();
+            }
         }
-        let writes = format!(
-            "{}|{}|{}",
-            s(&real.join(".config/fontconfig/x.conf")),
-            s(&config.join("fontconfig/y.conf")),
-            s(&real.join(".config/other.txt"))
-        );
-        let (r, text) = rig.start(&p, &[("SAM_TEST_WRITES", writes)]);
-        assert_eq!(r["WRITE0"], "30", "planted {planted}, real place: {text}");
-        assert_ne!(r["WRITE1"], "ok", "planted {planted}, home's name: {text}");
-        assert_eq!(r["WRITE2"], "ok", "planted {planted}, control: {text}");
-        fs::remove_file(real.join(".config/other.txt")).unwrap();
     }
     assert!(!real.join(".config/fontconfig/x.conf").exists());
     assert!(!real.join(".config/fontconfig/y.conf").exists());
@@ -1389,7 +1401,9 @@ fn a_link_you_made_into_a_writable_folder_keeps_the_font_settings_read_only() {
 /// the app cannot rename `~/dotfiles/fontconfig` away with the read-only
 /// bind inside and write new font rules at the old place, which programs
 /// outside the sandbox would load through the link. The control: a
-/// folder beside it in `~/dotfiles` can be renamed.
+/// folder beside it in `~/dotfiles` can be renamed. With the whole home
+/// writable the app can replace the link itself, so SAM pins nothing
+/// there and `~/dotfiles/fontconfig` can be renamed as before.
 #[test]
 fn a_folder_above_a_font_place_kept_read_only_cannot_be_renamed_away() {
     let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
@@ -1431,6 +1445,20 @@ fn a_folder_above_a_font_place_kept_read_only_cannot_be_renamed_away() {
     assert!(!h
         .join("dotfiles/fontconfig/.config/fontconfig/fonts.conf")
         .exists());
+
+    // The whole home writable: the link itself can be replaced, no pins.
+    fs::rename(h.join("dotfiles/other2"), h.join("dotfiles/other")).unwrap();
+    let mut whole = p.clone();
+    whole.filesystem.home_access = Access::Rw;
+    whole.filesystem.custom_write.clear();
+    let moves = format!(
+        "{}>{}",
+        s(&h.join("dotfiles/fontconfig")),
+        s(&h.join("dotfiles/moved"))
+    );
+    let (r, text) = rig.start(&whole, &[("SAM_TEST_MOVES", moves)]);
+    assert_eq!(r["MOVE0"], "ok", "whole home writable, no pins: {text}");
+    assert!(h.join("dotfiles/moved/.config/fontconfig").is_dir());
 }
 
 /// With the home read-only, a credential kept as a link into a fonts

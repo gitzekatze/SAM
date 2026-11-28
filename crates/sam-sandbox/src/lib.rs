@@ -1732,7 +1732,8 @@ struct ReadOnlyBinds<'a> {
 /// over a read-only grant (security review 2026-11-23, SB-6).
 ///
 /// Also every folder above the place where a guard lands (`guarded`, SAM's
-/// folders and programs): a protected place or credential store kept
+/// folders and programs, and a font or theme place SAM keeps read-only
+/// behind a link in a folder the app cannot change): a protected place or credential store kept
 /// through a link (dotfiles, `stow`) is guarded where the link leads, below
 /// folders that are not above its name. Renamed (`mv ~/dotfiles ~/y`), the
 /// guard moved along, and a new `~/dotfiles/bashrc` ran outside the sandbox
@@ -2700,8 +2701,9 @@ impl Section<'_> {
         let shown = |at: &Path| !self.views.seen_at(at).is_empty();
         let shown_at_name = |at: &Path| self.views.visible(at);
         let mut own_bound: Vec<PathBuf> = Vec::new();
-        // The places kept read-only behind a link (`lock` below): the
-        // folders above each are pinned like those above a guarded place.
+        // The places kept read-only behind a link in a folder the app
+        // cannot change: the folders above each are pinned like those
+        // above a guarded place.
         let mut own_locked: Vec<PathBuf> = Vec::new();
         let mut bound_rels: Vec<&str> = Vec::new();
         let mut skipped: Vec<sam_core::places::OwnLinkSkipped> = Vec::new();
@@ -2742,6 +2744,16 @@ impl Section<'_> {
                         if !targets.is_empty() && !kept.contains(&target) {
                             kept.push(target);
                         }
+                        // Pinned only where the app cannot change the
+                        // folder that holds the link: where it can (the
+                        // whole home writable), it can replace the link
+                        // itself, and pins there only made `mv ~/dotfiles`
+                        // fail.
+                        let link_fixed =
+                            link.link.parent().is_some_and(|d| !self.views.writable(d));
+                        if link_fixed {
+                            own_locked.extend(targets.iter().cloned());
+                        }
                     }
                     skipped.push(sam_core::places::OwnLinkSkipped {
                         rel,
@@ -2763,7 +2775,6 @@ impl Section<'_> {
                 }
                 if lock {
                     mount(&at, &|m| m.lock(&at));
-                    own_locked.push(at.clone());
                 } else {
                     mount(&at, &|m| m.ro(&at));
                 }
