@@ -598,17 +598,18 @@ msgstr "Bluetooth"
 #: crates/sam-core/src/permissions.rs:1268
 msgid ""
 "Lets the app open Bluetooth sockets, which reach nearby devices only with "
-"full network access. Without it the syscall filter refuses them, except for "
-"an app whose start program is 32-bit (the security page says why). An app "
-"that may reach the Bluetooth service on the system D-Bus can use Bluetooth "
-"devices through it, with or without this switch."
+"full network access. Without it, the app's syscall filter refuses them while "
+"the filter is on, except for an app whose start program is 32-bit (the "
+"security page says why). An app that may reach the Bluetooth service on the "
+"system D-Bus can use Bluetooth devices through it, with or without this "
+"switch."
 msgstr ""
 "Erlaubt der App, Bluetooth-Sockets zu öffnen, die Geräte in der Nähe nur mit "
 "vollem Netzwerkzugang erreichen. Ohne den Schalter lehnt der Systemaufruf-"
-"Filter sie ab, außer bei einer App, deren Startprogramm ein 32-Bit-Programm "
-"ist (die Sicherheitsseite erklärt, warum). Eine App, die den Bluetooth-"
-"Dienst auf dem System-D-Bus erreichen darf, kann über ihn Bluetooth-Geräte "
-"nutzen, mit oder ohne diesen Schalter."
+"Filter der App sie ab, solange der Filter an ist, außer bei einer App, deren "
+"Startprogramm ein 32-Bit-Programm ist (die Sicherheitsseite erklärt, warum). "
+"Eine App, die den Bluetooth-Dienst auf dem System-D-Bus erreichen darf, kann "
+"über ihn Bluetooth-Geräte nutzen, mit oder ohne diesen Schalter."
 
 #: crates/sam-core/src/permissions.rs:1270 crates/sam-core/src/risk.rs:331
 #: crates/sam-runner/src/verify.rs:531
@@ -624,7 +625,7 @@ msgstr ""
 "Sobald dies an ist, ist auch Aufnehmen möglich."
 
 #: crates/sam-core/src/permissions.rs:1272 crates/sam-core/src/risk.rs:350
-#: crates/sam-runner/src/launch.rs:2291
+#: crates/sam-runner/src/launch.rs:2298
 msgid "Sound without SAM's relay"
 msgstr "Ton ohne SAMs Vermittler"
 
@@ -3937,27 +3938,26 @@ msgstr ""
 "Die Sandbox wird mit SAMs Testprogramm gestartet, danach die App selbst für "
 "ein paar Sekunden."
 
-#: crates/sam-gtk/src/app_page/wiring.rs:278
-msgid "Test passed: every setting applies, and the app started"
-msgstr "Test bestanden: Jede Einstellung greift, und die App ist gestartet"
-
-#: crates/sam-gtk/src/app_page/wiring.rs:279
-msgid "Every setting applies, but the app did not keep running; see Test below"
-msgstr ""
-"Jede Einstellung greift, aber die App lief nicht weiter; siehe „Test“ unten"
-
 #: crates/sam-gtk/src/app_page/wiring.rs:280
-msgid "Test passed: every setting applies"
-msgstr "Test bestanden: Jede Einstellung greift"
+msgid "Test passed, and the app started"
+msgstr "Test bestanden, und die App ist gestartet"
+
+#: crates/sam-gtk/src/app_page/wiring.rs:281
+msgid "Test passed, but the app did not keep running; see Test below"
+msgstr "Test bestanden, aber die App lief nicht weiter; siehe „Test“ unten"
+
+#: crates/sam-gtk/src/app_page/wiring.rs:284
+msgid "Test passed"
+msgstr "Test bestanden"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/wiring.rs:281
+#: crates/sam-gtk/src/app_page/wiring.rs:285
 msgid "Test: {n} setting does not apply; see Test below."
 msgid_plural "Test: {n} settings do not apply; see Test below."
 msgstr[0] "Test: {n} Einstellung greift nicht; siehe „Test“ unten."
 msgstr[1] "Test: {n} Einstellungen greifen nicht; siehe „Test“ unten."
 
-#: crates/sam-gtk/src/app_page/wiring.rs:312
+#: crates/sam-gtk/src/app_page/wiring.rs:316
 msgid ""
 "Starts this app's sandbox with a test program instead of the app and "
 "confirms from inside that every setting really applies. Nothing is changed. "
@@ -3968,14 +3968,14 @@ msgstr ""
 "verändert. Nutze die Schaltfläche „Testen“ oben; sie startet die App auch "
 "für ein paar Sekunden."
 
-#: crates/sam-gtk/src/app_page/wiring.rs:315
-#: crates/sam-gtk/src/app_page/wiring.rs:332
-#: crates/sam-gtk/src/app_page/wiring.rs:338
-#: crates/sam-gtk/src/app_page/wiring.rs:437
+#: crates/sam-gtk/src/app_page/wiring.rs:319
+#: crates/sam-gtk/src/app_page/wiring.rs:336
+#: crates/sam-gtk/src/app_page/wiring.rs:342
+#: crates/sam-gtk/src/app_page/wiring.rs:441
 msgid "Not tested yet"
 msgstr "Noch nicht getestet"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:334
+#: crates/sam-gtk/src/app_page/wiring.rs:338
 msgid ""
 "Test that the sandbox gives the app exactly what its settings say, and that "
 "the app starts."
@@ -3983,19 +3983,19 @@ msgstr ""
 "Testen, ob die Sandbox der App genau das gibt, was ihre Einstellungen sagen, "
 "und ob die App startet."
 
-#: crates/sam-gtk/src/app_page/wiring.rs:341
+#: crates/sam-gtk/src/app_page/wiring.rs:345
 msgid ""
 "Press Test to confirm that every setting applies and that the app starts"
 msgstr ""
 "Drück „Testen“, um zu prüfen, ob jede Einstellung greift und die App startet"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:353
-#: crates/sam-gtk/src/app_page/wiring.rs:445
+#: crates/sam-gtk/src/app_page/wiring.rs:357
+#: crates/sam-gtk/src/app_page/wiring.rs:449
 msgid "Out of date"
 msgstr "Veraltet"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/wiring.rs:354
+#: crates/sam-gtk/src/app_page/wiring.rs:358
 msgid ""
 "The settings, SAM or this computer changed since the last test ({when}). "
 "Test again."
@@ -4003,11 +4003,11 @@ msgstr ""
 "Die Einstellungen, SAM oder dieser Computer haben sich seit dem letzten Test "
 "geändert ({when}). Teste erneut."
 
-#: crates/sam-gtk/src/app_page/wiring.rs:361
+#: crates/sam-gtk/src/app_page/wiring.rs:365
 msgid "Test out of date"
 msgstr "Test veraltet"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:365
+#: crates/sam-gtk/src/app_page/wiring.rs:369
 msgid ""
 "The settings, SAM or this computer changed since the last test; press Test "
 "again"
@@ -4016,41 +4016,41 @@ msgstr ""
 "geändert; drück erneut „Testen“"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/wiring.rs:375
+#: crates/sam-gtk/src/app_page/wiring.rs:379
 msgid "Tested {when}"
 msgstr "Getestet {when}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/wiring.rs:380
-#: crates/sam-gtk/src/app_page/wiring.rs:475
+#: crates/sam-gtk/src/app_page/wiring.rs:384
+#: crates/sam-gtk/src/app_page/wiring.rs:479
 msgid "{failed} of {n} check failed"
 msgid_plural "{failed} of {n} checks failed"
 msgstr[0] "{failed} von {n} Prüfung fehlgeschlagen"
 msgstr[1] "{failed} von {n} Prüfungen fehlgeschlagen"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/wiring.rs:386
+#: crates/sam-gtk/src/app_page/wiring.rs:390
 msgid "Not applied: {settings}. Tested {when}."
 msgstr "Nicht angewendet: {settings}. Getestet {when}."
 
-#: crates/sam-gtk/src/app_page/wiring.rs:391
+#: crates/sam-gtk/src/app_page/wiring.rs:395
 msgid "Test failed"
 msgstr "Test fehlgeschlagen"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:392
+#: crates/sam-gtk/src/app_page/wiring.rs:396
 msgid "The test found settings that do not apply; see Test below"
 msgstr ""
 "Der Test hat Einstellungen gefunden, die nicht greifen; siehe „Test“ unten"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:403
+#: crates/sam-gtk/src/app_page/wiring.rs:407
 msgid "The app started and kept running"
 msgstr "Die App ist gestartet und lief weiter"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:405
+#: crates/sam-gtk/src/app_page/wiring.rs:409
 msgid "The app did not keep running"
 msgstr "Die App lief nicht weiter"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:431
+#: crates/sam-gtk/src/app_page/wiring.rs:435
 msgid ""
 "Starts the sandbox this AppImage would get with a test program and confirms "
 "from inside that every setting below really applies. The AppImage is not "
@@ -4062,29 +4062,29 @@ msgstr ""
 "wird weder entpackt noch ausgeführt. Nutze die Schaltfläche „Testen“ oben; "
 "sie startet die App auch für ein paar Sekunden."
 
-#: crates/sam-gtk/src/app_page/wiring.rs:438
+#: crates/sam-gtk/src/app_page/wiring.rs:442
 msgid "You can test the settings before you create the sandbox."
 msgstr "Du kannst die Einstellungen testen, bevor du die Sandbox erstellst."
 
-#: crates/sam-gtk/src/app_page/wiring.rs:446
+#: crates/sam-gtk/src/app_page/wiring.rs:450
 msgid "The settings changed since the last check. Check again."
 msgstr ""
 "Die Einstellungen haben sich seit der letzten Prüfung geändert. Prüfe erneut."
 
-#: crates/sam-gtk/src/app_page/wiring.rs:472
+#: crates/sam-gtk/src/app_page/wiring.rs:476
 msgid "Checked"
 msgstr "Geprüft"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/wiring.rs:481
+#: crates/sam-gtk/src/app_page/wiring.rs:485
 msgid "Not applied: {settings}."
 msgstr "Nicht angewendet: {settings}."
 
-#: crates/sam-gtk/src/app_page/wiring.rs:486
+#: crates/sam-gtk/src/app_page/wiring.rs:490
 msgid "Check failed"
 msgstr "Prüfung fehlgeschlagen"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:487
+#: crates/sam-gtk/src/app_page/wiring.rs:491
 msgid ""
 "The sandbox check found settings that do not apply; see Sandbox Check below"
 msgstr ""
@@ -4092,25 +4092,25 @@ msgstr ""
 "„Sandbox-Prüfung“ unten"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/wiring.rs:539
+#: crates/sam-gtk/src/app_page/wiring.rs:543
 msgid "{n} confirmed setting"
 msgid_plural "{n} confirmed settings"
 msgstr[0] "{n} bestätigte Einstellung"
 msgstr[1] "{n} bestätigte Einstellungen"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:545
+#: crates/sam-gtk/src/app_page/wiring.rs:549
 msgid "What the test program found inside the sandbox"
 msgstr "Was das Testprogramm in der Sandbox vorgefunden hat"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:586
+#: crates/sam-gtk/src/app_page/wiring.rs:590
 msgid "Launch arguments saved"
 msgstr "Startargumente gespeichert"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:599
+#: crates/sam-gtk/src/app_page/wiring.rs:603
 msgid "Turn On Compatibility Mode?"
 msgstr "Kompatibilitätsmodus einschalten?"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:600
+#: crates/sam-gtk/src/app_page/wiring.rs:604
 msgid ""
 "The app gets broad access: the network, all of /usr, X11, the GPU, sound and "
 "the whole session bus. Through the whole session bus it can ask desktop "
@@ -4128,28 +4128,28 @@ msgstr ""
 "Deine jetzigen Einstellungen werden gemerkt und kommen zurück, wenn du ihn "
 "ausschaltest."
 
-#: crates/sam-gtk/src/app_page/wiring.rs:601
+#: crates/sam-gtk/src/app_page/wiring.rs:605
 msgid "Turn On"
 msgstr "Einschalten"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:620
+#: crates/sam-gtk/src/app_page/wiring.rs:624
 msgid "Compatibility mode on"
 msgstr "Kompatibilitätsmodus an"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:622
+#: crates/sam-gtk/src/app_page/wiring.rs:626
 msgid "Compatibility mode off: your previous settings are back"
 msgstr "Kompatibilitätsmodus aus: Deine vorherigen Einstellungen sind zurück"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:648
+#: crates/sam-gtk/src/app_page/wiring.rs:652
 msgid "Type a name for the preset first"
 msgstr "Gib zuerst einen Namen für die Vorlage ein"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/wiring.rs:663
+#: crates/sam-gtk/src/app_page/wiring.rs:667
 msgid "Replace “{name}”?"
 msgstr "„{name}“ ersetzen?"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:664
+#: crates/sam-gtk/src/app_page/wiring.rs:668
 msgid ""
 "A preset with this name exists. Its settings are replaced by the ones shown "
 "here. Apps that used it keep their current settings."
@@ -4158,17 +4158,17 @@ msgstr ""
 "hier gezeigten ersetzt. Apps, die sie verwendet haben, behalten ihre "
 "aktuellen Einstellungen."
 
-#: crates/sam-gtk/src/app_page/wiring.rs:667
+#: crates/sam-gtk/src/app_page/wiring.rs:671
 msgid "Replace"
 msgstr "Ersetzen"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/wiring.rs:676
+#: crates/sam-gtk/src/app_page/wiring.rs:680
 msgid "Saved from {app}"
 msgstr "Aus {app} gespeichert"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-gtk/src/app_page/wiring.rs:689
+#: crates/sam-gtk/src/app_page/wiring.rs:693
 msgid ""
 "Saved preset “{name}”. Apply it to other apps from the main menu → My "
 "Presets."
@@ -6226,7 +6226,7 @@ msgstr[0] "{n} laufender Start beendet"
 msgstr[1] "{n} laufende Starts beendet"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-jail-cli/src/main.rs:977 crates/sam-runner/src/launch.rs:1757
+#: crates/sam-jail-cli/src/main.rs:977 crates/sam-runner/src/launch.rs:1764
 msgid "set by SAM's helper for the app, after its layers: {variables}"
 msgstr ""
 "von SAMs Helfer für die App gesetzt, nach ihren Schutzschichten: {variables}"
@@ -7190,15 +7190,15 @@ msgstr ""
 "sam-jail-run wurde nicht neben sam-jail gefunden; Landlock und seccomp "
 "werden nicht angewendet."
 
-#: crates/sam-runner/src/launch.rs:233 crates/sam-runner/src/launch.rs:843
-#: crates/sam-runner/src/launch.rs:856 crates/sam-runner/src/launch.rs:906
-#: crates/sam-runner/src/launch.rs:917
+#: crates/sam-runner/src/launch.rs:233 crates/sam-runner/src/launch.rs:850
+#: crates/sam-runner/src/launch.rs:863 crates/sam-runner/src/launch.rs:913
+#: crates/sam-runner/src/launch.rs:924
 msgid "Room service unavailable"
 msgstr "Room service nicht verfügbar"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/launch.rs:236 crates/sam-runner/src/launch.rs:859
-#: crates/sam-runner/src/launch.rs:909 crates/sam-runner/src/launch.rs:920
+#: crates/sam-runner/src/launch.rs:236 crates/sam-runner/src/launch.rs:866
+#: crates/sam-runner/src/launch.rs:916 crates/sam-runner/src/launch.rs:927
 msgid ""
 "{error}; programs in this app that build a sandbox of their own fail this "
 "time"
@@ -7361,25 +7361,34 @@ msgstr "Wayland-Sicherheitskontext fehlgeschlagen"
 msgid "{error}; the app uses the normal Wayland socket"
 msgstr "{error}; die App nutzt den normalen Wayland-Socket"
 
-#: crates/sam-runner/src/launch.rs:744 crates/sam-runner/src/launch.rs:762
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-runner/src/launch.rs:711
+msgid ""
+"SAM did not start {app}: a link in its home changed while SAM prepared the "
+"start. Start it again."
+msgstr ""
+"SAM hat {app} nicht gestartet: Eine Verknüpfung in ihrem Home-Ordner hat "
+"sich geändert, während SAM den Start vorbereitet hat. Starte sie noch einmal."
+
+#: crates/sam-runner/src/launch.rs:751 crates/sam-runner/src/launch.rs:769
 msgid "D-Bus name not allowed"
 msgstr "D-Bus-Name nicht erlaubt"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/launch.rs:747 crates/sam-runner/src/launch.rs:765
+#: crates/sam-runner/src/launch.rs:754 crates/sam-runner/src/launch.rs:772
 msgid "The app may not own {name}: {why}."
 msgstr "Die App darf {name} nicht belegen: {why}."
 
-#: crates/sam-runner/src/launch.rs:773
+#: crates/sam-runner/src/launch.rs:780
 msgid "D-Bus proxy failed"
 msgstr "D-Bus-Proxy fehlgeschlagen"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/launch.rs:776
+#: crates/sam-runner/src/launch.rs:783
 msgid "{error}; the session bus is off for this start"
 msgstr "{error}; der Sitzungsbus ist bei diesem Start aus"
 
-#: crates/sam-runner/src/launch.rs:843
+#: crates/sam-runner/src/launch.rs:850
 msgid ""
 "This Bubblewrap cannot show places by handle (--ro-bind-fd, Bubblewrap 0.10 "
 "or newer); programs in this app that build a sandbox of their own use it as "
@@ -7389,12 +7398,12 @@ msgstr ""
 "Bubblewrap 0.10 oder neuer); Programme in dieser App, die eine eigene "
 "Sandbox bauen, nutzen es wie vor Room service."
 
-#: crates/sam-runner/src/launch.rs:939
+#: crates/sam-runner/src/launch.rs:946
 msgid "\"This computer only\" unavailable"
 msgstr "„Nur dieser Computer“ nicht verfügbar"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/launch.rs:942
+#: crates/sam-runner/src/launch.rs:949
 msgid ""
 "{error}. Until then the app starts with no network at all, never with "
 "internet access."
@@ -7403,11 +7412,11 @@ msgstr ""
 "Internetzugang."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/launch.rs:1038
+#: crates/sam-runner/src/launch.rs:1045
 msgid "sandbox setup failed: {reason}"
 msgstr "Sandbox-Einrichtung fehlgeschlagen: {reason}"
 
-#: crates/sam-runner/src/launch.rs:1046
+#: crates/sam-runner/src/launch.rs:1053
 msgid ""
 "the entry point could not be executed (permission denied or wrong format)"
 msgstr ""
@@ -7415,13 +7424,13 @@ msgstr ""
 "falsches Format)"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/launch.rs:1054
+#: crates/sam-runner/src/launch.rs:1061
 msgid "a library the app needs is not available inside the sandbox: {library}"
 msgstr ""
 "eine Bibliothek, die die App braucht, ist in der Sandbox nicht verfügbar: "
 "{library}"
 
-#: crates/sam-runner/src/launch.rs:1062
+#: crates/sam-runner/src/launch.rs:1069
 msgid ""
 "the entry point or one of its interpreters was not found inside the sandbox"
 msgstr ""
@@ -7429,7 +7438,7 @@ msgstr ""
 "gefunden"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/launch.rs:1106
+#: crates/sam-runner/src/launch.rs:1113
 msgid ""
 "the app needed its own bus name {names}; SAM allowed it and starts the app "
 "again"
@@ -7438,11 +7447,11 @@ msgstr ""
 "startet die App noch einmal"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/launch.rs:1263
+#: crates/sam-runner/src/launch.rs:1270
 msgid "warning: {text}"
 msgstr "Warnung: {text}"
 
-#: crates/sam-runner/src/launch.rs:1296
+#: crates/sam-runner/src/launch.rs:1303
 msgid ""
 "Landlock is not in place, so a handle the app holds could still reach the "
 "next device"
@@ -7450,19 +7459,19 @@ msgstr ""
 "Landlock ist nicht aktiv, daher könnte ein Handle, das die App offen hält, "
 "noch das nächste Gerät erreichen"
 
-#: crates/sam-runner/src/launch.rs:1300
+#: crates/sam-runner/src/launch.rs:1307
 msgid "the app may make namespaces of its own, which SAM cannot reach"
 msgstr "die App darf eigene Namespaces anlegen, die SAM nicht erreicht"
 
-#: crates/sam-runner/src/launch.rs:1379
+#: crates/sam-runner/src/launch.rs:1386
 msgid "no stdout pipe"
 msgstr "keine stdout-Verbindung"
 
-#: crates/sam-runner/src/launch.rs:1392
+#: crates/sam-runner/src/launch.rs:1399
 msgid "no stderr pipe"
 msgstr "keine stderr-Verbindung"
 
-#: crates/sam-runner/src/launch.rs:1456
+#: crates/sam-runner/src/launch.rs:1463
 msgid ""
 "ended by SAM: a game controller was unplugged and SAM could not safely take "
 "it out of the sandbox"
@@ -7470,19 +7479,19 @@ msgstr ""
 "von SAM beendet: ein Controller wurde abgezogen, und SAM konnte ihn nicht "
 "sicher aus der Sandbox entfernen"
 
-#: crates/sam-runner/src/launch.rs:1465
+#: crates/sam-runner/src/launch.rs:1472
 msgid "ended when its terminal was closed"
 msgstr "beendet, als ihr Terminal geschlossen wurde"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/launch.rs:1582
+#: crates/sam-runner/src/launch.rs:1589
 msgid "warning: this start ran without {layers}, which its settings ask for"
 msgstr ""
 "Warnung: Dieser Start lief ohne {layers}, obwohl die Einstellungen es "
 "verlangen"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/launch.rs:1591
+#: crates/sam-runner/src/launch.rs:1598
 msgid ""
 "the app left something that would run outside its sandbox; SAM moved it "
 "aside: {items}"
@@ -7491,31 +7500,31 @@ msgstr ""
 "SAM hat es beiseitegelegt: {items}"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/launch.rs:1606
+#: crates/sam-runner/src/launch.rs:1613
 msgid "the repair step did not help, so SAM undid it: {steps}"
 msgstr ""
 "der Reparaturschritt hat nicht geholfen, deshalb hat SAM ihn rückgängig "
 "gemacht: {steps}"
 
-#: crates/sam-runner/src/launch.rs:1637
+#: crates/sam-runner/src/launch.rs:1644
 msgid "you blocked it (always blocked names)"
 msgstr "du hast ihn gesperrt (immer gesperrte Namen)"
 
-#: crates/sam-runner/src/launch.rs:1654
+#: crates/sam-runner/src/launch.rs:1661
 msgid "your home folder"
 msgstr "Deinen Persönlichen Ordner"
 
-#: crates/sam-runner/src/launch.rs:1674
+#: crates/sam-runner/src/launch.rs:1681
 msgid "only its private home"
 msgstr "nur ihren privaten Ordner"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/launch.rs:1676
+#: crates/sam-runner/src/launch.rs:1683
 msgid "{folders} and its private home"
 msgstr "{folders} und ihren privaten Ordner"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/launch.rs:1681
+#: crates/sam-runner/src/launch.rs:1688
 msgid ""
 "{app} runs sandboxed, in a terminal of its own. It sees {sees} (files it "
 "saves anywhere else stay there). It cannot type into this shell or use the "
@@ -7526,7 +7535,7 @@ msgstr ""
 "Shell tippen und die Zwischenablage nicht über das Terminal nutzen."
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/launch.rs:1693
+#: crates/sam-runner/src/launch.rs:1700
 msgid ""
 "SAM did not share {files} with it, because files you open with this app are "
 "set to No access."
@@ -7534,28 +7543,28 @@ msgstr ""
 "SAM hat {files} nicht mit ihr geteilt, weil Dateien, die du mit dieser App "
 "öffnest, auf Kein Zugriff stehen."
 
-#: crates/sam-runner/src/launch.rs:1891
+#: crates/sam-runner/src/launch.rs:1898
 msgid "pasta command without '--'"
 msgstr "pasta-Befehl ohne „--“"
 
-#: crates/sam-runner/src/launch.rs:1892
+#: crates/sam-runner/src/launch.rs:1899
 msgid "pasta command without a program after '--'"
 msgstr "pasta-Befehl ohne Programm nach „--“"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/launch.rs:2057
+#: crates/sam-runner/src/launch.rs:2064
 msgid "~/{place} → {to} (renamed in place: SAM's folder could not take it)"
 msgstr ""
 "~/{place} → {to} (an Ort und Stelle umbenannt: SAMs Ordner konnte es nicht "
 "aufnehmen)"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/launch.rs:2061
+#: crates/sam-runner/src/launch.rs:2068
 msgid "~/{place}: deleted (it could not be moved)"
 msgstr "~/{place}: gelöscht (es ließ sich nicht verschieben)"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/launch.rs:2065
+#: crates/sam-runner/src/launch.rs:2072
 msgid ""
 "~/{place}: COULD NOT BE REMOVED; it may run outside the sandbox: remove it "
 "yourself"
@@ -7563,49 +7572,49 @@ msgstr ""
 "~/{place}: KONNTE NICHT ENTFERNT WERDEN; es kann außerhalb der Sandbox "
 "laufen: entferne es selbst"
 
-#: crates/sam-runner/src/launch.rs:2165
+#: crates/sam-runner/src/launch.rs:2172
 msgid "sandbox setup failed (Bubblewrap could not build the sandbox)"
 msgstr ""
 "Sandbox-Einrichtung fehlgeschlagen (Bubblewrap konnte die Sandbox nicht "
 "bauen)"
 
-#: crates/sam-runner/src/launch.rs:2173
+#: crates/sam-runner/src/launch.rs:2180
 msgid "closed by SAM"
 msgstr "von SAM geschlossen"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/launch.rs:2178
+#: crates/sam-runner/src/launch.rs:2185
 msgid "kept running for {seconds} s (test start, ended by SAM)"
 msgstr "lief {seconds} s weiter (Teststart, von SAM beendet)"
 
-#: crates/sam-runner/src/launch.rs:2186
+#: crates/sam-runner/src/launch.rs:2193
 msgid "exited normally"
 msgstr "normal beendet"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/launch.rs:2187
+#: crates/sam-runner/src/launch.rs:2194
 msgid "exited with code {code}"
 msgstr "mit Code {code} beendet"
 
-#: crates/sam-runner/src/launch.rs:2188
+#: crates/sam-runner/src/launch.rs:2195
 msgid "ended by signal 11 (segmentation fault)"
 msgstr "durch Signal 11 beendet (Speicherzugriffsfehler)"
 
-#: crates/sam-runner/src/launch.rs:2189
+#: crates/sam-runner/src/launch.rs:2196
 msgid "ended by signal 6 (abort)"
 msgstr "durch Signal 6 beendet (Abbruch)"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/launch.rs:2190
+#: crates/sam-runner/src/launch.rs:2197
 msgid "ended by signal {signal}"
 msgstr "durch Signal {signal} beendet"
 
-#: crates/sam-runner/src/launch.rs:2191
+#: crates/sam-runner/src/launch.rs:2198
 msgid "finished"
 msgstr "beendet"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/launch.rs:2294
+#: crates/sam-runner/src/launch.rs:2301
 msgid ""
 "SAM's sound relay could not run ({why}), and sound without it is allowed for "
 "this app: it talks to your sound server directly and could make it load code "
@@ -7615,12 +7624,12 @@ msgstr ""
 "diese App erlaubt: Sie spricht direkt mit deinem Tonserver und könnte ihn "
 "Code außerhalb der Sandbox laden lassen."
 
-#: crates/sam-runner/src/launch.rs:2300
+#: crates/sam-runner/src/launch.rs:2307
 msgid "No sound"
 msgstr "Kein Ton"
 
 #. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/launch.rs:2303
+#: crates/sam-runner/src/launch.rs:2310
 msgid ""
 "The app has no sound: SAM's sound relay could not run ({why}). Sound "
 "straight from the sound server would let the app load code outside the "
@@ -9736,42 +9745,31 @@ msgstr ""
 msgid "unknown flat preset key '{other}'"
 msgstr "unbekannter Schlüssel „{other}“ in der flachen Vorlage"
 
-#. Keep the {placeholders}; their order may change.
-#: crates/sam-runner/src/launch.rs:711
-msgid ""
-"SAM did not start {app}: a link in its home changed while SAM prepared the "
-"start. Start it again."
-msgstr ""
-"SAM hat {app} nicht gestartet: Eine Verknüpfung in ihrem Home-Ordner hat "
-"sich geändert, während SAM den Start vorbereitet hat. Starte sie noch einmal."
+#~ msgid ""
+#~ "Lets the app open Bluetooth sockets, which reach nearby devices only with "
+#~ "full network access. Without it the syscall filter refuses them, except "
+#~ "for an app whose start program is 32-bit (the security page says why). An "
+#~ "app that may reach the Bluetooth service on the system D-Bus can use "
+#~ "Bluetooth devices through it, with or without this switch."
+#~ msgstr ""
+#~ "Erlaubt der App, Bluetooth-Sockets zu öffnen, die Geräte in der Nähe nur "
+#~ "mit vollem Netzwerkzugang erreichen. Ohne den Schalter lehnt der "
+#~ "Systemaufruf-Filter sie ab, außer bei einer App, deren Startprogramm ein "
+#~ "32-Bit-Programm ist (die Sicherheitsseite erklärt, warum). Eine App, die "
+#~ "den Bluetooth-Dienst auf dem System-D-Bus erreichen darf, kann über ihn "
+#~ "Bluetooth-Geräte nutzen, mit oder ohne diesen Schalter."
 
-#: crates/sam-core/src/permissions.rs:1268
-msgid ""
-"Lets the app open Bluetooth sockets, which reach nearby devices only with "
-"full network access. Without it, the app's syscall filter refuses them while "
-"the filter is on, except for an app whose start program is 32-bit (the "
-"security page says why). An app that may reach the Bluetooth service on the "
-"system D-Bus can use Bluetooth devices through it, with or without this "
-"switch."
-msgstr ""
-"Erlaubt der App, Bluetooth-Sockets zu öffnen, die Geräte in der Nähe nur mit "
-"vollem Netzwerkzugang erreichen. Ohne den Schalter lehnt der Systemaufruf-"
-"Filter der App sie ab, solange der Filter an ist, außer bei einer App, deren "
-"Startprogramm ein 32-Bit-Programm ist (die Sicherheitsseite erklärt, warum). "
-"Eine App, die den Bluetooth-Dienst auf dem System-D-Bus erreichen darf, kann "
-"über ihn Bluetooth-Geräte nutzen, mit oder ohne diesen Schalter."
+#~ msgid "Test passed: every setting applies, and the app started"
+#~ msgstr "Test bestanden: Jede Einstellung greift, und die App ist gestartet"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:280
-msgid "Test passed, and the app started"
-msgstr "Test bestanden, und die App ist gestartet"
+#~ msgid ""
+#~ "Every setting applies, but the app did not keep running; see Test below"
+#~ msgstr ""
+#~ "Jede Einstellung greift, aber die App lief nicht weiter; siehe „Test“ "
+#~ "unten"
 
-#: crates/sam-gtk/src/app_page/wiring.rs:281
-msgid "Test passed, but the app did not keep running; see Test below"
-msgstr "Test bestanden, aber die App lief nicht weiter; siehe „Test“ unten"
-
-#: crates/sam-gtk/src/app_page/wiring.rs:284
-msgid "Test passed"
-msgstr "Test bestanden"
+#~ msgid "Test passed: every setting applies"
+#~ msgstr "Test bestanden: Jede Einstellung greift"
 
 #~ msgid ""
 #~ "Lets the app open Bluetooth connections to nearby devices; other apps "
