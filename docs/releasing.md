@@ -23,7 +23,9 @@ the steps; the list says what it does and what stays a person's job.
 4. **Upgrades work:** `tests/upgrade/run.sh vLAST target/upgrade-test` builds
    this checkout's SAM and the last released version, creates apps, settings
    and a preset with the last one, and checks that this checkout's build
-   keeps them and still starts the apps.
+   keeps them and still starts the apps. An app whose record has no SAM
+   checksum (0.1.0 saves none) asks for one review first; the test
+   confirms it as a person does.
    `scripts/new-version.sh` hands it to the program
    `SAM_RELEASE_UPGRADE_COMMAND` names (see below).
 5. **Translations are complete:** `python3 scripts/i18n.py check`.
