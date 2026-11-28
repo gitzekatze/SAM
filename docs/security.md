@@ -974,9 +974,13 @@ How these stay protected with the home writable:
   - that is or lies inside one of SAM's folders.
 
   A folder is also not shared when it holds the home or one of these
-  places (a dotfiles folder holding the real `.bashrc`, `~/.cargo`, or
-  `~/d` while `XDG_CONFIG_HOME` is `~/d/cfg`), or when it lies outside the
-  home and off the drives (`/media`, `/mnt`, `/run/media`). SAM uses the
+  places other than SAM's own folders (a dotfiles folder holding the real
+  `.bashrc`, `~/.cargo`, or `~/d` while `XDG_CONFIG_HOME` is `~/d/cfg`),
+  or when it lies outside the home and off the drives (`/media`, `/mnt`,
+  `/run/media`). A folder that holds one of SAM's folders is shared, with
+  SAM's folder hidden inside it, as for a user folder (`~/Games` while
+  SAM keeps its files in `~/Games/sam`;
+  `keys_start_places_and_sams_files_are_never_opened`). SAM uses the
   `XDG_CONFIG_HOME` and `XDG_DATA_HOME` of its own environment
   (`opened_files_are_refused_wherever_a_protected_place_is_named_or_leads`,
   `opened_files_are_also_refused_where_a_listed_place_leads`,
@@ -1007,7 +1011,12 @@ How these stay protected with the home writable:
   each bound place inside the finished sandbox before the app starts, and
   binding through an open handle, which close it, are planned. A file SAM
   does not share for these reasons is not named at the start; the app
-  reports it as missing.
+  reports it as missing, unless another grant shows it. SAM only does not
+  hand such a file over itself: a grant that shows it (the whole home, or
+  a granted folder that holds it) still shows it as that grant does. With
+  `XDG_CONFIG_HOME` set to `~/cfg` and the whole home granted, the app
+  still sees `~/cfg/helix/config.toml`, and with read and write it can
+  change it.
 
   With files opened with the app set to *No access*
   (`filesystem.opened_files = "none"`, also an old profile's `false`), none

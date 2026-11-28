@@ -32,7 +32,12 @@ Who loses what: an editor can no longer open, from the command line, a
 file inside a folder that `XDG_CONFIG_HOME` or `XDG_DATA_HOME` names
 (`~/cfg/...`, `/data/cfg/...`), or a file under a moved start place at the
 top of the home when a variable names the home (`~/git/...`). The file is
-skipped without a note; the app reports it as missing. Edit such files
+skipped without a note; the app reports it as missing, unless another
+grant shows it. SAM only does not hand such a file over itself: a grant
+that shows it (the whole home, or a granted folder that holds it) still
+shows it as that grant does, so with `XDG_CONFIG_HOME` set to `~/cfg` and
+the whole home granted, the app still sees `~/cfg/helix/config.toml`, and
+with read and write it can change it. Edit such files
 outside the sandbox; where a variable names the home, giving it a folder
 of its own (the usual `~/.config`) also brings back the files at the top
 of the home.
