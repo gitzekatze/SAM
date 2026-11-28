@@ -352,6 +352,9 @@ fn real_main(cli: Cli) -> Result<()> {
             yes,
         } => {
             let e = app.resolve(&query)?;
+            // A step that replaces a grant SAM no longer gives is never on
+            // trial: a failed start does not undo it.
+            let mut kept = false;
             let applied = if undo {
                 app.undo_repairs(&query)?;
                 Some("undo".to_string())
@@ -374,6 +377,7 @@ fn real_main(cli: Cli) -> Result<()> {
                 })?;
                 may_apply(&sug, yes)?;
                 app.apply_suggestion(&query, &sug, true, yes)?;
+                kept = matches!(sug.action, sam_core::model::FixAction::Replace { .. });
                 Some(sug.title)
             } else {
                 None
@@ -389,7 +393,11 @@ fn real_main(cli: Cli) -> Result<()> {
                 &json!({"applied": applied, "findings": findings, "steps": steps, "applied_steps": e.repairs_applied, "can_undo": e.repair_backup.is_some()}),
                 || {
                     if let Some(a) = &applied {
-                        outln!("{}", trf("Applied: {step}. Start the app again to test it.", &[("step", &a)]));
+                        if kept {
+                            outln!("{}", trf("Applied: {step}. SAM keeps this step whether the next start works or not: it replaces a grant SAM no longer gives.", &[("step", &a)]));
+                        } else {
+                            outln!("{}", trf("Applied: {step}. Start the app again to test it.", &[("step", &a)]));
+                        }
                     }
                     for f in &findings {
                         outln!("{} {}: {}", paint("found", "33"), f.title, f.explanation);
@@ -429,9 +437,12 @@ fn real_main(cli: Cli) -> Result<()> {
                     ..Default::default()
                 };
                 let start = app.start_lock(&mut e);
-                let (status, detail, findings) = match start
-                    .and_then(|_start| run(&mut e, &opts, &app.config, &app.paths, &app.host()))
-                {
+                // The folder of the app's own in /tmp is made and checked as
+                // at every other start.
+                let (status, detail, findings) = match start.and_then(|_start| {
+                    app.make_own_tmp_folder(&e)?;
+                    run(&mut e, &opts, &app.config, &app.paths, &app.host())
+                }) {
                     Ok(rec) => selftest_verdict(&rec, seconds, e.metadata.terminal),
                     Err(err) => ("fail", format!("{err:#}"), vec![]),
                 };

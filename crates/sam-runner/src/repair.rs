@@ -91,11 +91,12 @@ fn replace_in(p: &mut PermissionSet, key: &str, from: &str, to: &str) -> anyhow:
     Ok(added)
 }
 
-/// The repair step for an older grant of `/tmp` or of a folder in it where
-/// programs outside the sandbox listen: SAM keeps such a grant until the
+/// The repair step for an older grant of `/tmp` or of a known socket folder in it (tmux, SSH, the X server …): SAM keeps such a grant until the
 /// person replaces it, and offers the folder of the app's own instead
 /// (owner decision 10 of 2026-11-23). The first one found, writable ones
-/// first; after applying it, the next one is offered.
+/// first; after applying it, the next one is offered. Judged as written:
+/// an older grant through a link to `/tmp` is left out at each start
+/// anyway, so the app does not see `/tmp` through it and gets no hint.
 fn tmp_own_folder(e: &AppEntry) -> Option<Suggestion> {
     let home = sam_core::util::home_dir();
     let f = &e.profile.permissions.filesystem;
@@ -106,7 +107,7 @@ fn tmp_own_folder(e: &AppEntry) -> Option<Suggestion> {
     .into_iter()
     .find_map(|(key, list)| {
         list.iter()
-            .find(|p| sam_core::places::refused_tmp_grant(p, &home))
+            .find(|p| sam_core::risk::shows_host_sockets_in(p, &home))
             .map(|p| (key, p.clone()))
     })?;
     let to = sam_core::places::own_tmp_folder(&e.id)
@@ -116,7 +117,7 @@ fn tmp_own_folder(e: &AppEntry) -> Option<Suggestion> {
         "tmp-own-folder",
         "The app can reach programs outside its sandbox",
         sam_core::i18n::trf(
-            "The app sees {path}, where programs outside the sandbox listen, such as terminal sessions, SSH connections and the X server. SAM keeps this older grant until you replace it. Replace it with {folder}, a folder of the app's own that SAM makes at each start and only you can open. Files the app keeps in {path} stay there, but the app no longer sees them.",
+            "The app sees {path}, where programs outside the sandbox listen, such as terminal sessions, SSH connections and the X server. SAM keeps this older grant until you replace it. Replace it with {folder}, a folder of the app's own that SAM makes at each start, for you only. Files the app keeps in {path} stay there, but the app no longer sees them.",
             &[("path", &from), ("folder", &to)],
         ),
         FixAction::Replace {
@@ -786,6 +787,9 @@ pub fn apply_step(
             }
             if let Some(b) = e.repair_backup.as_mut() {
                 replace_in(&mut b.permissions, key, from, to)?;
+                if let Some(p) = b.before_compat.as_mut() {
+                    replace_in(p, key, from, to)?;
+                }
             }
         }
         FixAction::Compat => {
@@ -1045,12 +1049,12 @@ mod tests {
     use crate::gate::{confirm_hint, confirm_step};
     use sam_core::Paths;
 
-    /// An older grant of /tmp or of a folder in it where programs listen
+    /// An older grant of /tmp or of a known socket folder in it
     /// gets a hint that replaces it with the folder of the app's own,
     /// writable ones first, one after the other; it is offered also after
     /// a failed trial. The writable one asks first (it adds a writable
-    /// folder), the read-only one does not (owner decision 10 of
-    /// 2026-11-23).
+    /// folder), the read-only one does not; a grant through a link to /tmp
+    /// gets none (owner decision 10 of 2026-11-23).
     #[test]
     fn an_older_tmp_grant_gets_a_hint_to_a_folder_of_its_own() {
         let mut e = AppEntry {
@@ -1065,6 +1069,13 @@ mod tests {
                 .find(|h| h.id == "tmp-own-folder")
         };
         assert!(hint(&e).is_none(), "no grant, no hint");
+        // An older grant through a link to /tmp is left out at each start,
+        // so the app does not see /tmp through it: no hint.
+        let t = tempfile::tempdir().unwrap();
+        let link = t.path().join("t");
+        std::os::unix::fs::symlink("/tmp", &link).unwrap();
+        e.profile.permissions.filesystem.custom_write = vec![link.display().to_string()];
+        assert!(hint(&e).is_none(), "a grant through a link");
         e.profile.permissions.filesystem.custom_write = vec!["/a".into(), "/tmp".into()];
         e.profile.permissions.filesystem.custom_read = vec!["/tmp/.X11-unix".into()];
         e.tried_repairs.push("tmp-own-folder".into());

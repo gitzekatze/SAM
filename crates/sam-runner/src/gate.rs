@@ -11,9 +11,10 @@
 //! `change-needs-yes`, `compat-needs-yes`, `config-needs-yes`,
 //! `repair-needs-yes`, `hint-needs-yes` and `step-needs-yes`.
 //!
-//! One refusal no yes lifts: a new grant of `/tmp` or of a folder in it
-//! where programs outside the sandbox listen, code `tmp-grant-refused`
-//! ([`refuse_tmp_grants`], owner decision 10 of 2026-11-23).
+//! Two refusals no yes lifts ([`refuse_tmp_grants`], owner decision 10 of
+//! 2026-11-23): a new grant of `/tmp` or of a known socket folder in it,
+//! code `tmp-grant-refused`, and a new extra folder written relative, code
+//! `relative-grant-refused`.
 
 use anyhow::Result;
 use sam_core::error::CodedError;
@@ -95,19 +96,43 @@ pub fn confirm(change: &Change<'_>, confirmed: bool) -> Result<()> {
 }
 
 /// Refuses a change of the settings `before` to `after` that gives an app
-/// a new grant of `/tmp` or of a folder in it where programs outside the
-/// sandbox listen ([`sam_core::places::new_tmp_grants`]), with the code
+/// a new grant of `/tmp` or of a known socket folder in it (tmux, SSH, the X server …) ([`sam_core::places::new_tmp_grants`]), with the code
 /// `tmp-grant-refused`; no yes lifts it. Connecting to a terminal session,
 /// an SSH connection or the X server there needs no write access, and runs
 /// commands outside the sandbox (owner decision 10 of 2026-11-23). With
 /// the app `app`, the refusal names the folder of its own SAM offers
 /// instead and the command that grants it. An older grant may stay.
+///
+/// A new extra folder written relative
+/// ([`sam_core::places::new_relative_grants`]) is refused first, with the
+/// code `relative-grant-refused`: it names a different place at each
+/// start, so `../../../../tmp` reaches `/tmp` from any folder.
 pub fn refuse_tmp_grants(
     app: Option<&AppEntry>,
     before: &PermissionSet,
     after: &PermissionSet,
 ) -> Result<()> {
     let home = sam_core::util::home_dir();
+    if let Some(path) = sam_core::places::new_relative_grants(before, after, &home)
+        .into_iter()
+        .next()
+    {
+        let path = sam_core::util::display_safe(&path, 200);
+        let text = match app {
+            Some(e) => trf(
+                "SAM does not give {app} {path}: a folder written without a leading / or ~ names a different place at each start. Nothing was changed. Write the folder's full path instead.",
+                &[
+                    ("app", &sam_core::util::display_safe(e.display_name(), 80)),
+                    ("path", &path),
+                ],
+            ),
+            None => trf(
+                "SAM does not give an app {path}: a folder written without a leading / or ~ names a different place at each start. Nothing was changed. Write the folder's full path instead.",
+                &[("path", &path)],
+            ),
+        };
+        return Err(CodedError::new("relative-grant-refused", text).into());
+    }
     let Some(path) = sam_core::places::new_tmp_grants(before, after, &home)
         .into_iter()
         .next()
@@ -133,15 +158,25 @@ pub fn refuse_tmp_grants(
             } else {
                 value.join(", ")
             };
+            // A writable folder is rated Think twice, so its command asks
+            // for the yes.
+            let yes = if key == "filesystem.custom_write" {
+                " --yes"
+            } else {
+                ""
+            };
+            let command = format!(
+                "sam-jail set {} {key} {}{yes}",
+                e.id,
+                sam_core::util::shell_quote(&value)
+            );
             trf(
-                "SAM does not give {app} {path}: programs outside the sandbox listen there, such as terminal sessions, SSH connections and the X server, and the app could use them to run commands outside its sandbox, even with read-only access. Nothing was changed. Give the app a folder of its own instead, {folder}: sam-jail set {id} {key} {value}. SAM makes that folder at each start, and only you can open it.",
+                "SAM does not give {app} {path}: programs outside the sandbox listen there, such as terminal sessions, SSH connections and the X server, and the app could use them to run commands outside its sandbox, even with read-only access. Nothing was changed. Give the app a folder of its own instead, {folder}: {command}. SAM makes that folder at each start, for you only.",
                 &[
                     ("app", &sam_core::util::display_safe(e.display_name(), 80)),
                     ("path", &path),
                     ("folder", &folder),
-                    ("id", &e.id),
-                    ("key", &key),
-                    ("value", &sam_core::util::display_safe(&sam_core::util::shell_quote(&value), 400)),
+                    ("command", &sam_core::util::display_safe(&command, 400)),
                 ],
             )
         }
@@ -344,11 +379,12 @@ mod tests {
         r.err().and_then(|e| code_of(&e))
     }
 
-    /// A new grant of /tmp or of a folder in it where programs outside the
-    /// sandbox listen is refused with its own code also after a yes, for
-    /// one app and for several; an older grant may stay. With the app, the
-    /// refusal names its own folder and the command that grants it
-    /// (owner decision 10 of 2026-11-23).
+    /// A new grant of /tmp or of a known socket folder in it is refused
+    /// with its own code also after a yes, for one app and for several; an
+    /// older grant may stay. With the app, the refusal names its own folder
+    /// and the command that grants it, with --yes for a writable one. A new
+    /// folder written relative is refused with a code of its own (owner
+    /// decision 10 of 2026-11-23).
     #[test]
     fn the_gate_refuses_a_new_tmp_grant_even_after_a_yes() {
         let before = PermissionSet::strict_gui();
@@ -394,6 +430,29 @@ mod tests {
             "{text}"
         );
         assert!(text.contains("Grants /tmp/"), "{text}");
+        // A writable folder of its own asks for the yes.
+        let text = refuse_tmp_grants(Some(&e), &before, &x11)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            text.contains("filesystem.custom_write /tmp/sam-appimage-grants-1a2b --yes"),
+            "{text}"
+        );
+        // A new folder written relative is refused by its own code, also
+        // after a yes; an older one stays.
+        let mut rel = before.clone();
+        rel.filesystem.custom_read = vec!["../../../../tmp".into()];
+        for yes in [false, true] {
+            let settings = Change::Settings {
+                before: &before,
+                after: &rel,
+            };
+            assert_eq!(
+                code(confirm(&settings, yes)),
+                Some("relative-grant-refused")
+            );
+        }
+        assert!(refuse_tmp_grants(Some(&e), &rel, &rel).is_ok());
     }
 
     /// One gate for every change: a change of settings that adds Think

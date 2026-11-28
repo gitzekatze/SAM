@@ -978,9 +978,10 @@ fn toml_string<T: serde::Serialize>(v: &T) -> String {
         .unwrap_or_default()
         + "\n"
 }
-/// The apps that see `/tmp` or a folder in it where programs outside the
-/// sandbox listen through an older grant SAM keeps until the person
-/// replaces it (owner decision 10 of 2026-11-23): a warning naming them.
+/// The apps that see `/tmp` or a known socket folder in it through an
+/// older grant SAM keeps until the person replaces it (owner decision 10
+/// of 2026-11-23): a warning naming them. Judged as written: a grant
+/// through a link to `/tmp` is left out at each start.
 fn tmp_grants(apps: &[AppEntry]) -> DiagnosticCheck {
     let home = sam_core::util::home_dir();
     let names: Vec<String> = apps
@@ -990,7 +991,7 @@ fn tmp_grants(apps: &[AppEntry]) -> DiagnosticCheck {
             f.custom_write
                 .iter()
                 .chain(&f.custom_read)
-                .any(|p| sam_core::places::refused_tmp_grant(p, &home))
+                .any(|p| sam_core::risk::shows_host_sockets_in(p, &home))
         })
         .map(|a| sam_core::util::display_safe(a.display_name(), 80))
         .collect();
@@ -1002,7 +1003,7 @@ fn tmp_grants(apps: &[AppEntry]) -> DiagnosticCheck {
         &tr("Folders in /tmp"),
         CheckStatus::Warn,
         sam_core::i18n::trf(
-            "These apps see /tmp or a folder in it where programs outside the sandbox listen: {apps}. Replace each grant with a folder of the app's own on the app's page, or with sam-jail hints APP --apply tmp-own-folder.",
+            "These apps see /tmp or a known socket folder in it (tmux, SSH, the X server …), where programs outside the sandbox listen: {apps}. Replace each grant with a folder of the app's own on the app's page, or with sam-jail hints APP --apply tmp-own-folder.",
             &[("apps", &names.join(", "))],
         ),
     )
@@ -1012,9 +1013,10 @@ fn tmp_grants(apps: &[AppEntry]) -> DiagnosticCheck {
 mod tests {
     use super::*;
 
-    /// Diagnostics name each app that sees /tmp or a folder in it where
-    /// programs outside the sandbox listen through an older grant, and no
-    /// other app; without one, the check is fine.
+    /// Diagnostics name each app that sees /tmp or a known socket folder in
+    /// it through an older grant, and no other app (one with a grant
+    /// through a link to /tmp, which each start leaves out, neither);
+    /// without one, the check is fine.
     #[test]
     fn doctor_names_apps_with_an_older_tmp_grant() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1032,7 +1034,11 @@ mod tests {
             name: "Plain".into(),
             ..Default::default()
         };
-        plain.profile.permissions.filesystem.custom_write = vec!["/tmp/exchange".into()];
+        // A grant through a link to /tmp is left out at each start.
+        let link = tmp.path().join("t");
+        std::os::unix::fs::symlink("/tmp", &link).unwrap();
+        plain.profile.permissions.filesystem.custom_write =
+            vec!["/tmp/exchange".into(), link.display().to_string()];
         sam.registry().save(&mut plain).unwrap();
         assert_eq!(check(&sam).status, CheckStatus::Ok);
         let mut older = AppEntry {

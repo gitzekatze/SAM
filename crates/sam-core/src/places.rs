@@ -1658,8 +1658,7 @@ pub fn user_folder_refused(
     None
 }
 
-/// Whether SAM refuses `path` as a new extra folder: `/tmp` itself or a
-/// folder in it where programs outside the sandbox listen
+/// Whether SAM refuses `path` as a new extra folder: `/tmp` itself or a known socket folder in it (tmux, SSH, the X server …)
 /// ([`crate::risk::shows_host_sockets`]), as written (with `~` and
 /// `$HOME` standing for `home`, and `.`, `..` and repeated `/` taken as
 /// the kernel takes them) or where its links lead now ([`follow`]). Read-only grants
@@ -1691,6 +1690,42 @@ pub fn refused_tmp_grant(path: &str, home: &Path) -> bool {
 /// older grant may stay or become read-only, but never become writable.
 /// Each is named once, as written.
 pub fn new_tmp_grants(before: &PermissionSet, after: &PermissionSet, home: &Path) -> Vec<String> {
+    new_grants_where(before, after, home, |p| refused_tmp_grant(p, home))
+}
+
+/// Whether an extra folder is written relative: without a leading `/`,
+/// `~` or `$HOME`. Such a path names a different place at each start (it
+/// counts from the folder the start runs in), so `../../../../tmp` or
+/// `tmp` can reach `/tmp`.
+pub fn is_relative_grant(path: &str) -> bool {
+    let t = path.trim();
+    !(t.starts_with('/')
+        || t == "~"
+        || t.starts_with("~/")
+        || t == "$HOME"
+        || t.starts_with("$HOME/"))
+}
+
+/// The extra folders in `after` written relative ([`is_relative_grant`])
+/// that `before` did not hold already, by the rule of [`new_tmp_grants`]:
+/// SAM refuses them as new grants; an older one stays (owner decision 10
+/// of 2026-11-23, the safer choice for paths whose place SAM cannot know).
+pub fn new_relative_grants(
+    before: &PermissionSet,
+    after: &PermissionSet,
+    home: &Path,
+) -> Vec<String> {
+    new_grants_where(before, after, home, is_relative_grant)
+}
+
+/// The extra folders in `after` for which `refused` holds and that
+/// `before` did not hold already in the same form; see [`new_tmp_grants`].
+fn new_grants_where(
+    before: &PermissionSet,
+    after: &PermissionSet,
+    home: &Path,
+    refused: impl Fn(&str) -> bool,
+) -> Vec<String> {
     let form = |p: &str| crate::risk::grant_lexical(p, home);
     let held = |lists: &[&Vec<String>], p: &str| {
         lists.iter().any(|l| l.iter().any(|q| form(q) == form(p)))
@@ -1707,7 +1742,7 @@ pub fn new_tmp_grants(before: &PermissionSet, after: &PermissionSet, home: &Path
         .iter()
         .map(|p| (p, held(&[&b.custom_write, &b.custom_read], p)));
     for (p, was_there) in writable.chain(read_only) {
-        if !was_there && refused_tmp_grant(p, home) && !out.contains(p) {
+        if !was_there && refused(p) && !out.contains(p) {
             out.push(p.clone());
         }
     }
@@ -1715,12 +1750,25 @@ pub fn new_tmp_grants(before: &PermissionSet, after: &PermissionSet, home: &Path
 }
 
 /// The folder of an app's own in `/tmp` that SAM offers instead of `/tmp`
-/// or a folder in it where programs outside the sandbox listen
+/// or a known socket folder in it (tmux, SSH, the X server …)
 /// ([`refused_tmp_grant`]): `/tmp/sam-<app id>`. Its name starts like
 /// none of those folders. SAM makes it at each start of the app, for you
 /// only (owner decision 10 of 2026-11-23).
 pub fn own_tmp_folder(id: &str) -> PathBuf {
     PathBuf::from(format!("/tmp/sam-{id}"))
+}
+
+/// Whether the extra folders of `p` name the folder of the app's own
+/// `own` ([`own_tmp_folder`]) in any form the kernel reaches it by
+/// (`/tmp/x/../sam-<id>`, `~/../../tmp/sam-<id>`), with `~` and `$HOME`
+/// standing for `home`.
+pub fn names_own_tmp_folder(p: &PermissionSet, own: &Path, home: &Path) -> bool {
+    let own = own.to_string_lossy();
+    let f = &p.filesystem;
+    f.custom_write
+        .iter()
+        .chain(&f.custom_read)
+        .any(|g| !is_relative_grant(g) && crate::risk::grant_lexical(g, home) == own)
 }
 
 /// The list of extra folders `list` with each grant SAM refuses
@@ -5387,8 +5435,7 @@ mod tests {
         p
     }
 
-    /// SAM refuses a new grant of /tmp or of a folder in it where programs
-    /// outside the sandbox listen, however the path is written and whether
+    /// SAM refuses a new grant of /tmp or of a known socket folder in it (tmux, SSH, the X server …), however the path is written and whether
     /// read-only or writable (owner decision 10 of 2026-11-23). Another
     /// folder in /tmp, /var/tmp, / and a relative path are not refused
     /// here: SAM rates them by their names as before.
@@ -5439,10 +5486,31 @@ mod tests {
                 );
             }
         }
+        // A path written relative names a different place at each start
+        // (`../../../../tmp` from any folder, `tmp` from `/`): every new
+        // one is refused by its own rule, a harmless-looking one too; an
+        // older one may stay.
+        for path in ["tmp", "../../../../tmp", "./tmp", "notes", "~erika/x"] {
+            assert!(is_relative_grant(path), "{path}");
+            for write in [false, true] {
+                let after = with_folders(&[path], write);
+                assert_eq!(
+                    new_relative_grants(&none, &after, home),
+                    vec![path.to_string()],
+                    "{path}, writable: {write}"
+                );
+                assert!(
+                    new_relative_grants(&after, &after, home).is_empty(),
+                    "{path}"
+                );
+            }
+        }
+        for path in ["/tmp", "~", "~/x", "$HOME", "$HOME/x"] {
+            assert!(!is_relative_grant(path), "{path}");
+        }
     }
 
-    /// A folder in the home that is a link to /tmp, or to a folder in it
-    /// where programs listen, is refused as a new grant where it leads; a
+    /// A folder in the home that is a link to /tmp, or to a known socket folder in it, is refused as a new grant where it leads; a
     /// link to an ordinary folder is not.
     #[test]
     fn a_link_that_leads_to_tmp_is_refused_as_a_new_grant() {

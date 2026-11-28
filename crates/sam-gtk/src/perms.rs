@@ -146,8 +146,7 @@ pub struct Editor {
 }
 
 /// What the editor does when the person adds `item` to the list `key`:
-/// for a folder SAM refuses as a new grant (`/tmp` or a folder in it
-/// where programs outside the sandbox listen,
+/// for a folder SAM refuses as a new grant (`/tmp` or a known socket folder in it (tmux, SSH, the X server …),
 /// [`sam_core::places::refused_tmp_grant`]), the message to show and the
 /// text to put in the field instead: the folder of the app's own (`own`)
 /// when there is one, so one click on Add grants it (owner decision 10 of
@@ -1356,8 +1355,7 @@ fn value_of(perms: Option<&Value>, key: &str) -> Value {
 
 #[cfg(test)]
 mod tests {
-    /// Adding /tmp or a folder in it where programs outside the sandbox
-    /// listen, read-only or writable, offers the folder of the app's own in
+    /// Adding /tmp or a known socket folder in it (tmux, SSH, the X server …), read-only or writable, offers the folder of the app's own in
     /// its place, or says where to find one without an app; any other
     /// folder, also one in /tmp, and other lists are added as before.
     #[test]

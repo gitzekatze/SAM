@@ -776,12 +776,29 @@ impl PresetStore {
         if preset.name.trim().is_empty() {
             bail!("{}", sam_core::i18n::tr("preset name must not be empty"));
         }
-        // A preset never holds a grant of /tmp or of a folder in it where
-        // programs outside the sandbox listen: applied, it would give one
+        // A preset never holds a grant of /tmp or of a known socket folder
+        // in it: applied, it would give one
         // to an app (owner decision 10 of 2026-11-23). Every way of saving
         // a preset comes here (an import too).
         let home = sam_core::util::home_dir();
         let none = sam_core::permissions::PermissionSet::default();
+        // Nor an extra folder written relative, which names a different
+        // place at each start.
+        if let Some(path) =
+            sam_core::places::new_relative_grants(&none, &preset.permissions, &home).first()
+        {
+            return Err(sam_core::error::CodedError::new(
+                "relative-grant-refused",
+                sam_core::i18n::trf(
+                    "SAM does not save {path} in the preset “{preset}”: a folder written without a leading / or ~ names a different place at each start. Nothing was saved. Write the folder's full path instead.",
+                    &[
+                        ("path", &sam_core::util::display_safe(path, 200)),
+                        ("preset", &sam_core::util::display_safe(&preset.name, 80)),
+                    ],
+                ),
+            )
+            .into());
+        }
         if let Some(path) =
             sam_core::places::new_tmp_grants(&none, &preset.permissions, &home).first()
         {
@@ -1761,11 +1778,8 @@ mod tests {
         assert!(mine.content_changed_outside && mine.changed_outside);
     }
 
-    /// A preset is always stored inside the presets folder, whatever its name:
-    /// names like "../../evil" or "/etc/x" (typed, or from an imported file)
-    /// cannot place a file elsewhere.
-    /// A preset that holds /tmp or a folder in it where programs outside
-    /// the sandbox listen is neither saved nor imported, and no file is
+    /// A preset that holds /tmp, a known socket folder in it or a folder
+    /// written relative is neither saved nor imported, and no file is
     /// written; one with another folder in /tmp is saved (owner decision
     /// 10 of 2026-11-23).
     #[test]
@@ -1788,6 +1802,19 @@ mod tests {
             assert!(!store.file_for("Shares tmp").exists());
         }
         let mut p = Preset {
+            name: "Shares tmp".into(),
+            ..Default::default()
+        };
+        p.permissions.filesystem.custom_read = vec!["../../../../tmp".into()];
+        for r in [store.save(&mut p.clone()), store.import(&mut p.clone())] {
+            let err = r.unwrap_err();
+            assert_eq!(
+                sam_core::error::code_of(&err),
+                Some("relative-grant-refused")
+            );
+        }
+        assert!(!store.file_for("Shares tmp").exists());
+        let mut p = Preset {
             name: "Exchange".into(),
             ..Default::default()
         };
@@ -1795,6 +1822,9 @@ mod tests {
         assert!(store.save(&mut p).unwrap().exists());
     }
 
+    /// A preset is always stored inside the presets folder, whatever its name:
+    /// names like "../../evil" or "/etc/x" (typed, or from an imported file)
+    /// cannot place a file elsewhere.
     #[test]
     fn preset_names_cannot_place_files_outside_the_presets_folder() {
         let tmp = tempfile::tempdir().unwrap();
