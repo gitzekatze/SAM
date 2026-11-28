@@ -1991,7 +1991,9 @@ fn guard_home(a: &mut Args, home: &Path, fsp: &FilesystemPerms, views: &Views, s
 /// `~/.config`, `~/.local` and the folders `XDG_CONFIG_HOME` and
 /// `XDG_DATA_HOME` name, as written, where it leads and at each link on its
 /// way, also where a key folder, start place or credential store really
-/// leads), anything inside SAM's own folders wherever they are; and a
+/// leads: for a credential store, unless that is the home or a folder
+/// above it; a key folder or start place leading there refuses all of
+/// it), anything inside SAM's own folders wherever they are; and a
 /// folder also never when it holds such a place or the home, or lies
 /// outside the home and the mounted drives. Each is shared at the place
 /// judged, on one walk: with `~/.bashrc` a link into `~/dotfiles`, opening
@@ -6392,9 +6394,9 @@ mod guard_tests {
     /// SAM refuses a place for them (docs/security.md, *Files named on the
     /// command line*), with `XDG_CONFIG_HOME` given to the refused places
     /// and the process's own left alone:
-    /// - with the variable at the home, a start place and a store at the
-    ///   top of the home (`~/autostart/x.desktop`, `~/git/...`), which are
-    ///   shared without it;
+    /// - with the variable at the home, two start places and a store at
+    ///   the top of the home (`~/autostart/x.desktop`, `~/git/...`,
+    ///   `~/gh/hosts.yml`), which are shared without it;
     /// - with it at `~/cfg`, anything in that folder; with it outside the
     ///   home (`/data/cfg`), its start places and stores, read and write or
     ///   read-only, and the folder itself; a file beside it is shared;
@@ -6423,6 +6425,7 @@ mod guard_tests {
         for d in [
             "autostart",
             "git/proj",
+            "gh",
             "work",
             "cfg/fish",
             "cfg/helix",
@@ -6453,6 +6456,7 @@ mod guard_tests {
         for f in [
             "autostart/x.desktop",
             "git/proj/a.rs",
+            "gh/hosts.yml",
             ".bashrc",
             "work/a.txt",
             "cfg/fish/config.fish",
@@ -6500,7 +6504,7 @@ mod guard_tests {
             !shareable_paths_with(&ctx, &Views::base(&ctx), rw, &refused).is_empty()
         };
         let at_home = || Some(home.clone());
-        for f in ["autostart/x.desktop", "git/proj/a.rs"] {
+        for f in ["autostart/x.desktop", "git/proj/a.rs", "gh/hosts.yml"] {
             assert!(
                 !shared(at_home(), home.join(f), true),
                 "{f}, the variable at the home"

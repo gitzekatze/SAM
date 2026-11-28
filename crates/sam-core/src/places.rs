@@ -445,7 +445,10 @@ pub fn is_sams_name(place: &str) -> bool {
 /// as written and in the folder that really holds it, not where a link at
 /// its own name leads. Besides, where each key folder, start place and
 /// credential store really leads (`~/.bashrc` a link to
-/// `~/dotfiles/bashrc`), unless that is the home or a folder above it.
+/// `~/dotfiles/bashrc`); for a credential store, unless that is the home or
+/// a folder above it, while a key folder or start place that leads there
+/// refuses all of it (`~/.config/fish` a link to the home refuses every
+/// file in the home).
 #[derive(Debug, Clone)]
 pub struct RefusedForOpened {
     home: PathBuf,
@@ -458,8 +461,10 @@ pub struct RefusedForOpened {
     /// Every named place, sorted, with no duplicates.
     named: Vec<PathBuf>,
     /// Where each named key folder, start place and credential store
-    /// really leads, sorted; never the home or a folder above it, so a
-    /// store an app made a link to the home refuses nothing in it.
+    /// really leads, sorted; for a credential store never the home or a
+    /// folder above it, so a store an app made a link to the home refuses
+    /// nothing in it, while a start place made a link to the home refuses
+    /// all of it.
     led_to: Vec<PathBuf>,
     /// `/`; a test judges the system folders below a scratch folder.
     root: PathBuf,
@@ -485,38 +490,57 @@ pub fn refused_for_opened_with(
     homes.dedup();
     // The places relative to the home, as the sandbox locks and hides
     // them (a variable folder inside the home included), and the folders
-    // refused as a whole there (the `~/` entries of the risk list).
-    let in_home: Vec<String> = protected_places_with(home, config.clone(), data.clone())
+    // refused as a whole there (the `~/` entries of the risk list). The
+    // key folders and start places (`keys`) are kept apart from the
+    // credential stores (`stores`) for where they lead, below.
+    let keys_in_home: Vec<String> = protected_places_with(home, config.clone(), data.clone())
         .into_iter()
-        .chain(sensitive_places_with(home, config.clone(), data.clone()))
         .chain([".ssh".to_string(), ".gnupg".to_string()])
         .collect();
+    let stores_in_home = sensitive_places_with(home, config.clone(), data.clone());
     let whole_in_home: Vec<&str> = crate::risk::SENSITIVE_PATHS
         .iter()
         .filter_map(|s| s.strip_prefix("~/"))
         .collect();
-    let mut listed: Vec<PathBuf> = Vec::new();
+    let mut keys: Vec<PathBuf> = Vec::new();
+    let mut stores: Vec<PathBuf> = Vec::new();
     let mut named: Vec<PathBuf> = Vec::new();
     for h in &homes {
-        listed.extend(in_home.iter().map(|rel| h.join(rel)));
+        keys.extend(keys_in_home.iter().map(|rel| h.join(rel)));
+        stores.extend(stores_in_home.iter().map(|rel| h.join(rel)));
         named.extend(whole_in_home.iter().map(|rel| h.join(rel)));
     }
     for (dir, default) in [(config, ".config/"), (data, ".local/share/")] {
         for base in variable_folder(dir) {
-            listed.extend(moved_places(&base, default));
+            keys.extend(moved_places(&base, default, PROTECTED_RO));
+            stores.extend(moved_places(&base, default, SENSITIVE_DOTFILES));
             if !is_home_or_above(home, &real_home, &base) {
                 named.push(base);
             }
         }
     }
-    let mut led_to: Vec<PathBuf> = listed
+    // Where each place really leads. A credential store that leads to the
+    // home or a folder above it (a link an app planted at a missing
+    // `~/.oci`) refuses nothing there, so one such link cannot make every
+    // opened file unshared. A key folder or start place that leads there
+    // refuses all of it: with `~/.config/fish` a link to the home, fish
+    // reads `~/config.fish` and `~/conf.d/*.fish` outside the sandbox, so
+    // a writable `~/conf.d` would let the app plant a file that runs at
+    // the next shell.
+    let mut led_to: Vec<PathBuf> = keys
         .iter()
         .map(|p| resolve(p))
-        .filter(|r| !is_home_or_above(home, &real_home, r))
+        .chain(
+            stores
+                .iter()
+                .map(|p| resolve(p))
+                .filter(|r| !is_home_or_above(home, &real_home, r)),
+        )
         .collect();
     led_to.sort();
     led_to.dedup();
-    named.extend(listed);
+    named.extend(keys);
+    named.extend(stores);
     named.sort();
     named.dedup();
     RefusedForOpened {
@@ -554,13 +578,16 @@ fn variable_folder(dir: Option<PathBuf>) -> Vec<PathBuf> {
     out
 }
 
-/// The start places and credential stores under `.config/` or
-/// `.local/share/` (`default`) of the lists, again under `base`: where a
-/// program puts them when `XDG_CONFIG_HOME` or `XDG_DATA_HOME` is `base`.
-fn moved_places<'a>(base: &'a Path, default: &'a str) -> impl Iterator<Item = PathBuf> + 'a {
-    PROTECTED_RO
-        .iter()
-        .chain(SENSITIVE_DOTFILES)
+/// The places under `.config/` or `.local/share/` (`default`) of the list
+/// `list` (the start places or the credential stores), again under `base`:
+/// where a program puts them when `XDG_CONFIG_HOME` or `XDG_DATA_HOME` is
+/// `base`.
+fn moved_places<'a>(
+    base: &'a Path,
+    default: &'a str,
+    list: &'a [&'a str],
+) -> impl Iterator<Item = PathBuf> + 'a {
+    list.iter()
         .filter_map(move |p| p.strip_prefix(default).map(|rest| base.join(rest)))
 }
 
@@ -583,7 +610,8 @@ impl RefusedForOpened {
     ///   its way, it is or lies inside a named place;
     /// - where it leads, or at a link on its way, it is or lies inside the
     ///   place a key folder, start place or credential store really leads
-    ///   to.
+    ///   to (for a credential store, unless that is the home or a folder
+    ///   above it).
     pub fn refuses(&self, written: &Path, way: &Way) -> bool {
         if way.stuck || is_home_or_above(&self.home, &self.real_home, &way.leads) {
             return true;
@@ -4058,18 +4086,33 @@ mod tests {
     /// `~/dotfiles/bashrc`), while a user folder set there is shown as
     /// before (user folders do not ask this list). Where a store's link
     /// leads to the home or above (as an app could plant it), nothing in
-    /// the home is refused for it; where `~/.config` really is kept, files
-    /// are shared (only the listed places in it are refused).
+    /// the home is refused for it; where `~/.config` really is kept
+    /// (`~/dotfiles/config`), other files are shared and the start places
+    /// and stores in it are refused (`autostart/x.desktop`,
+    /// `git/credentials`). Where a start place or key folder leads to the
+    /// home (`~/.config/fish` or `~/.ssh` a link to `~`), every file in
+    /// the home is refused (`~/conf.d`, `~/config.fish`).
     #[test]
     fn opened_files_are_also_refused_where_a_listed_place_leads() {
         let t = scratch();
         let base = std::fs::canonicalize(t.path()).unwrap();
         let home = base.join("home/ann");
-        make_dirs(&home, &["Sync", "dotfiles/config/helix", "work"]);
+        make_dirs(
+            &home,
+            &[
+                "Sync",
+                "dotfiles/config/helix",
+                "dotfiles/config/autostart",
+                "dotfiles/config/git",
+                "work",
+            ],
+        );
         for f in [
             "Sync/netrc",
             "dotfiles/bashrc",
             "dotfiles/config/helix/config.toml",
+            "dotfiles/config/autostart/x.desktop",
+            "dotfiles/config/git/credentials",
             "work/a.txt",
         ] {
             std::fs::write(home.join(f), "x").unwrap();
@@ -4087,11 +4130,38 @@ mod tests {
                 "{p:?} as a user folder is shown"
             );
         }
+        for f in [
+            "dotfiles/config/autostart/x.desktop",
+            "dotfiles/config/git/credentials",
+        ] {
+            assert!(
+                refuses_opened(&opened, &home.join(f)),
+                "{f} where ~/.config really is"
+            );
+        }
         for p in [
             home.join("work/a.txt"),
             home.join("dotfiles/config/helix/config.toml"),
         ] {
             assert!(!refuses_opened(&opened, &p), "{p:?} is shared");
+        }
+        // A start place or key folder that leads to the home, unlike a
+        // store: the programs outside the sandbox read its files from the
+        // home itself.
+        for (who, place) in [("bo", ".config/fish"), ("cy", ".ssh")] {
+            let home = base.join("home").join(who);
+            make_dirs(&home, &[".config", "conf.d"]);
+            for f in ["conf.d/x.fish", "config.fish"] {
+                std::fs::write(home.join(f), "x").unwrap();
+            }
+            link_to(&home, &home.join(place));
+            let opened = refused_for_opened_with(&home, None, None);
+            for f in ["conf.d", "conf.d/x.fish", "config.fish"] {
+                assert!(
+                    refuses_opened(&opened, &home.join(f)),
+                    "{f} with {place} a link to the home"
+                );
+            }
         }
     }
 

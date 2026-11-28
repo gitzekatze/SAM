@@ -960,11 +960,16 @@ How these stay protected with the home writable:
     written and in the folder that really holds it (`/data` a link to
     `/disk/data`);
   - that leads into, or whose way passes a link inside, the place a key
-    folder, start place or credential store really leads to, unless that
-    place is the home or a folder above it: with `~/.bashrc` a link to
-    `~/dotfiles/bashrc`, the file `~/dotfiles/bashrc` is not shared, and
-    with `/data/cfg/autostart` a link to `/data/auto` while
-    `XDG_CONFIG_HOME` is `/data/cfg`, neither is `/data/auto/x.desktop`;
+    folder, start place or credential store really leads to: with
+    `~/.bashrc` a link to `~/dotfiles/bashrc`, the file
+    `~/dotfiles/bashrc` is not shared, and with `/data/cfg/autostart` a
+    link to `/data/auto` while `XDG_CONFIG_HOME` is `/data/cfg`, neither
+    is `/data/auto/x.desktop`. A credential store that leads to the home
+    or a folder above it (a link an app made at a missing `~/.oci`)
+    refuses nothing there. A key folder or start place that leads there
+    refuses all of it: with `~/.config/fish` a link to the home, fish
+    reads `~/config.fish` and `~/conf.d` outside the sandbox, so no file
+    in the home is shared;
   - that is or lies inside one of SAM's folders.
 
   A folder is also not shared when it holds the home or one of these
@@ -989,7 +994,11 @@ How these stay protected with the home writable:
   writable `/data`) can make it a link to another folder; a file you
   open in that folder's start places and stores, or anywhere in it for a
   store, is then not shared, and neither is a folder you open that holds
-  that place. A file SAM does not share for
+  that place; an app that makes a start place or key folder a link to the
+  home makes every file in the home unshared. A credential store that
+  really is the home or a folder above it (`~/.password-store` a link to
+  the home) does not keep the files in the home from being shared. A file
+  SAM does not share for
   these reasons is not named at the start; the app reports it as
   missing.
 
