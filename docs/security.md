@@ -1811,8 +1811,9 @@ then for the file it names. For an app published on GitHub, curl first asks
 release the app names), then for up to four update descriptions that answer
 names, then for the file a description names. That file can be on any HTTPS
 server. curl also follows a server's redirect to another HTTPS address, at
-most five times per request. curl never reads a `~/.curlrc`, where a
-setting could switch off certificate checks or send requests elsewhere.
+most five times per request. For these requests, curl never reads a
+`~/.curlrc`, where a setting could switch off certificate checks or send
+requests elsewhere.
 
 Every request is a plain `GET`. It carries only the address, the server's
 name, SAM's fixed user agent (`SAM-AppImage-update-check`), what SAM
