@@ -1651,13 +1651,11 @@ fn the_approval_check_runs_the_base_branchs_checker() {
     );
 }
 
-/// A release whose build fails after the release commit leaves no tag
-/// behind: the tag starts the release workflow, so it is set only after
-/// everything was built (audit P14).
-#[test]
-fn a_release_that_fails_to_build_leaves_no_tag() {
-    let tmp = tempfile::tempdir().unwrap();
-    let t = tmp.path();
+/// A checkout at version 0.1.0 with `scripts/release.sh` and what it
+/// reads, in `t/repo`, and stand-ins for the build tools in `t/bin`: cargo
+/// writes every call into `t/cargo-calls` and builds a release sam-jail
+/// that writes man pages, and `make dist` breaks.
+fn release_checkout(t: &Path) -> PathBuf {
     git_home(t);
     let repo = t.join("repo");
     for (name, content) in [
@@ -1696,7 +1694,7 @@ fn a_release_that_fails_to_build_leaves_no_tag() {
     write_exec(&t.join("release-sam-jail"), SAM);
     write_exec(
         &t.join("bin/cargo"),
-        "#!/bin/sh\nif [ \"$1\" = build ]; then mkdir -p target/release; cp \"$RELEASE_SAM\" target/release/sam-jail; fi\nexit 0\n",
+        "#!/bin/sh\necho \"$*\" >> \"$CARGO_CALLS\"\nif [ \"$1\" = build ]; then mkdir -p target/release; cp \"$RELEASE_SAM\" target/release/sam-jail; fi\nexit 0\n",
     );
     write_exec(&t.join("bin/appstreamcli"), "#!/bin/sh\nexit 0\n");
     write_exec(
@@ -1706,37 +1704,254 @@ fn a_release_that_fails_to_build_leaves_no_tag() {
     git(&repo, t, &["init", "-q"]);
     git(&repo, t, &["add", "-A"]);
     git(&repo, t, &["commit", "-q", "-m", "0.1.0"]);
+    repo
+}
+
+/// `scripts/release.sh 0.2.0`, unsigned, in the checkout
+/// `release_checkout` made, with neither SKIP_TESTS nor
+/// SAM_RELEASE_TEST_COMMAND set, and without the test run's own
+/// SAM_REQUIRE_SANDBOX, so only the script can set it.
+fn release_command(repo: &Path, t: &Path) -> Command {
     let mut cmd = Command::new("sh");
     cmd.arg("scripts/release.sh")
         .arg("0.2.0")
-        .current_dir(&repo)
+        .current_dir(repo)
         .env("UNSIGNED", "1")
-        .env("SKIP_TESTS", "1")
+        .env_remove("SKIP_TESTS")
+        .env_remove("SAM_RELEASE_TEST_COMMAND")
+        .env_remove("SAM_REQUIRE_SANDBOX")
         .env("RELEASE_SAM", t.join("release-sam-jail"))
+        .env("CARGO_CALLS", t.join("cargo-calls"))
         .env_remove("SIGN_KEY")
         .env_remove("RUNTIME")
         .env("HOME", t)
         .env("GIT_CONFIG_GLOBAL", t.join("gitconfig"))
         .env("GIT_CONFIG_NOSYSTEM", "1")
         .env("PATH", path_with(&t.join("bin")));
+    cmd
+}
+
+/// What a git command prints in the release checkout, trimmed.
+fn git_says(repo: &Path, t: &Path, args: &[&str]) -> String {
+    let o = Command::new("git")
+        .args(args)
+        .current_dir(repo)
+        .env("GIT_CONFIG_GLOBAL", t.join("gitconfig"))
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .output()
+        .unwrap();
+    text(&o.stdout).trim().to_string()
+}
+
+/// A release whose build fails after the release commit leaves no tag
+/// behind: the tag starts the release workflow, so it is set only after
+/// everything was built (audit P14).
+#[test]
+fn a_release_that_fails_to_build_leaves_no_tag() {
+    let tmp = tempfile::tempdir().unwrap();
+    let t = tmp.path();
+    let repo = release_checkout(t);
+    let mut cmd = release_command(&repo, t);
+    cmd.env("SKIP_TESTS", "1");
     let out = run(cmd, 120);
     let (stdout, stderr) = (text(&out.stdout), text(&out.stderr));
     assert!(!out.status.success(), "the release went through:\n{stdout}");
     assert!(stderr.contains("the build broke"), "{stdout}{stderr}");
-    let q = |args: &[&str]| {
-        let o = Command::new("git")
-            .args(args)
-            .current_dir(&repo)
-            .env("GIT_CONFIG_GLOBAL", t.join("gitconfig"))
-            .env("GIT_CONFIG_NOSYSTEM", "1")
-            .output()
-            .unwrap();
-        text(&o.stdout).trim().to_string()
-    };
+    let q = |args: &[&str]| git_says(&repo, t, args);
     // It stopped after the release commit, the case this is about.
     assert_eq!(q(&["log", "-1", "--format=%s"]), "Release 0.2.0");
     assert_eq!(q(&["tag", "-l"]), "", "a tag was left behind");
     assert!(stderr.contains("stopped before the tag"), "{stderr}");
+}
+
+/// The release script never starts the test suite itself: it runs the
+/// program SAM_RELEASE_TEST_COMMAND names, with the checkout's path and
+/// SAM_REQUIRE_SANDBOX=1, and stops before the release commit when that
+/// program fails; with neither that nor SKIP_TESTS=1 it stops before it
+/// changes anything and names both; where that program runs the tests is
+/// not checked here, by the script or by this test. The tests start real
+/// sandboxes and SAM's programs, so that program should run them in a
+/// container or under a separate account. Cargo here is a stand-in that
+/// records its calls.
+#[test]
+fn the_release_script_runs_no_tests_itself() {
+    for (exit, case) in [
+        (None, "nothing set"),
+        (Some(3), "fails"),
+        (Some(0), "passes"),
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        let t = tmp.path();
+        let repo = release_checkout(t);
+        let mut cmd = release_command(&repo, t);
+        let calls = t.join("test-program-calls");
+        if let Some(code) = exit {
+            let program = t.join("bin-tests/run-the-tests");
+            write_exec(
+                &program,
+                &format!(
+                    "#!/bin/sh\nprintf '%s|%s|%s\\n' \"$#\" \"$1\" \"${{SAM_REQUIRE_SANDBOX:-}}\" >> '{}'\nexit {code}\n",
+                    calls.display()
+                ),
+            );
+            cmd.env("SAM_RELEASE_TEST_COMMAND", &program);
+        }
+        let out = run(cmd, 120);
+        let (stdout, stderr) = (text(&out.stdout), text(&out.stderr));
+        let cargo = fs::read_to_string(t.join("cargo-calls")).unwrap_or_default();
+        assert!(
+            !cargo.lines().any(|l| l.starts_with("test")),
+            "{case}: the release script ran the tests with cargo here:\n{cargo}"
+        );
+        assert!(
+            !out.status.success(),
+            "{case}: the release went through:\n{stdout}"
+        );
+        let last = git_says(&repo, t, &["log", "-1", "--format=%s"]);
+        assert_eq!(git_says(&repo, t, &["tag", "-l"]), "", "{case}: a tag");
+        match exit {
+            None => {
+                assert!(
+                    stderr.contains("SAM_RELEASE_TEST_COMMAND=<program>")
+                        && stderr.contains("SKIP_TESTS=1"),
+                    "{case}: the message names no way to test:\n{stderr}"
+                );
+                assert_eq!(last, "0.1.0", "{case}: it committed:\n{stderr}");
+                assert_eq!(
+                    git_says(&repo, t, &["status", "--porcelain"]),
+                    "",
+                    "{case}: it changed the checkout before it stopped:\n{stderr}"
+                );
+                assert!(!calls.exists(), "{case}: a test program ran");
+            }
+            Some(code) => {
+                let got = fs::read_to_string(&calls).unwrap_or_default();
+                let (n, rest) = got.trim_end().split_once('|').unwrap_or(("", ""));
+                let (path, sandbox) = rest.rsplit_once('|').unwrap_or(("", ""));
+                assert_eq!(n, "1", "{case}: the test program did not run once with one argument: {got:?}\n{stderr}");
+                assert_eq!(
+                    fs::canonicalize(path).ok(),
+                    fs::canonicalize(&repo).ok(),
+                    "{case}: the test program got {path:?}, not the checkout"
+                );
+                assert_eq!(sandbox, "1", "{case}: SAM_REQUIRE_SANDBOX was not 1");
+                if code == 0 {
+                    // It went on to the release commit; `make dist` broke after it.
+                    assert_eq!(last, "Release 0.2.0", "{case}:\n{stderr}");
+                    assert!(stderr.contains("the build broke"), "{case}:\n{stderr}");
+                } else {
+                    assert_eq!(last, "0.1.0", "{case}: it committed:\n{stderr}");
+                    assert!(
+                        stderr.contains("SAM_RELEASE_TEST_COMMAND=")
+                            && stderr.contains("exit status 3")
+                            && stderr.contains("stopped before its commit"),
+                        "{case}: the message does not name the failed test program:\n{stderr}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// The one-command release (`scripts/new-version.sh`) checks in its ready
+/// checks that a program to run the tests is named, because
+/// `scripts/release.sh` stops without one: with neither
+/// SAM_RELEASE_TEST_COMMAND nor SKIP_TESTS=1, the dry run fails and names
+/// both instead of saying "ready", and the real run stops before it makes
+/// the branch release-X.Y.Z. With either one set, the same dry run is ready,
+/// so the stand-ins (gh, gpg, a local origin) let every other check pass.
+#[test]
+fn the_release_command_checks_for_a_test_program_before_it_starts() {
+    for (setting, dry, ready) in [
+        (None, true, false),
+        (None, false, false),
+        (
+            Some(("SAM_RELEASE_TEST_COMMAND", "/opt/run-the-tests")),
+            true,
+            true,
+        ),
+        (Some(("SKIP_TESTS", "1")), true, true),
+    ] {
+        let case = format!("{setting:?}, dry run {dry}");
+        let tmp = tempfile::tempdir().unwrap();
+        let t = tmp.path();
+        let repo = release_checkout(t);
+        let key = "AFE940EDA5A0C5C4B94B0A3FB1764CFD72A238E6";
+        let key_file = repo.join("crates/sam-runner/src/release_key.rs");
+        fs::create_dir_all(key_file.parent().unwrap()).unwrap();
+        fs::write(
+            &key_file,
+            format!("pub const RELEASE_KEYS: &[&str] = &[\n    \"{key}\",\n];\n"),
+        )
+        .unwrap();
+        fs::copy(
+            root().join("scripts/new-version.sh"),
+            repo.join("scripts/new-version.sh"),
+        )
+        .unwrap();
+        git(&repo, t, &["add", "-A"]);
+        git(&repo, t, &["commit", "-q", "-m", "new-version"]);
+        git(t, t, &["init", "-q", "--bare", "origin.git"]);
+        let origin = t.join("origin.git");
+        git(
+            &repo,
+            t,
+            &["remote", "add", "origin", origin.to_str().unwrap()],
+        );
+        git(&repo, t, &["push", "-q", "origin", "main"]);
+        // gh is signed in and the CI run passed; gpg has the key and signs.
+        write_exec(
+            &t.join("bin/gh"),
+            "#!/bin/sh\n[ \"$1 $2\" = 'run list' ] && echo success\nexit 0\n",
+        );
+        write_exec(&t.join("bin/gpg"), "#!/bin/sh\nexit 0\n");
+        let mut cmd = Command::new("sh");
+        cmd.arg("scripts/new-version.sh")
+            .arg("0.2.0")
+            .args(dry.then_some("--dry-run"))
+            .current_dir(&repo)
+            .env_remove("SKIP_TESTS")
+            .env_remove("SAM_RELEASE_TEST_COMMAND")
+            .env("RELEASE_SAM", t.join("release-sam-jail"))
+            .env("CARGO_CALLS", t.join("cargo-calls"))
+            .env("HOME", t)
+            .env("GIT_CONFIG_GLOBAL", t.join("gitconfig"))
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("PATH", path_with(&t.join("bin")));
+        if let Some((name, value)) = setting {
+            cmd.env(name, value);
+        }
+        let out = run(cmd, 120);
+        let (stdout, stderr) = (text(&out.stdout), text(&out.stderr));
+        assert_eq!(out.status.success(), ready, "{case}:\n{stdout}\n{stderr}");
+        assert_eq!(
+            stdout.contains("ready."),
+            ready,
+            "{case}: the ready line:\n{stdout}\n{stderr}"
+        );
+        if ready {
+            assert!(
+                stdout.contains("Dry run: nothing was changed."),
+                "{case}:\n{stdout}"
+            );
+        } else {
+            assert!(
+                stderr.contains("SAM_RELEASE_TEST_COMMAND=<program>")
+                    && stderr.contains("SKIP_TESTS=1"),
+                "{case}: the message names no way to test:\n{stderr}"
+            );
+        }
+        assert_eq!(
+            git_says(&repo, t, &["branch", "--list", "release-0.2.0"]),
+            "",
+            "{case}: it made the release branch:\n{stdout}\n{stderr}"
+        );
+        assert_eq!(
+            git_says(&repo, t, &["branch", "--show-current"]),
+            "main",
+            "{case}: it left main:\n{stderr}"
+        );
+    }
 }
 
 /// The sandbox tests in the desktop session are judged by cargo's exit

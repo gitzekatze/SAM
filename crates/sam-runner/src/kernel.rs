@@ -589,6 +589,30 @@ pub const SOCKET_FAMILIES: &[i32] = &[
     libc::AF_NETLINK,
 ];
 
+/// socketcall's 32-bit x86 number: the call through which older C
+/// libraries open sockets, passing the family in memory.
+const SOCKETCALL_I386: u32 = 102;
+
+impl SeccompSpec {
+    /// The filter has its 32-bit part ([`seccomp_program`], step 1).
+    pub fn filters_32_bit_calls(&self) -> bool {
+        self.i386 && cfg!(target_arch = "x86_64")
+    }
+
+    /// The filter has its 32-bit part and no row of it names socketcall,
+    /// so a 32-bit socket made through socketcall is not limited to the
+    /// families (the gap in [`seccomp_program`], step 1). The app page and
+    /// the sandbox check say so. Read from the rows, so a row that closes
+    /// the gap later removes the note with it; `tests/seccomp_decisions.rs`
+    /// ties this to what the built program answers.
+    pub fn socketcall_unlimited(&self) -> bool {
+        self.filters_32_bit_calls()
+            && !RULES
+                .iter()
+                .any(|r| r.applies(self) && r.i386.contains(&SOCKETCALL_I386))
+    }
+}
+
 // The filter language (classic BPF) as the kernel's seccomp runs it, and
 // the call it looks at (`struct seccomp_data`; linux/filter.h,
 // linux/seccomp.h, linux/audit.h).
@@ -707,7 +731,7 @@ pub fn seccomp_program(spec: &SeccompSpec) -> Result<seccompiler::BpfProgram> {
         families.push(libc::AF_BLUETOOTH as u32);
     }
     let mut program = Vec::new();
-    if spec.i386 && cfg!(target_arch = "x86_64") {
+    if spec.filters_32_bit_calls() {
         let mut part = vec![stmt(LD_W_ABS, NR)];
         for rule in &rules {
             for nr in rule.i386 {

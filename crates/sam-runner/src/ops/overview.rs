@@ -38,10 +38,21 @@ impl Sam {
             sam_dirs: &own_dirs,
             sam_runtime: &sam_runtime,
         };
+        let mut warnings = evaluate(perms, &ctx);
+        // A 32-bit start program's filter has the socketcall gap; no setting
+        // causes or closes it, so it is information, not a warning.
+        if app.is_some_and(|a| crate::launch::socket_limit_incomplete(a, perms, &self.config, host))
+        {
+            warnings.push(Warning::info(
+                "socket-limit-32-bit",
+                "Socket limit incomplete (32-bit)",
+                "This app starts a 32-bit program. SAM's syscall filter limits its 32-bit calls as it limits 64-bit ones, with one gap, as in Flatpak: through the old socketcall call the app can open sockets of any type, because the type sits where no filter can read it. These include virtual-machine and kernel-crypto sockets and, when the app has full network access, Bluetooth sockets even with its Bluetooth switch off.",
+            ));
+        }
         Evaluation {
             risk: assess(perms),
             tags: sam_profile::tags::permission_tags(perms),
-            warnings: evaluate(perms, &ctx),
+            warnings,
         }
     }
 
