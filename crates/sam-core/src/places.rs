@@ -4087,7 +4087,9 @@ mod tests {
     /// `~/.password-store` a link to `~`), every file in the home is
     /// refused (`~/conf.d`, `~/config.fish`), and where a store leads to a
     /// folder above the home (`~/.kube` a link to the scratch folder
-    /// standing for `/`), every file in that folder is.
+    /// standing for `/`), every file in that folder is. A way that does not
+    /// end (a loop of links, `a` to `b` and `b` to `a`) is refused on its
+    /// own, though it leads neither to the home nor above it.
     #[test]
     fn opened_files_are_also_refused_where_a_listed_place_leads() {
         let t = scratch();
@@ -4179,6 +4181,28 @@ mod tests {
             assert!(
                 refuses_opened(&opened, &p),
                 "{p:?} with .kube a link above the home"
+            );
+        }
+        // A way SAM cannot follow to its end (a loop of links, `a` to `b`
+        // and `b` to `a`) is refused on its own: it leads neither to the
+        // home nor above it, into no system folder (judged below the
+        // scratch folder) and into no listed place (a home without links).
+        let home = base.join("home/gus");
+        make_dirs(&home, &["work"]);
+        make_dirs(&base, &["loop"]);
+        link_to(Path::new("b"), &base.join("loop/a"));
+        link_to(Path::new("a"), &base.join("loop/b"));
+        let opened = refused_for_opened_with(&home, None, None).under_root(base.clone());
+        for p in [base.join("loop/a"), base.join("loop/a/x")] {
+            let way = follow(&p);
+            assert!(way.stuck, "{p:?} is a way that does not end");
+            assert!(
+                !is_home_or_above(&home, &home, &way.leads),
+                "{p:?} leads neither to the home nor above it"
+            );
+            assert!(
+                refuses_opened(&opened, &p),
+                "{p:?} in a loop of links is not shared"
             );
         }
     }
