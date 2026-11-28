@@ -116,10 +116,11 @@ Each test's own description says exactly what it proves; together:
    and `doctor --contracts` must also show a program that proves they did
    their work (an unpack tool or SAM's own extractor, Bubblewrap, GnuPG).
    No process may make an internet connection: none may open an internet
-   socket, set up io_uring or connect to a name-service socket. The
+   socket, set up io_uring or connect to a name-service socket. The three
    exceptions are pasta's probe socket, which is opened and connects
-   nowhere on the internet, `curl --version`'s connect to nscd, and
-   glibc's address-order check in curl's sandbox (see Limits). Each
+   nowhere on the internet, and, inside curl's sandbox only,
+   `curl --version`'s connect to nscd and glibc's address-order check (see
+   Limits). Each
    command runs under a host name no name service knows, so a lookup of
    this computer's name would be seen wherever the test runs. Two controls show the tracer sees an update check (curl, and
    an internet connect only to the address the app names) and follows into
@@ -183,23 +184,29 @@ container; the GnuPG programs in its trace show it ran.
   `curl --version` sent DNS queries for this computer's name. The libraries
   linked into curl (here OpenLDAP and Cyrus SASL in Ubuntu's libcurl) look
   up the computer's full name when they load. So on every computer whose
-  own name is not answered locally, every curl SAM ran sent that name to
-  the DNS server: in the contract check and the bug report, and in every
-  update check and update.
+  own name is not answered locally and whose curl loads these libraries,
+  every curl SAM ran sent that name to the DNS server: in the contract
+  check and the bug report, and in every update check and update.
 - **The fix.** SAM runs every curl in a small Bubblewrap sandbox
   (`crates/sam-runner/src/updates.rs`, `curl_command`): the computer
-  read-only, an empty `/tmp` (a certificate setting below it is bound back
+  read-only apart from its own `/dev` and an empty `/tmp` (curl itself, a
+  certificate setting and `CURL_HOME` below `/tmp` are bound back
   read-only), and a host name of its own, `localhost`, which `/etc/hosts`
   answers. Update requests share the network; the version probe has none.
   Without Bubblewrap, or when the sandbox cannot start, SAM runs no curl
   and the update request stops with an error that says so; the version
-  probe then leaves curl's version unknown.
+  probe then leaves curl's version unknown (its record has no field for
+  the reason, so the reason is not shown).
 - **Tests.** `curl_runs_in_a_sandbox_with_its_own_host_name` fixes the
   sandbox's arguments word for word;
   `an_update_request_without_curls_sandbox_sends_nothing` shows that no
   curl runs without its sandbox; the traced run now runs each command under
-  a host name no name service knows, so this lookup fails it wherever it
-  runs (it did, without the fix, in the test container too).
+  a host name no name service knows, with a test-made `/etc/hosts` and
+  `/etc/nsswitch.conf` (`hosts: files dns`), and first checks inside the
+  same wrapper that the host name is not answered and `localhost` is, so
+  this lookup fails the test wherever it runs (it did, without the fix, in
+  the test container too). The contract check and the bug report must
+  start curl inside its sandbox.
 - **A gap closed.** The traced run did not trace `sendmmsg`, through which
   the resolver sends its queries; it saw this case only through its
   socket rule. `sendmmsg` is traced now, and counts as sending on a probe's
@@ -224,8 +231,10 @@ container; the GnuPG programs in its trace show it ran.
 - **glibc's address-order check in curl's sandbox.** In its sandbox, curl's
   libraries look up `localhost`; glibc then opens a UDP socket to
   `127.0.0.1` and one to `::1`, each with port 0, to sort the addresses.
-  The test allows this only for curl started by the sandbox's Bubblewrap
-  and checks that nothing is sent on these sockets.
+  The test allows this only for curl started by the sandbox's Bubblewrap,
+  and such a curl may connect to no other internet address and send
+  nothing but netlink requests, whatever the descriptor. Its nscd connect
+  is allowed only there too.
 - **pasta's probe socket.** `pasta --help` and `--version`, which doctor
   runs, open one TCP socket to read the kernel's buffer sizes; the test
   allows this only for a program of that file name after a successful

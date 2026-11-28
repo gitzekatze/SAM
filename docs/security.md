@@ -1870,9 +1870,11 @@ server. curl also follows a server's redirect to another HTTPS address, at
 most five times per request. For these requests, curl never reads a
 `~/.curlrc`, where a setting could switch off certificate checks or send
 requests elsewhere. SAM runs every curl in a small sandbox: curl sees the
-computer read-only and has a host name of its own, `localhost`, so the
-libraries it loads never look up this computer's name.
-Without Bubblewrap, SAM sends no update request.
+computer read-only, apart from its own `/tmp` and `/dev`, and has a host
+name of its own, `localhost`, so the libraries it loads never look up this
+computer's name. Without Bubblewrap, or when its sandbox cannot start (for
+example where user namespaces are switched off), SAM runs no curl and sends
+no update request.
 
 Every request is a plain `GET`. It carries only the address, the server's
 name, SAM's fixed user agent (`SAM-AppImage-update-check`), what SAM

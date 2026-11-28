@@ -176,6 +176,11 @@ fn output(program: &str, args: &[&str]) -> Option<String> {
         )]
         let mut cmd = crate::updates::curl_command(false).ok()?;
         let out = cmd.args(args).stdin(Stdio::null()).output().ok()?;
+        // A sandbox that could not start leaves the version unknown; its
+        // error is no version.
+        if !out.status.success() {
+            return None;
+        }
         return Some(format!(
             "{}{}",
             String::from_utf8_lossy(&out.stdout),

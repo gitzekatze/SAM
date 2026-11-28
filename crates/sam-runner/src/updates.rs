@@ -170,7 +170,8 @@ fn curl(req: &Request, max_secs: u64) -> Result<Command> {
 }
 
 /// Bubblewrap's arguments around curl (owner decision D of 2026-11-28):
-/// a read-only view of the computer, an empty `/tmp`, and a host name of
+/// a read-only view of the computer apart from its own `/tmp` (empty) and
+/// `/dev`, and a host name of
 /// its own, `localhost`, so the libraries curl loads look up that name,
 /// which `/etc/hosts` answers, and never send this computer's name to a
 /// DNS server (on a computer whose own name is not known locally they did,
@@ -232,16 +233,23 @@ pub fn curl_command(network: bool) -> Result<Command> {
     Ok(cmd)
 }
 
-/// The certificate files and folders curl's environment names
-/// (`CURL_CA_BUNDLE`, `SSL_CERT_FILE`, `SSL_CERT_DIR`) that lie below
-/// `/tmp`, which curl's sandbox replaces with an empty folder.
+/// The certificate files and folders and the curl settings folder that
+/// curl's environment names (`CURL_CA_BUNDLE`, `SSL_CERT_FILE`,
+/// `SSL_CERT_DIR`, `CURL_HOME`) and that lie below `/tmp`, which curl's
+/// sandbox replaces with an empty folder; so curl sees what it saw outside
+/// the sandbox.
 fn certificates_in_tmp() -> Vec<PathBuf> {
-    ["CURL_CA_BUNDLE", "SSL_CERT_FILE", "SSL_CERT_DIR"]
-        .iter()
-        .filter_map(std::env::var_os)
-        .map(PathBuf::from)
-        .filter(|p| p.is_absolute() && p.starts_with("/tmp"))
-        .collect()
+    [
+        "CURL_CA_BUNDLE",
+        "SSL_CERT_FILE",
+        "SSL_CERT_DIR",
+        "CURL_HOME",
+    ]
+    .iter()
+    .filter_map(std::env::var_os)
+    .map(PathBuf::from)
+    .filter(|p| p.is_absolute() && p.starts_with("/tmp"))
+    .collect()
 }
 
 /// Checks `appimage` against its published version, whatever file it is,
@@ -837,12 +845,21 @@ fn read_range(mut cmd: Command, limit: Duration, want: usize) -> Result<Vec<u8>>
     let mut child = cmd
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .process_group(0)
         .spawn()
         .context(sam_core::i18n::tr("starting curl"))?;
-    // The whole group, so that nothing curl (or a stand-in) started keeps
-    // the output open.
+    // What curl's sandbox (or curl) says on stderr, for the error.
+    let errors = child.stderr.take().map(|mut e| {
+        std::thread::spawn(move || {
+            let mut text = String::new();
+            let _ = (&mut e).take(64 << 10).read_to_string(&mut text);
+            text
+        })
+    });
+    // The whole group: Bubblewrap, which curl's sandbox runs as. curl
+    // itself runs in a session of its own (`--new-session`) and ends with
+    // Bubblewrap (`--die-with-parent`), so nothing keeps the output open.
     let stop = |child: &mut std::process::Child| {
         if let Ok(g) = i32::try_from(child.id()) {
             // SAFETY: kill(2) with a negative pid signals the process group
@@ -904,11 +921,17 @@ fn read_range(mut cmd: Command, limit: Duration, want: usize) -> Result<Vec<u8>>
         std::thread::sleep(Duration::from_millis(20));
     };
     if !status.success() {
+        let said = errors.and_then(|h| h.join().ok()).unwrap_or_default();
+        let reason = if said.trim().is_empty() {
+            format!("curl {status}")
+        } else {
+            curl_error(&said)
+        };
         bail!(
             "{}",
             sam_core::i18n::trf(
                 "downloading the changed parts failed: {reason}",
-                &[("reason", &format!("curl {status}"))]
+                &[("reason", &reason)]
             )
         );
     }
