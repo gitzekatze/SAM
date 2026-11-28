@@ -1862,10 +1862,12 @@ fn the_release_script_runs_no_tests_itself() {
 /// release's tag and counts it as passed only when the program exits 0
 /// with the test's line "RESULT pass"; where that program runs the test is
 /// not checked, by the script or by this test. A failing program stops the
-/// ready checks with the program, its exit status and the log; the real run
-/// stops before it makes the branch release-X.Y.Z. With the settings it
-/// needs, the same dry run is ready, so the stand-ins (gh, gpg, a local
-/// origin) let every other check pass.
+/// ready checks with the program, its exit status and the log, and so do a
+/// release tag GitHub has but this clone lacks, a program that is not found
+/// and a program that leaves a file in the checkout; the real run stops
+/// before it makes the branch release-X.Y.Z. With the settings it needs,
+/// the same dry run is ready, so the stand-ins (gh, gpg, a local origin)
+/// let every other check pass.
 #[test]
 fn the_release_command_checks_for_a_test_program_before_it_starts() {
     const TESTS: (&str, &str) = ("SAM_RELEASE_TEST_COMMAND", "/opt/run-the-tests");
@@ -1875,46 +1877,85 @@ fn the_release_command_checks_for_a_test_program_before_it_starts() {
         "SAM_RELEASE_UPGRADE_COMMAND=<program>",
         "SKIP_UPGRADE_TEST=1",
     ];
-    // (settings, the upgrade program: its exit status and whether it ends
-    // with the line "RESULT pass", a released version v0.1.0, dry run,
-    // ready, what the output names)
+    // What the upgrade program prints: a passed test, a failed one, or no
+    // test at all.
+    const PASSED: &str = "echo 'ok   a check'; echo 'RESULT pass'";
+    const FAILED: &str = "echo \"FAIL a check: expected 'yes', got 'no'\"; echo 'RESULT fail'";
+    const NO_TEST: &str = "echo 'running 0 tests'";
+    // (settings, the upgrade program: its exit status, what it prints and
+    // whether it leaves a file in the checkout, where the tag v0.1.0 of a
+    // released version is, dry run, ready, what the output names)
     type Case<'a> = (
         &'a [(&'a str, &'a str)],
-        Option<(i32, bool)>,
-        bool,
+        Option<(i32, &'a str, bool)>,
+        &'a str,
         bool,
         bool,
         &'a [&'a str],
     );
     let cases: &[Case] = &[
-        (&[], None, false, true, false, NO_TESTS),
-        (&[], None, false, false, false, NO_TESTS),
-        (&[TESTS], None, false, true, true, &[]),
-        (&[SKIP], None, false, true, true, &[]),
+        (&[], None, "nowhere", true, false, NO_TESTS),
+        (&[], None, "nowhere", false, false, NO_TESTS),
+        (
+            &[TESTS],
+            None,
+            "nowhere",
+            true,
+            true,
+            &["No earlier release: there is no upgrade test to run."],
+        ),
+        (&[SKIP], None, "nowhere", true, true, &[]),
         // With a released version the upgrade test is due as well.
-        (&[TESTS], None, true, true, false, NO_UPGRADE),
-        (&[TESTS], None, true, false, false, NO_UPGRADE),
-        (&[SKIP], None, true, true, false, NO_UPGRADE),
+        (&[TESTS], None, "here", true, false, NO_UPGRADE),
+        (&[TESTS], None, "here", false, false, NO_UPGRADE),
+        (&[SKIP], None, "here", true, false, NO_UPGRADE),
+        // A clone without the tag GitHub has cannot pass for a first release.
+        (
+            &[TESTS],
+            None,
+            "only on GitHub",
+            true,
+            false,
+            &[
+                "none is reachable from this checkout",
+                "git fetch --tags origin",
+            ],
+        ),
         (
             &[TESTS, ("SKIP_UPGRADE_TEST", "1")],
             None,
-            true,
+            "here",
             true,
             true,
             &["is skipped (SKIP_UPGRADE_TEST=1"],
         ),
+        // A program with arguments in the variable is not found.
+        (
+            &[
+                TESTS,
+                (
+                    "SAM_RELEASE_UPGRADE_COMMAND",
+                    "run-the-upgrade-test --in-a-container",
+                ),
+            ],
+            None,
+            "here",
+            true,
+            false,
+            &["was not found", "absolute path, without arguments"],
+        ),
         (
             &[TESTS],
-            Some((0, true)),
-            true,
+            Some((0, PASSED, false)),
+            "here",
             true,
             true,
             &["upgrade checks passed: 1"],
         ),
         (
             &[TESTS],
-            Some((3, true)),
-            true,
+            Some((3, FAILED, false)),
+            "here",
             true,
             false,
             &[
@@ -1924,10 +1965,23 @@ fn the_release_command_checks_for_a_test_program_before_it_starts() {
                 "FAIL a check",
             ],
         ),
+        // A failed program does not pass even when its output says so.
         (
             &[TESTS],
-            Some((0, false)),
+            Some((3, PASSED, false)),
+            "here",
             true,
+            false,
+            &[
+                "SAM_RELEASE_UPGRADE_COMMAND=",
+                "exit status 3",
+                "target/upgrade-test.log",
+            ],
+        ),
+        (
+            &[TESTS],
+            Some((0, NO_TEST, false)),
+            "here",
             true,
             false,
             &[
@@ -1935,6 +1989,15 @@ fn the_release_command_checks_for_a_test_program_before_it_starts() {
                 "'RESULT pass'",
                 "target/upgrade-test.log",
             ],
+        ),
+        // A program that leaves a file in the checkout stops the release.
+        (
+            &[TESTS],
+            Some((0, PASSED, true)),
+            "here",
+            true,
+            false,
+            &["changed the checkout"],
         ),
     ];
     for &(settings, upgrade, released, dry, ready, says) in cases {
@@ -1944,7 +2007,7 @@ fn the_release_command_checks_for_a_test_program_before_it_starts() {
         let tmp = tempfile::tempdir().unwrap();
         let t = tmp.path();
         let repo = release_checkout(t);
-        if released {
+        if released != "nowhere" {
             git(&repo, t, &["tag", "v0.1.0"]);
         }
         let key = "AFE940EDA5A0C5C4B94B0A3FB1764CFD72A238E6";
@@ -1980,6 +2043,10 @@ fn the_release_command_checks_for_a_test_program_before_it_starts() {
             &["remote", "add", "origin", origin.to_str().unwrap()],
         );
         git(&repo, t, &["push", "-q", "origin", "main"]);
+        if released == "only on GitHub" {
+            git(&repo, t, &["push", "-q", "origin", "v0.1.0"]);
+            git(&repo, t, &["tag", "-d", "v0.1.0"]);
+        }
         // gh is signed in and the CI run passed; gpg has the key and signs.
         write_exec(
             &t.join("bin/gh"),
@@ -2006,17 +2073,17 @@ fn the_release_command_checks_for_a_test_program_before_it_starts() {
         }
         // The upgrade program records its arguments and answers as told.
         let calls = t.join("upgrade-program-calls");
-        if let Some((code, result)) = upgrade {
+        if let Some((code, says, stray)) = upgrade {
             let program = t.join("bin-tests/run-the-upgrade-test");
-            let says = match (code, result) {
-                (_, false) => "echo 'running 0 tests'",
-                (0, true) => "echo 'ok   a check'; echo 'RESULT pass'",
-                _ => "echo \"FAIL a check: expected 'yes', got 'no'\"; echo 'RESULT fail'",
+            let stray = if stray {
+                "touch \"$1/left-behind\"\n"
+            } else {
+                ""
             };
             write_exec(
                 &program,
                 &format!(
-                    "#!/bin/sh\nprintf '%s|%s|%s\\n' \"$#\" \"$1\" \"$2\" >> '{}'\n{says}\nexit {code}\n",
+                    "#!/bin/sh\nprintf '%s|%s|%s\\n' \"$#\" \"$1\" \"$2\" >> '{}'\n{stray}{says}\nexit {code}\n",
                     calls.display()
                 ),
             );
@@ -2083,6 +2150,100 @@ fn the_release_command_checks_for_a_test_program_before_it_starts() {
             git_says(&repo, t, &["branch", "--show-current"]),
             "main",
             "{case}: it left main:\n{stderr}"
+        );
+    }
+}
+
+/// The upgrade test builds the sam-jail it checks from its own checkout
+/// before anything else, into CARGO_TARGET_DIR when that is set (counted
+/// from the checkout when relative), and checks with that build, so an
+/// older build left in the build folder is never what it checks. Cargo is a
+/// stand-in that records its calls; it builds this checkout's sam-jail and
+/// fails the build of the older version, which ends the run there.
+#[test]
+fn the_upgrade_test_builds_the_sam_it_checks() {
+    for target_dir in [None, Some("absolute"), Some("build-elsewhere")] {
+        let tmp = tempfile::tempdir().unwrap();
+        let t = tmp.path();
+        git_home(t);
+        let repo = t.join("repo");
+        let script = repo.join("tests/upgrade/run.sh");
+        fs::create_dir_all(script.parent().unwrap()).unwrap();
+        fs::copy(root().join("tests/upgrade/run.sh"), &script).unwrap();
+        fs::write(repo.join(".gitignore"), "target/\nbuild-elsewhere/\n").unwrap();
+        git(&repo, t, &["init", "-q"]);
+        git(&repo, t, &["add", "-A"]);
+        git(&repo, t, &["commit", "-q", "-m", "0.1.0"]);
+        git(&repo, t, &["tag", "v0.1.0"]);
+        let target_dir = target_dir.map(|d| match d {
+            "absolute" => t.join("build").display().to_string(),
+            relative => relative.to_string(),
+        });
+        let built = match &target_dir {
+            None => repo.join("target"),
+            Some(d) => repo.join(d),
+        };
+        if target_dir.is_none() {
+            // An older build left where this checkout's build goes.
+            write_exec(&repo.join("target/debug/sam-jail"), "#!/bin/sh\nexit 0\n");
+        }
+        let calls = t.join("cargo-calls");
+        write_exec(
+            &t.join("bin/cargo"),
+            &format!(
+                "#!/bin/sh\necho \"$PWD|${{CARGO_TARGET_DIR:-}}|$*\" >> '{c}'\n[ \"$(wc -l < '{c}')\" = 1 ] || exit 1\nd=${{CARGO_TARGET_DIR:-target}}\nmkdir -p \"$d/debug\"\nprintf '#!/bin/sh\\n' > \"$d/debug/sam-jail\"\nchmod +x \"$d/debug/sam-jail\"\n",
+                c = calls.display()
+            ),
+        );
+        let mut cmd = Command::new("sh");
+        cmd.arg(&script)
+            .arg("v0.1.0")
+            .arg(t.join("work"))
+            .current_dir(t)
+            .env_remove("CARGO_TARGET_DIR")
+            .env("HOME", t)
+            .env("GIT_CONFIG_GLOBAL", t.join("gitconfig"))
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("PATH", path_with(&t.join("bin")));
+        if let Some(d) = &target_dir {
+            cmd.env("CARGO_TARGET_DIR", d);
+        }
+        let case = format!("CARGO_TARGET_DIR {target_dir:?}");
+        let out = run(cmd, 120);
+        let (stdout, stderr) = (text(&out.stdout), text(&out.stderr));
+        assert!(!out.status.success(), "{case}: the run passed:\n{stdout}");
+        assert!(!stdout.contains("RESULT pass"), "{case}:\n{stdout}");
+        let got = fs::read_to_string(&calls).unwrap_or_default();
+        let lines: Vec<&str> = got.lines().collect();
+        let first: Vec<&str> = lines.first().map_or(vec![], |l| l.splitn(3, '|').collect());
+        assert_eq!(
+            first.get(2).copied(),
+            Some("build -q --locked -p sam-jail-cli"),
+            "{case}: the first build was not this checkout's sam-jail:\n{got}\n{stdout}{stderr}"
+        );
+        assert_eq!(
+            first.first().and_then(|p| fs::canonicalize(p).ok()),
+            fs::canonicalize(&repo).ok(),
+            "{case}: the first build did not run in the checkout:\n{got}"
+        );
+        assert_eq!(
+            first.get(1).copied(),
+            Some(target_dir.as_deref().unwrap_or("")),
+            "{case}: the first build did not use the build folder given:\n{got}"
+        );
+        assert!(
+            built.join("debug/sam-jail").exists(),
+            "{case}: no build in {built:?}"
+        );
+        // It found that build and went on to build the older version.
+        assert_eq!(
+            lines.len(),
+            2,
+            "{case}: it did not go on with this checkout's build:\n{got}\n{stdout}{stderr}"
+        );
+        assert!(
+            lines[1].contains("target-old|") && lines[1].contains("--manifest-path"),
+            "{case}: the second build was not the older version:\n{got}"
         );
     }
 }

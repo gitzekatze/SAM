@@ -37,7 +37,7 @@ The release key itself is described in [Keeping SAM healthy](care.md#the-release
 
 | Command | What it does | When |
 |---|---|---|
-| `tests/upgrade/run.sh vX.Y.Z WORKDIR` | builds an older SAM, makes data with it, checks this SAM keeps it | before a release (`new-version.sh` hands it to the program `SAM_RELEASE_UPGRADE_COMMAND` names) |
+| `tests/upgrade/run.sh vX.Y.Z WORKDIR` | builds this SAM and an older one, makes data with the older one, checks that this SAM keeps it | before a release (`new-version.sh` hands it to the program `SAM_RELEASE_UPGRADE_COMMAND` names) |
 | `tests/real-apps/run.sh` with `WORK=…` | runs real AppImages through SAM's whole flow in a hidden session | before a release; see [testing](../testing.md) |
 | `python3 -I tests/real-apps/table.py WORKDIR KINDS` | summarises a real-app run in a table | after a real-app run |
 | `tests/gui/*-atspi.sh OUTDIR` | clicks through the window in a hidden session | after changing the window (CI runs them too) |

@@ -1277,6 +1277,7 @@ tests = [
   "a_release_that_fails_to_build_leaves_no_tag",
   "the_release_script_runs_no_tests_itself",
   "the_release_command_checks_for_a_test_program_before_it_starts",
+  "the_upgrade_test_builds_the_sam_it_checks",
   "release_builds_use_one_fixed_rust_and_stop_on_overflow",
   "release_builds_never_turn_on_debug_assertions",
   "cargo_config_only_replaces_sources",
