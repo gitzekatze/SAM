@@ -1096,6 +1096,10 @@ pub fn verify(app: &AppEntry, cfg: &Config, paths: &Paths, host: &HostInfo) -> R
         bail!("{}", sam_core::i18n::tr("SAM's sandbox helper (sam-jail-run) was not found, so the sandbox cannot be checked"));
     }
     let cmd = &prepared.command;
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "way out: bwrap, the sandbox check"
+    )]
     let mut command = Command::new(&cmd.program);
     command
         .args(&cmd.args)

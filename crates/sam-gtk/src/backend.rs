@@ -149,7 +149,12 @@ impl Backend {
         if input.is_some() {
             flags |= gio::SubprocessFlags::STDIN_PIPE;
         }
-        let proc = gio::Subprocess::newv(&argv_ref, flags).map_err(|e| {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "way out: sam-jail, SAM's command line tool"
+        )]
+        let started = gio::Subprocess::newv(&argv_ref, flags);
+        let proc = started.map_err(|e| {
             CliError::coded(
                 "cli-not-started",
                 crate::i18n::trf(
@@ -221,7 +226,12 @@ impl Backend {
         if input.is_some() {
             flags |= gio::SubprocessFlags::STDIN_PIPE;
         }
-        let proc = gio::Subprocess::newv(&argv_ref, flags).map_err(|e| {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "way out: sam-jail, SAM's command line tool"
+        )]
+        let started = gio::Subprocess::newv(&argv_ref, flags);
+        let proc = started.map_err(|e| {
             CliError::coded(
                 "cli-not-started",
                 crate::i18n::trf(
@@ -256,12 +266,12 @@ impl Backend {
             glib::shell_quote(&self.runner).to_string_lossy(),
             glib::shell_quote(app_id).to_string_lossy()
         );
-        let info = gio::AppInfo::create_from_commandline(
-            &cmd,
-            Some(name),
-            gio::AppInfoCreateFlags::NEEDS_TERMINAL,
-        )
-        .map_err(|e| crate::i18n::trf("Could not start a terminal: {error}", &[("error", &e)]))?;
+        let flags = gio::AppInfoCreateFlags::NEEDS_TERMINAL;
+        #[expect(clippy::disallowed_methods, reason = "way out: the terminal GIO picks")]
+        let info = gio::AppInfo::create_from_commandline(&cmd, Some(name), flags);
+        let info = info.map_err(|e| {
+            crate::i18n::trf("Could not start a terminal: {error}", &[("error", &e)])
+        })?;
         info.launch(&[], gio::AppLaunchContext::NONE)
             .map_err(|e| crate::i18n::trf("Could not start a terminal: {error}", &[("error", &e)]))
     }
@@ -276,7 +286,12 @@ impl Backend {
             vec![self.runner.clone().into(), "--app-id".into(), app_id.into()];
         argv.extend(files.iter().map(OsString::from));
         let argv_ref: Vec<&std::ffi::OsStr> = argv.iter().map(|a| a.as_os_str()).collect();
-        let proc = gio::Subprocess::newv(&argv_ref, gio::SubprocessFlags::NONE).map_err(|e| {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "way out: sam-jail-run, to start an app"
+        )]
+        let started = gio::Subprocess::newv(&argv_ref, gio::SubprocessFlags::NONE);
+        let proc = started.map_err(|e| {
             crate::i18n::trf("Could not start sam-jail-run: {error}", &[("error", &e)])
         })?;
         glib::spawn_future_local(async move {

@@ -208,9 +208,19 @@ jobs:
         if: env.CODE == 'true'
         run: cargo fmt --all --check
 
+      # clippy.toml's gate of the privacy check (disallowed-methods and
+      # disallowed-types): a path there that names nothing is only a
+      # warning, which -D warnings does not stop, so the step fails on it
+      # (crates/sam-jail-cli/tests/network_use.rs).
       - name: Clippy
         if: env.CODE == 'true'
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+        run: |
+          set -o pipefail
+          cargo clippy --workspace --all-targets --locked -- -D warnings 2>&1 | tee clippy.log
+          if grep -q "does not refer to" clippy.log; then
+            echo "clippy.toml names a path that does not exist (see above)." >&2
+            exit 1
+          fi
 
       # The whole suite twice: a test whose result differs between the two
       # runs is flaky (its answer depends on timing, not only on the code)

@@ -464,6 +464,10 @@ impl AppPage {
             .unwrap_or_default();
         if !p.is_empty() {
             let _ = std::fs::create_dir_all(&p);
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "way out: a local folder, opened on a click"
+            )]
             let launcher = gtk::FileLauncher::new(Some(&gio::File::for_path(&p)));
             let win = self.app().map(|a| a.window.clone());
             glib::spawn_future_local(async move {
@@ -603,6 +607,10 @@ impl AppPage {
             let mut args = vec!["update".to_string(), me.app_id.clone()];
             let refs: Vec<&str> = args.iter().map(String::as_str).collect();
             // The person said Update in the dialog just before.
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "way out: update, after the person said Update"
+            )]
             let mut result = app.backend.call_online(&refs, None).await;
             if let Err(e) = &result {
                 if e.is("signing-key-changed")
@@ -624,13 +632,22 @@ impl AppPage {
                         args.push("--accept-key-change".into());
                         let refs: Vec<&str> = args.iter().map(String::as_str).collect();
                         // The person said Update Anyway just before.
-                        result = app.backend.call_online(&refs, None).await;
+                        #[expect(
+                            clippy::disallowed_methods,
+                            reason = "way out: update, after the person said Update Anyway"
+                        )]
+                        let r = app.backend.call_online(&refs, None).await;
+                        result = r;
                     } else {
                         // Said no: the download kept for this answer is
                         // deleted now, not left in SAM's folder.
                         args.push("--decline-key-change".into());
                         let refs: Vec<&str> = args.iter().map(String::as_str).collect();
                         // Offline: deletes the kept download.
+                        #[expect(
+                            clippy::disallowed_methods,
+                            reason = "way out: update --decline-key-change, offline"
+                        )]
                         let r = app.backend.call_online(&refs, None).await;
                         result = r.map(|_| Value::Null);
                     }

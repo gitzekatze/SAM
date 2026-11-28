@@ -200,7 +200,12 @@ fn run_and_reap(prog: &str, args: &[String]) -> Result<()> {
     unsafe {
         libc::prctl(libc::PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
     }
-    let child = Command::new(prog)
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "way out: the program a sandbox runs"
+    )]
+    let mut cmd = Command::new(prog);
+    let child = cmd
         .args(args)
         .env_remove("SAM_STATUS_FD")
         .spawn()

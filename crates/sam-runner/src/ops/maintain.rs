@@ -862,6 +862,7 @@ impl Sam {
             // when an earlier SAM saved it, possibly a swapped file its change
             // check saw, so it is not checked at all.
             let status = match &e.extraction {
+                #[expect(clippy::disallowed_methods, reason = "way out: an app's update check")]
                 Some(x) => crate::updates::check_unpacked(&e.source_path, &x.source),
                 None => UpdateStatus {
                     state: sam_core::model::UpdateState::Failed,
@@ -929,6 +930,7 @@ impl Sam {
         // download's name, or swap the file between the check and its use
         // (regression, audit U-H4; review 2026-11-23, U-1).
         let work = self.download_folder(&entry.id)?;
+        #[expect(clippy::disallowed_methods, reason = "way out: an app's update")]
         let result = self.update_in(&entry, &work, accept_key_change);
         let _ = remove_tree(&work);
         result
@@ -998,7 +1000,9 @@ impl Sam {
                 )
             );
         }
-        let Some(p) = crate::updates::newest(&installed)? else {
+        #[expect(clippy::disallowed_methods, reason = "way out: an app's update source")]
+        let newest = crate::updates::newest(&installed)?;
+        let Some(p) = newest else {
             bail!(
                 "{}",
                 sam_core::i18n::trf(
@@ -1040,6 +1044,10 @@ impl Sam {
                 let total = fs::metadata(&tmp)?.len();
                 (crate::updates::Fetched::Full { total }, Some(w))
             }
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "way out: an app's update download"
+            )]
             _ => (crate::updates::download_update(&p, &installed, &tmp)?, None),
         };
         let info = inspect(&tmp)?;
@@ -1747,7 +1755,10 @@ impl Sam {
     /// works from a copy of `appimage` in SAM's own folder, and only one
     /// update of SAM runs at a time; a second is refused at once.
     pub fn self_update(&self, appimage: &Path, check_only: bool) -> Result<SelfUpdate> {
-        self.self_update_with_keys(appimage, check_only, crate::release_key::RELEASE_KEYS)
+        let keys = crate::release_key::RELEASE_KEYS;
+        #[expect(clippy::disallowed_methods, reason = "way out: SAM's own update")]
+        let r = self.self_update_with_keys(appimage, check_only, keys);
+        r
     }
 
     /// `self_update` with the release keys given (for tests).
@@ -1769,6 +1780,7 @@ impl Sam {
             // A check only reads the update information and the checksum
             // (nothing is mapped) and writes nothing, so it needs neither
             // the lock nor a copy.
+            #[expect(clippy::disallowed_methods, reason = "way out: SAM's own update check")]
             return self.self_update_from(appimage, appimage, true, keys);
         }
         // One update of SAM at a time, from start to end: a second one (the
@@ -1792,8 +1804,12 @@ impl Sam {
         // the backups at the end (review B2 S6, R87).
         let work = self.download_folder("sam.installed")?;
         let installed = work.join("sam.AppImage");
-        let result = fingerprint::copy_with_fingerprint(appimage, &installed, 0o700)
-            .and_then(|_| self.self_update_from(appimage, &installed, false, keys));
+        let copied = fingerprint::copy_with_fingerprint(appimage, &installed, 0o700);
+        let result = match copied {
+            #[expect(clippy::disallowed_methods, reason = "way out: SAM's own update")]
+            Ok(_) => self.self_update_from(appimage, &installed, false, keys),
+            Err(e) => Err(e),
+        };
         let _ = remove_tree(&work);
         result
     }
@@ -1808,7 +1824,9 @@ impl Sam {
         check_only: bool,
         keys: &[&str],
     ) -> Result<SelfUpdate> {
-        let Some(p) = crate::updates::newest(installed)? else {
+        #[expect(clippy::disallowed_methods, reason = "way out: SAM's update source")]
+        let newest = crate::updates::newest(installed)?;
+        let Some(p) = newest else {
             return Ok(SelfUpdate {
                 state: "current".into(),
                 latest: None,
@@ -1860,6 +1878,7 @@ impl Sam {
         let name = update_file_name(p.filename.as_deref(), &old_name, dir);
         let target = dir.join(&name);
         let tmp = self.download_folder("sam")?.join(&name);
+        #[expect(clippy::disallowed_methods, reason = "way out: SAM's update download")]
         let fetched = crate::updates::download_update(&p, installed, &tmp)?;
         let placed = (|| -> Result<()> {
             if !inspect(&tmp)?.is_appimage() {

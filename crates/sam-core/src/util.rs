@@ -706,16 +706,12 @@ pub fn private_dirs(base: &Path, dir: &Path) -> std::io::Result<()> {
 /// kernels go through `/proc/self/fd`.
 pub fn close_inherited_on_exec() {
     close_inherited_with(|| {
+        let (nr, flags) = (libc::SYS_close_range, libc::CLOSE_RANGE_CLOEXEC);
+        #[expect(clippy::disallowed_methods, reason = "way out: a syscall, close_range")]
         // SAFETY: close_range with CLOSE_RANGE_CLOEXEC only sets a flag on
         // this process's own descriptors; it closes nothing.
-        unsafe {
-            libc::syscall(
-                libc::SYS_close_range,
-                3u32,
-                u32::MAX,
-                libc::CLOSE_RANGE_CLOEXEC,
-            )
-        }
+        let r = unsafe { libc::syscall(nr, 3u32, u32::MAX, flags) };
+        r
     });
 }
 

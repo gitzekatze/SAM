@@ -4,6 +4,11 @@
 //! (`{"ok": true, "data": ...}` or `{"ok": false, "error": "..."}`). The GUI
 //! uses this mode as its API.
 
+// The privacy check (crates/sam-jail-cli/tests/network_use.rs): every way
+// this program could reach the network or start a program is an #[expect]
+// listed there (clippy.toml: disallowed-methods, disallowed-types).
+#![cfg_attr(not(test), deny(clippy::disallowed_methods, clippy::disallowed_types))]
+
 use sam_core::i18n::{tr, trf, trn};
 use std::io::{IsTerminal, Read};
 use std::path::PathBuf;
@@ -695,6 +700,7 @@ fn real_main(cli: Cli) -> Result<()> {
         }
         Cmd::Version => {} // answered above
         Cmd::Updates { app: q, if_due } => {
+            #[expect(clippy::disallowed_methods, reason = "way out: sam-jail updates")]
             let results = app.check_updates(q.as_deref(), if_due)?;
             let list: Vec<_> = results
                 .iter()
@@ -764,7 +770,9 @@ fn real_main(cli: Cli) -> Result<()> {
             let e = if undo {
                 app.undo_update(&q)?
             } else {
-                app.update(&q, accept_key_change)?
+                #[expect(clippy::disallowed_methods, reason = "way out: sam-jail update")]
+                let e = app.update(&q, accept_key_change)?;
+                e
             };
             out.emit(&AppSummary::from_entry(&e), || {
                 if undo {
@@ -794,6 +802,7 @@ fn real_main(cli: Cli) -> Result<()> {
             let appimage = std::env::var_os("APPIMAGE")
                 .map(std::path::PathBuf::from)
                 .unwrap_or_default();
+            #[expect(clippy::disallowed_methods, reason = "way out: sam-jail self-update")]
             let r = app.self_update(&appimage, check)?;
             out.emit(&r, || {
                 outln!("{}", r.detail);

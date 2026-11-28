@@ -325,9 +325,14 @@ fn check(t: &ProbeTest, enforcement: &str) -> (Option<bool>, String) {
         }
         ProbeTest::AbstractSocket { name, expect } => {
             use std::os::linux::net::SocketAddrExt;
-            let there = std::os::unix::net::SocketAddr::from_abstract_name(name.as_bytes())
-                .and_then(|a| std::os::unix::net::UnixStream::connect_addr(&a))
-                .is_ok();
+            let there = match std::os::unix::net::SocketAddr::from_abstract_name(name.as_bytes()) {
+                #[expect(
+                    clippy::disallowed_methods,
+                    reason = "way out: an abstract Unix socket"
+                )]
+                Ok(a) => std::os::unix::net::UnixStream::connect_addr(&a).is_ok(),
+                Err(_) => false,
+            };
             (
                 Some(there == *expect),
                 if there {
@@ -381,6 +386,10 @@ fn check(t: &ProbeTest, enforcement: &str) -> (Option<bool>, String) {
         }
         ProbeTest::LocalPort { port, expect } => {
             let addr = std::net::SocketAddr::from(([127, 0, 0, 1], *port));
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "way out: a TCP connect to 127.0.0.1"
+            )]
             let open = std::net::TcpStream::connect_timeout(&addr, Duration::from_secs(1)).is_ok();
             (
                 Some(open == *expect),
@@ -469,6 +478,10 @@ fn check(t: &ProbeTest, enforcement: &str) -> (Option<bool>, String) {
             )
         }
         ProbeTest::SyscallFilter { active } => {
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "way out: a syscall, keyctl, expected refused"
+            )]
             // keyctl(KEYCTL_GET_KEYRING_ID, KEY_SPEC_SESSION_KEYRING, 0):
             // the baseline filter answers EPERM.
             // SAFETY: keyctl is called with plain integers only (the probe expects it to be refused).

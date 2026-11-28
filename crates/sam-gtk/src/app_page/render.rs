@@ -386,11 +386,12 @@ impl AppPage {
                 let (page, w) = (page.to_string(), Rc::downgrade(self));
                 open.connect_clicked(move |_| {
                     if let Some(app) = w.upgrade().and_then(|me| me.app()) {
-                        gtk::UriLauncher::new(&page).launch(
-                            Some(&app.window),
-                            gio::Cancellable::NONE,
-                            |_| {},
-                        );
+                        #[expect(
+                            clippy::disallowed_methods,
+                            reason = "way out: the app's download page"
+                        )]
+                        let launcher = gtk::UriLauncher::new(&page);
+                        launcher.launch(Some(&app.window), gio::Cancellable::NONE, |_| {});
                     }
                 });
                 row.add_suffix(&open);
@@ -1061,6 +1062,7 @@ impl AppPage {
                     glib::spawn_future_local(async move {
                         let args = ["update", me.app_id.as_str(), "--undo"];
                         // Offline: puts the kept version back.
+                        #[expect(clippy::disallowed_methods, reason = "way out: update --undo, offline")]
                         let r = app.backend.call_online(&args, None).await;
                         let ok = crate::i18n::tr("Back to the previous version");
                         me.after_simple(&app, r, &ok, true).await;
@@ -1284,6 +1286,10 @@ impl AppPage {
                 glib::spawn_future_local(async move {
                     let args = ["updates", me.app_id.as_str()];
                     // The person clicked Check for Updates.
+                    #[expect(
+                        clippy::disallowed_methods,
+                        reason = "way out: updates <id>, on a click"
+                    )]
                     let r = app.backend.call_online(&args, None).await;
                     let ok = crate::i18n::tr("Update check done");
                     me.after_simple(&app, r, &ok, false).await;

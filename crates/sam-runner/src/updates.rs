@@ -150,6 +150,10 @@ fn curl(req: &Request, max_secs: u64) -> Result<Command> {
     let args = curl_args(req, max_secs)?;
     let curl = sam_core::util::which("curl")
         .context(sam_core::i18n::tr("curl is not installed, so SAM cannot check for or download updates. Install the package curl."))?;
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "way out: curl, for an update request"
+    )]
     let mut cmd = Command::new(curl);
     cmd.args(args);
     Ok(cmd)
@@ -528,7 +532,9 @@ pub const UPDATE_TIME_LIMIT: Duration = Duration::from_secs(3600);
 /// published SHA-1, and all of it ends within [`UPDATE_TIME_LIMIT`]. Used
 /// for app updates and for SAM's own update.
 pub fn download_update(p: &Published, old: &Path, dest: &Path) -> Result<Fetched> {
-    download_update_within(p, old, dest, UPDATE_TIME_LIMIT)
+    #[expect(clippy::disallowed_methods, reason = "way out: an update download")]
+    let r = download_update_within(p, old, dest, UPDATE_TIME_LIMIT);
+    r
 }
 
 /// [`download_update`] with its time limit (tests use seconds). One

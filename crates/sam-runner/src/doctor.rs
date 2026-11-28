@@ -20,7 +20,9 @@ pub fn bwrap_functional(host: &HostInfo) -> Result<(), String> {
     let Some(b) = &host.tools.bwrap else {
         return Err("not installed".into());
     };
-    let out = Command::new(&b.path)
+    #[expect(clippy::disallowed_methods, reason = "way out: bwrap, a test sandbox")]
+    let mut cmd = Command::new(&b.path);
+    let out = cmd
         .args([
             "--unshare-all",
             "--die-with-parent",

@@ -203,6 +203,10 @@ fn plain_program(name: &str, dir: &std::path::Path) -> std::path::PathBuf {
 /// held a build slot's lock for 5.5 hours.
 fn service(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
     use std::os::unix::process::CommandExt;
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "way out: a program a test starts"
+    )]
     let mut c = std::process::Command::new(program);
     // SAFETY: getpid has no preconditions.
     let parent = unsafe { libc::getpid() };
@@ -215,12 +219,9 @@ fn service(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
             if libc::getppid() != parent {
                 libc::_exit(1);
             }
-            let marked = libc::syscall(
-                libc::SYS_close_range,
-                3u32,
-                u32::MAX,
-                libc::CLOSE_RANGE_CLOEXEC,
-            );
+            let (nr, flags) = (libc::SYS_close_range, libc::CLOSE_RANGE_CLOEXEC);
+            #[expect(clippy::disallowed_methods, reason = "way out: a syscall, close_range")]
+            let marked = libc::syscall(nr, 3u32, u32::MAX, flags);
             if marked != 0 {
                 // Before Linux 5.11: one by one.
                 for fd in 3..65536 {

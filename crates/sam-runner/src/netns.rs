@@ -27,7 +27,9 @@ pub fn pasta_usable() -> Result<PathBuf> {
     static CHECKED: OnceLock<Result<PathBuf, String>> = OnceLock::new();
     let r = CHECKED.get_or_init(|| {
         let pasta = which("pasta").ok_or_else(|| sam_core::i18n::tr("\"This computer only\" needs pasta (package \"passt\"), which is not installed"))?;
-        let help = Command::new(&pasta).arg("--help").stdin(Stdio::null()).output().map_err(|e| format!("cannot run {}: {e}", pasta.display()))?;
+        #[expect(clippy::disallowed_methods, reason = "way out: pasta --help")]
+        let mut cmd = Command::new(&pasta);
+        let help = cmd.arg("--help").stdin(Stdio::null()).output().map_err(|e| format!("cannot run {}: {e}", pasta.display()))?;
         let text = format!("{}{}", String::from_utf8_lossy(&help.stdout), String::from_utf8_lossy(&help.stderr));
         if !text.contains("--splice-only") {
             return Err("'This computer only' needs a newer pasta (package 'passt'): the installed one has no --splice-only, which is what keeps the app off the internet. Update passt, or choose 'No network' or 'Full network' for this app".into());

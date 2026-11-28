@@ -222,6 +222,10 @@ fn with_sections(elf: &Path, sections: &[(&str, usize)]) -> Result<Vec<u8>> {
             .unwrap_or(0)
     ));
     std::fs::create_dir_all(&dir)?;
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "way out: objcopy, for test AppImages"
+    )]
     let mut cmd = std::process::Command::new("objcopy");
     for (name, size) in sections {
         let zeros = dir.join(name.trim_start_matches('.'));

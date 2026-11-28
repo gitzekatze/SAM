@@ -39,7 +39,10 @@ pub fn apply_language_setting() {
 }
 
 fn configured_language() -> Option<String> {
-    let out = std::process::Command::new(crate::backend::find_tool("sam-jail", "SAM_CLI"))
+    let cli = crate::backend::find_tool("sam-jail", "SAM_CLI");
+    #[expect(clippy::disallowed_methods, reason = "way out: sam-jail config get")]
+    let mut cmd = std::process::Command::new(cli);
+    let out = cmd
         .args(["--json", "config", "get", "general.language"])
         .stdin(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())

@@ -92,8 +92,9 @@ fn talk<T: Send + 'static>(
     limit: Duration,
     work: impl FnOnce(Connected) -> Result<T> + Send + 'static,
 ) -> Result<T> {
-    let stream = UnixStream::connect(display)
-        .with_context(|| format!("connecting to {}", display.display()))?;
+    #[expect(clippy::disallowed_methods, reason = "way out: the Wayland socket")]
+    let attempt = UnixStream::connect(display);
+    let stream = attempt.with_context(|| format!("connecting to {}", display.display()))?;
     let hang_up = stream.try_clone()?;
     let (tx, rx) = std::sync::mpsc::channel();
     let worker = std::thread::spawn(move || {
