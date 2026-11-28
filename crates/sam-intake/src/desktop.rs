@@ -311,6 +311,10 @@ pub fn refresh(dir: &Path) {
 
 pub(crate) fn refresh_desktop_database(dir: &Path) {
     if let Some(udd) = which("update-desktop-database") {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "way out: update-desktop-database"
+        )]
         let _ = Command::new(udd).arg("-q").arg(dir).status();
     }
 }

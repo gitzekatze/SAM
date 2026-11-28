@@ -51,6 +51,10 @@ fn relay_command(
     dir: &Path,
     conf: &Path,
 ) -> Command {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "way out: bwrap, the sound relay's sandbox"
+    )]
     let mut c = Command::new(bwrap);
     c.args(["--unshare-all", "--die-with-parent", "--new-session"]);
     // Nothing in the relay may make a user namespace of its own: it reads
@@ -159,7 +163,12 @@ impl SoundRelay {
             .spawn()
             .context(sam_core::i18n::tr("starting SAM's sound relay"))?;
         let deadline = Instant::now() + Duration::from_secs(3);
-        while std::os::unix::net::UnixStream::connect(&socket).is_err() {
+        loop {
+            #[expect(clippy::disallowed_methods, reason = "way out: the relay's own socket")]
+            let connected = std::os::unix::net::UnixStream::connect(&socket);
+            if connected.is_ok() {
+                break;
+            }
             if let Some(st) = child.try_wait()? {
                 bail!(
                     "{}",

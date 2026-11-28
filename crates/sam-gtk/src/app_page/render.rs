@@ -386,11 +386,12 @@ impl AppPage {
                 let (page, w) = (page.to_string(), Rc::downgrade(self));
                 open.connect_clicked(move |_| {
                     if let Some(app) = w.upgrade().and_then(|me| me.app()) {
-                        gtk::UriLauncher::new(&page).launch(
-                            Some(&app.window),
-                            gio::Cancellable::NONE,
-                            |_| {},
-                        );
+                        #[expect(
+                            clippy::disallowed_methods,
+                            reason = "way out: the app's download page"
+                        )]
+                        let launcher = gtk::UriLauncher::new(&page);
+                        launcher.launch(Some(&app.window), gio::Cancellable::NONE, |_| {});
                     }
                 });
                 row.add_suffix(&open);
@@ -1055,7 +1056,18 @@ impl AppPage {
                 "edit-undo-symbolic",
                 &crate::i18n::tr("Go back to the previous version"),
                 &crate::i18n::trf("Puts {prev} back in place of the updated AppImage. The updated file is kept, so you can switch again.", &[("prev", &prev)]),
-                |me| me.simple_with(vec!["update".into(), me.app_id.clone(), "--undo".into()], &crate::i18n::tr("Back to the previous version"), true),
+                |me| {
+                    let Some(app) = me.app() else { return };
+                    let me = me.clone();
+                    glib::spawn_future_local(async move {
+                        let args = ["update", me.app_id.as_str(), "--undo"];
+                        // Offline: puts the kept version back.
+                        #[expect(clippy::disallowed_methods, reason = "way out: update --undo, offline")]
+                        let r = app.backend.call_online(&args, None).await;
+                        let ok = crate::i18n::tr("Back to the previous version");
+                        me.after_simple(&app, r, &ok, true).await;
+                    });
+                },
             );
         }
         // Check the setup (sam-jail doctor <app>), results right below.
@@ -1244,7 +1256,7 @@ impl AppPage {
         let update = adw::ActionRow::builder()
             .title(tr("Updates"))
             .subtitle(esc(&if checked == 0 {
-                crate::i18n::tr("Not checked yet. Checking contacts the update source this AppImage names (GitHub or its own server).")
+                crate::i18n::tr("Not checked yet. Checking contacts the update source this AppImage names (GitHub or its own server) and the servers it points to.")
             } else {
                 crate::i18n::trf(
                     "{detail} (checked {time})",
@@ -1269,10 +1281,19 @@ impl AppPage {
         check.connect_clicked(move |b| {
             if let Some(me) = w.upgrade() {
                 b.set_sensitive(false);
-                me.simple(
-                    vec!["updates".into(), me.app_id.clone()],
-                    &crate::i18n::tr("Update check done"),
-                );
+                let Some(app) = me.app() else { return };
+                let me = me.clone();
+                glib::spawn_future_local(async move {
+                    let args = ["updates", me.app_id.as_str()];
+                    // The person clicked Check for Updates.
+                    #[expect(
+                        clippy::disallowed_methods,
+                        reason = "way out: updates <id>, on a click"
+                    )]
+                    let r = app.backend.call_online(&args, None).await;
+                    let ok = crate::i18n::tr("Update check done");
+                    me.after_simple(&app, r, &ok, false).await;
+                });
             }
         });
 

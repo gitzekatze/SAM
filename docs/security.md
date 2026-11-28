@@ -1855,15 +1855,48 @@ metadata. SAM treats both as untrusted.
 
 ## Network use by SAM itself
 
-SAM goes online for one thing only: update checks. A check reads the update
-source an AppImage names (GitHub, or the app's own server) and asks for the
-first few kilobytes of the update description. It runs only when you click
-*Check* or run `sam-jail updates`, or once a day when *Check for updates when
-SAM opens* is on (off by default). It uses `curl`, HTTPS only (redirects
-included), with a generic user agent and without reading a `~/.curlrc`
-(where a setting could switch off certificate checks or send requests
-elsewhere); nothing about you or your apps is sent, and nothing is
-downloaded or installed. Only the AppImage SAM unpacked is checked: SAM
+**SAM goes online only when you ask.** That means an update check, an
+update of an app, or an update of SAM itself. It also means once a day when
+the window opens, if you switched on *Check for updates when SAM opens*,
+which is off by default.
+
+Each time, SAM runs `curl`. For an app whose update information names an
+update description (a `.zsync` address), curl asks for that description,
+then for the file it names. For an app published on GitHub, curl first asks
+`api.github.com` for the description of the newest release (or of the
+release the app names), then for up to four update descriptions that answer
+names, then for the file a description names. That file can be on any HTTPS
+server. curl also follows a server's redirect to another HTTPS address, at
+most five times per request. For these requests, curl never reads a
+`~/.curlrc`, where a setting could switch off certificate checks or send
+requests elsewhere.
+
+Every request is a plain `GET`. It carries only the address, the server's
+name, SAM's fixed user agent (`SAM-AppImage-update-check`), what SAM
+accepts and, for part of a file, which part. It carries nothing else about
+you, this computer or your other apps. SAM refuses an update address that
+holds a login.
+
+**What the servers still learn.** Each server sees your IP address, the
+time, and which app you check, because that is in the address. Partial
+downloads show roughly which version you had. GitHub sees every
+GitHub-hosted app that a check of all apps asks about, one after the other
+from the same address. Your DNS server, a proxy set in your environment,
+and anyone on the network path see the servers' names (in the name lookup
+and in the TLS handshake).
+
+**Links.** A web address SAM shows (a download page, SAM's website, the
+licence, a link in the guide) opens in your browser only when you click it.
+Your browser then loads it; SAM sends nothing itself.
+
+How this is checked, and what the checks do not cover, is in the
+[privacy check](reports/privacy-check-2026-11-28.md). One of its limits:
+the contract check and the bug report run `curl --version`, whose
+libraries look up your account and this computer's name through the
+system's name service; where that service asks a server (accounts from a
+network directory, for example), that lookup may leave the computer.
+
+Only the AppImage SAM unpacked is checked: SAM
 reads the file once, compares its checksum with what it unpacked last and
 takes the update address from exactly the bytes it compared. A file
 replaced outside SAM (for example by another app with access to that
@@ -1988,10 +2021,11 @@ line at once, is refused until the first is done
 SAM keeps what it learns about you on your computer.
 
 - **No telemetry.** SAM has no usage statistics, crash reporting or
-  "phone home" of any kind. The only network traffic SAM itself makes is
-  described above: update checks and updates, when you ask for them, and
-  the daily check only if you switch it on
-  (`update_checks_stay_off_unless_switched_on`).
+  "phone home" of any kind. SAM goes online only when you ask, as
+  [Network use by SAM itself](#network-use-by-sam-itself) describes
+  (`update_checks_stay_off_unless_switched_on`,
+  `everyday_commands_make_no_internet_connection`,
+  `update_requests_carry_nothing_about_the_person_or_their_apps`).
 - **What stays on your disk:** SAM's settings, the app records and, per app,
   the last 20 launch logs (Preferences → Diagnostics). A launch log holds
   what the app printed, which can include personal data; it never leaves your

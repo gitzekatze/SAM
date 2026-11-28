@@ -1,6 +1,11 @@
 //! sam-profile: category inference, recommended profiles, the user's
 //! presets, checks of changed settings, and the permission tags.
 
+// The privacy check (crates/sam-jail-cli/tests/network_use.rs): every way
+// this program could reach the network or start a program is an #[expect]
+// listed there (clippy.toml: disallowed-methods, disallowed-types).
+#![cfg_attr(not(test), deny(clippy::disallowed_methods, clippy::disallowed_types))]
+
 pub mod tags;
 
 use anyhow::Result;

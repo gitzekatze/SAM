@@ -5,6 +5,10 @@
 //!
 //! Development builds also take --screenshot and its options (screenshot.rs).
 
+// The privacy check (crates/sam-jail-cli/tests/network_use.rs): every way
+// this program could reach the network or start a program is an #[expect]
+// listed there (clippy.toml: disallowed-methods, disallowed-types).
+#![cfg_attr(not(test), deny(clippy::disallowed_methods, clippy::disallowed_types))]
 // GTK callbacks (Box<dyn Fn(&Rc<…>)>) are complex types by nature.
 #![allow(clippy::type_complexity)]
 
@@ -268,9 +272,11 @@ fn main() -> glib::ExitCode {
     if i18n::RESTART.load(std::sync::atomic::Ordering::SeqCst) {
         use std::os::unix::process::CommandExt;
         if let Ok(exe) = std::env::current_exe() {
-            let err = std::process::Command::new(exe)
-                .args(std::env::args_os().skip(1))
-                .exec();
+            #[expect(clippy::disallowed_methods, reason = "way out: this window again")]
+            let mut cmd = std::process::Command::new(exe);
+            cmd.args(std::env::args_os().skip(1));
+            #[expect(clippy::disallowed_methods, reason = "way out: this window again")]
+            let err = cmd.exec();
             errln!("sam-jail-gui: {err}");
         }
     }

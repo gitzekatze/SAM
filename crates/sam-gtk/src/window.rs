@@ -1261,10 +1261,18 @@ impl App {
                     .application_name("SAM - Sandboxed AppImage Manager")
                     .application_icon("io.github.gitzekatze.SAM")
                     .version(env!("CARGO_PKG_VERSION"))
-                    .comments(crate::i18n::tr("Sandbox AppImages with Bubblewrap and manage their permissions, much like Flatseal does for Flatpak apps."))
-                    .website("https://github.com/gitzekatze/SAM")
-                    .license_type(gtk::License::Gpl30)
-                    .build();
+                    .comments(crate::i18n::tr("Sandbox AppImages with Bubblewrap and manage their permissions, much like Flatseal does for Flatpak apps."));
+                #[expect(
+                    clippy::disallowed_methods,
+                    reason = "way out: a link, opened on a click"
+                )]
+                let d = d.website("https://github.com/gitzekatze/SAM");
+                #[expect(
+                    clippy::disallowed_methods,
+                    reason = "way out: a link, opened on a click"
+                )]
+                let d = d.license_type(gtk::License::Gpl30);
+                let d = d.build();
                 d.present(Some(&me.window));
             }),
         );
@@ -1520,7 +1528,14 @@ impl App {
     fn self_update(self: &Rc<Self>) {
         let me = self.clone();
         glib::spawn_future_local(async move {
-            let check = match me.backend.call(&["self-update", "--check"], None).await {
+            // The person chose Check for SAM Updates in the main menu.
+            let args = ["self-update", "--check"];
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "way out: self-update --check, from the menu"
+            )]
+            let r = me.backend.call_online(&args, None).await;
+            let check = match r {
                 Ok(v) => v,
                 Err(e) => return me.report_error(&e),
             };
@@ -1537,11 +1552,9 @@ impl App {
                     )
                     .await
                 {
-                    gtk::UriLauncher::new(&page).launch(
-                        Some(&me.window),
-                        gio::Cancellable::NONE,
-                        |_| {},
-                    );
+                    #[expect(clippy::disallowed_methods, reason = "way out: SAM's release page")]
+                    let launcher = gtk::UriLauncher::new(&page);
+                    launcher.launch(Some(&me.window), gio::Cancellable::NONE, |_| {});
                 } else if page.is_empty() {
                     me.toast(&body);
                 }
@@ -1556,7 +1569,13 @@ impl App {
                 return;
             }
             me.toast(&tr("Downloading the update…"));
-            let done = match me.backend.call(&["self-update"], None).await {
+            // The person said Update in the dialog just before.
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "way out: self-update, after the person said Update"
+            )]
+            let r = me.backend.call_online(&["self-update"], None).await;
+            let done = match r {
                 Ok(v) => v,
                 Err(e) => return me.report_error(&e),
             };
@@ -1578,7 +1597,12 @@ impl App {
                     std::ffi::OsStr::new("sleep 1; exec \"$0\""),
                     std::ffi::OsStr::new(&new_path),
                 ];
-                if gio::Subprocess::newv(&argv, gio::SubprocessFlags::NONE).is_ok() {
+                #[expect(
+                    clippy::disallowed_methods,
+                    reason = "way out: /bin/sh, to start the new SAM"
+                )]
+                let started = gio::Subprocess::newv(&argv, gio::SubprocessFlags::NONE);
+                if started.is_ok() {
                     if let Some(app) = me.window.application() {
                         app.quit();
                     }
@@ -1637,7 +1661,13 @@ impl App {
             {
                 let me = me.clone();
                 glib::spawn_future_local(async move {
-                    if let Ok(v) = me.backend.call(&["updates", "--if-due"], None).await {
+                    // Checks only when the person switched on the daily
+                    // check (off by default; `updates --if-due` returns at
+                    // once otherwise).
+                    let args = ["updates", "--if-due"];
+                    #[expect(clippy::disallowed_methods, reason = "way out: updates --if-due")]
+                    let r = me.backend.call_online(&args, None).await;
+                    if let Ok(v) = r {
                         let n = v
                             .get("apps")
                             .and_then(Value::as_array)

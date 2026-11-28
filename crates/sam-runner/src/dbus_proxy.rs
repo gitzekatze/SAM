@@ -224,6 +224,7 @@ impl DbusProxy {
         // proxy, never from the app's own output).
         args.push("--log".into());
         let (program, argv) = (tool.path.clone(), args.clone());
+        #[expect(clippy::disallowed_methods, reason = "way out: xdg-dbus-proxy")]
         let mut cmd = Command::new(&program);
         cmd.args(&argv)
             .stdin(Stdio::null())
@@ -587,7 +588,9 @@ fn record_lines(out: impl std::io::Read) -> impl Iterator<Item = String> {
 /// Whether something listens on the Unix socket at `path` (an existing
 /// file alone is not enough).
 fn accepting(path: &std::path::Path) -> bool {
-    std::os::unix::net::UnixStream::connect(path).is_ok()
+    #[expect(clippy::disallowed_methods, reason = "way out: the proxy's own socket")]
+    let connected = std::os::unix::net::UnixStream::connect(path);
+    connected.is_ok()
 }
 
 #[cfg(test)]

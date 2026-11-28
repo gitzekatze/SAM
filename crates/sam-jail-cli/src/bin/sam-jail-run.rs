@@ -2,6 +2,11 @@
 //! (`Exec=sam-jail-run --app-id <id> %F`), and the in-sandbox helper that
 //! applies Landlock before exec (`--sandbox-exec <spec> -- <cmd>`).
 
+// The privacy check (crates/sam-jail-cli/tests/network_use.rs): every way
+// this program could reach the network or start a program is an #[expect]
+// listed there (clippy.toml: disallowed-methods, disallowed-types).
+#![cfg_attr(not(test), deny(clippy::disallowed_methods, clippy::disallowed_types))]
+
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -35,7 +40,12 @@ fn notify_with_fix(title: &str, body: &str, app_id: &str) {
 else
   exec "$1" --app-name="SAM - Sandboxed AppImage Manager" --icon=dialog-warning "$2" "$3"
 fi"#;
-    let spawned = Command::new("/bin/sh")
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "way out: /bin/sh for a desktop notice"
+    )]
+    let mut cmd = Command::new("/bin/sh");
+    let spawned = cmd
         .args(["-c", script, "sh"])
         .arg(n)
         .args([clean(title), clean(body)])
@@ -116,6 +126,10 @@ if a=$("$n" --app-name="SAM - Sandboxed AppImage Manager" --icon=dialog-warning 
 else
   exec "$n" --app-name="SAM - Sandboxed AppImage Manager" --icon=dialog-warning "$title" "$body"
 fi"#;
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "way out: /bin/sh for a desktop notice"
+    )]
     let mut cmd = Command::new("/bin/sh");
     cmd.args(["-c", script, "sh"])
         .arg(notify_send)
@@ -158,7 +172,9 @@ fn notify(title: &str, body: &str) {
         // App names and messages are untrusted; notification bodies render
         // markup, so neutralize it.
         let clean = |s: &str| sam_core::util::display_safe(s, 400).replace('&', "&amp;");
-        let _ = Command::new(n)
+        #[expect(clippy::disallowed_methods, reason = "way out: notify-send")]
+        let mut cmd = Command::new(n);
+        let _ = cmd
             .args([
                 "--app-name=SAM - Sandboxed AppImage Manager",
                 "--icon=dialog-warning",

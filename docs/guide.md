@@ -203,6 +203,8 @@ A system check (Bubblewrap, user namespaces, Landlock, the D-Bus proxy, sockets)
 
 **SAM itself:** if you use SAM's AppImage, *Check for SAM Updates* in the main menu updates SAM the same way. Packages from your distribution update through its package manager.
 
+What SAM sends when it goes online, and what the servers learn: [Network use by SAM itself](security.md#network-use-by-sam-itself).
+
 **Disk space:** an app's page shows, under *Details*, how much space it takes. **Free Space** deletes its unpacked copy; its settings and files stay, and the next start unpacks the AppImage again (a few seconds).
 
 ---

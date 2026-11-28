@@ -95,3 +95,10 @@ unwrap_used = "deny"
 panic = "deny"
 todo = "deny"
 unimplemented = "deny"
+# The ways SAM could reach the network or start a program (clippy.toml):
+# allowed here, so tests may use them, and denied at the root of every
+# program crate outside its tests (`#![cfg_attr(not(test), deny(...))]`),
+# where each use carries a listed #[expect]
+# (crates/sam-jail-cli/tests/network_use.rs).
+disallowed_methods = "allow"
+disallowed_types = "allow"

@@ -8393,7 +8393,10 @@ msgid ""
 "SAM did not start {app}: the folder {grant} does not lead to the app's own "
 "folder {folder}. Take {grant} out of the app's folders and give it {folder} "
 "instead."
-msgstr "SAM hat {app} nicht gestartet: Der Ordner {grant} führt nicht zum eigenen Ordner {folder} der App. Nimm {grant} aus den Ordnern der App heraus und gib ihr stattdessen {folder}."
+msgstr ""
+"SAM hat {app} nicht gestartet: Der Ordner {grant} führt nicht zum eigenen "
+"Ordner {folder} der App. Nimm {grant} aus den Ordnern der App heraus und gib "
+"ihr stattdessen {folder}."
 
 #. Keep the {placeholders}; their order may change.
 #: crates/sam-runner/src/ops/profiles.rs:273
@@ -9975,6 +9978,50 @@ msgstr ""
 #: crates/sam-storage/src/lib.rs:970
 msgid "unknown flat preset key '{other}'"
 msgstr "unbekannter Schlüssel „{other}“ in der flachen Vorlage"
+
+#. Keep the {placeholders}; their order may change.
+#: crates/sam-gtk/src/app_page/data.rs:600
+msgid ""
+"SAM downloads {version} from where the update source publishes it, checks it "
+"against the published checksum, and puts it in place of the current file. "
+"The current version is kept, so you can go back. Settings and files stay."
+msgstr ""
+"SAM lädt {version} von dort herunter, wo die Update-Quelle es "
+"veröffentlicht, prüft es anhand der veröffentlichten Prüfsumme und setzt es "
+"an die Stelle der aktuellen Datei. Die aktuelle Version bleibt erhalten, "
+"sodass du zurückwechseln kannst. Einstellungen und Dateien bleiben."
+
+#: crates/sam-gtk/src/app_page/render.rs:1259
+msgid ""
+"Not checked yet. Checking contacts the update source this AppImage names "
+"(GitHub or its own server) and the servers it points to."
+msgstr ""
+"Noch nicht geprüft. Die Prüfung fragt bei der Update-Quelle nach, die dieses "
+"AppImage nennt (GitHub oder ihr eigener Server), und bei den Servern, auf "
+"die sie verweist."
+
+#: crates/sam-gtk/src/backend.rs:407
+msgid ""
+"SAM did not run this command: the window goes online only through its update "
+"actions."
+msgstr ""
+"SAM hat diesen Befehl nicht ausgeführt: Das Fenster geht nur über seine "
+"Aktionen für Aktualisierungen online."
+
+#: crates/sam-gtk/src/pages.rs:325
+msgid ""
+"SAM goes online only when you ask: for update checks and updates. Each check "
+"asks the source an AppImage names (GitHub or the app's own server) whether a "
+"newer version is published."
+msgstr ""
+"SAM geht nur online, wenn du es willst: für die Suche nach Aktualisierungen "
+"und für Aktualisierungen. Jede Suche fragt die Quelle, die ein AppImage "
+"nennt (GitHub oder der eigene Server der App), ob eine neuere Version "
+"veröffentlicht ist."
+
+#: crates/sam-runner/src/updates.rs:110
+msgid "the update address holds a login, which SAM does not send"
+msgstr "die Update-Adresse enthält Anmeldedaten, die SAM nicht sendet"
 
 #~ msgid ""
 #~ "Lets the app open Bluetooth sockets, which reach nearby devices only with "

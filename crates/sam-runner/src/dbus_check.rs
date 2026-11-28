@@ -22,7 +22,9 @@ fn connect(address: &str, timeout: Duration) -> Result<(UnixStream, BufReader<Un
         .context(sam_core::i18n::tr(
             "only unix:path= bus addresses are supported",
         ))?;
-    let mut s = UnixStream::connect(path).with_context(|| format!("connecting to {path}"))?;
+    #[expect(clippy::disallowed_methods, reason = "way out: a D-Bus socket")]
+    let connected = UnixStream::connect(path);
+    let mut s = connected.with_context(|| format!("connecting to {path}"))?;
     s.set_read_timeout(Some(timeout))?;
     s.set_write_timeout(Some(timeout))?;
 

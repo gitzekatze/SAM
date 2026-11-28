@@ -167,11 +167,12 @@ fn login_and_admin_files_in(etc: &Path) -> (State, String) {
 /// Runs `program args`, returning its output (stdout and stderr) when it ran.
 fn output(program: &str, args: &[&str]) -> Option<String> {
     let path = which(program)?;
-    let out = Command::new(path)
-        .args(args)
-        .stdin(Stdio::null())
-        .output()
-        .ok()?;
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "way out: a tool a contract names"
+    )]
+    let mut cmd = Command::new(path);
+    let out = cmd.args(args).stdin(Stdio::null()).output().ok()?;
     Some(format!(
         "{}{}",
         String::from_utf8_lossy(&out.stdout),

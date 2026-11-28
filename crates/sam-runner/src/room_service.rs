@@ -1427,6 +1427,7 @@ fn spawn_room(
     let (null_fd, err_fd) = (null.as_raw_fd(), err_write.as_raw_fd());
     // SAFETY: getpid has no arguments.
     let parent = unsafe { libc::getpid() };
+    #[expect(clippy::disallowed_methods, reason = "way out: a fork of Room service")]
     // SAFETY: the child below makes only async-signal-safe calls on data
     // made before the fork, then execs or exits.
     let pid = unsafe { libc::fork() };
@@ -1532,6 +1533,7 @@ fn spawn_room(
                 *libc::__errno_location() = libc::ENOSYS;
                 fail(err);
             }
+            #[expect(clippy::disallowed_methods, reason = "way out: a helper in its room")]
             libc::execve(path.as_ptr(), argv_ptrs.as_ptr(), envp.as_ptr());
             fail(err)
         }
@@ -1615,6 +1617,7 @@ unsafe fn cloexec_listed(from: u32, to: u32) -> bool {
     }
     let mut buf = [0u8; 4096];
     let complete = loop {
+        #[expect(clippy::disallowed_methods, reason = "way out: a syscall, getdents64")]
         // SAFETY: getdents64 writes at most `buf.len()` bytes into `buf`.
         let n = unsafe { libc::syscall(libc::SYS_getdents64, dir, buf.as_mut_ptr(), buf.len()) };
         let Ok(n) = usize::try_from(n) else {
@@ -1674,9 +1677,11 @@ fn close_range_cloexec(from: u32, to: u32) -> libc::c_long {
     if NO_CLOSE_RANGE_FOR_TESTS.load(Ordering::SeqCst) {
         return -1;
     }
+    #[expect(clippy::disallowed_methods, reason = "way out: a syscall, close_range")]
     // SAFETY: close_range with CLOSE_RANGE_CLOEXEC only sets a flag on
     // this process's own descriptors; it closes nothing.
-    unsafe { libc::syscall(libc::SYS_close_range, from, to, CLOSE_RANGE_CLOEXEC) }
+    let r = unsafe { libc::syscall(libc::SYS_close_range, from, to, CLOSE_RANGE_CLOEXEC) };
+    r
 }
 
 /// Tests only: close_range fails, as on a kernel before 5.11.
@@ -2348,7 +2353,9 @@ fn standin_at(version: &str, argv: &[String], socket: &Path) -> i32 {
     // SAFETY: F_GETFD only asks whether the number is an open connection.
     fds.retain(|fd| unsafe { libc::fcntl(*fd, libc::F_GETFD) } >= 0);
     fds.sort_unstable();
-    let stream = match UnixStream::connect(socket) {
+    #[expect(clippy::disallowed_methods, reason = "way out: Room service's socket")]
+    let connected = UnixStream::connect(socket);
+    let stream = match connected {
         Ok(s) => s,
         Err(e) => return fail(&format!("no Room service here ({e})")),
     };

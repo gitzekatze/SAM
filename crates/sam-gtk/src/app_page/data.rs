@@ -464,6 +464,10 @@ impl AppPage {
             .unwrap_or_default();
         if !p.is_empty() {
             let _ = std::fs::create_dir_all(&p);
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "way out: a local folder, opened on a click"
+            )]
             let launcher = gtk::FileLauncher::new(Some(&gio::File::for_path(&p)));
             let win = self.app().map(|a| a.window.clone());
             glib::spawn_future_local(async move {
@@ -503,17 +507,30 @@ impl AppPage {
         let ok_text = ok_text.to_string();
         glib::spawn_future_local(async move {
             let refs: Vec<&str> = args.iter().map(String::as_str).collect();
-            match app.backend.call(&refs, None).await {
-                Ok(_) => app.toast(&ok_text),
-                Err(e) => app.report_error(&e),
-            }
-            me.reload();
-            if full {
-                app.refresh_apps().await;
-            } else {
-                app.refresh_registered().await;
-            }
+            let r = app.backend.call(&refs, None).await;
+            me.after_simple(&app, r, &ok_text, full).await;
         });
+    }
+
+    /// What [`Self::simple_with`] does after its command: tells the result
+    /// and reloads. The update buttons use it after `call_online`.
+    pub(super) async fn after_simple(
+        self: &Rc<Self>,
+        app: &Rc<App>,
+        r: crate::backend::Reply,
+        ok_text: &str,
+        full: bool,
+    ) {
+        match r {
+            Ok(_) => app.toast(ok_text),
+            Err(e) => app.report_error(&e),
+        }
+        self.reload();
+        if full {
+            app.refresh_apps().await;
+        } else {
+            app.refresh_registered().await;
+        }
     }
 
     pub(super) fn apply_suggestion(self: &Rc<Self>, sug: Value, as_repair: bool, then_run: bool) {
@@ -580,7 +597,7 @@ impl AppPage {
                 .map(|e| util::str_of(&e, "update.latest").to_string())
                 .filter(|s| !s.is_empty())
                 .unwrap_or_else(|| crate::i18n::tr("the newest version"));
-            let body = crate::i18n::trf("SAM downloads {version} from the address the AppImage names, checks it against the published checksum, and puts it in place of the current file. The current version is kept, so you can go back. Settings and files stay.", &[("version", &util::plain(&latest))]);
+            let body = crate::i18n::trf("SAM downloads {version} from where the update source publishes it, checks it against the published checksum, and puts it in place of the current file. The current version is kept, so you can go back. Settings and files stay.", &[("version", &util::plain(&latest))]);
             if !window::confirm(&app.window, &tr("Update Now?"), &body, &tr("Update"), false).await
             {
                 return;
@@ -588,10 +605,13 @@ impl AppPage {
             button.set_sensitive(false);
             app.toast(&tr("Downloading the update…"));
             let mut args = vec!["update".to_string(), me.app_id.clone()];
-            let mut result = app
-                .backend
-                .call(&args.iter().map(String::as_str).collect::<Vec<_>>(), None)
-                .await;
+            let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+            // The person said Update in the dialog just before.
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "way out: update, after the person said Update"
+            )]
+            let mut result = app.backend.call_online(&refs, None).await;
             if let Err(e) = &result {
                 if e.is("signing-key-changed")
                     || e.is("signature-unchecked")
@@ -610,19 +630,26 @@ impl AppPage {
                         window::confirm(&app.window, &title, e, &tr("Update Anyway"), true).await;
                     if ok {
                         args.push("--accept-key-change".into());
-                        result = app
-                            .backend
-                            .call(&args.iter().map(String::as_str).collect::<Vec<_>>(), None)
-                            .await;
+                        let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+                        // The person said Update Anyway just before.
+                        #[expect(
+                            clippy::disallowed_methods,
+                            reason = "way out: update, after the person said Update Anyway"
+                        )]
+                        let r = app.backend.call_online(&refs, None).await;
+                        result = r;
                     } else {
                         // Said no: the download kept for this answer is
                         // deleted now, not left in SAM's folder.
                         args.push("--decline-key-change".into());
-                        result = app
-                            .backend
-                            .call(&args.iter().map(String::as_str).collect::<Vec<_>>(), None)
-                            .await
-                            .map(|_| Value::Null);
+                        let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+                        // Offline: deletes the kept download.
+                        #[expect(
+                            clippy::disallowed_methods,
+                            reason = "way out: update --decline-key-change, offline"
+                        )]
+                        let r = app.backend.call_online(&refs, None).await;
+                        result = r.map(|_| Value::Null);
                     }
                 }
             }
