@@ -20,7 +20,8 @@ impl Sam {
     /// and the change did not come from a SAM update, the app does not start
     /// until the person has looked at it: another app with access to the
     /// folder could have swapped the file, which would otherwise inherit the
-    /// old app's permissions.
+    /// old app's permissions. The mark is saved before the new content is
+    /// unpacked; when it cannot be saved, nothing is unpacked.
     pub fn reextract(&self, query: &str, consent_fallback: bool) -> Result<AppEntry> {
         self.reextract_as(query, consent_fallback, None)
     }
@@ -75,7 +76,8 @@ impl Sam {
 
     /// [`reextract_as`](Self::reextract_as) from `checked.file`. Only SAM's
     /// own updates and going back (not a copy of the AppImage's file) leave
-    /// a changed file unmarked.
+    /// a changed file unmarked. The mark is saved before the new content is
+    /// unpacked; when it cannot be saved, nothing is unpacked.
     fn reextract_from(
         &self,
         query: &str,
@@ -123,16 +125,6 @@ impl Sam {
         // seen checksum: the change check and relocate update that one, so
         // a swapped file looked known (regression, audit U-H2).
         let changed_content = unpacked_sha256(&entry) != fp.sha256;
-        if changed_content && !checked.sams_update {
-            // The "look at it first" mark is saved before the new content
-            // replaces the old one in the same folder: when the closing
-            // save below fails (another SAM process kept the record lock
-            // too long, a full disk), the record still asks first, so the
-            // new content does not start unconfirmed. When this save
-            // fails, nothing is unpacked yet. When the unpacking fails,
-            // the mark stays and SAM asks once more about the old content.
-            self.update_record(&entry.id, |f| f.content_changed_outside = true)?;
-        }
         let root = self.unpack_root()?.join(&entry.id);
         let mut log = Vec::new();
         let req = ExtractRequest {
@@ -143,6 +135,26 @@ impl Sam {
             allow_fallback: consent_fallback && self.config.extraction.allow_fallback,
             isolation: self.extract_isolation()?,
         };
+        if changed_content && !checked.sams_update {
+            // The "look at it first" mark is saved before the new content
+            // replaces the old one in the same folder: when SAM stops after
+            // the swap, the closing save below fails (another SAM process
+            // kept the record lock too long, a full disk) or the detection
+            // after the unpack fails, the record still asks first, so the
+            // new content does not start unconfirmed. Saved only once the
+            // unpack is ready to start, so a failure before it leaves no
+            // mark; when this save fails, nothing is unpacked and the
+            // error says so. When the unpacking fails, the mark stays and
+            // SAM asks once more about the old content.
+            let name = sam_core::util::display_safe(entry.display_name(), 80);
+            self.update_record(&entry.id, |f| f.content_changed_outside = true)
+                .with_context(|| {
+                    sam_core::i18n::trf(
+                        "SAM did not unpack {app} again: it could not first save in the app's record that its new content must be looked at before it starts. Nothing was unpacked.",
+                        &[("app", &name)],
+                    )
+                })?;
+        }
         match extract(&req, &mut log) {
             Ok(out) => {
                 entry.appimage_type = info.kind;
@@ -237,7 +249,7 @@ impl Sam {
                     )
                 }
                 SourceStatus::Changed { new, reasons } => {
-                    a.source = new;
+                    note_seen_file(&mut a, new);
                     a.state = AppState::Stale;
                     a.last_error = Some(format!("AppImage changed: {}", reasons.join(", ")));
                     ("stale", reasons)
@@ -284,7 +296,7 @@ impl Sam {
                 retire_placing(b, pl);
             }
             e.source_path = p.clone();
-            e.source = fp.clone();
+            note_seen_file(e, fp.clone());
             e.state = if same {
                 AppState::Ready
             } else {
@@ -1948,6 +1960,20 @@ pub(super) struct Checked<'a> {
     /// The content comes from a SAM update or going back, not from the
     /// AppImage's folder: a changed checksum is then no swap to look at.
     pub sams_update: bool,
+}
+
+/// Records `fp` as the file last seen at the app's place. For an app with
+/// nothing unpacked yet (its first unpack failed), the record's `source` is
+/// also what a later unpack compares with ([`unpacked_sha256`]): recording
+/// a file with other content there would let *Unpack Again* take a swapped
+/// file for the one the person added and unpack it unmarked. Such a file is
+/// not recorded; the app still shows that its file changed (the caller sets
+/// the state), and the first unpack marks the new content, as for an app
+/// that was unpacked.
+fn note_seen_file(app: &mut AppEntry, fp: Fingerprint) {
+    if app.extraction.is_some() || app.source.sha256 == fp.sha256 {
+        app.source = fp;
+    }
 }
 
 /// The checksum of the AppImage SAM unpacked last. Not the file's last seen
