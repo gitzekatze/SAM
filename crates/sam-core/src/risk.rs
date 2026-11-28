@@ -693,6 +693,28 @@ pub fn is_sensitive_path(path: &str) -> bool {
     is_sensitive_path_in(path, &crate::util::home_dir())
 }
 
+/// Whether `p` is `/run/media` or lies in it: drives mounted there are
+/// user files, not system ones, although they lie in `/run`. One rule for
+/// [`is_system_folder`] and [`is_sensitive_path_in`].
+fn on_run_media(p: &std::path::Path) -> bool {
+    p.starts_with("/run/media")
+}
+
+/// Whether the absolute path `p` is or lies inside a system folder: the
+/// entries of [`SENSITIVE_PATHS`] that start with `/`, except `/` itself
+/// (`/etc`, `/usr`, `/boot`, `/root`, `/var`, `/proc`, `/sys`, `/dev` and
+/// `/run`), but not `/run/media` and the drives in it. `/opt`, `/srv`,
+/// `/mnt`, `/media`, `/nix` and `/home` are not system folders. Text only:
+/// the caller decides which form of a path it asks about (as written,
+/// where it leads, a link on its way).
+pub fn is_system_folder(p: &std::path::Path) -> bool {
+    !on_run_media(p)
+        && SENSITIVE_PATHS
+            .iter()
+            .filter(|s| s.starts_with('/') && **s != "/")
+            .any(|s| p.starts_with(s))
+}
+
 /// [`is_sensitive_path`] for the home folder `home`: the system folders,
 /// the home itself and every folder that holds it, its key folders and
 /// credential stores, and the places that make the computer run something
@@ -713,7 +735,7 @@ pub fn is_sensitive_path_in(path: &str, home: &std::path::Path) -> bool {
         return true;
     }
     let norm = normalize_display_path(path, home);
-    if norm == "/run/media" || norm.starts_with("/run/media/") {
+    if on_run_media(std::path::Path::new(&norm)) {
         return false;
     }
     let home_places = crate::places::PROTECTED_RO
