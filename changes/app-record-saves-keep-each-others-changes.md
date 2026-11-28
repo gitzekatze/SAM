@@ -1,4 +1,4 @@
-### SAM's saves of an app keep each other's changes
+### SAM's saves of an app keep what other saves changed in other fields
 
 - Every save of an app record now takes one short record lock (the file
   `.records.lock` in SAM's apps folder), held only while the record is
