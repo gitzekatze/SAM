@@ -874,7 +874,9 @@ fn gpu_devices_in(dev: &Path) -> Vec<PathBuf> {
     v
 }
 
-/// Parse `~/.config/user-dirs.dirs` with sensible fallbacks.
+/// Parse `user-dirs.dirs` in the user's config folder ([`config_home`]:
+/// `~/.config/user-dirs.dirs` unless `XDG_CONFIG_HOME` says otherwise)
+/// with sensible fallbacks.
 pub fn xdg_user_dirs(home: &Path) -> BTreeMap<String, PathBuf> {
     let cfg_home = config_home(std::env::var_os("XDG_CONFIG_HOME"), home);
     let text = fs::read_to_string(cfg_home.join("user-dirs.dirs")).unwrap_or_default();
@@ -883,7 +885,7 @@ pub fn xdg_user_dirs(home: &Path) -> BTreeMap<String, PathBuf> {
 
 /// The user's config folder: `$XDG_CONFIG_HOME` when it is set and not
 /// empty, else `~/.config`.
-fn config_home(var: Option<std::ffi::OsString>, home: &Path) -> PathBuf {
+pub(crate) fn config_home(var: Option<std::ffi::OsString>, home: &Path) -> PathBuf {
     var.filter(|v| !v.is_empty())
         .map(PathBuf::from)
         .unwrap_or_else(|| home.join(".config"))

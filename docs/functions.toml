@@ -281,6 +281,8 @@ promise = "Keys, passwords and the files of your other apps stay hidden, even wi
 code = ["sam-sandbox/src/lib.rs", "sam-core/src/risk.rs", "sam-core/src/paths.rs", "sam-core/src/places.rs"]
 tests = ["a_grant_inside_sams_folder_does_not_show_it", "opened_files_are_judged_by_name_and_by_where_they_lead", "keys_start_places_and_sams_files_are_never_opened", "start_places_and_credential_stores_count_as_sensitive", "grants_of_parts_of_the_home_never_reach_start_places_or_secrets", "sams_own_folders_stay_hidden_inside_an_opened_folder", "key_and_system_folders_count_as_sensitive", "every_breakout_attempt_from_a_real_sandbox_fails", "every_hostile_appimage_fails_to_escape", "credential_files_and_folders_in_the_home_are_masked", "home_protection_is_prepared_only_for_a_writable_home", "sams_own_folders_stay_hidden_inside_a_granted_folder",
   "user_folder_locations_stay_read_only_with_a_writable_home",
+  "the_user_folders_file_is_protected_wherever_sam_reads_it_in_the_home",
+  "the_user_folders_file_stays_locked_when_the_config_folder_is_the_home",
   "a_linked_key_folder_is_hidden_also_when_only_its_target_is_granted",
   "key_switches_without_the_whole_home_hide_the_keys",
   "places_behind_links_stay_protected_and_the_app_still_starts",
@@ -884,6 +886,9 @@ code = ["sam-runner/src/repair.rs", "sam-sandbox/src/lib.rs"]
 tests = ["steps_that_add_are_undone_and_tried_steps_are_no_hints", "only_an_ordinary_start_judges_repair_steps", "the_no_sandbox_hint_is_only_for_electron_where_it_is_blocked", "the_graphics_hint_is_only_for_apps_without_it", "the_chromium_sandbox_check_matches_what_this_computer_allows", "a_repair_step_is_kept_when_it_helps_and_undone_when_it_does_not", "a_repair_step_that_did_not_help_is_undone", "the_ladder_offers_only_what_can_help_and_says_what_it_costs", "compatibility_mode_needs_yes_and_says_why", "a_repair_step_says_what_it_changes_and_costs", "ladder_skips_applied_and_noop_steps", "a_writable_app_folder_is_offered_only_where_it_can_work", "undoing_repair_steps_restores_the_settings_from_before_the_first_step", "switching_off_one_repair_step_keeps_the_others", "only_plain_library_names_are_accepted", "system_copies_replace_only_bundled_libraries_by_plain_name",
   "undoing_repair_steps_keeps_what_the_person_changed_since",
   "only_a_system_file_replaces_a_bundled_library",
+  "two_repair_steps_applied_at_once_are_both_listed",
+  "undoing_one_repair_step_keeps_a_step_applied_meanwhile",
+  "undoing_repairs_or_a_reset_turns_back_an_argument_a_step_added_meanwhile",
 ]
 
 [[function]]
@@ -914,10 +919,20 @@ about = "SAM notices settings changed behind its back and changed or moved AppIm
 id = 27
 area = "F"
 promise = "SAM notices app settings that something else changed and asks before starting the app."
-code = ["sam-storage/src/lib.rs", "sam-runner/src/launch.rs", "sam-runner/src/ops/profiles.rs", "sam-gtk/src/app_page/render.rs"]
+code = ["sam-storage/src/lib.rs", "sam-runner/src/launch.rs", "sam-runner/src/ops/profiles.rs", "sam-runner/src/ops/maintain.rs", "sam-gtk/src/app_page/render.rs"]
 tests = ["records_changed_outside_sam_are_recognized", "a_save_of_an_older_copy_keeps_the_marks_set_meanwhile", "a_save_over_an_unreadable_record_drops_nothing_silently", "the_review_fingerprint_covers_what_a_review_confirms", "a_review_from_an_out_of_date_page_confirms_nothing", "a_review_confirms_only_what_was_shown", "the_question_names_the_update_note_that_confirming_accepts", "a_review_from_the_page_names_what_it_showed", "only_the_review_clears_look_at_it_first", "an_app_changed_outside_sam_starts_only_after_confirmation", "a_changed_record_stays_blocked_until_it_is_confirmed", "a_late_save_keeps_a_change_made_meanwhile",
   "add_reminds_to_confirm_unconfirmed_settings",
   "confirming_changed_settings_names_what_they_allow",
+  "a_mark_set_during_another_save_survives",
+  "a_save_waits_while_the_record_lock_is_held_and_then_succeeds",
+  "a_record_lock_held_too_long_stops_the_save_with_an_error",
+  "a_save_of_changes_keeps_what_others_saved_meanwhile",
+  "a_mark_set_again_for_new_content_survives_a_confirmation_meanwhile",
+  "a_settings_change_keeps_what_an_unpack_saved_meanwhile",
+  "a_whole_set_is_saved_as_chosen_when_a_switch_was_saved_meanwhile",
+  "one_switch_changed_keeps_a_grant_saved_meanwhile",
+  "a_confirmation_never_clears_a_mark_saved_while_it_waits",
+  "a_confirmation_from_the_page_never_clears_a_mark_saved_before_its_lock",
 ]
 checks = ["tests/gui/app-page-atspi.sh"]
 
@@ -1024,7 +1039,9 @@ id = 29
 area = "F"
 promise = "SAM notices AppImages that were moved or changed."
 code = ["sam-intake/src/fingerprint.rs", "sam-runner/src/ops/maintain.rs"]
-tests = ["a_swapped_appimage_does_not_start_until_it_is_confirmed", "what_is_unpacked_is_what_sam_checked_even_if_the_file_is_swapped", "a_swapped_appimage_stays_marked_when_a_switch_changes", "a_swapped_appimage_is_marked_also_after_the_change_check", "a_swapped_appimage_file_is_marked_and_old_records_stay_unchanged", "a_changed_appimage_file_is_noticed", "a_moved_appimage_is_recognized_by_its_content", "a_swapped_appimage_moved_elsewhere_is_not_taken_for_the_apps_own_file", "a_moved_appimage_added_again_is_followed_with_its_marks", "following_a_moved_appimage_keeps_a_change_made_while_it_was_checked"]
+tests = ["a_swapped_appimage_does_not_start_until_it_is_confirmed", "what_is_unpacked_is_what_sam_checked_even_if_the_file_is_swapped", "a_swapped_appimage_stays_marked_when_a_switch_changes", "a_swapped_appimage_is_marked_also_after_the_change_check", "a_swapped_appimage_file_is_marked_and_old_records_stay_unchanged", "a_changed_appimage_file_is_noticed", "a_moved_appimage_is_recognized_by_its_content", "a_swapped_appimage_moved_elsewhere_is_not_taken_for_the_apps_own_file", "a_moved_appimage_added_again_is_followed_with_its_marks", "following_a_moved_appimage_keeps_a_change_made_while_it_was_checked",
+  "a_changed_appimage_still_asks_first_when_the_closing_save_fails",
+]
 
 [[area]]
 id = "G"
@@ -1061,7 +1078,7 @@ area = "G"
 promise = "Uninstalling SAM removes everything it created and brings back menu entries it hid."
 code = ["sam-runner/src/ops/maintain.rs", "sam-intake/src/menu.rs"]
 tests = ["uninstall_removes_everything_and_restores_menus", "uninstall_refuses_folders_that_are_not_sams",
-  "uninstall_removes_only_with_yes",
+  "uninstall_removes_only_with_yes", "uninstalling_leaves_only_what_the_person_keeps",
 ]
 
 [[function]]
@@ -1085,7 +1102,7 @@ id = 34
 area = "G"
 promise = "Privacy: SAM sends nothing on its own, and a bug report never contains your name, home path, addresses or secrets."
 code = ["sam-runner/src/doctor.rs"]
-tests = ["given_environment_values_are_hidden_in_the_shown_command", "bug_reports_hide_the_user_name_and_home_path", "bug_reports_hide_names_addresses_and_secrets", "bug_reports_hide_secrets_in_every_spelling", "a_bug_report_is_complete_and_redacted", "update_checks_stay_off_unless_switched_on", "the_machine_id_reaches_only_apps_with_dbus", "bug_reports_hide_tokens_in_every_shape", "a_log_cannot_break_out_of_its_code_block"]
+tests = ["given_environment_values_are_hidden_in_the_shown_command", "bug_reports_hide_the_user_name_and_home_path", "bug_reports_hide_names_addresses_and_secrets", "bug_reports_hide_secrets_in_every_spelling", "a_bug_report_is_complete_and_redacted", "update_checks_stay_off_unless_switched_on", "the_machine_id_reaches_only_apps_with_dbus", "bug_reports_hide_tokens_in_every_shape", "a_log_cannot_break_out_of_its_code_block", "a_bug_report_removes_the_personal_details_it_promises_to"]
 
 [[area]]
 id = "H"
