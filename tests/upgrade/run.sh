@@ -93,7 +93,7 @@ for app in $("$new" --json list | tail -n1 | python3 -c "import json,sys; print(
         elif grep -q 'changed outside SAM' "$work/tmp/refused-$app.log"; then refused=yes
         else refused="no, another error (see $work/tmp/refused-$app.log)"; fi
         check "$app does not start before the review" "$refused" yes
-        reviewed=$(data review "$app" --seen "$(info "$app" fingerprint)")
+        reviewed=$(data review "$app" --seen "$(info "$app" fingerprint)" || echo ERROR)
         case $reviewed in ERROR*) ;; *) reviewed=accepted ;; esac
         check "$app's review is accepted" "$reviewed" accepted
         check "$app no longer asks after the review" "$(info "$app" mark)" false
