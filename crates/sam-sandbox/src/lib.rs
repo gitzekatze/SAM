@@ -4227,9 +4227,9 @@ mod tests {
         assert!(has_seq(&a, &["--chdir", proj.to_str().unwrap()]));
         assert_eq!(withheld_opened_paths(&ctx), Vec::<PathBuf>::new());
         // "No access" shares nothing, not even read-only (it used to share
-        // like "Read-only"): no bind, the app starts in its private home
-        // rather than in a folder it cannot see, and the log names the file
-        // it did not share.
+        // like "Read-only"): no bind, the app starts in its home rather
+        // than in a folder it cannot see, and the log names the file it did
+        // not share.
         ctx.permissions.filesystem.opened_files = Access::None;
         assert_eq!(opened_paths(&ctx), vec![], "none shares no opened file");
         let a = args_of(&ctx);
@@ -5305,6 +5305,12 @@ mod tests {
     }
 }
 
+/// The file rules of docs/security.md, for the tests that tie them to
+/// the code (shared with sam-core's tests).
+#[cfg(test)]
+#[path = "../../sam-core/src/file_rules_doc.rs"]
+mod file_rules_doc;
+
 /// Found by mutation testing: each of these changes weakened the sandbox
 /// without any test noticing.
 #[cfg(test)]
@@ -5931,6 +5937,102 @@ mod guard_tests {
         p.filesystem.home = true;
         p.filesystem.home_access = Access::Rw;
         p
+    }
+
+    /// The security page says in the gap paragraph of rule C1 that a
+    /// credential store missing when the app starts is not hidden exactly
+    /// while SAM neither hides nor watches it: with the whole home and no
+    /// `~/.config/gh` at the start, nothing covers the place, so a store a
+    /// program outside the sandbox makes there while the app runs is
+    /// visible. Control: an existing `~/.config/gh` is hidden. It never
+    /// requires the gap to stay: a change that closes it fails here until
+    /// it also updates the rule.
+    #[test]
+    fn rule_c1_says_whether_a_store_missing_at_the_start_is_hidden() {
+        use crate::file_rules_doc::{gap, page, rule};
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap().join("home");
+        fs::create_dir_all(home.join(".config")).unwrap();
+        let gh = home.join(".config/gh");
+        let gh_s = gh.to_str().unwrap();
+        let p = full_rw();
+        assert!(!p.filesystem.hidden_files);
+        let hidden = |args: &[String]| {
+            has_seq(args, &["--tmpfs", gh_s])
+                || has_seq(args, &["--ro-bind", "/dev/null", gh_s])
+                || watched_places(&p, &home).iter().any(|w| w == ".config/gh")
+        };
+        let missing = hidden(&args_of(&ctx_for(&p, &home)));
+        fs::create_dir_all(&gh).unwrap();
+        assert!(
+            hidden(&args_of(&ctx_for(&p, &home))),
+            "control: an existing ~/.config/gh is hidden"
+        );
+        let page = page();
+        let gaps = gap(rule(&page, "C1"));
+        let marker = "missing when the app starts";
+        assert_eq!(
+            !missing,
+            gaps.contains(marker),
+            "rule C1, marker {marker:?}: the code hides a missing store: {missing}; gap paragraph: {gaps}"
+        );
+    }
+
+    /// The security page says in the gap paragraph of rule C3 that SAM
+    /// does not lock what a link inside a start place leads to exactly
+    /// while the sandbox leaves it writable: with `~/.config/tmux/plugins`
+    /// a link to `~/work/dots/tmux`, both with the whole home writable and
+    /// with a private home and `~/work` an extra writable folder, no
+    /// read-only bind covers `~/work/dots/tmux`. Controls: the start place
+    /// itself is locked with the whole home, and `~/work` is bound writable
+    /// with the private home. It never requires the gap to
+    /// stay: a change that closes it fails here until it also updates the
+    /// rule.
+    #[test]
+    fn rule_c3_says_whether_links_inside_start_places_are_locked() {
+        use crate::file_rules_doc::{gap, page, rule};
+        let t = tempfile::tempdir().unwrap();
+        let home = fs::canonicalize(t.path()).unwrap().join("home");
+        fs::create_dir_all(home.join(".config/tmux")).unwrap();
+        fs::create_dir_all(home.join("work/dots/tmux")).unwrap();
+        let target = home.join("work/dots/tmux");
+        std::os::unix::fs::symlink(&target, home.join(".config/tmux/plugins")).unwrap();
+        let t_s = target.to_str().unwrap();
+        let page = page();
+        let gaps = gap(rule(&page, "C3"));
+        let marker = "`~/.config/tmux/plugins`";
+        let whole = full_rw();
+        let mut private = PermissionSet::strict_gui();
+        private.filesystem.custom_write = vec![home.join("work").to_str().unwrap().to_string()];
+        for (case, p) in [
+            ("the whole home writable", whole),
+            ("~/work writable", private),
+        ] {
+            let args = args_of(&ctx_for(&p, &home));
+            if p.filesystem.home {
+                let place = home.join(".config/tmux");
+                let place = place.to_str().unwrap();
+                assert!(
+                    has_seq(&args, &["--ro-bind-try", place, place]),
+                    "control, {case}: the start place is locked: {args:?}"
+                );
+            } else {
+                let work = home.join("work");
+                let work = work.to_str().unwrap();
+                assert!(
+                    has_seq(&args, &["--bind-try", work, work])
+                        || has_seq(&args, &["--bind", work, work]),
+                    "control, {case}: ~/work is bound writable: {args:?}"
+                );
+            }
+            let locked = has_seq(&args, &["--ro-bind-try", t_s, t_s])
+                || has_seq(&args, &["--ro-bind", t_s, t_s]);
+            assert_eq!(
+                locked,
+                !gaps.contains(marker),
+                "rule C3, marker {marker}, {case}: the code locks the link's target: {locked}; gap paragraph: {gaps}"
+            );
+        }
     }
 
     /// The start's note for the fonts and theme files SAM skips for a link

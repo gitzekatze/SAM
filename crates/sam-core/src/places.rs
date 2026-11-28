@@ -2408,6 +2408,181 @@ pub fn left_out_note(shown: &str, why: &LeftOut, kind: LeftOutPlace, write: bool
 mod tests {
     use super::*;
 
+    /// The slug a heading gets as a link target on the page: lower case,
+    /// letters, digits, `-`, `_` and spaces kept, spaces made `-`.
+    fn heading_slug(heading: &str) -> String {
+        heading
+            .to_lowercase()
+            .chars()
+            .filter(|c| c.is_alphanumeric() || matches!(c, '-' | '_' | ' '))
+            .map(|c| if c == ' ' { '-' } else { c })
+            .collect()
+    }
+
+    /// The names in italics (`*X*`) inside every `(see …)` of `text`.
+    fn pointers(text: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut rest = text;
+        while let Some(i) = rest.find("(see ") {
+            let group = &rest[i + 1..];
+            // To the closing parenthesis of this group; a link's `(#…)`
+            // inside it opens and closes its own.
+            let mut depth = 1;
+            let mut end = group.len();
+            for (j, c) in group.char_indices() {
+                match c {
+                    '(' => depth += 1,
+                    ')' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            end = j;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            let mut parts = group[..end].split('*');
+            parts.next();
+            // Every second part lies between two stars.
+            while let Some(name) = parts.next() {
+                out.push(name.to_string());
+                parts.next();
+            }
+            rest = &group[end..];
+        }
+        out
+    }
+
+    /// Whether `text` holds an `R` and two or three digits with no letter
+    /// or digit beside them (a private review number).
+    fn has_review_number(text: &str) -> bool {
+        let c: Vec<char> = text.chars().collect();
+        (0..c.len()).any(|i| {
+            if c[i] != 'R' || (i > 0 && c[i - 1].is_alphanumeric()) {
+                return false;
+            }
+            let digits = c[i + 1..].iter().take_while(|d| d.is_ascii_digit()).count();
+            let after = c.get(i + 1 + digits);
+            (2..=3).contains(&digits) && !after.is_some_and(|a| a.is_alphanumeric())
+        })
+    }
+
+    /// The security page's file rules are numbered once each (F1 to F5,
+    /// C1 to C4), each points to where the page says it in full, every
+    /// link and every pointer in the section names a heading or a bold
+    /// paragraph of the page, and the section holds none of these private
+    /// references: an `R` with two or three digits, the words "review
+    /// finding" or "roadmap", "decision" with a number, or "chat".
+    #[test]
+    fn the_file_rules_are_numbered_once_each_and_cite_nothing_private() {
+        use crate::file_rules_doc::{one_line, page, rule, section, HEADING};
+        let page = page();
+        assert_eq!(page.matches(HEADING).count(), 1, "the heading, once");
+        let sec = section(&page);
+        for id in ["F1", "F2", "F3", "F4", "F5", "C1", "C2", "C3", "C4"] {
+            let mark = format!("- **{id},");
+            assert_eq!(sec.matches(&mark).count(), 1, "rule {id}, once");
+            let r = rule(&page, id);
+            assert!(
+                r.contains("](#") || one_line(r).contains("(see *"),
+                "rule {id} points to nowhere: {r}"
+            );
+        }
+        let headings: Vec<String> = page
+            .lines()
+            .filter(|l| l.starts_with('#'))
+            .map(|l| l.trim_start_matches('#').trim().to_string())
+            .collect();
+        let slugs: Vec<String> = headings.iter().map(|h| heading_slug(h)).collect();
+        let mut links = 0;
+        let mut rest = sec;
+        while let Some(i) = rest.find("](#") {
+            let after = &rest[i + 3..];
+            let end = after.find(')').expect("a link ends");
+            let slug = &after[..end];
+            assert!(
+                slugs.iter().any(|s| s == slug),
+                "the link #{slug} names no heading of the page"
+            );
+            links += 1;
+            rest = &after[end..];
+        }
+        assert!(links > 0, "the section links to its homes");
+        let flat_page = one_line(&page);
+        let flat = one_line(sec);
+        let names = pointers(&flat);
+        assert!(
+            names.len() > 9,
+            "the section points to its homes: {names:?}"
+        );
+        for name in names {
+            let bold = ['*', '.', ':']
+                .iter()
+                .any(|end| flat_page.contains(&format!("**{name}{end}")));
+            assert!(
+                bold || headings.contains(&name),
+                "the pointer *{name}* names no bold paragraph or heading of the page"
+            );
+        }
+        assert!(!has_review_number(sec), "a review number");
+        let lower = flat.to_lowercase();
+        for word in ["review finding", "roadmap"] {
+            assert!(!lower.contains(word), "{word:?} in the section");
+        }
+        let words: Vec<&str> = lower
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|w| !w.is_empty())
+            .collect();
+        assert!(!words.contains(&"chat"), "a chat in the section");
+        assert!(
+            !words
+                .windows(2)
+                .any(|w| w[0] == "decision" && w[1].starts_with(|c: char| c.is_ascii_digit())),
+            "a decision number in the section"
+        );
+    }
+
+    /// The security page names the start places SAM does not lock in the
+    /// gap paragraph of rule C3 exactly while `PROTECTED_RO` leaves them out
+    /// (`~/.vim`, `~/.config/vim`, `~/.local/share/nvim`, `~/.config/hg`),
+    /// and says that start places are not locked at the top of the home
+    /// where `XDG_CONFIG_HOME` names the home exactly while
+    /// `~/.config/autostart` does not follow there. It never
+    /// requires a gap to stay: a change that closes one fails here until it
+    /// also updates the rule.
+    #[test]
+    fn rule_c3_names_the_start_places_sam_does_not_lock() {
+        use crate::file_rules_doc::{gap, page, rule};
+        let page = page();
+        let gaps = gap(rule(&page, "C3"));
+        for place in [".vim", ".config/vim", ".local/share/nvim", ".config/hg"] {
+            // Locked: the place itself or a folder above it is on the list
+            // (an entry inside it, such as a file in `~/.vim`, locks only
+            // that entry).
+            let locked = PROTECTED_RO
+                .iter()
+                .any(|p| *p == place || place.starts_with(&format!("{p}/")));
+            let marker = format!("`~/{place}`");
+            assert_eq!(
+                locked,
+                !gaps.contains(&marker),
+                "rule C3, marker {marker}: the code locks it: {locked}; gap paragraph: {gaps}"
+            );
+        }
+        let t = tempfile::tempdir().unwrap();
+        let home = t.path().join("home");
+        let at_top = protected_places_with(&home, Some(home.clone()), None)
+            .iter()
+            .any(|p| p == "autostart");
+        let marker = "set to the home itself";
+        assert_eq!(
+            at_top,
+            !gaps.contains(marker),
+            "rule C3, marker {marker:?}: the code locks ~/autostart: {at_top}; gap paragraph: {gaps}"
+        );
+    }
+
     /// Nothing this start adds to its permissions.
     fn none() -> ThisStart {
         ThisStart::default()

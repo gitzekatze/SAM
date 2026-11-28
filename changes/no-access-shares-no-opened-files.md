@@ -10,8 +10,8 @@
   access*; such an app now gets no file you open with it shared; it sees
   one only where another permission shows its folder. Set it to
   *Read-only* or *Read & write* if it needs them.
-- With *No access*, the app starts in its private home instead of a folder
-  it cannot see, and a terminal app's start line and the launch log say
+- With *No access*, the app starts in its home instead of a folder it
+  cannot see, and a terminal app's start line and the launch log say
   which file SAM did not share and why.
 - The app's permissions page offers *No access* as a third choice. A saved
   *No access* used to show there as *Read-only*. Its description says

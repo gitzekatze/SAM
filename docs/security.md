@@ -781,16 +781,27 @@ before a start that shows it writable
 SAM promises this only when neither the file nor a folder on the way to it
 from the home (`~/cfg`) is a link. Not covered: while another app runs
 that saw the file missing, SAM leaves it missing (see *Folders are created
-empty first* below). SAM reads `XDG_CONFIG_HOME` from the environment of
-each start, so a start whose environment does not set it leaves
-`~/user-dirs.dirs` (or `~/cfg/user-dirs.dirs`) unlocked; set the variable
-in the desktop session's environment, not only in a shell's startup file.
+empty first* below).
 Not covered either: where either variable names the home, the start places
 are not locked at the top of the home (`~/autostart`, `~/applications`),
 so an app with the whole home writable can change them there. A folder
 outside the home that either variable names is shown only when you grant
 it, and SAM then neither hides the stores in it nor locks the places in
-it, `user-dirs.dirs` among them.
+it, `user-dirs.dirs` among them. A key folder or store that its own
+variable moves (`GNUPGHOME`, `PASSWORD_STORE_DIR`) is hidden only at its
+usual name. A store that is missing when the app starts is not hidden, so
+one that a program outside the sandbox creates while the app runs is
+visible until the next start. A key folder (`~/.ssh`, `~/.gnupg`) missing
+when the app starts is moved aside when it appears only in a start that
+shows a start place or key folder writable; in other starts, one created
+while the app runs is visible until the next start. A
+second name of a store, made with a hard link, is shown like any file. SAM
+reads `XDG_CONFIG_HOME` and `XDG_DATA_HOME` from the environment of each
+start, so a start whose environment does not name the folder a variable
+moves them to leaves the stores and start places there unguarded,
+`~/user-dirs.dirs` (or `~/cfg/user-dirs.dirs`) among them; set the
+variables in the desktop session's environment, not only in a shell's
+startup file.
 The switches that allow them count only with the whole home
 (`filesystem.home`): stored on without it (an old profile, a
 hand-edited file), they hide the keys and stores as if off, also where a
@@ -821,7 +832,10 @@ app that plants `~/.config/sam` as a link to the home, or to `~/work` while
 with an empty folder. Where the app is shown the place such a link leads to
 itself (the whole home, or exactly that folder), SAM cannot tell a planted
 link from another SAM's folder kept there, and the place stays hidden, as
-it always was.
+it always was. SAM finds its own folders below `XDG_CONFIG_HOME` and
+`XDG_DATA_HOME` from the environment of each start: a start whose
+environment does not name the folder a variable moves them to does not
+hide SAM's folders there.
 
 The folders that `SAM_CONFIG_DIR` and `SAM_DATA_DIR` name are hidden in the
 same way, also by an installed SAM, which ignores these developer variables
@@ -871,7 +885,13 @@ running program, wherever you keep them (`~/Downloads`, `~/Applications`,
 `~/.cargo/bin`). An app with write access to that folder can neither
 change, rename nor delete them, nor rename the folders above them to put
 its own program in their place: the next click on a menu entry would have
-run its program unsandboxed.
+run its program unsandboxed. SAM keeps only the programs of the copy that
+runs read-only this way: another copy of SAM that your menu entries run (an
+older AppImage in `~/Downloads`) gets no such lock in starts that this copy
+makes. A fix is planned. After SAM updates itself, SAM does not promise
+that its new AppImage is locked until SAM has restarted. A second name of SAM's
+AppImage, made with a hard link in a folder the app may write, is not
+locked either.
 
 **Read-only, even with write access** (each of these can make your system
 run a program the next time you log in or open a file):
@@ -884,6 +904,22 @@ run a program the next time you log in or open a file):
 | menu and default apps | menu entries, `mimeapps.list` |
 | desktop scripting | KWin and Plasma scripts, file manager service menus |
 | configs that run commands | git, Mercurial, vim, Neovim, tmux, screen |
+
+**Not covered by these locks.** `~/.vim` and `~/.config/vim` (where Vim
+also reads its start file and the plugins it runs at each start),
+`~/.local/share/nvim` (where plugin managers keep the plugins Neovim loads
+at each start) and Mercurial's `~/.config/hg` are not kept read-only; a fix
+for `~/.vim` and `~/.config/vim` is planned. SAM locks each start place, not
+what a link inside it leads to: with `~/.config/tmux/plugins` a link into
+`~/work` and `~/work` writable, the app can change what tmux runs. SAM
+locks a start file, not the files it names: the plugins that
+`~/.tmux.conf` runs from `~/.tmux/plugins` can be changed wherever a grant
+shows that folder writable. A second name of a start file, made with a
+hard link, is not locked either. The lock holds the start file as it was
+when the app started: a program outside the sandbox that replaces the file
+while the app runs (an editor that saves by writing a new file and
+renaming it over the old one) leaves the new file unlocked until the next
+start; a fix is planned.
 
 How these stay protected with the home writable:
 
@@ -934,7 +970,8 @@ How these stay protected with the home writable:
   link, so a start place could be bound writable. This is a known gap,
   older than this rule (SAM had the same race before); such a program can
   also write there when a start place holds a link into a folder it can
-  write, which SAM does not lock yet. Every other folder SAM binds by its
+  write, which SAM does not lock yet (see *Not covered by these locks*).
+  Every other folder SAM binds by its
   path at an access of its own inside a folder the app can change (a
   read-only extra folder, a user folder bound at its own access such as
   Documents read-only in `~/Sync` under a writable home, and an extra
@@ -1176,15 +1213,20 @@ How these stay protected with the home writable:
 
   With files opened with the app set to *No access*
   (`filesystem.opened_files = "none"`, also an old profile's `false`), none
-  is shared, not even read-only; the app then starts in its private home,
-  and a terminal app's start line and the launch log name each file SAM did
-  not share. A file inside a folder the app sees anyway stays visible.
+  is shared, not even read-only; the app then starts in its home, unless a
+  grant shows the folder it was started from, and a terminal app's start
+  line and the launch log name each file SAM did not share. A file inside a folder the app sees anyway stays visible.
 - **No grant undoes these protections.** They are added after every grant,
   so an extra folder (`/home`, `~/.local`, `~/.config`) cannot show a
   hidden key or make a start file writable again. Grants are checked where
   they really lead: a granted link (or a home folder that is itself a link)
   is followed, and the protections apply wherever the app sees these
-  places.
+  places. SAM sets these protections up when the app starts (the hidden
+  keys and stores, the locked start places, SAM's own folders and
+  programs), and does not promise that they follow a change a program
+  outside the sandbox makes while the app runs: a file or folder it
+  creates, replaces, or removes and makes again there may be visible or
+  writable to the app until its next start.
 - **Extra folders are rated where they lead.** `.`, `..` and doubled `/`
   count for nothing, so `/.` is the whole computer and `~/..` the folder
   above the home, both *Dangerous*; a folder that holds the home counts as
@@ -1420,6 +1462,129 @@ looks anyway, so two looks can then overlap)
 before SAM moves it aside: a program outside that reads it in exactly that
 moment would see it. So full home access is meant only for apps you trust,
 and SAM warns when you grant it.
+
+---
+
+## What an app sees: the file rules
+
+This section is an index of the promises above. Each rule says in short
+what this page promises about your files and points to the place that
+says it in full; a rule with gaps ends with the protections SAM does not
+give yet, named in a few words with a pointer to where this page states
+them. The grants F1 to F5 say what an app may see; the protections C1 to
+C4 are added after every grant (see *No grant undoes these protections*).
+
+- **F1, the private home.** Without the whole home, the app's home is a
+  private one, with the user folders, extra folders and opened files you
+  grant. SAM also shows your fonts and, with host theme settings on, your
+  theme files there read-only, where neither the place nor a folder on its
+  way in your home is a link, and where it neither lies in nor holds a
+  protected place, key folder, credential store or folder of SAM's (see [Files](#files) and
+  [Your fonts and theme files follow no link](#your-fonts-and-theme-files-follow-no-link)).
+- **F2, the whole home.** With `filesystem.home`, the app sees your home
+  at the access `filesystem.home_access` sets, and a granted folder that
+  holds the home (`/home`) keeps the same protections; C1 to C4 still hold
+  (see [Full home access](#full-home-access-what-stays-guarded-and-what-does-not)).
+  SAM keeps your fonts and font settings read-only where it binds them
+  (see [Your fonts and theme files follow no link](#your-fonts-and-theme-files-follow-no-link)).
+
+  *Not given yet:* a font or theme place missing at the start or kept as
+  a link; theme files with the whole home or with host theme settings
+  off; a further link on the way to where a font link leads; a font or
+  theme file that is a hard link; a way swapped between SAM's look and
+  the mount (see *Not covered* under
+  [Your fonts and theme files follow no link](#your-fonts-and-theme-files-follow-no-link)).
+- **F3, the user folders.** Each user folder you grant is shown at its
+  own access where `user-dirs.dirs` names it, also with the whole home.
+  SAM gives no place of its own to one set to a place it refuses or
+  reached through a link the app could have made (see *User folders are
+  only what they are*).
+
+  *Not given yet:* with the whole home, a user folder SAM refuses is seen
+  wherever the home shows it, at the home's access, also one refused for
+  a link on its way; a home kept behind a link; a folder on the way that a
+  second program swaps between SAM's look and the mount, or that did not
+  exist when a running copy of the app started (see *User folders are
+  only what they are* and *Extra folders inside a start place stay
+  read-only*).
+- **F4, the extra folders.** SAM binds each extra folder where its links
+  lead, unless a rule on this page leaves it out. A writable one that is
+  or lies in a start place is shown read-only, and one below a folder the
+  app can already change is not bound a second time (see *Extra folders
+  inside a start place stay read-only* and *Links never take a bind where
+  it must not lead*).
+
+  *Not given yet:* a way that a second program swaps between SAM's look
+  and the mount, also at a folder that did not exist when a running copy
+  of the app started; socket folders SAM does not know by name; a link the
+  app made in an earlier start with more write access (see *Extra folders
+  inside a start place stay read-only* and *Links never take a bind where
+  it must not lead*).
+- **F5, the files you open.** SAM shares the files and folders you open
+  with the app at the access `filesystem.opened_files` sets, and with
+  `none` none at all. It never shares the home, a system folder, a key
+  folder, a start place, a credential store or a place in SAM's folders
+  this way, nor a folder that holds the home, a key folder, a start place
+  or a credential store (see *Files named on the command line*).
+
+  *Not given yet:* a file that a link inside a protected place leads to,
+  named by its own path; a second name made with a hard link or a bind
+  mount; a way swapped between SAM's look and the mount. A grant that
+  shows such a file still shows it (see *Files named on the command
+  line*).
+- **C1, keys and credential stores are hidden.** `~/.ssh`, `~/.gnupg` and
+  the credential stores are hidden unless you allow them, also where a
+  link leads and after every other mount; the switches that allow them
+  count only with the whole home (see *Hidden unless you allow them
+  explicitly* and *Key folders that are links*).
+
+  *Not given yet:* stores in a settings or data folder outside the home;
+  a key folder or store that its own variable moves (`GNUPGHOME`); a store
+  missing when the app starts, and a key folder missing then in a start
+  that shows no start place or key folder writable; a change a program
+  outside the sandbox makes while the app runs; a start whose environment does
+  not name the settings or data folder that holds the stores; a second
+  name made with a hard link (see *Hidden unless you allow them
+  explicitly* and *No grant undoes these protections*).
+- **C2, SAM's own folders are hidden.** SAM's folders, and folders named
+  like them, are hidden wherever anything would show them (see *Hidden
+  whenever anything would show them*).
+
+  *Not given yet:* a folder that `SAM_CONFIG_DIR` or `SAM_DATA_DIR` names,
+  in a start whose environment lacks that variable; SAM's folders that
+  `XDG_CONFIG_HOME` or `XDG_DATA_HOME` move, in a start whose environment
+  does not name that folder; a folder named like
+  SAM's where hiding it would cover too much, which is kept read-only
+  instead (see *Hidden whenever anything would show them*).
+- **C3, start places are read-only.** The places in the table under
+  *Read-only, even with write access* are read-only whatever is granted,
+  and the folders above them cannot be renamed; a file whose mere presence
+  matters is moved aside when it appears (see *Read-only, even with write
+  access* and *Files whose mere presence changes behaviour*).
+
+  *Not given yet:* `~/.vim`, `~/.config/vim`, `~/.local/share/nvim` and
+  `~/.config/hg`; what a link inside a start place leads to
+  (`~/.config/tmux/plugins`); what a start file names to run; a start file
+  that a program outside the sandbox replaces while the app runs; a second name made
+  with a hard link; start places in a settings or data folder outside the
+  home, at the top of the home where a variable is set to the home itself,
+  or in a start whose environment does not name that folder; the user
+  folders file behind a link; a way swapped between SAM's look and the
+  mount; the moment before SAM moves a file aside; settings
+  of programs not in the table (see *Not covered by these locks*, *Hidden
+  unless you allow them explicitly*, *Extra folders inside a start place
+  stay read-only* and *What full home access does not cover*).
+- **C4, SAM's own programs are read-only.** SAM's AppImage file and the
+  `sam-jail-run`, `sam-jail` and `sam-jail-gui` next to the running
+  program are read-only wherever anything would show them writable, and
+  the folders above them cannot be renamed (see *Read-only whenever
+  anything would show them writable*).
+
+  *Not given yet:* another copy of SAM that your menu entries run; the new
+  AppImage of SAM's update of itself, until SAM has restarted; a change a
+  program outside the sandbox makes while the app runs; a second name made
+  with a hard link (see *Read-only whenever anything would show them
+  writable* and *No grant undoes these protections*).
 
 ---
 
