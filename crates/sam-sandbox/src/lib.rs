@@ -6059,8 +6059,8 @@ mod guard_tests {
             protected_places_with(home, Some(home.join(".config")), Some("/elsewhere".into()));
         assert_eq!(plain.len(), PROTECTED_RO.len());
         // A config folder that is the home itself adds only the file SAM
-        // reads the user folders from, never the other start places at the
-        // top of the home (`~/autostart`), nor the home itself.
+        // reads the user folders from, never the start places at the top of
+        // the home (`~/autostart`), nor the home itself.
         let same = protected_places_with(home, Some(home.to_path_buf()), None);
         assert_eq!(
             same.len(),

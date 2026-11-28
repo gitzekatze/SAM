@@ -467,7 +467,7 @@ echo END=1
 /// `~/cfg/user-dirs.dirs` with `XDG_CONFIG_HOME=~/cfg`. Before, only
 /// `~/.config/user-dirs.dirs` was locked, which SAM does not read then,
 /// and the app could point the Documents of its own later start, or of a
-/// start running at the same time, at `~/.ssh`.
+/// start running at the same time, at a folder it chose.
 #[test]
 fn the_user_folders_file_stays_locked_when_the_config_folder_is_the_home() {
     let _one = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());

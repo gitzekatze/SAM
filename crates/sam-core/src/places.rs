@@ -159,8 +159,7 @@ pub const PROTECTED_RO: &[&str] = &[
 /// folders from (`~/user-dirs.dirs` then, [`crate::host::xdg_user_dirs`]).
 /// Unlocked there, an app with the whole home writable rewrote it, and at
 /// its next start SAM showed other folders as its Documents or Downloads.
-/// The other start places do not follow there ([`sensitive_places`] says
-/// why).
+/// The start places do not follow there ([`sensitive_places`] says why).
 const PROTECTED_AT_HOME_TOO: &[&str] = &[".config/user-dirs.dirs"];
 
 /// The protected places relative to the home: `PROTECTED_RO`, and the same
@@ -199,8 +198,8 @@ pub fn protected_places_with(
 /// home read while only the usual places were hidden. Hiding more is the
 /// safe side; locking the start places at the top of the home too would
 /// lock folders such as `~/autostart` that the person may use otherwise,
-/// so of them only the file SAM reads the user folders from follows
-/// there ([`PROTECTED_AT_HOME_TOO`]).
+/// so of the protected places only the file SAM reads the user folders
+/// from follows there ([`PROTECTED_AT_HOME_TOO`]).
 /// Shared by the sandbox, which hides them, and the files opened for a
 /// start, which never share them.
 pub fn sensitive_places(home: &Path) -> Vec<String> {
