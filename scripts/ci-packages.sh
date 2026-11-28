@@ -25,7 +25,7 @@ SUITE="libgtk-4-dev libadwaita-1-dev pkg-config
     bubblewrap xdg-dbus-proxy passt libarchive-tools squashfs-tools python3
     desktop-file-utils appstream gettext libgtk-4-bin dbus
     python3-gi libglib2.0-bin gnupg binutils
-    pipewire pipewire-pulse pulseaudio-utils"
+    pipewire pipewire-pulse pulseaudio-utils strace"
 
 if [ "${1:-}" = "--suite" ]; then
     shift

@@ -2213,3 +2213,870 @@ fn the_library_check_sees_a_changed_version() {
     );
     assert_ne!(a, lock_packages(&lock.replace("1.0.0", "1.0.1")));
 }
+
+// ----------------------------------------------------------- traced run
+
+/// What strace records: every process SAM starts (`-f`), the programs they
+/// run and every socket they open or connect. Without `--seccomp-bpf`, so a
+/// call SAM's own filter refuses is still seen.
+const TRACED_CALLS: &str = "trace=socket,connect,sendto,sendmsg,io_uring_setup,execve,execveat";
+
+/// Name-service sockets: a connect to one is a name or account lookup that
+/// can leave this computer (resolved, nscd, SSSD, Avahi).
+const NAME_SERVICE_SOCKETS: &[&str] = &[
+    "/run/systemd/resolve/",
+    "/run/nscd/socket",
+    "/var/run/nscd/socket",
+    "/var/lib/sss/pipes/nss",
+    "/run/avahi-daemon/socket",
+];
+
+/// The two things a traced command may do that look like a way out but
+/// are not, each seen in the first traced run and named in the privacy
+/// report's limits. Each holds only for a process that runs exactly this
+/// program with exactly these arguments:
+/// - pasta's `--help` and `--version` open one TCP socket to read the
+///   kernel's buffer sizes; that process may connect nowhere and send
+///   nothing (checked);
+/// - `curl --version`, which doctor's contracts and the bug report run,
+///   loads libraries that look up the user's account and this computer's
+///   name through the name service; its connects to nscd's socket are
+///   allowed, nothing else.
+fn allowed(argv: &[String], line: &str) -> bool {
+    let prog = argv.first().map(|p| p.rsplit('/').next().unwrap_or(p));
+    let rest: Vec<&str> = argv.iter().skip(1).map(String::as_str).collect();
+    let probe = rest == ["--help"] || rest == ["--version"];
+    match prog {
+        Some("pasta") if probe => line.contains("socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)"),
+        Some("curl") if rest == ["--version"] => {
+            line.contains("connect(")
+                && (line.contains("sun_path=\"/run/nscd/socket\"")
+                    || line.contains("sun_path=\"/var/run/nscd/socket\""))
+        }
+        _ => false,
+    }
+}
+
+/// The argument list of an `execve(...)` line as strace writes it.
+fn exec_argv(line: &str) -> Vec<String> {
+    let Some(start) = line.find(", [") else {
+        return Vec::new();
+    };
+    let c: Vec<char> = line[start + 3..].chars().collect();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < c.len() && c[i] == '"' {
+        let mut s = String::new();
+        i += 1;
+        while i < c.len() && c[i] != '"' {
+            if c[i] == '\\' && i + 1 < c.len() {
+                i += 1;
+            }
+            s.push(c[i]);
+            i += 1;
+        }
+        out.push(s);
+        i += 1;
+        if c.get(i) == Some(&',') {
+            i += 2;
+        } else {
+            break;
+        }
+    }
+    out
+}
+
+/// What one traced command did, from its strace log.
+#[derive(Default, Debug)]
+struct Seen {
+    /// Every successful `execve`: (pid, its line).
+    execs: Vec<(String, String)>,
+    /// The Unix sockets it connected to.
+    unix: std::collections::BTreeSet<String>,
+    /// Internet connects: (address, port).
+    inet: Vec<(String, u16)>,
+    /// Whether any process opened an internet socket.
+    inet_socket: bool,
+    problems: Vec<String>,
+}
+
+/// Reads an strace log of `-f` (each line starts with its process id):
+/// no process may open a socket other than a Unix or netlink one, set up
+/// io_uring (through which a socket could open unseen) or connect to a
+/// name-service socket, other than what [`allowed`] names.
+fn read_trace(cmd: &str, log: &str) -> Seen {
+    let mut seen = Seen::default();
+    let mut argv: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    // The probe sockets: (process, descriptor).
+    let mut probes: Vec<(String, String)> = Vec::new();
+    for line in log.lines() {
+        let (pid, call) = line.trim_start().split_once(' ').unwrap_or(("?", line));
+        let call = call.trim_start();
+        let who = argv.get(pid).cloned().unwrap_or_default();
+        let named = || {
+            if who.is_empty() {
+                format!("process {pid} (SAM's own)")
+            } else {
+                format!("process {pid} ({})", who.join(" "))
+            }
+        };
+        if call.starts_with("execve(") || call.starts_with("execveat(") {
+            if call.contains(") = 0") || call.ends_with("<unfinished ...>") {
+                argv.insert(pid.to_string(), exec_argv(call));
+                seen.execs.push((pid.to_string(), call.to_string()));
+            }
+            continue;
+        }
+        if call.starts_with("io_uring_setup(") {
+            seen.problems
+                .push(format!("{cmd}: {} set up io_uring: {line}", named()));
+        }
+        if let Some(rest) = call.strip_prefix("socket(") {
+            let family = rest.split([',', ' ']).next().unwrap_or("");
+            if !matches!(family, "AF_UNIX" | "AF_LOCAL" | "AF_NETLINK") {
+                if family.starts_with("AF_INET") {
+                    seen.inet_socket = true;
+                }
+                if allowed(&who, call) {
+                    let fd = call.rsplit("= ").next().unwrap_or("").trim().to_string();
+                    probes.push((pid.to_string(), fd));
+                } else {
+                    seen.problems.push(format!(
+                        "{cmd}: {} opened a {family} socket: {line}",
+                        named()
+                    ));
+                }
+            }
+        }
+        if call.starts_with("connect(") {
+            if let Some(p) = call.split("sun_path=\"").nth(1) {
+                let path = p.split('"').next().unwrap_or("").to_string();
+                if NAME_SERVICE_SOCKETS.iter().any(|n| path.starts_with(n)) && !allowed(&who, call)
+                {
+                    seen.problems.push(format!(
+                        "{cmd}: {} connected to the name service: {line}",
+                        named()
+                    ));
+                }
+                seen.unix.insert(path);
+            }
+            if call.contains("sa_family=AF_INET") {
+                let port = call
+                    .split("port=htons(")
+                    .nth(1)
+                    .and_then(|p| p.split(')').next())
+                    .and_then(|p| p.parse().ok())
+                    .unwrap_or(0);
+                let addr = call
+                    .split("inet_addr(\"")
+                    .nth(1)
+                    .or_else(|| call.split("inet_pton(AF_INET6, \"").nth(1))
+                    .and_then(|a| a.split('"').next())
+                    .unwrap_or("?")
+                    .to_string();
+                seen.inet.push((addr, port));
+            }
+        }
+    }
+    // A probe's process may open its socket, but never use it, and
+    // connect nowhere on the internet.
+    for line in log.lines() {
+        let (pid, call) = line.trim_start().split_once(' ').unwrap_or(("?", line));
+        let call = call.trim_start();
+        let on = |fd: &str| {
+            ["connect(", "sendto(", "sendmsg("]
+                .iter()
+                .any(|c| call.starts_with(&format!("{c}{fd},")))
+        };
+        let uses = probes.iter().any(|(p, fd)| p == pid && on(fd))
+            || (probes.iter().any(|(p, _)| p == pid)
+                && call.starts_with("connect(")
+                && call.contains("sa_family=AF_INET"));
+        if uses {
+            seen.problems.push(format!(
+                "{cmd}: process {pid}, which may only open its probe socket, used it: {line}"
+            ));
+        }
+    }
+    seen
+}
+
+/// The trace check reads strace's lines as strace writes them: an internet
+/// socket, io_uring and a name-service connect are found in any process;
+/// pasta's probe socket and `curl --version`'s nscd connect pass only for
+/// exactly that program and those arguments, and the probe's process may
+/// not use its socket (its log lines to a closed descriptor are no use).
+#[test]
+fn the_trace_check_reads_strace_lines() {
+    let log = r#"10 execve("/usr/bin/pasta.avx2", ["/usr/bin/pasta", "--help"], 0x1 /* 3 vars */) = 0
+10 socket(AF_INET, SOCK_STREAM, IPPROTO_TCP) = 4
+10 sendto(-1, "<6> : Usage", 15, 0, NULL, 0) = -1 EBADF (Bad file descriptor)
+11 execve("/usr/bin/curl", ["/usr/bin/curl", "--version"], 0x1 /* 3 vars */) = 0
+11 connect(3, {sa_family=AF_UNIX, sun_path="/var/run/nscd/socket"}, 110) = -1 ENOENT (No such file or directory)
+12 connect(3, {sa_family=AF_UNIX, sun_path="/run/user/1000/bus"}, 110) = 0
+"#;
+    let seen = read_trace("x", log);
+    assert!(seen.problems.is_empty(), "{:?}", seen.problems);
+    assert_eq!(seen.execs.len(), 2);
+    assert!(seen.unix.contains("/run/user/1000/bus"));
+    for bad in [
+        "13 socket(AF_INET6, SOCK_DGRAM, IPPROTO_IP) = 5",
+        "14 io_uring_setup(8, 0x7ffd) = 3",
+        "15 connect(3, {sa_family=AF_UNIX, sun_path=\"/run/systemd/resolve/io.systemd.Resolve\"}, 110) = 0",
+        "11 socket(AF_INET, SOCK_STREAM, IPPROTO_TCP) = 4",
+        "10 connect(4, {sa_family=AF_INET, sin_port=htons(443), sin_addr=inet_addr(\"192.0.2.1\")}, 16) = 0",
+        "10 sendto(4, \"x\", 1, 0, NULL, 0) = 1",
+        "10 sendmsg(4, {msg_name=NULL}, 0) = 1",
+    ] {
+        let seen = read_trace("x", &format!("{log}{bad}\n"));
+        assert_eq!(seen.problems.len(), 1, "{bad}: {:?}", seen.problems);
+    }
+    let other = log.replace("\"--help\"", "\"--splice-only\"");
+    assert_eq!(read_trace("x", &other).problems.len(), 1);
+    let seen = read_trace(
+        "x",
+        "16 connect(3, {sa_family=AF_INET, sin_port=htons(8443), sin_addr=inet_addr(\"127.0.0.1\")}, 16) = 0\n",
+    );
+    assert_eq!(seen.inet, [("127.0.0.1".to_string(), 8443)]);
+}
+
+/// Whether Bubblewrap can build a sandbox here.
+fn bwrap_works() -> bool {
+    std::process::Command::new("bwrap")
+        .args([
+            "--ro-bind",
+            "/",
+            "/",
+            "--unshare-user",
+            "--unshare-pid",
+            "true",
+        ])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
+/// What a traced command left: its exit status, output and trace.
+struct Ran {
+    status: Option<i32>,
+    stdout: String,
+    stderr: String,
+    seen: Seen,
+}
+
+/// Runs `sam-jail ARGS` under strace with its own folders and home, no
+/// desktop session and no proxy variables, `input` on stdin. A command
+/// still running after two minutes fails the test.
+fn traced(root: &Path, args: &[&str], input: Option<&str>) -> Ran {
+    use std::io::{Read, Write};
+    use std::process::{Command, Stdio};
+    use std::time::{Duration, Instant};
+    let log = root.join("trace.log");
+    let _ = fs::remove_file(&log);
+    let strace = sam_core::util::which("strace").unwrap();
+    let mut cmd = Command::new(strace);
+    cmd.args([
+        "-f",
+        "-qq",
+        "-e",
+        TRACED_CALLS,
+        "-e",
+        "signal=none",
+        "-s",
+        "256",
+        "-o",
+    ])
+    .arg(&log)
+    .arg("--")
+    .arg(env!("CARGO_BIN_EXE_sam-jail"))
+    .args(args)
+    .env("SAM_CONFIG_DIR", root.join("config"))
+    .env("SAM_DATA_DIR", root.join("data"))
+    .env("SAM_APPLICATIONS_DIR", root.join("applications"))
+    .env("HOME", root.join("home"))
+    .stdin(Stdio::piped())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped());
+    for v in [
+        "http_proxy",
+        "https_proxy",
+        "all_proxy",
+        "no_proxy",
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "NO_PROXY",
+    ] {
+        cmd.env_remove(v);
+    }
+    sam_runner::testenv::isolate_command(&mut cmd, &root.join("sam"));
+    let mut child = cmd.spawn().unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    if let Some(i) = input {
+        stdin.write_all(i.as_bytes()).unwrap();
+    }
+    drop(stdin);
+    let reader = |mut r: Box<dyn Read + Send>| {
+        std::thread::spawn(move || {
+            let mut v = Vec::new();
+            r.read_to_end(&mut v).ok();
+            String::from_utf8_lossy(&v).into_owned()
+        })
+    };
+    let o = reader(Box::new(child.stdout.take().unwrap()));
+    let e = reader(Box::new(child.stderr.take().unwrap()));
+    let start = Instant::now();
+    let status = loop {
+        if let Some(s) = child.try_wait().unwrap() {
+            break s;
+        }
+        if start.elapsed() > Duration::from_secs(120) {
+            child.kill().ok();
+            child.wait().ok();
+            panic!("sam-jail {args:?} still ran after two minutes");
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    let name = args
+        .iter()
+        .filter(|a| **a != "--json")
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(" ");
+    Ran {
+        status: status.code(),
+        stdout: o.join().unwrap(),
+        stderr: e.join().unwrap(),
+        seen: read_trace(&name, &fs::read_to_string(&log).unwrap_or_default()),
+    }
+}
+
+/// A test home with SAM's folders, a test AppImage (network "none", its
+/// update source a recorder on this computer, so no name lookup is
+/// needed) and a copy of it in Downloads.
+fn traced_home(apprun: &str, update_port: u16) -> (tempfile::TempDir, PathBuf, PathBuf) {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = fs::canonicalize(tmp.path()).unwrap();
+    for d in ["config", "home/Downloads"] {
+        fs::create_dir_all(root.join(d)).unwrap();
+    }
+    let img = root.join("Everyday-1.0-x86_64.AppImage");
+    let mut spec = sam_intake::testkit::FixtureSpec::hello("Everyday");
+    spec.apprun = apprun.into();
+    spec.update_info = Some(format!(
+        "zsync|https://127.0.0.1:{update_port}/Everyday-x86_64.AppImage.zsync"
+    ));
+    sam_intake::testkit::build(&img, &spec).unwrap();
+    fs::copy(
+        &img,
+        root.join("home/Downloads/Everyday-1.0-x86_64.AppImage"),
+    )
+    .unwrap();
+    (tmp, root, img)
+}
+
+/// The traced run needs strace, Bubblewrap and objcopy (for the test
+/// AppImage's update source); without them it fails under
+/// SAM_REQUIRE_SANDBOX=1, as in CI and the test container.
+fn traced_run_possible() -> bool {
+    for (tool, why) in [
+        ("strace", "strace traces SAM's commands"),
+        (
+            "objcopy",
+            "objcopy writes the test AppImage's update source",
+        ),
+    ] {
+        if sam_core::util::which(tool).is_none() {
+            sam_runner::contracts::skip(&format!("{why}, and {tool} is not installed"))
+                .unwrap_or_else(|e| panic!("{e}"));
+            return false;
+        }
+    }
+    if !bwrap_works() {
+        sam_runner::contracts::skip("bubblewrap cannot run here").unwrap_or_else(|e| panic!("{e}"));
+        return false;
+    }
+    true
+}
+
+/// A listener on this computer that takes every connection and closes it
+/// at once: the update source of the test AppImage.
+struct Recorder {
+    port: u16,
+}
+
+impl Recorder {
+    fn start() -> Recorder {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            for c in listener.incoming() {
+                drop(c);
+            }
+        });
+        Recorder { port }
+    }
+}
+
+/// One traced command: (label, arguments, the exit statuses it may end
+/// with, the programs one of which must appear in its trace).
+type Step = (
+    &'static str,
+    Vec<String>,
+    &'static [i32],
+    &'static [&'static str],
+);
+
+/// The commands traced: the window's start (W1-W11, from
+/// `crates/sam-gtk/src/main.rs`, `i18n.rs` and `window.rs`, pinned by
+/// [`WINDOW_START`]) and the everyday commands of its pages (E1-E22).
+/// Each: (label, arguments, the exit statuses it may end with, a program
+/// that must appear in its trace). Exit status 3 is "not passed": the
+/// sandbox check, doctor and its contracts report this computer's state
+/// with it; the marker shows they ran.
+fn steps(img: &str, downloads: &str, id: &str) -> Vec<Step> {
+    let s = |v: &[&str]| v.iter().map(|a| a.to_string()).collect::<Vec<_>>();
+    const OK: &[i32] = &[0];
+    const STATE: &[i32] = &[0, 3];
+    const NONE: &[&str] = &[];
+    const BWRAP: &[&str] = &["/bwrap\""];
+    let unpack: &'static [&'static str] = &[
+        "/unsquashfs\"",
+        "/bsdtar\"",
+        "/dwarfsextract\"",
+        "\"extract-squashfs\"",
+    ];
+    let mut v = vec![
+        (
+            "W1",
+            s(&["--json", "config", "get", "general.language"]),
+            OK,
+            NONE,
+        ),
+        ("W2", s(&["--json", "version"]), OK, NONE),
+        ("W3", s(&["--json", "permissions"]), OK, NONE),
+        ("W4", s(&["--json", "desktop", "all", "refresh"]), OK, NONE),
+        ("W5", s(&["--json", "config", "show"]), OK, NONE),
+        (
+            "W6",
+            s(&[
+                "--json",
+                "config",
+                "set",
+                "general.scan_directories",
+                "[\"~/Downloads\"]",
+            ]),
+            OK,
+            NONE,
+        ),
+        (
+            "W6",
+            s(&["--json", "config", "set", "general.scan_downloads", "false"]),
+            OK,
+            NONE,
+        ),
+        ("W6", s(&["--json", "config", "show"]), OK, NONE),
+        ("W7", s(&["--json", "list"]), OK, NONE),
+        ("W8", s(&["--json", "discover"]), OK, NONE),
+        ("W9", s(&["--json", "scan", downloads]), OK, NONE),
+        ("W10", s(&["--json", "updates", "--if-due"]), OK, NONE),
+        ("W11", s(&["--json", "list"]), OK, NONE),
+    ];
+    if id.is_empty() {
+        v.push((
+            "E1",
+            s(&["--json", "add", img, "--no-launcher", "--accept"]),
+            OK,
+            unpack,
+        ));
+        return v;
+    }
+    v.extend([
+        ("E2", s(&["--json", "preview", img]), OK, NONE),
+        ("E3", s(&["--json", "info", id]), OK, NONE),
+        ("E4", s(&["--json", "get", id]), OK, NONE),
+        ("E5", s(&["--json", "command", id]), OK, NONE),
+        ("E6", s(&["--json", "menu", "list", id]), OK, NONE),
+        ("E7", s(&["--json", "evaluate", id]), OK, NONE),
+        ("E8", s(&["--json", "logs", id, "--list"]), OK, NONE),
+        ("E9", s(&["--json", "space"]), OK, NONE),
+        ("E10", s(&["--json", "run", id]), OK, BWRAP),
+        ("E11", s(&["--json", "logs", id]), OK, NONE),
+        ("E12", s(&["--json", "verify", id]), STATE, BWRAP),
+        ("E13", s(&["--json", "doctor"]), STATE, BWRAP),
+        ("E14", s(&["--json", "doctor", id]), STATE, NONE),
+        (
+            "E15",
+            s(&["--json", "doctor", "--contracts"]),
+            STATE,
+            &["/gpg\"", "/gpgv\""],
+        ),
+        ("E16", s(&["--json", "report"]), OK, NONE),
+        ("E17", s(&["--json", "report", id]), OK, NONE),
+        ("E18", s(&["--json", "preset", "list"]), OK, NONE),
+        ("E19", s(&["--json", "group", "list"]), OK, NONE),
+        (
+            "E20",
+            s(&["--json", "cleanup", "--data", "--list"]),
+            OK,
+            NONE,
+        ),
+        ("E21", s(&["--json", "refresh", "--deep"]), OK, NONE),
+        ("E22", s(&["--json", "stop", id]), OK, NONE),
+    ]);
+    v
+}
+
+/// The command a traced argument list runs, as its man page is named
+/// (`config-get`, `doctor`).
+fn page_of(args: &[String]) -> String {
+    let words: Vec<&str> = args
+        .iter()
+        .map(String::as_str)
+        .filter(|a| *a != "--json")
+        .collect();
+    match words.as_slice() {
+        [g @ ("config" | "group" | "preset" | "profile"), sub, ..] => format!("{g}-{sub}"),
+        [c, ..] => c.to_string(),
+        [] => String::new(),
+    }
+}
+
+/// The commands the traced run covers, by their man page names: kept equal
+/// to [`steps`] and P1 by [`everyday_commands_open_no_internet_socket`].
+const TRACED: &[&str] = &[
+    "add",
+    "cleanup",
+    "command",
+    "config-get",
+    "config-set",
+    "config-show",
+    "desktop",
+    "discover",
+    "doctor",
+    "evaluate",
+    "get",
+    "group-list",
+    "info",
+    "list",
+    "logs",
+    "menu",
+    "permissions",
+    "preset-list",
+    "preview",
+    "refresh",
+    "report",
+    "run",
+    "scan",
+    "space",
+    "stop",
+    "updates",
+    "verify",
+    "version",
+];
+
+/// Commands the traced run does not cover. Their direct calls of gated
+/// methods are still listed (WAYS_OUT); calls through SAM's generic helpers
+/// are not traced. `man` and `dev` are hidden commands; the groups have
+/// their commands classified one by one.
+const UNTRACED: &[&str] = &[
+    "args",
+    "compat",
+    "config",
+    "config-path",
+    "config-put",
+    "dev",
+    "diagnose",
+    "free-space",
+    "group",
+    "group-restore",
+    "group-set",
+    "hints",
+    "man",
+    "onboarding",
+    "preset",
+    "preset-apply",
+    "preset-delete",
+    "preset-duplicate",
+    "preset-export",
+    "preset-import",
+    "preset-put",
+    "preset-save",
+    "preset-show",
+    "preset-template",
+    "profile",
+    "profile-change",
+    "profile-get",
+    "profile-reset",
+    "profile-set",
+    "redetect",
+    "reextract",
+    "relocate",
+    "remove",
+    "repair",
+    "review",
+    "selftest",
+    "self-update",
+    "set",
+    "uninstall",
+    "update",
+];
+
+/// Forms of traced commands that differ by an option and are not traced
+/// themselves: (command, option).
+const UNTRACED_FORMS: &[(&str, &str)] = &[
+    ("update", "--undo"),
+    ("update", "--decline-key-change"),
+    ("update", "--accept-key-change"),
+    ("self-update", "--check"),
+    ("cleanup", "--data"),
+    ("verify", "--permissions-stdin"),
+];
+
+/// Every command and subcommand of sam-jail, at any depth, is either in
+/// the traced run or named as untraced: the list comes from `sam-jail man`,
+/// which writes a page for each visible one, so a new command fails here
+/// until it is classified, and each named one must still exist. The
+/// untraced forms' options must still exist too.
+#[test]
+fn every_command_is_traced_or_named_untraced() {
+    let tmp = tempfile::tempdir().unwrap();
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_sam-jail"))
+        .arg("man")
+        .arg(tmp.path())
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let mut pages = BTreeMap::new();
+    for e in fs::read_dir(tmp.path()).unwrap().flatten() {
+        let n = e.file_name().to_string_lossy().to_string();
+        if let Some(c) = n
+            .strip_prefix("sam-jail-")
+            .and_then(|n| n.strip_suffix(".1"))
+        {
+            pages.insert(c.to_string(), fs::read_to_string(e.path()).unwrap());
+        }
+    }
+    assert!(pages.len() > 40, "only {} pages", pages.len());
+    let mut problems = Vec::new();
+    for c in pages.keys() {
+        if !TRACED.contains(&c.as_str()) && !UNTRACED.contains(&c.as_str()) {
+            problems.push(format!(
+                "sam-jail {} is neither traced nor named untraced in crates/sam-jail-cli/tests/network_use.rs: trace it (steps) or name it in UNTRACED",
+                c.replace('-', " ")
+            ));
+        }
+    }
+    for c in TRACED.iter().chain(UNTRACED) {
+        if !pages.contains_key(*c) && !["man", "dev"].contains(c) {
+            problems.push(format!("`{c}` is listed but sam-jail has no such command"));
+        }
+        if TRACED.contains(c) && UNTRACED.contains(c) {
+            problems.push(format!("`{c}` is listed as traced and as untraced"));
+        }
+    }
+    for (c, opt) in UNTRACED_FORMS {
+        let has = pages
+            .get(*c)
+            .is_some_and(|p| p.contains(&opt.replace('-', "\\-")) || p.contains(opt));
+        if !has {
+            problems.push(format!(
+                "`{c} {opt}` is listed but its page names no such option"
+            ));
+        }
+    }
+    assert!(problems.is_empty(), "{}", problems.join("\n"));
+}
+
+/// During the window's start (W1-W11, twice: before and after an app is
+/// added) and the everyday commands (E1-E22), in a test home with an app
+/// whose network is "none", each command did its work (its exit status,
+/// and the program that shows it ran: an unpack tool for `add`, Bubblewrap
+/// for `run`, `verify` and `doctor`, GnuPG for `doctor --contracts`), and
+/// no process SAM started opened an internet socket, set up io_uring or
+/// connected to a name-service socket, other than the two named in
+/// [`allowed`]. The programs each command ran and the Unix sockets it
+/// connected to are printed for the privacy report.
+#[test]
+fn everyday_commands_open_no_internet_socket() {
+    if !traced_run_possible() {
+        return;
+    }
+    let _contracts =
+        sam_runner::contracts::guard(&["bwrap-core"]).unwrap_or_else(|e| panic!("{e}"));
+    let recorder = Recorder::start();
+    let (_tmp, root, img) = traced_home("#!/bin/sh\necho started\n", recorder.port);
+    let img = img.to_str().unwrap().to_string();
+    let downloads = root.join("home/Downloads").to_str().unwrap().to_string();
+    let mut problems = Vec::new();
+    let mut covered = std::collections::BTreeSet::new();
+    covered.insert("updates".to_string()); // P1
+    let mut id = String::new();
+    for round in 0..2 {
+        for (label, args, ok, marker) in steps(&img, &downloads, &id) {
+            covered.insert(page_of(&args));
+            let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+            let input = if label == "E7" {
+                let got = traced(&root, &["--json", "get", &id], None);
+                let v: serde_json::Value = serde_json::from_str(&got.stdout).unwrap();
+                Some(v["data"].to_string())
+            } else {
+                None
+            };
+            let ran = traced(&root, &refs, input.as_deref());
+            let name = refs.join(" ");
+            if !ran.status.is_some_and(|s| ok.contains(&s)) {
+                problems.push(format!(
+                    "{label} `{name}` ended with {:?}, not {ok:?}: {}",
+                    ran.status,
+                    ran.stderr.trim()
+                ));
+            }
+            if !marker.is_empty()
+                && !ran
+                    .seen
+                    .execs
+                    .iter()
+                    .any(|(_, l)| marker.iter().any(|m| l.contains(m)))
+            {
+                problems.push(format!(
+                    "{label} `{name}` ran none of {marker:?}, so the trace does not show it did its work"
+                ));
+            }
+            problems.extend(ran.seen.problems.iter().cloned());
+            let progs: std::collections::BTreeSet<String> = ran
+                .seen
+                .execs
+                .iter()
+                .filter_map(|(_, l)| l.split('"').nth(1))
+                .map(|p| p.rsplit('/').next().unwrap_or(p).to_string())
+                .collect();
+            sam_core::outln!(
+                "{label} `{name}`: exit {:?}; programs {progs:?}; Unix sockets {:?}; internet socket: {}",
+                ran.status,
+                ran.seen.unix,
+                if ran.seen.inet_socket { "yes" } else { "none" }
+            );
+            if label == "E1" {
+                let list = traced(&root, &["--json", "list"], None);
+                let v: serde_json::Value = serde_json::from_str(&list.stdout).unwrap();
+                id = v["data"][0]["id"].as_str().unwrap().to_string();
+            }
+        }
+        if round == 0 {
+            assert!(!id.is_empty(), "the test app was not added: {problems:?}");
+        }
+    }
+    let traced_pages: std::collections::BTreeSet<String> =
+        TRACED.iter().map(|s| s.to_string()).collect();
+    assert_eq!(
+        covered, traced_pages,
+        "TRACED must name exactly the traced commands"
+    );
+    assert!(problems.is_empty(), "{}", problems.join("\n"));
+}
+
+/// The tracer sees SAM's real way out: an update check the person asks for
+/// (`updates <id>`) ends with 0, runs curl, and opens an internet socket,
+/// whose only internet connect goes to the address the app names
+/// (127.0.0.1 and the recorder's port).
+#[test]
+fn the_trace_sees_an_update_check() {
+    if !traced_run_possible() {
+        return;
+    }
+    let _contracts = sam_runner::contracts::guard(&["bwrap-core", "updates-curl"])
+        .unwrap_or_else(|e| panic!("{e}"));
+    let recorder = Recorder::start();
+    let (_tmp, root, img) = traced_home("#!/bin/sh\necho started\n", recorder.port);
+    let added = traced(
+        &root,
+        &[
+            "--json",
+            "add",
+            img.to_str().unwrap(),
+            "--no-launcher",
+            "--accept",
+        ],
+        None,
+    );
+    assert_eq!(added.status, Some(0), "{}", added.stderr);
+    let v: serde_json::Value = serde_json::from_str(&added.stdout).unwrap();
+    let id = v["data"]["app"]["id"].as_str().unwrap().to_string();
+    let ran = traced(&root, &["--json", "updates", &id], None);
+    assert_eq!(ran.status, Some(0), "{}", ran.stderr);
+    assert!(
+        ran.seen.execs.iter().any(|(_, l)| l.contains("/curl\"")),
+        "no curl in the trace of an update check: {:?}",
+        ran.seen.execs
+    );
+    assert!(
+        ran.seen.inet_socket,
+        "the trace shows no internet socket for an update check"
+    );
+    assert!(
+        !ran.seen.inet.is_empty(),
+        "the trace shows no internet connect"
+    );
+    for (addr, port) in &ran.seen.inet {
+        assert_eq!(
+            (addr.as_str(), *port),
+            ("127.0.0.1", recorder.port),
+            "an update check connected elsewhere than the address the app names"
+        );
+    }
+}
+
+/// The tracer follows into an app's sandbox, inside Bubblewrap's
+/// namespaces: an app whose start script runs `getent hosts`, started with
+/// network "none", shows getent's start and its internet socket in the
+/// trace (the app's own network is its permission; here it only proves
+/// the tracer sees that far).
+#[test]
+fn the_trace_sees_inside_an_apps_sandbox() {
+    if !traced_run_possible() {
+        return;
+    }
+    let _contracts =
+        sam_runner::contracts::guard(&["bwrap-core"]).unwrap_or_else(|e| panic!("{e}"));
+    let (_tmp, root, img) =
+        traced_home("#!/bin/sh\ngetent hosts example.invalid\necho started\n", 9);
+    let added = traced(
+        &root,
+        &[
+            "--json",
+            "add",
+            img.to_str().unwrap(),
+            "--no-launcher",
+            "--accept",
+        ],
+        None,
+    );
+    assert_eq!(added.status, Some(0), "{}", added.stderr);
+    let v: serde_json::Value = serde_json::from_str(&added.stdout).unwrap();
+    let id = v["data"]["app"]["id"].as_str().unwrap().to_string();
+    let ran = traced(&root, &["run", &id], None);
+    assert_eq!(ran.status, Some(0), "{}", ran.stderr);
+    assert!(ran.stdout.contains("started"), "{}", ran.stderr);
+    let getent: Vec<&String> = ran
+        .seen
+        .execs
+        .iter()
+        .filter(|(_, l)| l.contains("/getent\""))
+        .map(|(pid, _)| pid)
+        .collect();
+    assert!(
+        !getent.is_empty(),
+        "the trace does not show the app's getent: {:?}",
+        ran.seen.execs
+    );
+    assert!(
+        ran.seen.inet_socket,
+        "the trace does not show getent's internet socket inside the sandbox"
+    );
+}

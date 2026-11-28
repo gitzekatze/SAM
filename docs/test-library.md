@@ -1141,7 +1141,7 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 
 ## sam-jail-cli: The command line and its JSON interface
 
-162 tests.
+167 tests.
 
 | Promise | Test |
 |---|---|
@@ -1266,6 +1266,11 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | The texts that decide when SAM goes online and what it sends are the reviewed ones: the update module's program part, the functions the window runs at its start, and `AppRun`. | [`the_update_module_the_window_start_and_apprun_are_as_reviewed`](../crates/sam-jail-cli/tests/network_use.rs#L1329) |
 | Only listed libraries are part of SAM: the name, version and source of every package in Cargo.lock equal [`LIBRARIES`]. | [`only_listed_libraries_are_part_of_sam`](../crates/sam-jail-cli/tests/network_use.rs#L2178) |
 | The library check reads a Cargo.lock's name, version and source, so another version of a listed library is a change. | [`the_library_check_sees_a_changed_version`](../crates/sam-jail-cli/tests/network_use.rs#L2199) |
+| The trace check reads strace's lines as strace writes them: an internet socket, io_uring and a name-service connect are found in any process; pasta's probe socket and `curl --version`'s nscd connect pass only for exactly that program and those arguments, and the probe's process may not use its socket (its log lines to a closed descriptor are no use). | [`the_trace_check_reads_strace_lines`](../crates/sam-jail-cli/tests/network_use.rs#L2409) |
+| Every command and subcommand of sam-jail, at any depth, is either in the traced run or named as untraced: the list comes from `sam-jail man`, which writes a page for each visible one, so a new command fails here until it is classified, and each named one must still exist. | [`every_command_is_traced_or_named_untraced`](../crates/sam-jail-cli/tests/network_use.rs#L2842) |
+| During the window's start (W1-W11, twice: before and after an app is added) and the everyday commands (E1-E22), in a test home with an app whose network is "none", each command did its work (its exit status, and the program that shows it ran: an unpack tool for `add`, Bubblewrap for `run`, `verify` and `doctor`, GnuPG for `doctor --contracts`), and no process SAM started opened an internet socket, set up io_uring or connected to a name-service socket, other than the two named in [`allowed`]. | [`everyday_commands_open_no_internet_socket`](../crates/sam-jail-cli/tests/network_use.rs#L2905) |
+| The tracer sees SAM's real way out: an update check the person asks for (`updates <id>`) ends with 0, runs curl, and opens an internet socket, whose only internet connect goes to the address the app names (127.0.0.1 and the recorder's port). | [`the_trace_sees_an_update_check`](../crates/sam-jail-cli/tests/network_use.rs#L2988) |
+| The tracer follows into an app's sandbox, inside Bubblewrap's namespaces: an app whose start script runs `getent hosts`, started with network "none", shows getent's start and its internet socket in the trace (the app's own network is its permission; here it only proves the tracer sees that far). | [`the_trace_sees_inside_an_apps_sandbox`](../crates/sam-jail-cli/tests/network_use.rs#L3040) |
 | An AppImage file called like one of SAM's own files in the sandbox (`bin`) starts, and finds itself at `$APPIMAGE`. | [`an_appimage_called_bin_starts_and_finds_itself`](../crates/sam-jail-cli/tests/odd_names.rs#L84) |
 | With `--json`, SAM's standard output is its reply and nothing else: an app that prints a line looking like the reply cannot be read as SAM's. | [`json_run_keeps_its_reply_alone_on_standard_output`](../crates/sam-jail-cli/tests/odd_names.rs#L112) |
 | Two presets whose names share a file ("My Preset" and "my-preset") never overwrite each other without a word (audit G-F19), and a preset called `-x` is a name like any other when it comes after `--`, as the window passes it (G-F20). | [`presets_keep_their_own_files_and_any_name`](../crates/sam-jail-cli/tests/odd_names.rs#L173) |
@@ -1363,4 +1368,4 @@ Run everything: `cargo test --workspace` (unit and integration tests),
 | `crates/sam-runner/tests/fuzz.rs with SAM_FUZZ_ITERS=100000` | A long fuzzing session: hundreds of thousands of changed inputs for every parser of untrusted data, without a crash. |
 | `tests/real-apps/run.sh` | Real AppImages from the test sets start in their sandbox; results are compared with the last baseline. |
 
-Total: 1276 automated Rust tests plus 8 scripted checks.
+Total: 1281 automated Rust tests plus 8 scripted checks.
