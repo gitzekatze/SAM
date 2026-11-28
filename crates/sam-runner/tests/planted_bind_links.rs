@@ -236,7 +236,36 @@ impl Rig {
         for (k, v) in env {
             p.environment.set.insert(k.to_string(), v.clone());
         }
-        let mut e = self.app.set_permissions(&self.id, p).unwrap();
+        let e = self.app.set_permissions(&self.id, p).unwrap();
+        self.run_app(e)
+    }
+
+    /// [`Rig::start`] with `p` stored as a record written by an older SAM
+    /// holds it, through the storage API and without SAM's entry checks:
+    /// SAM now refuses a new grant of a socket folder in `/tmp`, but keeps
+    /// and binds an older one until the person replaces it.
+    fn start_older(
+        &self,
+        p: &PermissionSet,
+        env: &[(&str, String)],
+    ) -> (HashMap<String, String>, String) {
+        let mut e = self.app.resolve(&self.id).unwrap();
+        e.profile.permissions = p.clone();
+        for (k, v) in env {
+            e.profile
+                .permissions
+                .environment
+                .set
+                .insert(k.to_string(), v.clone());
+        }
+        self.app.registry().save(&mut e).unwrap();
+        let e = self.app.resolve(&self.id).unwrap();
+        self.run_app(e)
+    }
+
+    /// Starts the app as its record `e` says; what the probe said, and the
+    /// start's notes.
+    fn run_app(&self, mut e: sam_core::AppEntry) -> (HashMap<String, String>, String) {
         let rec = run(
             &mut e,
             &LaunchOptions {
@@ -351,7 +380,9 @@ fn a_fontconfig_link_the_app_planted_never_reaches_host_sockets() {
 /// a socket folder in `/tmp`; also one planted as a link to a folder
 /// outside the home and outside `/tmp` that the app is not shown (not a
 /// place of sockets: the link rule alone, and the start names it). The
-/// control: listed by its real place in `/tmp`, a socket folder is still
+/// control: an older grant of a socket folder listed by its real place in
+/// `/tmp`, as a record written by an older SAM holds it (SAM refuses such
+/// a grant as new, but keeps an older one until you replace it), is still
 /// passed in (you were warned), and the probe reaches its socket.
 #[test]
 fn an_extra_folder_link_the_app_planted_never_reaches_host_sockets() {
@@ -363,7 +394,7 @@ fn an_extra_folder_link_the_app_planted_never_reaches_host_sockets() {
     let listed = SocketFolder::new();
     let mut p = PermissionSet::strict_gui();
     p.filesystem.custom_read = vec![s(&listed.path())];
-    let (r, text) = rig.start(&p, &[("SAM_TEST_SOCKETS", listed.socket())]);
+    let (r, text) = rig.start_older(&p, &[("SAM_TEST_SOCKETS", listed.socket())]);
     assert_eq!(r["CONNECT0"], "ok", "listed by its real place: {text}");
     assert!(listed.was_reached());
 
