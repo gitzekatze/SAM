@@ -1887,7 +1887,8 @@ swapped file is marked
 and such an app is neither checked for updates nor updated
 (`a_never_unpacked_app_is_not_updated`). SAM does not promise this mark
 when an earlier SAM version already saw the swapped file of such an app:
-its record then names that file. Moving such a
+its record then names that file, and the app page shows that file's
+checksum. Moving such a
 file elsewhere does not pass it off as the app's own: SAM follows a moved
 AppImage only when its content is what SAM unpacked for the app; another
 file is added as an app of its own
