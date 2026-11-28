@@ -1075,7 +1075,7 @@ tests = ["freeing_space_deletes_the_unpacked_copy_and_unpacking_restores_it", "s
 [[function]]
 id = 32
 area = "G"
-promise = "Uninstalling SAM removes everything it created and brings back menu entries it hid."
+promise = "Uninstalling SAM removes what the user guide's *Removing SAM* says it removes, and brings back the menu entries it hid for the apps it removes."
 code = ["sam-runner/src/ops/maintain.rs", "sam-intake/src/menu.rs"]
 tests = ["uninstall_removes_everything_and_restores_menus", "uninstall_refuses_folders_that_are_not_sams",
   "uninstall_removes_only_with_yes", "uninstalling_leaves_only_what_the_person_keeps",

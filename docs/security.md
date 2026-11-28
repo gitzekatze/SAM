@@ -646,7 +646,8 @@ Not covered either: where either variable names the home, the start places
 are not locked at the top of the home (`~/autostart`, `~/applications`),
 so an app with the whole home writable can change them there. A folder
 outside the home that either variable names is shown only when you grant
-it, and SAM does not hide the stores in it then.
+it, and SAM then neither hides the stores in it nor locks the places in
+it, `user-dirs.dirs` among them.
 The switches that allow them count only with the whole home
 (`filesystem.home`): stored on without it (an old profile, a
 hand-edited file), they hide the keys and stores as if off, also where a
@@ -870,10 +871,11 @@ How these stay protected with the home writable:
   `a_link_planted_inside_a_refused_read_only_folder_outside_tmp_is_never_followed`;
   this rule alone, for a link that leads to a place the home shows anyway,
   `a_user_folder_behind_a_link_the_app_could_plant_is_not_shown`).
-  `user-dirs.dirs` stays locked, but the folder it names
-  did not. Such a folder is not shown where the link leads, the start names
-  the link, and the sandbox check expects it not shown; SAM cannot tell
-  such a link from one the person made, so a Documents kept as a link out
+  Locking `user-dirs.dirs` does not help here: the file still names the
+  same folder, and the app replaced that folder with a link. Such a
+  folder is not shown where the link leads, the start names the link,
+  and the sandbox check expects it not shown; SAM cannot tell such a link
+  from one the person made, so a Documents kept as a link out
   of a writable home is not shown either: set `XDG_DOCUMENTS_DIR` to the
   real place instead
   (`a_user_folder_behind_a_link_the_app_could_plant_is_not_shown`,
@@ -1648,12 +1650,13 @@ SAM keeps what it learns about you on your computer.
   users' folders, your user name and the computer's name, email addresses,
   logins, query strings and the part after `#` in links, parts of a link
   that look like a key, `Authorization` and cookie lines and other named
-  secrets (`token=`, `password:`, `"api_key":`), IP addresses, and the
-  values of environment variables you gave an app
-  (`bug_reports_hide_names_addresses_and_secrets`,
-  `bug_reports_hide_tokens_in_every_shape`). An app's log stays inside its
-  code block: its own text cannot end the block and add to the report
-  (`a_log_cannot_break_out_of_its_code_block`). Read it once before you
+  secrets (`token=`, `password:`, `"api_key":`), IPv4 addresses (except
+  `127.…` and `0.0.0.0`), and the values of environment variables you gave
+  an app (`bug_reports_hide_names_addresses_and_secrets`,
+  `bug_reports_hide_tokens_in_every_shape`). SAM does not hide IPv6
+  addresses, or a user or computer name of one letter. An app's log stays
+  inside its code block: its own text cannot end the block and add to the
+  report (`a_log_cannot_break_out_of_its_code_block`). Read it once before you
   paste it anywhere: an app can print personal data SAM cannot recognize.
 
 ---

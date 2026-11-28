@@ -563,8 +563,8 @@ const HELPERS: &[&str] = &[
 
 /// Replace identifying information before a report leaves the machine: the
 /// home folder, other users' folders, the user and computer names, email
-/// addresses, logins and query strings in links, and IP addresses (apps print
-/// all of these into their logs).
+/// addresses, logins and query strings in links, and IPv4 addresses (apps
+/// print all of these into their logs).
 pub fn redact(s: &str, host: &HostInfo) -> String {
     let hostname = std::fs::read_to_string("/proc/sys/kernel/hostname").unwrap_or_default();
     redact_with(

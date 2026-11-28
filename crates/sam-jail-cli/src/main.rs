@@ -872,9 +872,9 @@ fn real_main(cli: Cli) -> Result<()> {
                     errln!("{} {p}", paint("warning:", "33"));
                 }
                 if !yes {
-                    outln!("{}", sam_core::i18n::tr("Your AppImage files stay. Run again with --yes to remove SAM."));
+                    outln!("{}", sam_core::i18n::tr("Anything you keep in the folders listed here can be removed with them. Run again with --yes to remove SAM."));
                 } else {
-                    outln!("{}", tr("Your AppImage files were not touched. Remove the SAM package or AppImage to finish."));
+                    outln!("{}", tr("Remove the SAM package or AppImage to finish."));
                 }
             });
         }

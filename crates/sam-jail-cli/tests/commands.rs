@@ -617,7 +617,7 @@ fn add_with_progress_reports_from_the_first_step_to_the_end() {
 }
 
 /// `uninstall` without --yes only says what it would remove; with --yes it
-/// removes the sandboxes, and the AppImage files stay.
+/// removes the sandboxes, and the AppImage stays.
 #[test]
 fn uninstall_removes_only_with_yes() {
     let e = Env::new();

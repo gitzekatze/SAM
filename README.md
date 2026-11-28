@@ -312,10 +312,9 @@ sam-jail uninstall          # list what would be removed
 sam-jail uninstall --yes    # remove it (--keep-data keeps settings and app data)
 ```
 
-This closes running apps and removes every sandbox, SAM's menu entries, its
-settings and the apps' private data. Menu entries SAM hid come back. Your
-AppImage files stay untouched. Afterwards, remove the packages or the
-AppImage.
+This closes running apps and removes the sandboxes and folders that the
+user guide's [Removing SAM](docs/guide.md#removing-sam) lists; menu entries
+SAM hid come back. Afterwards, remove the packages or the AppImage.
 
 ---
 

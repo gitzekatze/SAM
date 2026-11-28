@@ -590,11 +590,12 @@ impl Sam {
         Ok((entry, problems))
     }
 
-    /// Removes SAM from this computer: closes running apps, removes every
-    /// sandbox (menu entries SAM hid come back), SAM's menu entries, its own
-    /// taskbar entry and icon, its runtime files and (unless `keep_data`)
-    /// its settings and the apps' private data. AppImage files stay.
-    /// With `dry_run`, only lists what would be removed.
+    /// Removes SAM from this computer: closes running apps, removes the
+    /// sandbox of every app whose record it can read (menu entries SAM hid
+    /// come back), SAM's menu entries, its own taskbar entry and icon, its
+    /// runtime files and (unless `keep_data`) its settings, data and unpack
+    /// folders; docs/guide.md, *Removing SAM*, says what stays. With
+    /// `dry_run`, only lists what would be removed.
     pub fn uninstall(&self, keep_data: bool, dry_run: bool) -> Result<Uninstall> {
         let mut u = Uninstall::default();
         let apps = self.registry().list()?;
